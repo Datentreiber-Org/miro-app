@@ -1,20 +1,251 @@
 <!doctype html>
 <html>
 <head>
-  <meta charset="utf-8">
-  <title>My Miro App</title>
+  <meta charset="utf-8" />
+  <title>Miro + OpenAI (Client-only Test)</title>
   <script src="https://miro.com/app/static/sdk/v2/miro.js"></script>
-  <style>body{font-family:system-ui;margin:16px}button{padding:8px 12px}</style>
+  <style>
+    :root { --gap: 10px; }
+    body { font-family: system-ui, sans-serif; margin: 16px; line-height:1.35; }
+    .row { display:flex; gap:var(--gap); align-items:center; flex-wrap:wrap; margin-bottom: var(--gap); }
+    .col { display:flex; flex-direction:column; gap:6px; }
+    label { font-weight:600; }
+    input[type="text"], input[type="password"], select, textarea {
+      padding:8px; border:1px solid #ccc; border-radius:8px;
+    }
+    textarea { width: 100%; min-height: 90px; }
+    button { padding:8px 12px; border:1px solid #ccc; border-radius:8px; cursor:pointer; }
+    .muted { color:#666; }
+    .ok { color:#047857; font-weight:600; }
+    .warn { color:#b45309; font-weight:600; }
+    .err { color:#b91c1c; font-weight:600; }
+    .grid { display:grid; grid-template-columns: 1fr; gap: var(--gap); }
+    @media (min-width: 860px) {
+      .grid { grid-template-columns: 1fr 1fr; }
+    }
+    pre#out { white-space: pre-wrap; border:1px solid #eee; border-radius:10px; padding:10px; min-height:80px; }
+    .inline { display:inline-flex; gap:8px; align-items:center; }
+  </style>
 </head>
 <body>
-  <p id="s"></p>
-  <button id="b">Create Hello Sticky</button>
+  <h2>OpenAI Chat (ohne Server, nur zum Testen)</h2>
+  <div class="muted" style="margin-bottom:8px">
+    Achtung: Der Key wird clientseitig verwendet. Für echte Nutzung bitte später Proxy (Cloud Run) verwenden.
+  </div>
+
+  <div class="grid">
+    <div class="col">
+      <label>OpenAI API Key</label>
+      <div class="row">
+        <input id="key" type="password" placeholder="sk-..." style="flex:1" />
+        <button id="toggleKey" type="button">anzeigen</button>
+      </div>
+      <div class="row">
+        <label class="inline"><input id="remember" type="checkbox" /> auf diesem Browser speichern</label>
+        <span id="keyStatus" class="muted"></span>
+      </div>
+    </div>
+
+    <div class="col">
+      <label>Modell</label>
+      <div class="row" style="align-items:flex-start">
+        <select id="model" style="min-width:220px">
+          <option value="gpt-5">gpt-5</option>
+          <option value="gpt-4.1">gpt-4.1</option>
+          <option value="gpt-4o">gpt-4o</option>
+          <option value="o3-mini">o3-mini</option>
+          <option value="custom">Custom …</option>
+        </select>
+        <input id="modelCustom" type="text" placeholder="eigener Modellname" style="flex:1; display:none">
+      </div>
+      <div class="muted">Wähle ein freigeschaltetes Modell deines Projekts. Bei „Custom“ Feld ausfüllen.</div>
+    </div>
+  </div>
+
+  <div class="col" style="margin-top:12px">
+    <label>Frage an GPT</label>
+    <textarea id="prompt" placeholder="Frag GPT …"></textarea>
+  </div>
+
+  <div class="row">
+    <button id="ask">Ask GPT</button>
+    <button id="toSticky">Antwort → Sticky</button>
+    <span id="status" class="muted"></span>
+  </div>
+
+  <pre id="out"></pre>
+
   <script>
-    // läuft nur im Panel (weil loader.html ?panel=1 anhängt)
-    document.getElementById('s').textContent = 'Loaded: ' + new Date().toLocaleTimeString();
-    document.getElementById('b').onclick = async () => {
-      const s = await miro.board.createStickyNote({ content: '<p>Smoke OK</p>' });
-      await miro.board.viewport.zoomTo(s);
+    // ---------- Speicher (nur Browser) ----------
+    const LS_KEY = 'dt_openai_key';
+    const LS_MODEL = 'dt_openai_model';
+    const LS_MODEL_CUSTOM = 'dt_openai_model_custom';
+
+    const keyEl = document.getElementById('key');
+    const rememberEl = document.getElementById('remember');
+    const keyStatusEl = document.getElementById('keyStatus');
+    const modelEl = document.getElementById('model');
+    const modelCustomEl = document.getElementById('modelCustom');
+    const promptEl = document.getElementById('prompt');
+    const statusEl = document.getElementById('status');
+    const outEl = document.getElementById('out');
+    const askBtn = document.getElementById('ask');
+    const toStickyBtn = document.getElementById('toSticky');
+    const toggleKeyBtn = document.getElementById('toggleKey');
+
+    // Init: Key/Modell aus localStorage lesen (falls gewünscht)
+    (function init() {
+      try {
+        const savedKey = localStorage.getItem(LS_KEY);
+        if (savedKey) {
+          keyEl.value = savedKey;
+          rememberEl.checked = true;
+          keyStatusEl.textContent = 'Key aus lokalem Speicher geladen.';
+        }
+      } catch {}
+
+      try {
+        const savedModel = localStorage.getItem(LS_MODEL);
+        const savedCustom = localStorage.getItem(LS_MODEL_CUSTOM);
+        if (savedModel) {
+          modelEl.value = savedModel;
+          if (savedModel === 'custom') {
+            modelCustomEl.style.display = '';
+            if (savedCustom) modelCustomEl.value = savedCustom;
+          }
+        }
+      } catch {}
+    })();
+
+    rememberEl.addEventListener('change', () => {
+      if (!rememberEl.checked) {
+        try { localStorage.removeItem(LS_KEY); } catch {}
+        keyStatusEl.textContent = 'Key wird NICHT gespeichert.';
+      } else {
+        try {
+          localStorage.setItem(LS_KEY, keyEl.value.trim());
+          keyStatusEl.textContent = 'Key lokal gespeichert.';
+        } catch {}
+      }
+    });
+
+    keyEl.addEventListener('input', () => {
+      if (rememberEl.checked) {
+        try { localStorage.setItem(LS_KEY, keyEl.value.trim()); } catch {}
+        keyStatusEl.textContent = keyEl.value.trim() ? 'Key lokal gespeichert.' : 'Kein Key gesetzt.';
+      } else {
+        keyStatusEl.textContent = keyEl.value.trim() ? 'Key nur im Speicher (nicht gespeichert).' : 'Kein Key gesetzt.';
+      }
+    });
+
+    toggleKeyBtn.onclick = () => {
+      keyEl.type = keyEl.type === 'password' ? 'text' : 'password';
+      toggleKeyBtn.textContent = keyEl.type === 'password' ? 'anzeigen' : 'verbergen';
+    };
+
+    modelEl.addEventListener('change', () => {
+      const v = modelEl.value;
+      if (v === 'custom') {
+        modelCustomEl.style.display = '';
+      } else {
+        modelCustomEl.style.display = 'none';
+      }
+      try { localStorage.setItem(LS_MODEL, v); } catch {}
+    });
+    modelCustomEl.addEventListener('input', () => {
+      try { localStorage.setItem(LS_MODEL_CUSTOM, modelCustomEl.value.trim()); } catch {}
+    });
+
+    function getSelectedModel() {
+      const v = modelEl.value;
+      if (v === 'custom') {
+        const c = modelCustomEl.value.trim();
+        return c || 'gpt-4.1';
+      }
+      return v;
+    }
+
+    // ---------- OpenAI Responses API: SSE-Streaming ----------
+    async function streamResponse({ apiKey, model, messages, onDelta }) {
+      const res = await fetch("https://api.openai.com/v1/responses", {
+        method: "POST",
+        headers: {
+          "authorization": `Bearer ${apiKey}`,
+          "content-type": "application/json"
+        },
+        body: JSON.stringify({
+          model,
+          input: messages.map(m => ({
+            role: m.role,
+            content: [{ type: "text", text: m.content }]
+          })),
+          stream: true
+        })
+      });
+
+      if (!res.ok || !res.body) {
+        const t = await res.text().catch(()=> "");
+        throw new Error("OpenAI request failed: " + res.status + " " + t);
+      }
+
+      const reader = res.body.getReader();
+      const dec = new TextDecoder();
+      let full = "";
+
+      while (true) {
+        const { value, done } = await reader.read();
+        if (done) break;
+        const chunk = dec.decode(value, { stream: true });
+
+        for (const line of chunk.split("\n")) {
+          const m = line.match(/^data:\s*(.*)$/);
+          if (!m) continue;
+          if (m[1] === "[DONE]") continue;
+          try {
+            const evt = JSON.parse(m[1]);
+            if (evt.type === "response.output_text.delta") {
+              full += evt.delta;
+              onDelta(evt.delta, full);
+            }
+          } catch {}
+        }
+      }
+      return full;
+    }
+
+    askBtn.onclick = async () => {
+      const apiKey = keyEl.value.trim();
+      const model = getSelectedModel();
+      const user = promptEl.value.trim();
+      if (!apiKey) { statusEl.textContent = 'Bitte API Key eingeben.'; return; }
+      if (!user)   { statusEl.textContent = 'Bitte eine Frage eingeben.'; return; }
+
+      statusEl.textContent = `Frage wird verarbeitet … (Modell: ${model})`;
+      outEl.textContent = '';
+
+      try {
+        await streamResponse({
+          apiKey,
+          model,
+          messages: [
+            { role: "system", content: "Du bist ein hilfreicher Assistent im Miro-Panel." },
+            { role: "user", content: user }
+          ],
+          onDelta: (delta, full) => { outEl.textContent += delta; }
+        });
+        statusEl.textContent = 'Fertig.';
+      } catch (e) {
+        statusEl.textContent = 'Fehler: ' + e.message;
+      }
+    };
+
+    toStickyBtn.onclick = async () => {
+      const text = outEl.textContent.trim();
+      if (!text) return;
+      const sticky = await miro.board.createStickyNote({
+        content: `<p>${text.replace(/&/g,'&amp;').replace(/</g,'&lt;')}</p>`
+      });
+      await miro.board.viewport.zoomTo(sticky);
     };
   </script>
 </body>
