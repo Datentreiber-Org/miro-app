@@ -1,313 +1,440 @@
 <!doctype html>
-<html>
+<html lang="de">
 <head>
   <meta charset="utf-8" />
-  <title>Miro + OpenAI Responses (Client-only Test)</title>
+  <title>Datentreiber – Template Mapper</title>
+  <!-- Keine eigenen CSP/Permissions-Policy-Metas einfügen -->
   <script src="https://miro.com/app/static/sdk/v2/miro.js"></script>
   <style>
-    :root { --gap: 10px; }
-    body { font-family: system-ui, -apple-system, Segoe UI, Roboto, sans-serif; margin: 16px; line-height:1.35; }
-    .row { display:flex; gap:var(--gap); align-items:center; flex-wrap:wrap; margin-bottom: var(--gap); }
+    :root { color-scheme: light dark; }
+    body { font-family: system-ui, -apple-system, Segoe UI, Roboto, sans-serif; margin:16px; }
+    h1 { font-size: 16px; margin: 0 0 8px; }
+    .row { display: flex; gap: 8px; align-items: center; flex-wrap: wrap; }
     .col { display:flex; flex-direction:column; gap:6px; }
-    label { font-weight:600; }
-    input[type="text"], input[type="password"], select, textarea {
-      padding:8px; border:1px solid #ccc; border-radius:8px;
-    }
-    textarea { width: 100%; min-height: 100px; }
+    input[type="text"], select, textarea { padding:8px; border-radius:8px; border:1px solid #ccc; min-width: 260px; }
     button { padding:8px 12px; border:1px solid #ccc; border-radius:8px; cursor:pointer; }
-    .muted { color:#666; }
-    .ok { color:#047857; font-weight:600; }
-    .warn { color:#b45309; font-weight:600; }
-    .err { color:#b91c1c; font-weight:600; }
-    .grid { display:grid; grid-template-columns: 1fr; gap: var(--gap); }
-    @media (min-width: 860px) { .grid { grid-template-columns: 1fr 1fr; } }
-    pre#out { white-space: pre-wrap; border:1px solid #eee; border-radius:10px; padding:10px; min-height:100px; }
-    .inline { display:inline-flex; gap:8px; align-items:center; }
+    .muted { color:#666 }
+    .card { border:1px solid #ddd; border-radius:12px; padding:12px; }
+    .thumb { width: 220px; height:auto; border-radius:8px; border:1px solid #ddd; }
+    .grid { display:grid; grid-template-columns: auto 1fr; gap: 12px; align-items: start; }
+    .mono { font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; font-size:12px; white-space:pre-wrap; }
+    .ok { color: #0a7f2e; }
+    .err { color: #b00020; }
+    .spacer { height: 8px; }
+    #app[hidden] { display:none; }
   </style>
 </head>
 <body>
-  <h2>OpenAI Chat (ohne Server, nur zum Testen)</h2>
-  <div class="muted" style="margin-bottom:8px">
-    Hinweis: API-Key wird clientseitig verwendet. Für Produktion später Proxy (z. B. Cloud Run) einsetzen.
-  </div>
+  <!-- Headless vs Panel: dieselbe Datei kann beides -->
+  <div id="app" hidden>
+    <h1>Datentreiber – Template Mapper</h1>
+    <div class="muted" id="loadedAt"></div>
 
-  <div class="grid">
-    <div class="col">
-      <label>OpenAI API Key</label>
+    <!-- 1) OpenAI Konfiguration -->
+    <div class="card">
       <div class="row">
-        <input id="key" type="password" placeholder="sk-..." style="flex:1" />
-        <button id="toggleKey" type="button">anzeigen</button>
+        <div class="col">
+          <label for="key">OpenAI API Key (wird nur im Speicher gehalten)</label>
+          <input id="key" type="text" placeholder="sk-..." />
+        </div>
+        <div class="col">
+          <label for="model">Modell</label>
+          <select id="model">
+            <option value="gpt-4o-mini" selected>gpt-4o-mini</option>
+            <option value="gpt-4.1-mini">gpt-4.1-mini</option>
+            <option value="gpt-4.1">gpt-4.1</option>
+          </select>
+        </div>
       </div>
-      <div class="row">
-        <label class="inline"><input id="remember" type="checkbox" /> auf diesem Browser speichern</label>
-        <span id="keyStatus" class="muted"></span>
+      <div class="spacer"></div>
+      <div class="col">
+        <label for="prompt">Prompt (optional, wird zusammen mit den Sticky-Daten gesendet)</label>
+        <textarea id="prompt" rows="3" placeholder="Analysiere die Stickies je Bereich ..."></textarea>
       </div>
     </div>
 
-    <div class="col">
-      <label>Modell</label>
-      <div class="row" style="align-items:flex-start">
-        <select id="model" style="min-width:240px">
-          <option value="gpt-4.1">gpt-4.1</option>
-          <option value="gpt-4o">gpt-4o</option>
-          <option value="o3-mini">o3-mini</option>
-          <option value="gpt-5">gpt-5</option>
-          <option value="custom">Custom …</option>
-        </select>
-        <input id="modelCustom" type="text" placeholder="eigener Modellname" style="flex:1; display:none">
+    <div class="spacer"></div>
+
+    <!-- 2) Template-Auswahl (mit deinem 3-Boxes-Template) -->
+    <div class="card">
+      <strong>Template auswählen und einfügen</strong>
+      <div class="spacer"></div>
+      <div class="grid">
+        <img id="tpl-thumb" class="thumb"
+          src="https://www.datentreiber.com/wp-content/uploads/2024/12/Datentreiber_EN_3-Boxes_v1-1_20240610.png"
+          alt="Datentreiber 3-Boxes" />
+        <div class="col">
+          <div class="muted">Datentreiber 3-Boxes (Header, Footer, Title, 3 Boxes)</div>
+          <div class="row">
+            <button id="btn-insert">Template als Frame+Image einfügen</button>
+            <button id="btn-zoom">Zum zuletzt eingefügten Template zoomen</button>
+          </div>
+          <div class="muted" id="insertStatus"></div>
+        </div>
       </div>
-      <div class="muted">Nur Modelle wählen, die in deinem Projekt verfügbar sind.</div>
+    </div>
+
+    <div class="spacer"></div>
+
+    <!-- 3) Analyse/Senden -->
+    <div class="card">
+      <strong>Analyse & Senden an OpenAI</strong>
+      <div class="spacer"></div>
+      <div class="row">
+        <button id="btn-scan">Stickies im Frame klassifizieren</button>
+        <button id="btn-send">Stickies + Bereiche an OpenAI senden</button>
+      </div>
+      <div class="spacer"></div>
+      <div id="scanOut" class="mono"></div>
+      <div class="spacer"></div>
+      <div id="llmOut" class="mono"></div>
     </div>
   </div>
-
-  <div class="col" style="margin-top:12px">
-    <label>System Prompt (optional)</label>
-    <input id="sys" type="text" placeholder="z. B.: Du bist ein hilfreicher Assistent im Miro-Panel." />
-  </div>
-
-  <div class="col" style="margin-top:12px">
-    <label>Nachricht</label>
-    <textarea id="prompt" placeholder="Frag GPT …"></textarea>
-  </div>
-
-  <div class="row">
-    <button id="ask">Ask GPT</button>
-    <button id="toSticky">Antwort → Sticky</button>
-    <button id="clear">Verlauf leeren</button>
-    <span id="status" class="muted"></span>
-  </div>
-
-  <pre id="out"></pre>
 
   <script>
-    // -------------------- Local Speicher (nur Browser) --------------------
-    const LS_KEY = 'dt_openai_key';
-    const LS_MODEL = 'dt_openai_model';
-    const LS_MODEL_CUSTOM = 'dt_openai_model_custom';
-    const LS_SYS = 'dt_openai_sys';
-
-    const keyEl = document.getElementById('key');
-    const rememberEl = document.getElementById('remember');
-    const keyStatusEl = document.getElementById('keyStatus');
-    const modelEl = document.getElementById('model');
-    const modelCustomEl = document.getElementById('modelCustom');
-    const sysEl = document.getElementById('sys');
-    const promptEl = document.getElementById('prompt');
-    const statusEl = document.getElementById('status');
-    const outEl = document.getElementById('out');
-    const askBtn = document.getElementById('ask');
-    const toStickyBtn = document.getElementById('toSticky');
-    const clearBtn = document.getElementById('clear');
-    const toggleKeyBtn = document.getElementById('toggleKey');
-
-    // Gesprächsverlauf (flüchtig im Panel)
-    let chat = [];
-
-    // Init: Key/Model/System aus localStorage
-    (function init() {
-      try {
-        const savedKey = localStorage.getItem(LS_KEY);
-        if (savedKey) {
-          keyEl.value = savedKey;
-          rememberEl.checked = true;
-          keyStatusEl.textContent = 'Key aus lokalem Speicher geladen.';
-        }
-      } catch {}
-
-      try {
-        const savedModel = localStorage.getItem(LS_MODEL);
-        const savedCustom = localStorage.getItem(LS_MODEL_CUSTOM);
-        if (savedModel) {
-          modelEl.value = savedModel;
-          if (savedModel === 'custom') {
-            modelCustomEl.style.display = '';
-            if (savedCustom) modelCustomEl.value = savedCustom;
-          }
-        }
-      } catch {}
-
-      try {
-        const savedSys = localStorage.getItem(LS_SYS);
-        if (savedSys) sysEl.value = savedSys;
-      } catch {}
-    })();
-
-    rememberEl.addEventListener('change', () => {
-      if (!rememberEl.checked) {
-        try { localStorage.removeItem(LS_KEY); } catch {}
-        keyStatusEl.textContent = 'Key wird NICHT gespeichert.';
-      } else {
-        try {
-          localStorage.setItem(LS_KEY, keyEl.value.trim());
-          keyStatusEl.textContent = 'Key lokal gespeichert.';
-        } catch {}
-      }
-    });
-
-    keyEl.addEventListener('input', () => {
-      if (rememberEl.checked) {
-        try { localStorage.setItem(LS_KEY, keyEl.value.trim()); } catch {}
-        keyStatusEl.textContent = keyEl.value.trim() ? 'Key lokal gespeichert.' : 'Kein Key gesetzt.';
-      } else {
-        keyStatusEl.textContent = keyEl.value.trim() ? 'Key nur im Speicher (nicht gespeichert).' : 'Kein Key gesetzt.';
-      }
-    });
-
-    toggleKeyBtn.onclick = () => {
-      keyEl.type = keyEl.type === 'password' ? 'text' : 'password';
-      toggleKeyBtn.textContent = keyEl.type === 'password' ? 'anzeigen' : 'verbergen';
+    // ------------------------------
+    // KONSTANTEN & TEMPLATE-DATEN
+    // ------------------------------
+    const TEMPLATE = {
+      id: "datentreiber-3boxes",
+      name: "Datentreiber 3-Boxes v1-1 (20240610)",
+      imageUrl: "https://www.datentreiber.com/wp-content/uploads/2024/12/Datentreiber_EN_3-Boxes_v1-1_20240610.png",
+      // Original Image-Map aus deiner Nachricht (Pixelkoordinaten):
+      areasPx: [
+        { id: "1a_header", title: "Header", shape: "rect", coords: [157, 8, 705, 80] },
+        { id: "1b_footer", title: "Footer", shape: "rect", coords: [17, 676, 562, 706] },
+        { id: "2_title",  title: "Title",  shape: "rect", coords: [123, 83, 874, 148] },
+        { id: "3_boxes",  title: "3 Boxes", shape: "poly",
+          coords: [21,109, 119,110, 119,150, 878,150, 877,109, 979,109, 978,639, 22,640] }
+      ]
     };
+    const META_KEY = "dt.template";   // am IMAGE gespeichert
+    // Letzte Template-Instanz (Image/Frame IDs) im Panelspeicher
+    let lastTemplate = null;
 
-    modelEl.addEventListener('change', () => {
-      const v = modelEl.value;
-      if (v === 'custom') {
-        modelCustomEl.style.display = '';
-      } else {
-        modelCustomEl.style.display = 'none';
+    // ------------------------------
+    // GEOMETRIE-UTILS
+    // ------------------------------
+    function rectContainsNorm(px, py, [x1,y1,x2,y2]) {
+      const left = Math.min(x1,x2), right = Math.max(x1,x2);
+      const top  = Math.min(y1,y2), bottom= Math.max(y1,y2);
+      return px >= left && px <= right && py >= top && py <= bottom;
+    }
+    function polyContainsNorm(px, py, coords) {
+      // Ray casting; coords = [x1,y1, x2,y2, ...] (normiert 0..1)
+      let inside = false;
+      for (let i=0, j=coords.length-2; i<coords.length; i+=2) {
+        const xi = coords[i], yi = coords[i+1];
+        const xj = coords[j], yj = coords[j+1];
+        const intersect = ((yi > py) !== (yj > py)) &&
+                          (px < (xj - xi) * (py - yi) / (yj - yi + 1e-12) + xi);
+        if (intersect) inside = !inside;
+        j = i;
       }
-      try { localStorage.setItem(LS_MODEL, v); } catch {}
-    });
-
-    modelCustomEl.addEventListener('input', () => {
-      try { localStorage.setItem(LS_MODEL_CUSTOM, modelCustomEl.value.trim()); } catch {}
-    });
-
-    sysEl.addEventListener('input', () => {
-      try { localStorage.setItem(LS_SYS, sysEl.value.trim()); } catch {}
-    });
-
-    function getSelectedModel() {
-      const v = modelEl.value;
-      if (v === 'custom') {
-        const c = modelCustomEl.value.trim();
-        return c || 'gpt-4.1';
-      }
-      return v;
+      return inside;
+    }
+    function pxAreasToNormalized(areasPx, natW, natH) {
+      return areasPx.map(a => {
+        if (a.shape === "rect") {
+          const [x1,y1,x2,y2] = a.coords;
+          return { ...a,
+            coords: [x1/natW, y1/natH, x2/natW, y2/natH]
+          };
+        } else if (a.shape === "poly") {
+          const out = [];
+          for (let i=0;i<a.coords.length;i+=2) {
+            out.push(a.coords[i]/natW, a.coords[i+1]/natH);
+          }
+          return { ...a, coords: out };
+        } else {
+          return a;
+        }
+      });
+    }
+    function centerToImageNorm(sticky, image) {
+      // Beide sind Kinder des gleichen Frames.
+      // x/y sind relativ zur Frame-TopLeft, zeigen aufs Zentrum; image.x/y = Bildzentrum.
+      const imgLeft = image.x - image.width/2;
+      const imgTop  = image.y - image.height/2;
+      const px = (sticky.x - imgLeft) / image.width;
+      const py = (sticky.y - imgTop ) / image.height;
+      return { px, py };
     }
 
-    // -------------------- Mapping: Rollen → Content-Typ --------------------
-    // user/system -> input_text, assistant -> output_text
-    function mapMessagesToResponsesInput(messages) {
-      return messages.map(m => {
-        const role = m.role;
-        let type;
-        if (role === 'assistant') {
-          type = 'output_text';
-        } else {
-          // 'user' oder 'system'
-          type = 'input_text';
-        }
-        return {
-          role,
-          content: [{ type, text: m.content }]
-        };
+    // ------------------------------
+    // TEMPLATE INS BOARD SETZEN
+    // ------------------------------
+    async function insertTemplate() {
+      const status = document.getElementById('insertStatus');
+      status.textContent = "Lade Bildgröße ...";
+      const nat = await loadNaturalSize(TEMPLATE.imageUrl);
+
+      status.textContent = "Erzeuge Frame und Bild ...";
+      const vp = await miro.board.viewport.get();
+      const frameWidth = Math.min(1200, Math.max(800, vp.width * 0.8));
+      const frameHeight = frameWidth * (nat.h / nat.w) + 80; // + Titelstreifen
+
+      // 1) Frame erstellen
+      const frame = await miro.board.createFrame({
+        title: TEMPLATE.name,
+        width: frameWidth,
+        height: frameHeight,
+        x: 0, y: 0, // zentriert (canvas_center) – Default passt
+        style: { fillColor: "#ffffff" }
+      });
+
+      // 2) Bild in der Mitte des Frames platzieren
+      const image = await miro.board.createImage({
+        url: TEMPLATE.imageUrl,
+        x: frame.x,               // Bildzentrum = Framezentrum
+        y: frame.y + 20,          // kleiner Offset nach unten (Titelstreifen)
+        width: frameWidth - 40    // etwas Rand im Frame
+      });
+
+      // 3) Kindbeziehung herstellen (danach sind x/y relativ zur Frame-TopLeft; Zentrum bleibt Referenz)
+      await frame.add(image); // siehe Doku: add() macht parent/child und re-berechnet Koordinaten relativ zur Frame-TopLeft. :contentReference[oaicite:4]{index=4}
+
+      // 4) Image-Map am Image als Metadata speichern (normalisiert 0..1, inkl. Naturalgröße)
+      const areasNorm = pxAreasToNormalized(TEMPLATE.areasPx, nat.w, nat.h);
+      await image.setMetadata(META_KEY, {
+        templateId: TEMPLATE.id,
+        templateName: TEMPLATE.name,
+        natural: nat,
+        areas: areasNorm,
+      }); // Item-Metadata an Image; Frames haben keine Metadata. :contentReference[oaicite:5]{index=5}
+
+      lastTemplate = { frameId: frame.id, imageId: image.id };
+      status.innerHTML = `<span class="ok">Template eingefügt ✔︎</span>`;
+      await miro.board.viewport.zoomTo(frame);
+    }
+
+    async function loadNaturalSize(url) {
+      return new Promise((res, rej) => {
+        const img = new Image();
+        img.onload = () => res({ w: img.naturalWidth, h: img.naturalHeight });
+        img.onerror = rej;
+        img.src = url + (url.includes("?") ? "&" : "?") + "cachebust=" + Date.now();
       });
     }
 
-    // -------------------- Responses API: SSE-Streaming --------------------
-    async function streamResponse({ apiKey, model, messages, onDelta }) {
+    // ------------------------------
+    // TEMPLATE-OBJEKTE FINDEN
+    // ------------------------------
+    async function findLastTemplate() {
+      if (lastTemplate) {
+        const [img] = await miro.board.getById(lastTemplate.imageId) || [];
+        const [frm] = await miro.board.getById(lastTemplate.frameId) || [];
+        if (img && frm) return { image: img, frame: frm };
+      }
+      // Fallback: neueste Image mit unserer Metadata suchen
+      const images = await miro.board.get({ type: 'image' });
+      for (let i=images.length-1; i>=0; i--) {
+        const meta = await images[i].getMetadata(META_KEY);
+        if (meta && meta.templateId === TEMPLATE.id) {
+          const parentFrame = await getParentFrameOf(images[i]);
+          if (parentFrame) {
+            lastTemplate = { imageId: images[i].id, frameId: parentFrame.id };
+            return { image: images[i], frame: parentFrame };
+          }
+        }
+      }
+      return null;
+    }
+    async function getParentFrameOf(item) {
+      // Schnellweg: alle Frames holen und schauen, ob item.id in childrenIds ist
+      const frames = await miro.board.get({ type: 'frame' });
+      for (const f of frames) {
+        if (f.childrenIds && f.childrenIds.includes(item.id)) return f;
+      }
+      return null;
+    }
+
+    // ------------------------------
+    // STICKIES KLASSIFIZIEREN
+    // ------------------------------
+    async function classifyStickiesInFrame() {
+      const tpl = await findLastTemplate();
+      if (!tpl) throw new Error("Kein Template gefunden. Bitte zuerst einfügen.");
+      const { image, frame } = tpl;
+
+      const meta = await image.getMetadata(META_KEY);
+      if (!meta || !meta.areas || !meta.natural) {
+        throw new Error("Template-Metadaten fehlen oder sind unvollständig.");
+      }
+      const children = await frame.getChildren(); // alle Kinder des Frames :contentReference[oaicite:6]{index=6}
+      const stickies = children.filter(it => it.type === 'sticky_note');
+
+      const results = [];
+      for (const s of stickies) {
+        // Sticky Content ist HTML -> grob in Text umwandeln
+        const text = stripHtml(s.content || "");
+        const { px, py } = centerToImageNorm(s, image);
+
+        let hit = null;
+        for (const area of meta.areas) {
+          if (area.shape === "rect") {
+            if (rectContainsNorm(px, py, area.coords)) { hit = area; break; }
+          } else if (area.shape === "poly") {
+            if (polyContainsNorm(px, py, area.coords)) { hit = area; break; }
+          }
+        }
+        results.push({
+          stickyId: s.id,
+          regionId: hit ? hit.id : null,
+          regionTitle: hit ? hit.title : null,
+          text
+        });
+      }
+      return {
+        template: { id: meta.templateId, name: meta.templateName },
+        counts: {
+          total: results.length,
+          byRegion: Object.fromEntries(
+            Object.entries(groupBy(results.filter(r=>r.regionId), r=> r.regionId))
+                  .map(([k, arr]) => [k, arr.length])
+          )
+        },
+        items: results
+      };
+    }
+
+    function stripHtml(html) {
+      const tmp = document.createElement('div');
+      tmp.innerHTML = html;
+      return tmp.textContent || tmp.innerText || "";
+    }
+    function groupBy(arr, fn) {
+      return arr.reduce((acc, cur) => {
+        const k = fn(cur);
+        (acc[k] ||= []).push(cur);
+        return acc;
+      }, {});
+    }
+
+    // ------------------------------
+    // OPENAI – Responses API (fetch)
+    // ------------------------------
+    async function sendToOpenAI({ apiKey, model, userPrompt, payload }) {
+      if (!apiKey || !apiKey.trim()) throw new Error("OpenAI API Key fehlt.");
       const body = {
         model,
-        input: mapMessagesToResponsesInput(messages),
-        stream: true
+        input: [
+          {
+            type: "message",
+            role: "user",
+            content: [
+              { type: "input_text",
+                text:
+`Du bist ein Assistent in Miro. Analysiere die Sticky Notes je Bildbereich.
+Eingabe ist JSON (template, items[] mit regionId/Title und text). Antworte kompakt:
+- Zusammenfassung je Bereich (Bullets)
+- Auffälligkeiten / Lücken
+- Max. 200 Wörter.` },
+              { type: "input_text", text: "User-Prompt: " + (userPrompt || "(leer)") },
+              { type: "input_text", text: "Daten:\n" + JSON.stringify(payload, null, 2) }
+            ]
+          }
+        ],
+        max_output_tokens: 700
       };
 
-      const res = await fetch("https://api.openai.com/v1/responses", {
+      const resp = await fetch("https://api.openai.com/v1/responses", {
         method: "POST",
         headers: {
-          "authorization": `Bearer ${apiKey}`,
-          "content-type": "application/json"
+          "Authorization": "Bearer " + apiKey,
+          "Content-Type": "application/json"
         },
         body: JSON.stringify(body)
       });
-
-      if (!res.ok || !res.body) {
-        const t = await res.text().catch(()=> "");
-        throw new Error("OpenAI request failed: " + res.status + " " + t);
+      const data = await resp.json();
+      if (!resp.ok) {
+        throw new Error("OpenAI request failed: " + resp.status + " " + JSON.stringify(data, null, 2));
       }
-
-      const reader = res.body.getReader();
-      const dec = new TextDecoder();
-
-      while (true) {
-        const { value, done } = await reader.read();
-        if (done) break;
-        const chunk = dec.decode(value, { stream: true });
-
-        for (const line of chunk.split("\n")) {
-          const m = line.match(/^data:\s*(.*)$/);
-          if (!m) continue;
-          if (m[1] === "[DONE]") continue;
-
-          try {
-            const evt = JSON.parse(m[1]);
-            if (evt.type === "response.output_text.delta") {
-              onDelta(evt.delta);
-            }
-          } catch {}
-        }
+      // Responses API: erstes Output-Message/Output-Text extrahieren
+      const msg = data?.output?.[0];
+      let text = "";
+      if (msg?.content) {
+        const t = msg.content.find(c => c.type === "output_text");
+        text = t?.text || "";
       }
+      return text || JSON.stringify(data, null, 2);
     }
 
-    // -------------------- UI-Logik --------------------
-    askBtn.onclick = async () => {
-      const apiKey = keyEl.value.trim();
-      const model = getSelectedModel();
-      const sys = sysEl.value.trim();
-      const user = promptEl.value.trim();
+    // ------------------------------
+    // PANEL BOOTSTRAP (HEADLESS vs PANEL)
+    // ------------------------------
+    (async function boot() {
+      const url = new URL(window.location.href);
+      const isPanel = url.searchParams.get('panel') === '1';
 
-      if (!apiKey) { statusEl.textContent = 'Bitte API Key eingeben.'; return; }
-      if (!user)   { statusEl.textContent = 'Bitte eine Nachricht eingeben.'; return; }
-
-      // Gesprächsverlauf zusammenbauen
-      const msgs = [];
-      if (sys) msgs.push({ role: "system", content: sys });
-      for (const m of chat) msgs.push(m);
-      msgs.push({ role: "user", content: user });
-
-      // Anzeige reset
-      outEl.textContent = '';
-      statusEl.textContent = `Frage wird verarbeitet … (Modell: ${model})`;
-
-      try {
-        let full = "";
-        await streamResponse({
-          apiKey,
-          model,
-          messages: msgs,
-          onDelta: (delta) => {
-            full += delta;
-            outEl.textContent += delta;
-          }
+      if (!isPanel) {
+        // HEADLESS: Icon-Klick öffnet Panel (diese Datei mit ?panel=1)
+        miro.board.ui.on('icon:click', async () => {
+          const panelUrl = sameFileWithParam(window.location.href, "panel", "1");
+          await miro.board.ui.openPanel({ url: panelUrl });
         });
-        statusEl.textContent = 'Fertig.';
-
-        // Verlauf pflegen: aktuelle User- und Assistant-Nachricht anhängen
-        chat.push({ role: "user", content: user });
-        chat.push({ role: "assistant", content: outEl.textContent });
-
-      } catch (e) {
-        statusEl.textContent = 'Fehler: ' + e.message;
+        // Optional: direkt öffnen wenn aus "+ More apps" gestartet
+        const panelUrl = sameFileWithParam(window.location.href, "panel", "1");
+        await miro.board.ui.openPanel({ url: panelUrl });
+        return;
       }
-    };
 
-    toStickyBtn.onclick = async () => {
-      const text = outEl.textContent.trim();
-      if (!text) return;
-      const sticky = await miro.board.createStickyNote({
-        content: `<p>${text
-          .replace(/&/g,'&amp;')
-          .replace(/</g,'&lt;')
-          .replace(/\n/g,'<br>')}</p>`
-      });
-      await miro.board.viewport.zoomTo(sticky);
-    };
+      // PANEL sichtbar machen
+      document.getElementById('app').hidden = false;
+      document.getElementById('loadedAt').textContent = "Panel geladen: " + new Date().toLocaleTimeString();
 
-    clearBtn.onclick = () => {
-      chat = [];
-      outEl.textContent = '';
-      statusEl.textContent = 'Verlauf geleert.';
-    };
+      // UI Verdrahtung
+      document.getElementById('btn-insert').onclick = async () => {
+        try {
+          await insertTemplate();
+        } catch (e) {
+          setStatus('insertStatus', e);
+        }
+      };
+      document.getElementById('btn-zoom').onclick = async () => {
+        const tpl = await findLastTemplate();
+        if (tpl?.frame) await miro.board.viewport.zoomTo(tpl.frame);
+      };
+
+      document.getElementById('btn-scan').onclick = async () => {
+        const out = document.getElementById('scanOut');
+        out.textContent = "Scanne ...";
+        try {
+          const res = await classifyStickiesInFrame();
+          out.textContent = JSON.stringify(res, null, 2);
+        } catch (e) {
+          out.innerHTML = '<span class="err">' + e.message + '</span>';
+        }
+      };
+
+      document.getElementById('btn-send').onclick = async () => {
+        const out = document.getElementById('llmOut');
+        out.textContent = "Sende an OpenAI ...";
+        try {
+          const payload = await classifyStickiesInFrame();
+          const text = await sendToOpenAI({
+            apiKey: document.getElementById('key').value,
+            model: document.getElementById('model').value,
+            userPrompt: document.getElementById('prompt').value,
+            payload
+          });
+          out.innerHTML = '<span class="ok">Antwort:</span>\n' + text;
+        } catch (e) {
+          out.innerHTML = '<span class="err">' + e.message + '</span>';
+        }
+      };
+    })();
+
+    function sameFileWithParam(href, k, v) {
+      const u = new URL(href, location.origin);
+      u.searchParams.set(k, v);
+      // Stelle sicher, dass wir die tatsächliche Datei (ohne _miro/_sdk Querys) nutzen
+      u.searchParams.delete('_miro'); u.searchParams.delete('_sdk');
+      return u.pathname + "?" + u.searchParams.toString();
+    }
+    function setStatus(id, err) {
+      document.getElementById(id).innerHTML = '<span class="err">' + (err?.message || err) + '</span>';
+    }
   </script>
 </body>
 </html>
