@@ -2,79 +2,20 @@
 <html>
 <head>
   <meta charset="utf-8">
-  <title>Miro App (headless+panel)</title>
-  <!-- keine CSP/Permissions-Policy-Meta-Tags einfügen -->
+  <title>My Miro App</title>
   <script src="https://miro.com/app/static/sdk/v2/miro.js"></script>
-  <style>
-    body { font-family: system-ui, sans-serif; margin: 16px; }
-    .muted { color:#666; }
-    button { padding:8px 12px; border:1px solid #ccc; border-radius:8px; cursor:pointer; }
-  </style>
+  <style>body{font-family:system-ui;margin:16px}button{padding:8px 12px}</style>
 </head>
 <body>
-  <div id="app" hidden>
-    <p id="s" class="muted"></p>
-    <button id="b">Create Hello Sticky</button>
-  </div>
-
- <script>
-  // Hilfsfunktion: baue absolute Panel-URL auf BASIS der aktuell geladenen URL
-  function buildPanelUrl() {
-    const u = new URL(window.location.href); // z.B. https://datentreiber-org.github.io/miro-app/app.html?v=2025-12-04-1805
-    u.searchParams.set('panel', '1');        // Cache-Buster & andere Query-Params bleiben erhalten
-    return u.toString();                     // absolute URL zurück
-  }
-
-  // Ermitteln, ob wir im Panel laufen
-  const isPanel = new URL(window.location.href).searchParams.get('panel') === '1';
-
-  if (!isPanel) {
-    // ===== HEADLESS-KONTEXT =====
-    miro.board.ui.on('icon:click', async () => {
-      const url = buildPanelUrl();
-      console.log('[headless] icon:click -> openPanel', url);
-      try {
-        await miro.board.ui.openPanel({ url });
-        console.log('[headless] openPanel resolved');
-      } catch (e) {
-        console.error('[headless] openPanel ERROR', e);
-      }
-    });
-
-    // Optional: Panel sofort öffnen (wenn App aus “+ More apps” gestartet wird)
-    (async () => {
-      const url = buildPanelUrl();
-      console.log('[headless] auto openPanel', url);
-      try {
-        await miro.board.ui.openPanel({ url });
-        console.log('[headless] auto openPanel resolved');
-      } catch (e) {
-        console.error('[headless] auto openPanel ERROR', e);
-      }
-    })();
-
-  } else {
-    // ===== PANEL-KONTEXT =====
-    console.log('[panel] rendering UI');
-    const root = document.getElementById('app');
-    root.hidden = false;
-
-    const sEl = document.getElementById('s');
-    const btn = document.getElementById('b');
-
-    sEl.textContent = 'Loaded: ' + new Date().toLocaleTimeString();
-
-    btn.onclick = async () => {
-      try {
-        const sticky = await miro.board.createStickyNote({ content: '<p>Smoke OK</p>' });
-        await miro.board.viewport.zoomTo(sticky);
-        console.log('[panel] Sticky created', sticky.id);
-      } catch (e) {
-        console.error('[panel] createStickyNote ERROR', e);
-      }
+  <p id="s"></p>
+  <button id="b">Create Hello Sticky</button>
+  <script>
+    // läuft nur im Panel (weil loader.html ?panel=1 anhängt)
+    document.getElementById('s').textContent = 'Loaded: ' + new Date().toLocaleTimeString();
+    document.getElementById('b').onclick = async () => {
+      const s = await miro.board.createStickyNote({ content: '<p>Smoke OK</p>' });
+      await miro.board.viewport.zoomTo(s);
     };
-  }
-</script>
-
+  </script>
 </body>
 </html>
