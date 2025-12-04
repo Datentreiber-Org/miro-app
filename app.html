@@ -1,18 +1,59 @@
 <!doctype html>
 <html>
+<head>
   <meta charset="utf-8">
-  <title>Smoke</title>
-  <!-- KEINE CSP-/PERMISSIONS-POLICY-META-TAGS! -->
+  <title>Miro App (headless+panel)</title>
+  <!-- keine CSP/Permissions-Policy-Meta-Tags einfügen -->
   <script src="https://miro.com/app/static/sdk/v2/miro.js"></script>
-  <p id="s"></p>
-  <button id="b">Create Hello Sticky</button>
+  <style>
+    body { font-family: system-ui, sans-serif; margin: 16px; }
+    .muted { color:#666; }
+    button { padding:8px 12px; border:1px solid #ccc; border-radius:8px; cursor:pointer; }
+  </style>
+</head>
+<body>
+  <div id="app" hidden>
+    <p id="s" class="muted"></p>
+    <button id="b">Create Hello Sticky</button>
+  </div>
+
   <script>
-    document.getElementById('s').textContent = 'Loaded: ' + new Date().toLocaleTimeString();
-    document.getElementById('b').onclick = async () => {
-      const s = await miro.board.createStickyNote({ content: '<p>Smoke OK</p>' });
-      await miro.board.viewport.zoomTo(s);
-      console.log('Sticky created', s.id);
-    };
-    miro.board.ui.on('icon:click', () => console.log('icon:click fired'));
+    // Ermitteln, ob wir im Panel-Modus sind
+    const url = new URL(window.location.href);
+    const isPanel = url.searchParams.get('panel') === '1';
+
+    if (!isPanel) {
+      // ===== HEADLESS-KONTEXT =====
+      // -> NICHTS anzeigen, nur Entry-Point verdrahten und Panel öffnen
+      miro.board.ui.on('icon:click', async () => {
+        // dieselbe Datei als sichtbares Panel laden
+        await miro.board.ui.openPanel({ url: miro.board.__dangerouslyReadUntrustedHtml
+          ? window.location.origin + window.location.pathname + '?panel=1'
+          : window.location.pathname + '?panel=1'
+        });
+      });
+
+      // Optional: Panel sofort öffnen, falls man die App aus "+ More apps" startet
+      // (Viele Nutzer erwarten direkt sichtbare UI.)
+      (async () => {
+        await miro.board.ui.openPanel({ url: window.location.pathname + '?panel=1' });
+      })();
+
+    } else {
+      // ===== PANEL-KONTEXT =====
+      const root = document.getElementById('app');
+      root.hidden = false;
+      const sEl = document.getElementById('s');
+      const btn = document.getElementById('b');
+
+      sEl.textContent = 'Loaded: ' + new Date().toLocaleTimeString();
+
+      btn.onclick = async () => {
+        const sticky = await miro.board.createStickyNote({ content: '<p>Smoke OK</p>' });
+        await miro.board.viewport.zoomTo(sticky);
+        console.log('Sticky created', sticky.id);
+      };
+    }
   </script>
+</body>
 </html>
