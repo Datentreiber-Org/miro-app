@@ -1,8 +1,8 @@
 <!doctype html>
 <html>
   <meta charset="utf-8">
-  <title>Miro Smoke</title>
-  <!-- WICHTIG: keine CSP-/Permissions-Policy-Meta-Tags einfügen -->
+  <title>Smoke</title>
+  <!-- KEINE CSP-/PERMISSIONS-POLICY-META-TAGS! -->
   <script src="https://miro.com/app/static/sdk/v2/miro.js"></script>
   <p id="s"></p>
   <button id="b">Create Hello Sticky</button>
@@ -13,7 +13,6 @@
       await miro.board.viewport.zoomTo(s);
       console.log('Sticky created', s.id);
     };
-    // zusätzlich: icon:click registrieren
     miro.board.ui.on('icon:click', () => console.log('icon:click fired'));
   </script>
 </html>
