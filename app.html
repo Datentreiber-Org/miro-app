@@ -2,98 +2,57 @@
 <html lang="de">
 <head>
   <meta charset="utf-8" />
-  <title>Datentreiber – Template Mapper</title>
+  <title>Datentreiber – Template Mapper (Debug)</title>
   <script src="https://miro.com/app/static/sdk/v2/miro.js"></script>
   <style>
     :root { color-scheme: light dark; }
     body { font-family: system-ui, -apple-system, Segoe UI, Roboto, sans-serif; margin:16px; }
     h1 { font-size: 16px; margin: 0 0 8px; }
-    .row { display: flex; gap: 8px; align-items: center; flex-wrap: wrap; }
+    .row { display:flex; gap:8px; align-items:center; flex-wrap:wrap; }
     .col { display:flex; flex-direction:column; gap:6px; }
     input[type="text"], select, textarea { padding:8px; border-radius:8px; border:1px solid #ccc; min-width: 260px; }
     button { padding:8px 12px; border:1px solid #ccc; border-radius:8px; cursor:pointer; }
-    textarea { width: 100%; min-height: 100px; }
+    textarea { width:100%; min-height:100px; }
     .muted { color:#666 }
     .card { border:1px solid #ddd; border-radius:12px; padding:12px; }
-    .thumb { width: 220px; height:auto; border-radius:8px; border:1px solid #ddd; }
-    .grid { display:grid; grid-template-columns: auto 1fr; gap: 12px; align-items: start; }
+    .grid { display:grid; grid-template-columns:auto 1fr; gap:12px; align-items:start; }
     .mono { font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; font-size:12px; white-space:pre-wrap; }
-    .ok { color: #0a7f2e; }
-    .err { color: #b00020; }
-    .spacer { height: 8px; }
-    #app[hidden] { display:none; }
+    .ok { color:#0a7f2e }
+    .err { color:#b00020 }
+    #app[hidden]{ display:none; }
   </style>
 </head>
 <body>
   <div id="app" hidden>
-    <h1>Datentreiber – Template Mapper</h1>
+    <h1>Datentreiber – Template Mapper (Debug)</h1>
     <div class="muted" id="loadedAt"></div>
 
-    <!-- 1) OpenAI Konfiguration -->
+    <!-- Template-Auswahl -->
     <div class="card">
-      <div class="row">
-        <div class="col">
-          <label for="key">OpenAI API Key (wird nur im Speicher gehalten)</label>
-          <input id="key" type="text" placeholder="sk-..." />
-        </div>
-        <div class="col">
-          <label for="model">Modell</label>
-          <select id="model">
-            <option value="gpt-4o-mini" selected>gpt-4o-mini</option>
-            <option value="gpt-4.1-mini">gpt-4.1-mini</option>
-            <option value="gpt-4.1">gpt-4.1</option>
-            <option value="gpt-5">gpt-5</option>
-          </select>
-        </div>
+      <strong>1) Template einfügen oder vorhandenes wählen</strong>
+      <div class="row" style="margin-top:8px;">
+        <button id="btn-insert">Template (Frame+Bild) einfügen</button>
+        <button id="btn-list">Vorhandene Templates auflisten</button>
+        <select id="tplSelect" title="Template auswählen (Bild-ID)"></select>
+        <button id="btn-zoom">Zum ausgewählten Template zoomen</button>
+        <button id="btn-overlay">Areas einblenden (Overlay)</button>
       </div>
-      <div class="spacer"></div>
-      <div class="col">
-        <label for="prompt">Prompt (optional, wird zusammen mit den Sticky-Daten gesendet)</label>
-        <textarea id="prompt" rows="3" placeholder="Analysiere die Stickies je Bereich ..."></textarea>
-      </div>
+      <div class="muted" id="insertStatus"></div>
     </div>
 
-    <div class="spacer"></div>
-
-    <!-- 2) Template-Auswahl -->
-    <div class="card">
-      <strong>Template auswählen und einfügen</strong>
-      <div class="spacer"></div>
-      <div class="grid">
-        <img id="tpl-thumb" class="thumb"
-          src="https://www.datentreiber.com/wp-content/uploads/2024/12/Datentreiber_EN_3-Boxes_v1-1_20240610.png"
-          alt="Datentreiber 3-Boxes" />
-        <div class="col">
-          <div class="muted">Datentreiber 3-Boxes (Header, Footer, Title, 3 Boxes)</div>
-          <div class="row">
-            <button id="btn-insert">Template als Frame+Image einfügen</button>
-            <button id="btn-zoom">Zum zuletzt eingefügten Template zoomen</button>
-          </div>
-          <div class="muted" id="insertStatus"></div>
-        </div>
+    <!-- Analyse -->
+    <div class="card" style="margin-top:12px;">
+      <strong>2) Klassifizieren & Senden</strong>
+      <div class="row" style="margin-top:8px;">
+        <button id="btn-scan">Stickies klassifizieren</button>
       </div>
-    </div>
-
-    <div class="spacer"></div>
-
-    <!-- 3) Analyse/Senden -->
-    <div class="card">
-      <strong>Analyse & Senden an OpenAI</strong>
-      <div class="spacer"></div>
-      <div class="row">
-        <button id="btn-scan">Stickies im Frame klassifizieren</button>
-        <button id="btn-send">Stickies + Bereiche an OpenAI senden</button>
-      </div>
-      <div class="spacer"></div>
-      <div id="scanOut" class="mono"></div>
-      <div class="spacer"></div>
-      <div id="llmOut" class="mono"></div>
+      <div id="scanOut" class="mono" style="margin-top:8px;"></div>
     </div>
   </div>
 
   <script>
     // ------------------------------
-    // KONSTANTEN & TEMPLATE-DATEN
+    // Template-Definition
     // ------------------------------
     const TEMPLATE = {
       id: "datentreiber-3boxes",
@@ -107,15 +66,14 @@
           coords: [21,109, 119,110, 119,150, 878,150, 877,109, 979,109, 978,639, 22,640] }
       ]
     };
-    const META_KEY = "dt.template";   // am IMAGE gespeichert
-    let lastTemplate = null;          // { frameId, imageId }
+    const META_KEY = "dt.template"; // am Image
 
     // ------------------------------
-    // GEOMETRIE-UTILS
+    // Utilities – Geometrie
     // ------------------------------
     function rectContainsNorm(px, py, [x1,y1,x2,y2]) {
       const left = Math.min(x1,x2), right = Math.max(x1,x2);
-      const top  = Math.min(y1,y2), bottom= Math.max(y1,y2);
+      const top  = Math.min(y1,y2), bottom = Math.max(y1,y2);
       return px >= left && px <= right && py >= top && py <= bottom;
     }
     function polyContainsNorm(px, py, coords) {
@@ -139,172 +97,208 @@
           const out = [];
           for (let i=0;i<a.coords.length;i+=2) out.push(a.coords[i]/natW, a.coords[i+1]/natH);
           return { ...a, coords: out };
-        } else {
-          return a;
         }
+        return a;
       });
     }
-
-    // **NEU**: Parent-Frame direkt über parentId ermitteln
     async function getParentFrameOf(item) {
       if (!item.parentId) return null;
       const parent = await miro.board.getById(item.parentId);
       return parent && parent.type === 'frame' ? parent : null;
     }
-
-    // **FIX**: Globale Zentrumsermittlung – Frame-Kinder nutzen OFFSET relativ zum FRAME-ZENTRUM
     async function getGlobalCenter(item) {
       const parent = await getParentFrameOf(item);
-      if (!parent) return { x: item.x, y: item.y }; // bereits global
+      if (!parent) return { x: item.x, y: item.y }; // global
+      // WICHTIG: x/y bei Frame-Kindern sind Offsets relativ zum FRAME-ZENTRUM
       return { x: parent.x + item.x, y: parent.y + item.y };
     }
-
     async function centerToImageNormGlobal(sticky, image) {
       const s = await getGlobalCenter(sticky);
       const imgC = await getGlobalCenter(image);
-      const imgLeft = imgC.x - image.width/2;
-      const imgTop  = imgC.y - image.height/2;
-      const px = (s.x - imgLeft) / image.width;
-      const py = (s.y - imgTop ) / image.height;
-      return { px, py };
+      const left = imgC.x - image.width/2;
+      const top  = imgC.y - image.height/2;
+      return { px: (s.x - left)/image.width, py: (s.y - top)/image.height };
     }
 
     // ------------------------------
-    // TEMPLATE INS BOARD SETZEN
+    // Template einfügen & verwalten
     // ------------------------------
+    async function loadNaturalSize(url) {
+      return new Promise((res, rej) => {
+        const img = new Image();
+        img.onload = () => res({ w: img.naturalWidth, h: img.naturalHeight });
+        img.onerror = rej;
+        img.src = url + (url.includes("?") ? "&" : "?") + "cb=" + Date.now();
+      });
+    }
+
     async function insertTemplate() {
       const status = document.getElementById('insertStatus');
-      status.textContent = "Lade Bildgröße ...";
+      status.textContent = "Lade Bildgröße …";
       const nat = await loadNaturalSize(TEMPLATE.imageUrl);
 
-      status.textContent = "Erzeuge Frame und Bild ...";
+      status.textContent = "Erzeuge Frame + Bild …";
       const vp = await miro.board.viewport.get();
-      const frameWidth = Math.min(1200, Math.max(800, vp.width * 0.8));
-      const frameHeight = frameWidth * (nat.h / nat.w) + 80;
-
+      const frameWidth = Math.min(1400, Math.max(800, vp.width * 0.8));
       const frame = await miro.board.createFrame({
         title: TEMPLATE.name,
         width: frameWidth,
-        height: frameHeight,
-        x: 0, y: 0,
-        style: { fillColor: "#ffffff" }
+        height: frameWidth * (nat.h / nat.w) + 80,
+        x: 0, y: 0, style: { fillColor: "#ffffff" }
       });
-
       const image = await miro.board.createImage({
         url: TEMPLATE.imageUrl,
         x: frame.x,
         y: frame.y + 20,
         width: frameWidth - 40
       });
-
-      await frame.add(image); // Bild an Frame hängen
+      await frame.add(image);
 
       const areasNorm = pxAreasToNormalized(TEMPLATE.areasPx, nat.w, nat.h);
       await image.setMetadata(META_KEY, {
         templateId: TEMPLATE.id,
         templateName: TEMPLATE.name,
         natural: nat,
-        areas: areasNorm,
+        areas: areasNorm
       });
 
-      lastTemplate = { frameId: frame.id, imageId: image.id };
-      status.innerHTML = `<span class="ok">Template eingefügt ✔︎</span>`;
+      status.innerHTML = `<span class="ok">Template eingefügt ✔︎ (Image ${image.id})</span>`;
       await miro.board.viewport.zoomTo(frame);
+      await listTemplates(); // Dropdown aktualisieren
+      selectTemplateInDropdown(image.id);
     }
 
-    async function loadNaturalSize(url) {
-      return new Promise((res, rej) => {
-        const img = new Image();
-        img.onload = () => res({ w: img.naturalWidth, h: img.naturalHeight });
-        img.onerror = rej;
-        img.src = url + (url.includes("?") ? "&" : "?") + "cachebust=" + Date.now();
-      });
-    }
-
-    // ------------------------------
-    // TEMPLATE-OBJEKTE FINDEN
-    // ------------------------------
-    async function findLastTemplate() {
-      if (lastTemplate) {
-        const img = await miro.board.getById(lastTemplate.imageId);
-        const frm = await miro.board.getById(lastTemplate.frameId);
-        if (img && frm) return { image: img, frame: frm };
+    function selectTemplateInDropdown(imageId) {
+      const sel = document.getElementById('tplSelect');
+      for (const o of sel.options) {
+        o.selected = (o.value === imageId);
       }
+    }
+
+    async function listTemplates() {
+      const sel = document.getElementById('tplSelect');
+      sel.innerHTML = "";
       const images = await miro.board.get({ type: 'image' });
-      for (let i=images.length-1; i>=0; i--) {
-        const meta = await images[i].getMetadata(META_KEY);
-        if (meta && meta.templateId === TEMPLATE.id) {
-          const parentFrame = await getParentFrameOf(images[i]);
-          if (parentFrame) {
-            lastTemplate = { imageId: images[i].id, frameId: parentFrame.id };
-            return { image: images[i], frame: parentFrame };
-          }
+      for (const img of images) {
+        const meta = await img.getMetadata(META_KEY);
+        if (meta?.templateId === TEMPLATE.id) {
+          const parent = await getParentFrameOf(img);
+          const title = (parent?.title || "(kein Frame)") + `  ·  image:${img.id}`;
+          const opt = document.createElement('option');
+          opt.value = String(img.id);
+          opt.textContent = title;
+          sel.appendChild(opt);
         }
       }
-      return null;
+      if (!sel.options.length) {
+        const opt = document.createElement('option');
+        opt.value = ""; opt.textContent = "— kein Template gefunden —";
+        sel.appendChild(opt);
+      }
+    }
+
+    async function getSelectedTemplate() {
+      const sel = document.getElementById('tplSelect');
+      const id = sel.value;
+      if (!id) return null;
+      const image = await miro.board.getById(id);
+      if (!image) return null;
+      const frame = await getParentFrameOf(image);
+      return { image, frame };
     }
 
     // ------------------------------
-    // STICKIES KLASSIFIZIEREN (GLOBAL)
+    // Debug-Overlay (zeigt die Areas im Board)
     // ------------------------------
-    async function classifyStickiesInFrame() {
-      const tpl = await findLastTemplate();
-      if (!tpl) throw new Error("Kein Template gefunden. Bitte zuerst einfügen.");
-      const { image } = tpl;
-
+    async function drawOverlayForTemplate(image) {
       const meta = await image.getMetadata(META_KEY);
-      if (!meta || !meta.areas || !meta.natural) {
-        throw new Error("Template-Metadaten fehlen oder sind unvollständig.");
-      }
+      if (!meta?.areas) throw new Error("Template-Metadaten fehlen.");
 
-      const allStickies = await miro.board.get({ type: 'sticky_note' });
-
-      // Bild-Grenzen global
       const imgC = await getGlobalCenter(image);
-      const imgLeft   = imgC.x - image.width/2;
-      const imgTop    = imgC.y - image.height/2;
-      const imgRight  = imgLeft + image.width;
-      const imgBottom = imgTop  + image.height;
+      const left = imgC.x - image.width/2;
+      const top  = imgC.y - image.height/2;
 
-      // Kandidaten: Zentrum innerhalb des Bild-Rechtecks
-      const cand = [];
+      const created = [];
+      for (const a of meta.areas) {
+        if (a.shape === "rect") {
+          const [x1,y1,x2,y2] = a.coords;
+          const x = left + Math.min(x1,x2) * image.width;
+          const y = top  + Math.min(y1,y2) * image.height;
+          const w = Math.abs(x2-x1) * image.width;
+          const h = Math.abs(y2-y1) * image.height;
+          const r = await miro.board.createShape({
+            content: a.title,
+            shape: 'round_rectangle',
+            x: x + w/2, y: y + h/2, width: w, height: h,
+            style:{ fillColor:'transparent', borderColor:'#00AAFF', borderWidth:2, textColor:'#00AAFF' }
+          });
+          created.push(r);
+        } else if (a.shape === "poly") {
+          const pts = [];
+          for (let i=0;i<a.coords.length;i+=2) {
+            const px = left + a.coords[i]   * image.width;
+            const py = top  + a.coords[i+1] * image.height;
+            pts.push({ x: px, y: py });
+          }
+          const p = await miro.board.createPolyline({
+            path: pts.map(p => ({ x:p.x, y:p.y })), strokeColor:'#00AAFF', strokeWidth:2, fillColor:'transparent', closed:true
+          });
+          created.push(p);
+        }
+      }
+      return created;
+    }
+
+    // ------------------------------
+    // Klassifizierung (mit px/py Debug)
+    // ------------------------------
+    async function classifyStickiesForImage(image) {
+      const meta = await image.getMetadata(META_KEY);
+      if (!meta?.areas) throw new Error("Template-Metadaten fehlen.");
+
+      const allStickies = await miro.board.get({ type:'sticky_note' });
+
+      const imgC = await getGlobalCenter(image);
+      const left = imgC.x - image.width/2;
+      const top  = imgC.y - image.height/2;
+      const right = left + image.width;
+      const bottom= top  + image.height;
+
+      const out = [];
       for (const s of allStickies) {
         const c = await getGlobalCenter(s);
-        if (c.x >= imgLeft && c.x <= imgRight && c.y >= imgTop && c.y <= imgBottom) {
-          cand.push(s);
-        }
-      }
+        const insideImage = (c.x>=left && c.x<=right && c.y>=top && c.y<=bottom);
+        if (!insideImage) continue; // nur Kandidaten auf dem Bild
 
-      // Hit-Test gegen normalisierte Areas
-      const results = [];
-      for (const s of cand) {
-        const text = stripHtml(s.content || "");
         const { px, py } = await centerToImageNormGlobal(s, image);
 
         let hit = null;
-        for (const area of meta.areas) {
-          if (area.shape === "rect" && rectContainsNorm(px, py, area.coords)) { hit = area; break; }
-          if (area.shape === "poly" && polyContainsNorm(px, py, area.coords)) { hit = area; break; }
+        for (const a of meta.areas) {
+          if (a.shape === 'rect' && rectContainsNorm(px,py,a.coords)) { hit = a; break; }
+          if (a.shape === 'poly' && polyContainsNorm(px,py,a.coords)) { hit = a; break; }
         }
 
-        results.push({
+        out.push({
           stickyId: s.id,
+          text: stripHtml(s.content||""),
+          px: +px.toFixed(4),
+          py: +py.toFixed(4),
+          inImageRect: insideImage,
           regionId: hit ? hit.id : null,
-          regionTitle: hit ? hit.title : null,
-          text
+          regionTitle: hit ? hit.title : null
         });
       }
 
       return {
-        template: { id: meta.templateId, name: meta.templateName },
+        template: { id: meta.templateId, name: meta.templateName, imageId: image.id },
         counts: {
-          total: results.length,
+          total: out.length,
           byRegion: Object.fromEntries(
-            Object.entries(groupBy(results.filter(r=>r.regionId), r=> r.regionId))
+            Object.entries(groupBy(out.filter(r=>r.regionId), r=> r.regionId))
                   .map(([k, arr]) => [k, arr.length])
           )
         },
-        items: results
+        items: out
       };
     }
 
@@ -314,129 +308,60 @@
       return tmp.textContent || tmp.innerText || "";
     }
     function groupBy(arr, fn) {
-      return arr.reduce((acc, cur) => {
-        const k = fn(cur);
-        (acc[k] ||= []).push(cur);
-        return acc;
-      }, {});
+      return arr.reduce((acc,cur)=>{ const k=fn(cur); (acc[k] ||= []).push(cur); return acc; },{});
     }
 
     // ------------------------------
-    // OPENAI – Responses API (ohne Streaming)
+    // Panel-Init & Handlers
     // ------------------------------
-    async function sendToOpenAI({ apiKey, model, userPrompt, payload }) {
-      if (!apiKey || !apiKey.trim()) throw new Error("OpenAI API Key fehlt.");
-      const body = {
-        model,
-        input: [
-          {
-            type: "message",
-            role: "user",
-            content: [
-              { type: "input_text",
-                text:
-`Du bist ein Assistent in Miro. Analysiere die Sticky Notes je Bildbereich.
-Eingabe ist JSON (template, items[] mit regionId/Title und text). Antworte kompakt:
-- Zusammenfassung je Bereich (Bullets)
-- Auffälligkeiten / Lücken
-- Max. 200 Wörter.` },
-              { type: "input_text", text: "User-Prompt: " + (userPrompt || "(leer)") },
-              { type: "input_text", text: "Daten:\n" + JSON.stringify(payload, null, 2) }
-            ]
-          }
-        ],
-        max_output_tokens: 700
-      };
-
-      const resp = await fetch("https://api.openai.com/v1/responses", {
-        method: "POST",
-        headers: {
-          "Authorization": "Bearer " + apiKey,
-          "Content-Type": "application/json"
-        },
-        body: JSON.stringify(body)
-      });
-      const data = await resp.json();
-      if (!resp.ok) throw new Error("OpenAI request failed: " + resp.status + " " + JSON.stringify(data, null, 2));
-
-      const msg = data?.output?.[0];
-      let text = "";
-      if (msg?.content) {
-        const t = msg.content.find(c => c.type === "output_text");
-        text = t?.text || "";
-      }
-      return text || JSON.stringify(data, null, 2);
-    }
-
-    // ------------------------------
-    // PANEL BOOTSTRAP
-    // ------------------------------
-    (async function boot() {
+    (async function boot(){
       const url = new URL(window.location.href);
       const isPanel = url.searchParams.get('panel') === '1';
 
       if (!isPanel) {
         miro.board.ui.on('icon:click', async () => {
-          const panelUrl = sameFileWithParam(window.location.href, "panel", "1");
-          await miro.board.ui.openPanel({ url: panelUrl });
+          const u = new URL(window.location.href);
+          u.searchParams.set('panel','1'); u.searchParams.delete('_miro'); u.searchParams.delete('_sdk');
+          await miro.board.ui.openPanel({ url: u.pathname + '?' + u.searchParams.toString() });
         });
-        const panelUrl = sameFileWithParam(window.location.href, "panel", "1");
-        await miro.board.ui.openPanel({ url: panelUrl });
+        const u = new URL(window.location.href);
+        u.searchParams.set('panel','1'); u.searchParams.delete('_miro'); u.searchParams.delete('_sdk');
+        await miro.board.ui.openPanel({ url: u.pathname + '?' + u.searchParams.toString() });
         return;
       }
 
       document.getElementById('app').hidden = false;
-      document.getElementById('loadedAt').textContent =
-        "Panel geladen: " + new Date().toLocaleTimeString();
+      document.getElementById('loadedAt').textContent = "Panel geladen: " + new Date().toLocaleTimeString();
 
-      document.getElementById('btn-insert').onclick = async () => {
-        try { await insertTemplate(); }
-        catch (e) { setStatus('insertStatus', e); }
-      };
+      document.getElementById('btn-insert').onclick = insertTemplate;
+      document.getElementById('btn-list').onclick = listTemplates;
       document.getElementById('btn-zoom').onclick = async () => {
-        const tpl = await findLastTemplate();
+        const tpl = await getSelectedTemplate();
         if (tpl?.frame) await miro.board.viewport.zoomTo(tpl.frame);
+      };
+
+      document.getElementById('btn-overlay').onclick = async () => {
+        const sel = await getSelectedTemplate();
+        if (!sel) return alert("Bitte ein Template im Dropdown wählen.");
+        await drawOverlayForTemplate(sel.image);
       };
 
       document.getElementById('btn-scan').onclick = async () => {
         const out = document.getElementById('scanOut');
-        out.textContent = "Scanne ...";
+        out.textContent = "Scanne …";
         try {
-          const res = await classifyStickiesInFrame();
+          const sel = await getSelectedTemplate();
+          if (!sel) throw new Error("Bitte erst im Dropdown ein Template wählen.");
+          const res = await classifyStickiesForImage(sel.image);
           out.textContent = JSON.stringify(res, null, 2);
         } catch (e) {
-          out.innerHTML = '<span class="err">' + e.message + '</span>';
+          out.innerHTML = '<span class="err">'+(e?.message||e)+'</span>';
         }
       };
 
-      document.getElementById('btn-send').onclick = async () => {
-        const out = document.getElementById('llmOut');
-        out.textContent = "Sende an OpenAI ...";
-        try {
-          const payload = await classifyStickiesInFrame();
-          const text = await sendToOpenAI({
-            apiKey: document.getElementById('key').value,
-            model: document.getElementById('model').value,
-            userPrompt: document.getElementById('prompt').value,
-            payload
-          });
-          out.innerHTML = '<span class="ok">Antwort:</span>\n' + text;
-        } catch (e) {
-          out.innerHTML = '<span class="err">' + e.message + '</span>';
-        }
-      };
+      // initial
+      await listTemplates();
     })();
-
-    function sameFileWithParam(href, k, v) {
-      const u = new URL(href, location.origin);
-      u.searchParams.set(k, v);
-      u.searchParams.delete('_miro'); u.searchParams.delete('_sdk');
-      return u.pathname + "?" + u.searchParams.toString();
-    }
-    function setStatus(id, err) {
-      document.getElementById(id).innerHTML =
-        '<span class="err">' + (err?.message || err) + '</span>';
-    }
   </script>
 </body>
 </html>
