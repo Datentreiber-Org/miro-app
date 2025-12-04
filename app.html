@@ -13,6 +13,7 @@
     .col { display:flex; flex-direction:column; gap:6px; }
     input[type="text"], select, textarea { padding:8px; border-radius:8px; border:1px solid #ccc; min-width: 260px; }
     button { padding:8px 12px; border:1px solid #ccc; border-radius:8px; cursor:pointer; }
+    textarea { width: 100%; min-height: 100px; }
     .muted { color:#666 }
     .card { border:1px solid #ddd; border-radius:12px; padding:12px; }
     .thumb { width: 220px; height:auto; border-radius:8px; border:1px solid #ddd; }
@@ -25,7 +26,6 @@
   </style>
 </head>
 <body>
-  <!-- Headless vs Panel: dieselbe Datei kann beides -->
   <div id="app" hidden>
     <h1>Datentreiber – Template Mapper</h1>
     <div class="muted" id="loadedAt"></div>
@@ -43,6 +43,7 @@
             <option value="gpt-4o-mini" selected>gpt-4o-mini</option>
             <option value="gpt-4.1-mini">gpt-4.1-mini</option>
             <option value="gpt-4.1">gpt-4.1</option>
+            <option value="gpt-5">gpt-5</option>
           </select>
         </div>
       </div>
@@ -55,7 +56,7 @@
 
     <div class="spacer"></div>
 
-    <!-- 2) Template-Auswahl (mit deinem 3-Boxes-Template) -->
+    <!-- 2) Template-Auswahl -->
     <div class="card">
       <strong>Template auswählen und einfügen</strong>
       <div class="spacer"></div>
@@ -99,7 +100,6 @@
       id: "datentreiber-3boxes",
       name: "Datentreiber 3-Boxes v1-1 (20240610)",
       imageUrl: "https://www.datentreiber.com/wp-content/uploads/2024/12/Datentreiber_EN_3-Boxes_v1-1_20240610.png",
-      // Original Image-Map aus deiner Nachricht (Pixelkoordinaten):
       areasPx: [
         { id: "1a_header", title: "Header", shape: "rect", coords: [157, 8, 705, 80] },
         { id: "1b_footer", title: "Footer", shape: "rect", coords: [17, 676, 562, 706] },
@@ -109,8 +109,7 @@
       ]
     };
     const META_KEY = "dt.template";   // am IMAGE gespeichert
-    // Letzte Template-Instanz (Image/Frame IDs) im Panelspeicher
-    let lastTemplate = null;
+    let lastTemplate = null;          // { frameId, imageId }
 
     // ------------------------------
     // GEOMETRIE-UTILS
@@ -121,7 +120,6 @@
       return px >= left && px <= right && py >= top && py <= bottom;
     }
     function polyContainsNorm(px, py, coords) {
-      // Ray casting; coords = [x1,y1, x2,y2, ...] (normiert 0..1)
       let inside = false;
       for (let i=0, j=coords.length-2; i<coords.length; i+=2) {
         const xi = coords[i], yi = coords[i+1];
@@ -137,14 +135,10 @@
       return areasPx.map(a => {
         if (a.shape === "rect") {
           const [x1,y1,x2,y2] = a.coords;
-          return { ...a,
-            coords: [x1/natW, y1/natH, x2/natW, y2/natH]
-          };
+          return { ...a, coords: [x1/natW, y1/natH, x2/natW, y2/natH] };
         } else if (a.shape === "poly") {
           const out = [];
-          for (let i=0;i<a.coords.length;i+=2) {
-            out.push(a.coords[i]/natW, a.coords[i+1]/natH);
-          }
+          for (let i=0;i<a.coords.length;i+=2) out.push(a.coords[i]/natW, a.coords[i+1]/natH);
           return { ...a, coords: out };
         } else {
           return a;
@@ -152,8 +146,7 @@
       });
     }
     function centerToImageNorm(sticky, image) {
-      // Beide sind Kinder des gleichen Frames.
-      // x/y sind relativ zur Frame-TopLeft, zeigen aufs Zentrum; image.x/y = Bildzentrum.
+      // x/y sind relativ zur Frame-TopLeft; beide sind Kinder des selben Frames.
       const imgLeft = image.x - image.width/2;
       const imgTop  = image.y - image.height/2;
       const px = (sticky.x - imgLeft) / image.width;
@@ -174,34 +167,30 @@
       const frameWidth = Math.min(1200, Math.max(800, vp.width * 0.8));
       const frameHeight = frameWidth * (nat.h / nat.w) + 80; // + Titelstreifen
 
-      // 1) Frame erstellen
       const frame = await miro.board.createFrame({
         title: TEMPLATE.name,
         width: frameWidth,
         height: frameHeight,
-        x: 0, y: 0, // zentriert (canvas_center) – Default passt
+        x: 0, y: 0,
         style: { fillColor: "#ffffff" }
       });
 
-      // 2) Bild in der Mitte des Frames platzieren
       const image = await miro.board.createImage({
         url: TEMPLATE.imageUrl,
-        x: frame.x,               // Bildzentrum = Framezentrum
-        y: frame.y + 20,          // kleiner Offset nach unten (Titelstreifen)
-        width: frameWidth - 40    // etwas Rand im Frame
+        x: frame.x,
+        y: frame.y + 20,
+        width: frameWidth - 40
       });
 
-      // 3) Kindbeziehung herstellen (danach sind x/y relativ zur Frame-TopLeft; Zentrum bleibt Referenz)
-      await frame.add(image); // siehe Doku: add() macht parent/child und re-berechnet Koordinaten relativ zur Frame-TopLeft. :contentReference[oaicite:4]{index=4}
+      await frame.add(image); // Kindbeziehung herstellen
 
-      // 4) Image-Map am Image als Metadata speichern (normalisiert 0..1, inkl. Naturalgröße)
       const areasNorm = pxAreasToNormalized(TEMPLATE.areasPx, nat.w, nat.h);
       await image.setMetadata(META_KEY, {
         templateId: TEMPLATE.id,
         templateName: TEMPLATE.name,
         natural: nat,
         areas: areasNorm,
-      }); // Item-Metadata an Image; Frames haben keine Metadata. :contentReference[oaicite:5]{index=5}
+      });
 
       lastTemplate = { frameId: frame.id, imageId: image.id };
       status.innerHTML = `<span class="ok">Template eingefügt ✔︎</span>`;
@@ -218,12 +207,12 @@
     }
 
     // ------------------------------
-    // TEMPLATE-OBJEKTE FINDEN
+    // TEMPLATE-OBJEKTE FINDEN (KORRIGIERT: getById liefert EIN Objekt)
     // ------------------------------
     async function findLastTemplate() {
       if (lastTemplate) {
-        const [img] = await miro.board.getById(lastTemplate.imageId) || [];
-        const [frm] = await miro.board.getById(lastTemplate.frameId) || [];
+        const img = await miro.board.getById(lastTemplate.imageId);
+        const frm = await miro.board.getById(lastTemplate.frameId);
         if (img && frm) return { image: img, frame: frm };
       }
       // Fallback: neueste Image mit unserer Metadata suchen
@@ -241,7 +230,6 @@
       return null;
     }
     async function getParentFrameOf(item) {
-      // Schnellweg: alle Frames holen und schauen, ob item.id in childrenIds ist
       const frames = await miro.board.get({ type: 'frame' });
       for (const f of frames) {
         if (f.childrenIds && f.childrenIds.includes(item.id)) return f;
@@ -261,12 +249,11 @@
       if (!meta || !meta.areas || !meta.natural) {
         throw new Error("Template-Metadaten fehlen oder sind unvollständig.");
       }
-      const children = await frame.getChildren(); // alle Kinder des Frames :contentReference[oaicite:6]{index=6}
+      const children = await frame.getChildren();
       const stickies = children.filter(it => it.type === 'sticky_note');
 
       const results = [];
       for (const s of stickies) {
-        // Sticky Content ist HTML -> grob in Text umwandeln
         const text = stripHtml(s.content || "");
         const { px, py } = centerToImageNorm(s, image);
 
@@ -312,7 +299,7 @@
     }
 
     // ------------------------------
-    // OPENAI – Responses API (fetch)
+    // OPENAI – Responses API (ohne Streaming)
     // ------------------------------
     async function sendToOpenAI({ apiKey, model, userPrompt, payload }) {
       if (!apiKey || !apiKey.trim()) throw new Error("OpenAI API Key fehlt.");
@@ -350,7 +337,6 @@ Eingabe ist JSON (template, items[] mit regionId/Title und text). Antworte kompa
       if (!resp.ok) {
         throw new Error("OpenAI request failed: " + resp.status + " " + JSON.stringify(data, null, 2));
       }
-      // Responses API: erstes Output-Message/Output-Text extrahieren
       const msg = data?.output?.[0];
       let text = "";
       if (msg?.content) {
@@ -368,28 +354,21 @@ Eingabe ist JSON (template, items[] mit regionId/Title und text). Antworte kompa
       const isPanel = url.searchParams.get('panel') === '1';
 
       if (!isPanel) {
-        // HEADLESS: Icon-Klick öffnet Panel (diese Datei mit ?panel=1)
         miro.board.ui.on('icon:click', async () => {
           const panelUrl = sameFileWithParam(window.location.href, "panel", "1");
           await miro.board.ui.openPanel({ url: panelUrl });
         });
-        // Optional: direkt öffnen wenn aus "+ More apps" gestartet
         const panelUrl = sameFileWithParam(window.location.href, "panel", "1");
         await miro.board.ui.openPanel({ url: panelUrl });
         return;
       }
 
-      // PANEL sichtbar machen
       document.getElementById('app').hidden = false;
       document.getElementById('loadedAt').textContent = "Panel geladen: " + new Date().toLocaleTimeString();
 
-      // UI Verdrahtung
       document.getElementById('btn-insert').onclick = async () => {
-        try {
-          await insertTemplate();
-        } catch (e) {
-          setStatus('insertStatus', e);
-        }
+        try { await insertTemplate(); }
+        catch (e) { setStatus('insertStatus', e); }
       };
       document.getElementById('btn-zoom').onclick = async () => {
         const tpl = await findLastTemplate();
@@ -428,7 +407,6 @@ Eingabe ist JSON (template, items[] mit regionId/Title und text). Antworte kompa
     function sameFileWithParam(href, k, v) {
       const u = new URL(href, location.origin);
       u.searchParams.set(k, v);
-      // Stelle sicher, dass wir die tatsächliche Datei (ohne _miro/_sdk Querys) nutzen
       u.searchParams.delete('_miro'); u.searchParams.delete('_sdk');
       return u.pathname + "?" + u.searchParams.toString();
     }
