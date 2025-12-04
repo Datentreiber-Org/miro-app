@@ -2,7 +2,7 @@
 <html lang="de">
 <head>
   <meta charset="utf-8" />
-  <title>Datentreiber – Template Mapper (Debug)</title>
+  <title>Datentreiber – Template Mapper (Debug v2)</title>
   <script src="https://miro.com/app/static/sdk/v2/miro.js"></script>
   <style>
     :root { color-scheme: light dark; }
@@ -15,7 +15,6 @@
     textarea { width:100%; min-height:100px; }
     .muted { color:#666 }
     .card { border:1px solid #ddd; border-radius:12px; padding:12px; }
-    .grid { display:grid; grid-template-columns:auto 1fr; gap:12px; align-items:start; }
     .mono { font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; font-size:12px; white-space:pre-wrap; }
     .ok { color:#0a7f2e }
     .err { color:#b00020 }
@@ -24,25 +23,25 @@
 </head>
 <body>
   <div id="app" hidden>
-    <h1>Datentreiber – Template Mapper (Debug)</h1>
+    <h1>Datentreiber – Template Mapper (Debug v2)</h1>
     <div class="muted" id="loadedAt"></div>
 
-    <!-- Template-Auswahl -->
+    <!-- 1) Template-Handling -->
     <div class="card">
       <strong>1) Template einfügen oder vorhandenes wählen</strong>
       <div class="row" style="margin-top:8px;">
         <button id="btn-insert">Template (Frame+Bild) einfügen</button>
         <button id="btn-list">Vorhandene Templates auflisten</button>
-        <select id="tplSelect" title="Template auswählen (Bild-ID)"></select>
+        <select id="tplSelect" title="Template auswählen (Image-ID)"></select>
         <button id="btn-zoom">Zum ausgewählten Template zoomen</button>
         <button id="btn-overlay">Areas einblenden (Overlay)</button>
       </div>
       <div class="muted" id="insertStatus"></div>
     </div>
 
-    <!-- Analyse -->
+    <!-- 2) Analyse -->
     <div class="card" style="margin-top:12px;">
-      <strong>2) Klassifizieren & Senden</strong>
+      <strong>2) Stickies klassifizieren</strong>
       <div class="row" style="margin-top:8px;">
         <button id="btn-scan">Stickies klassifizieren</button>
       </div>
@@ -51,31 +50,39 @@
   </div>
 
   <script>
-    // ------------------------------
-    // Template-Definition
-    // ------------------------------
+    // -----------------------------------
+    // TEMPLATE-DEFINITION (Single Source)
+    // -----------------------------------
     const TEMPLATE = {
       id: "datentreiber-3boxes",
       name: "Datentreiber 3-Boxes v1-1 (20240610)",
       imageUrl: "https://www.datentreiber.com/wp-content/uploads/2024/12/Datentreiber_EN_3-Boxes_v1-1_20240610.png",
       areasPx: [
         { id: "1a_header", title: "Header", shape: "rect", coords: [157, 8, 705, 80] },
-        { id: "1b_footer", title: "Footer", shape: "rect", coords: [17, 676, 562, 706] },
+        { id: "1b_footer", title: "Footer", shape: "Footer", shape: "rect", coords: [17, 676, 562, 706] },
         { id: "2_title",  title: "Title",  shape: "rect", coords: [123, 83, 874, 148] },
         { id: "3_boxes",  title: "3 Boxes", shape: "poly",
           coords: [21,109, 119,110, 119,150, 878,150, 877,109, 979,109, 978,639, 22,640] }
       ]
     };
-    const META_KEY = "dt.template"; // am Image
+    const META_KEY = "dt.template";   // nur zur Markierung, nicht für Geometrie
+    let NAT_CACHE = null;             // naturalWidth/Height Cache
 
-    // ------------------------------
-    // Utilities – Geometrie
-    // ------------------------------
+    async function ensureNatural() {
+      if (NAT_CACHE) return NAT_CACHE;
+      NAT_CACHE = await loadNaturalSize(TEMPLATE.imageUrl);
+      return NAT_CACHE;
+    }
+
+    // -----------------------------------
+    // GEOMETRIE-HILFSFUNKTIONEN
+    // -----------------------------------
     function rectContainsNorm(px, py, [x1,y1,x2,y2]) {
       const left = Math.min(x1,x2), right = Math.max(x1,x2);
       const top  = Math.min(y1,y2), bottom = Math.max(y1,y2);
       return px >= left && px <= right && py >= top && py <= bottom;
     }
+
     function polyContainsNorm(px, py, coords) {
       let inside = false;
       for (let i=0, j=coords.length-2; i<coords.length; i+=2) {
@@ -88,6 +95,7 @@
       }
       return inside;
     }
+
     function pxAreasToNormalized(areasPx, natW, natH) {
       return areasPx.map(a => {
         if (a.shape === "rect") {
@@ -95,34 +103,42 @@
           return { ...a, coords: [x1/natW, y1/natH, x2/natW, y2/natH] };
         } else if (a.shape === "poly") {
           const out = [];
-          for (let i=0;i<a.coords.length;i+=2) out.push(a.coords[i]/natW, a.coords[i+1]/natH);
+          for (let i=0;i<a.coords.length;i+=2) {
+            out.push(a.coords[i]/natW, a.coords[i+1]/natH);
+          }
           return { ...a, coords: out };
         }
         return a;
       });
     }
+
     async function getParentFrameOf(item) {
       if (!item.parentId) return null;
       const parent = await miro.board.getById(item.parentId);
-      return parent && parent.type === 'frame' ? parent : null;
+      return parent && parent.type === "frame" ? parent : null;
     }
+
     async function getGlobalCenter(item) {
       const parent = await getParentFrameOf(item);
       if (!parent) return { x: item.x, y: item.y }; // global
-      // WICHTIG: x/y bei Frame-Kindern sind Offsets relativ zum FRAME-ZENTRUM
+      // x/y von Kindern = Offset relativ zum Frame-Zentrum
       return { x: parent.x + item.x, y: parent.y + item.y };
     }
+
     async function centerToImageNormGlobal(sticky, image) {
       const s = await getGlobalCenter(sticky);
       const imgC = await getGlobalCenter(image);
       const left = imgC.x - image.width/2;
       const top  = imgC.y - image.height/2;
-      return { px: (s.x - left)/image.width, py: (s.y - top)/image.height };
+      return {
+        px: (s.x - left)/image.width,
+        py: (s.y - top)/image.height
+      };
     }
 
-    // ------------------------------
-    // Template einfügen & verwalten
-    // ------------------------------
+    // -----------------------------------
+    // BILDGRÖSSE LADEN
+    // -----------------------------------
     async function loadNaturalSize(url) {
       return new Promise((res, rej) => {
         const img = new Image();
@@ -132,73 +148,82 @@
       });
     }
 
+    // -----------------------------------
+    // TEMPLATE EINSETZEN & AUFLISTEN
+    // -----------------------------------
     async function insertTemplate() {
-      const status = document.getElementById('insertStatus');
+      const status = document.getElementById("insertStatus");
       status.textContent = "Lade Bildgröße …";
-      const nat = await loadNaturalSize(TEMPLATE.imageUrl);
+      const nat = await ensureNatural();
 
       status.textContent = "Erzeuge Frame + Bild …";
       const vp = await miro.board.viewport.get();
       const frameWidth = Math.min(1400, Math.max(800, vp.width * 0.8));
+
       const frame = await miro.board.createFrame({
         title: TEMPLATE.name,
         width: frameWidth,
         height: frameWidth * (nat.h / nat.w) + 80,
-        x: 0, y: 0, style: { fillColor: "#ffffff" }
+        x: 0,
+        y: 0,
+        style: { fillColor: "#ffffff" }
       });
+
       const image = await miro.board.createImage({
         url: TEMPLATE.imageUrl,
         x: frame.x,
         y: frame.y + 20,
         width: frameWidth - 40
       });
+
       await frame.add(image);
 
-      const areasNorm = pxAreasToNormalized(TEMPLATE.areasPx, nat.w, nat.h);
+      // Metadaten nur als Marker (optional)
       await image.setMetadata(META_KEY, {
         templateId: TEMPLATE.id,
-        templateName: TEMPLATE.name,
-        natural: nat,
-        areas: areasNorm
+        templateName: TEMPLATE.name
       });
 
       status.innerHTML = `<span class="ok">Template eingefügt ✔︎ (Image ${image.id})</span>`;
       await miro.board.viewport.zoomTo(frame);
-      await listTemplates(); // Dropdown aktualisieren
-      selectTemplateInDropdown(image.id);
+      await listTemplates();
+      selectTemplateInDropdown(String(image.id));
     }
 
     function selectTemplateInDropdown(imageId) {
-      const sel = document.getElementById('tplSelect');
-      for (const o of sel.options) {
-        o.selected = (o.value === imageId);
-      }
+      const sel = document.getElementById("tplSelect");
+      for (const opt of sel.options) opt.selected = (opt.value === imageId);
     }
 
     async function listTemplates() {
-      const sel = document.getElementById('tplSelect');
+      const sel = document.getElementById("tplSelect");
       sel.innerHTML = "";
-      const images = await miro.board.get({ type: 'image' });
+      const images = await miro.board.get({ type: "image" });
       for (const img of images) {
         const meta = await img.getMetadata(META_KEY);
-        if (meta?.templateId === TEMPLATE.id) {
-          const parent = await getParentFrameOf(img);
-          const title = (parent?.title || "(kein Frame)") + `  ·  image:${img.id}`;
-          const opt = document.createElement('option');
-          opt.value = String(img.id);
-          opt.textContent = title;
-          sel.appendChild(opt);
-        }
+        const isTemplate =
+          (meta && meta.templateId === TEMPLATE.id) ||
+          (img.url && img.url.indexOf(TEMPLATE.imageUrl) !== -1);
+
+        if (!isTemplate) continue;
+
+        const frame = await getParentFrameOf(img);
+        const label = (frame?.title || "(kein Frame)") + " · image:" + img.id;
+        const opt = document.createElement("option");
+        opt.value = String(img.id);
+        opt.textContent = label;
+        sel.appendChild(opt);
       }
       if (!sel.options.length) {
-        const opt = document.createElement('option');
-        opt.value = ""; opt.textContent = "— kein Template gefunden —";
+        const opt = document.createElement("option");
+        opt.value = "";
+        opt.textContent = "— kein Template gefunden —";
         sel.appendChild(opt);
       }
     }
 
     async function getSelectedTemplate() {
-      const sel = document.getElementById('tplSelect');
+      const sel = document.getElementById("tplSelect");
       const id = sel.value;
       if (!id) return null;
       const image = await miro.board.getById(id);
@@ -207,56 +232,65 @@
       return { image, frame };
     }
 
-    // ------------------------------
-    // Debug-Overlay (zeigt die Areas im Board)
-    // ------------------------------
+    // -----------------------------------
+    // OVERLAY-ZEICHNUNG (AREAS SICHTBAR)
+    // -----------------------------------
     async function drawOverlayForTemplate(image) {
-      const meta = await image.getMetadata(META_KEY);
-      if (!meta?.areas) throw new Error("Template-Metadaten fehlen.");
+      const nat = await ensureNatural();
+      const areasNorm = pxAreasToNormalized(TEMPLATE.areasPx, nat.w, nat.h);
 
       const imgC = await getGlobalCenter(image);
       const left = imgC.x - image.width/2;
       const top  = imgC.y - image.height/2;
 
-      const created = [];
-      for (const a of meta.areas) {
+      for (const a of areasNorm) {
         if (a.shape === "rect") {
           const [x1,y1,x2,y2] = a.coords;
           const x = left + Math.min(x1,x2) * image.width;
           const y = top  + Math.min(y1,y2) * image.height;
           const w = Math.abs(x2-x1) * image.width;
           const h = Math.abs(y2-y1) * image.height;
-          const r = await miro.board.createShape({
+
+          await miro.board.createShape({
             content: a.title,
-            shape: 'round_rectangle',
-            x: x + w/2, y: y + h/2, width: w, height: h,
-            style:{ fillColor:'transparent', borderColor:'#00AAFF', borderWidth:2, textColor:'#00AAFF' }
+            shape: "round_rectangle",
+            x: x + w/2,
+            y: y + h/2,
+            width: w,
+            height: h,
+            style: {
+              fillColor: "transparent",
+              borderColor: "#00AAFF",
+              borderWidth: 2,
+              textColor: "#00AAFF"
+            }
           });
-          created.push(r);
         } else if (a.shape === "poly") {
           const pts = [];
           for (let i=0;i<a.coords.length;i+=2) {
             const px = left + a.coords[i]   * image.width;
             const py = top  + a.coords[i+1] * image.height;
-            pts.push({ x: px, y: py });
+            pts.push({ x:px, y:py });
           }
-          const p = await miro.board.createPolyline({
-            path: pts.map(p => ({ x:p.x, y:p.y })), strokeColor:'#00AAFF', strokeWidth:2, fillColor:'transparent', closed:true
+          await miro.board.createPolyline({
+            path: pts.map(p => ({ x:p.x, y:p.y })),
+            strokeColor: "#00AAFF",
+            strokeWidth: 2,
+            fillColor: "transparent",
+            closed: true
           });
-          created.push(p);
         }
       }
-      return created;
     }
 
-    // ------------------------------
-    // Klassifizierung (mit px/py Debug)
-    // ------------------------------
+    // -----------------------------------
+    // STICKIES KLASSIFIZIEREN (DEBUG)
+    // -----------------------------------
     async function classifyStickiesForImage(image) {
-      const meta = await image.getMetadata(META_KEY);
-      if (!meta?.areas) throw new Error("Template-Metadaten fehlen.");
+      const nat = await ensureNatural();
+      const areasNorm = pxAreasToNormalized(TEMPLATE.areasPx, nat.w, nat.h);
 
-      const allStickies = await miro.board.get({ type:'sticky_note' });
+      const allStickies = await miro.board.get({ type:"sticky_note" });
 
       const imgC = await getGlobalCenter(image);
       const left = imgC.x - image.width/2;
@@ -264,102 +298,117 @@
       const right = left + image.width;
       const bottom= top  + image.height;
 
-      const out = [];
+      const items = [];
+
       for (const s of allStickies) {
         const c = await getGlobalCenter(s);
-        const insideImage = (c.x>=left && c.x<=right && c.y>=top && c.y<=bottom);
-        if (!insideImage) continue; // nur Kandidaten auf dem Bild
+        const inImageRect = (c.x>=left && c.x<=right && c.y>=top && c.y<=bottom);
+        if (!inImageRect) continue;
 
         const { px, py } = await centerToImageNormGlobal(s, image);
 
         let hit = null;
-        for (const a of meta.areas) {
-          if (a.shape === 'rect' && rectContainsNorm(px,py,a.coords)) { hit = a; break; }
-          if (a.shape === 'poly' && polyContainsNorm(px,py,a.coords)) { hit = a; break; }
+        for (const a of areasNorm) {
+          if (a.shape === "rect" && rectContainsNorm(px,py,a.coords)) { hit = a; break; }
+          if (a.shape === "poly" && polyContainsNorm(px,py,a.coords)) { hit = a; break; }
         }
 
-        out.push({
+        items.push({
           stickyId: s.id,
-          text: stripHtml(s.content||""),
+          text: stripHtml(s.content || ""),
           px: +px.toFixed(4),
           py: +py.toFixed(4),
-          inImageRect: insideImage,
+          inImageRect,
           regionId: hit ? hit.id : null,
           regionTitle: hit ? hit.title : null
         });
       }
 
       return {
-        template: { id: meta.templateId, name: meta.templateName, imageId: image.id },
+        template: {
+          id: TEMPLATE.id,
+          name: TEMPLATE.name,
+          imageId: image.id
+        },
         counts: {
-          total: out.length,
+          total: items.length,
           byRegion: Object.fromEntries(
-            Object.entries(groupBy(out.filter(r=>r.regionId), r=> r.regionId))
-                  .map(([k, arr]) => [k, arr.length])
+            Object.entries(groupBy(items.filter(i => i.regionId), i => i.regionId))
+                  .map(([k,arr]) => [k, arr.length])
           )
         },
-        items: out
+        items
       };
     }
 
     function stripHtml(html) {
-      const tmp = document.createElement('div');
+      const tmp = document.createElement("div");
       tmp.innerHTML = html;
       return tmp.textContent || tmp.innerText || "";
     }
     function groupBy(arr, fn) {
-      return arr.reduce((acc,cur)=>{ const k=fn(cur); (acc[k] ||= []).push(cur); return acc; },{});
+      return arr.reduce((acc,cur) => {
+        const k = fn(cur);
+        (acc[k] ||= []).push(cur);
+        return acc;
+      }, {});
     }
 
-    // ------------------------------
-    // Panel-Init & Handlers
-    // ------------------------------
+    // -----------------------------------
+    // PANEL-BOOTSTRAP
+    // -----------------------------------
     (async function boot(){
       const url = new URL(window.location.href);
-      const isPanel = url.searchParams.get('panel') === '1';
+      const isPanel = url.searchParams.get("panel") === "1";
 
       if (!isPanel) {
-        miro.board.ui.on('icon:click', async () => {
+        miro.board.ui.on("icon:click", async () => {
           const u = new URL(window.location.href);
-          u.searchParams.set('panel','1'); u.searchParams.delete('_miro'); u.searchParams.delete('_sdk');
-          await miro.board.ui.openPanel({ url: u.pathname + '?' + u.searchParams.toString() });
+          u.searchParams.set("panel","1");
+          u.searchParams.delete("_miro");
+          u.searchParams.delete("_sdk");
+          await miro.board.ui.openPanel({ url: u.pathname + "?" + u.searchParams.toString() });
         });
         const u = new URL(window.location.href);
-        u.searchParams.set('panel','1'); u.searchParams.delete('_miro'); u.searchParams.delete('_sdk');
-        await miro.board.ui.openPanel({ url: u.pathname + '?' + u.searchParams.toString() });
+        u.searchParams.set("panel","1");
+        u.searchParams.delete("_miro");
+        u.searchParams.delete("_sdk");
+        await miro.board.ui.openPanel({ url: u.pathname + "?" + u.searchParams.toString() });
         return;
       }
 
-      document.getElementById('app').hidden = false;
-      document.getElementById('loadedAt').textContent = "Panel geladen: " + new Date().toLocaleTimeString();
+      document.getElementById("app").hidden = false;
+      document.getElementById("loadedAt").textContent =
+        "Panel geladen: " + new Date().toLocaleTimeString();
 
-      document.getElementById('btn-insert').onclick = insertTemplate;
-      document.getElementById('btn-list').onclick = listTemplates;
-      document.getElementById('btn-zoom').onclick = async () => {
+      document.getElementById("btn-insert").onclick = insertTemplate;
+      document.getElementById("btn-list").onclick = listTemplates;
+
+      document.getElementById("btn-zoom").onclick = async () => {
         const tpl = await getSelectedTemplate();
         if (tpl?.frame) await miro.board.viewport.zoomTo(tpl.frame);
       };
 
-      document.getElementById('btn-overlay').onclick = async () => {
-        const sel = await getSelectedTemplate();
-        if (!sel) return alert("Bitte ein Template im Dropdown wählen.");
-        await drawOverlayForTemplate(sel.image);
+      document.getElementById("btn-overlay").onclick = async () => {
+        const tpl = await getSelectedTemplate();
+        if (!tpl) { alert("Bitte im Dropdown ein Template wählen."); return; }
+        await drawOverlayForTemplate(tpl.image);
       };
 
-      document.getElementById('btn-scan').onclick = async () => {
-        const out = document.getElementById('scanOut');
+      document.getElementById("btn-scan").onclick = async () => {
+        const out = document.getElementById("scanOut");
         out.textContent = "Scanne …";
         try {
-          const sel = await getSelectedTemplate();
-          if (!sel) throw new Error("Bitte erst im Dropdown ein Template wählen.");
-          const res = await classifyStickiesForImage(sel.image);
+          const tpl = await getSelectedTemplate();
+          if (!tpl) throw new Error("Bitte erst ein Template auswählen.");
+          const res = await classifyStickiesForImage(tpl.image);
           out.textContent = JSON.stringify(res, null, 2);
         } catch (e) {
-          out.innerHTML = '<span class="err">'+(e?.message||e)+'</span>';
+          out.innerHTML = '<span class="err">' + (e?.message || e) + "</span>";
         }
       };
 
-      // initial
+      // Erstes Listing beim Laden
       await listTemplates();
     })();
   </script>
