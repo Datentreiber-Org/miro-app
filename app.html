@@ -3,7 +3,6 @@
 <head>
   <meta charset="utf-8" />
   <title>Datentreiber – Template Mapper</title>
-  <!-- Keine eigenen CSP/Permissions-Policy-Metas einfügen -->
   <script src="https://miro.com/app/static/sdk/v2/miro.js"></script>
   <style>
     :root { color-scheme: light dark; }
@@ -112,7 +111,7 @@
     let lastTemplate = null;          // { frameId, imageId }
 
     // ------------------------------
-    // GEOMETRIE-UTILS
+    // GEOMETRIE-UTILS (GLOBAL!)
     // ------------------------------
     function rectContainsNorm(px, py, [x1,y1,x2,y2]) {
       const left = Math.min(x1,x2), right = Math.max(x1,x2);
@@ -145,12 +144,30 @@
         }
       });
     }
-    function centerToImageNorm(sticky, image) {
-      // x/y sind relativ zur Frame-TopLeft; beide sind Kinder des selben Frames.
-      const imgLeft = image.x - image.width/2;
-      const imgTop  = image.y - image.height/2;
-      const px = (sticky.x - imgLeft) / image.width;
-      const py = (sticky.y - imgTop ) / image.height;
+
+    async function getParentFrameOf(item) {
+      const frames = await miro.board.get({ type: 'frame' });
+      for (const f of frames) {
+        if (f.childrenIds && f.childrenIds.includes(item.id)) return f;
+      }
+      return null;
+    }
+    function frameTopLeft(frame) {
+      return { x: frame.x - frame.width/2, y: frame.y - frame.height/2 };
+    }
+    async function getGlobalCenter(item) {
+      const parent = await getParentFrameOf(item);
+      if (!parent) return { x: item.x, y: item.y }; // bereits global
+      const tl = frameTopLeft(parent);
+      return { x: tl.x + item.x, y: tl.y + item.y };
+    }
+    async function centerToImageNormGlobal(sticky, image) {
+      const s = await getGlobalCenter(sticky);
+      const imgC = await getGlobalCenter(image);
+      const imgLeft = imgC.x - image.width/2;
+      const imgTop  = imgC.y - image.height/2;
+      const px = (s.x - imgLeft) / image.width;
+      const py = (s.y - imgTop ) / image.height;
       return { px, py };
     }
 
@@ -165,7 +182,7 @@
       status.textContent = "Erzeuge Frame und Bild ...";
       const vp = await miro.board.viewport.get();
       const frameWidth = Math.min(1200, Math.max(800, vp.width * 0.8));
-      const frameHeight = frameWidth * (nat.h / nat.w) + 80; // + Titelstreifen
+      const frameHeight = frameWidth * (nat.h / nat.w) + 80;
 
       const frame = await miro.board.createFrame({
         title: TEMPLATE.name,
@@ -182,7 +199,7 @@
         width: frameWidth - 40
       });
 
-      await frame.add(image); // Kindbeziehung herstellen
+      await frame.add(image);
 
       const areasNorm = pxAreasToNormalized(TEMPLATE.areasPx, nat.w, nat.h);
       await image.setMetadata(META_KEY, {
@@ -207,7 +224,7 @@
     }
 
     // ------------------------------
-    // TEMPLATE-OBJEKTE FINDEN (KORRIGIERT: getById liefert EIN Objekt)
+    // TEMPLATE-OBJEKTE FINDEN
     // ------------------------------
     async function findLastTemplate() {
       if (lastTemplate) {
@@ -215,7 +232,6 @@
         const frm = await miro.board.getById(lastTemplate.frameId);
         if (img && frm) return { image: img, frame: frm };
       }
-      // Fallback: neueste Image mit unserer Metadata suchen
       const images = await miro.board.get({ type: 'image' });
       for (let i=images.length-1; i>=0; i--) {
         const meta = await images[i].getMetadata(META_KEY);
@@ -229,16 +245,9 @@
       }
       return null;
     }
-    async function getParentFrameOf(item) {
-      const frames = await miro.board.get({ type: 'frame' });
-      for (const f of frames) {
-        if (f.childrenIds && f.childrenIds.includes(item.id)) return f;
-      }
-      return null;
-    }
 
     // ------------------------------
-    // STICKIES KLASSIFIZIEREN
+    // STICKIES KLASSIFIZIEREN (GLOBAL!)
     // ------------------------------
     async function classifyStickiesInFrame() {
       const tpl = await findLastTemplate();
@@ -249,13 +258,35 @@
       if (!meta || !meta.areas || !meta.natural) {
         throw new Error("Template-Metadaten fehlen oder sind unvollständig.");
       }
-      const children = await frame.getChildren();
-      const stickies = children.filter(it => it.type === 'sticky_note');
+
+      // Wir betrachten ALLE Stickies auf dem Board (nicht nur Frame-Kinder),
+      // filtern aber optional per grober Bounding-Box des Bildes.
+      const allStickies = await miro.board.get({ type: 'sticky_note' });
+
+      const imgCenter = await getGlobalCenter(image);
+      const imgLeft   = imgCenter.x - image.width/2;
+      const imgTop    = imgCenter.y - image.height/2;
+      const imgRight  = imgLeft + image.width;
+      const imgBottom = imgTop  + image.height;
+
+      const candidates = allStickies.filter(async s => {
+        const c = await getGlobalCenter(s);
+        return c.x >= imgLeft && c.x <= imgRight && c.y >= imgTop && c.y <= imgBottom;
+      });
+
+      // candidates ist ein Array von Promises (wegen async filter); richtig lösen:
+      const candWithCenter = [];
+      for (const s of allStickies) {
+        const c = await getGlobalCenter(s);
+        if (c.x >= imgLeft && c.x <= imgRight && c.y >= imgTop && c.y <= imgBottom) {
+          candWithCenter.push({ s, c });
+        }
+      }
 
       const results = [];
-      for (const s of stickies) {
+      for (const { s } of candWithCenter) {
         const text = stripHtml(s.content || "");
-        const { px, py } = centerToImageNorm(s, image);
+        const { px, py } = await centerToImageNormGlobal(s, image);
 
         let hit = null;
         for (const area of meta.areas) {
@@ -272,6 +303,7 @@
           text
         });
       }
+
       return {
         template: { id: meta.templateId, name: meta.templateName },
         counts: {
@@ -299,7 +331,7 @@
     }
 
     // ------------------------------
-    // OPENAI – Responses API (ohne Streaming)
+    // OPENAI – Responses API
     // ------------------------------
     async function sendToOpenAI({ apiKey, model, userPrompt, payload }) {
       if (!apiKey || !apiKey.trim()) throw new Error("OpenAI API Key fehlt.");
@@ -334,9 +366,8 @@ Eingabe ist JSON (template, items[] mit regionId/Title und text). Antworte kompa
         body: JSON.stringify(body)
       });
       const data = await resp.json();
-      if (!resp.ok) {
-        throw new Error("OpenAI request failed: " + resp.status + " " + JSON.stringify(data, null, 2));
-      }
+      if (!resp.ok) throw new Error("OpenAI request failed: " + resp.status + " " + JSON.stringify(data, null, 2));
+
       const msg = data?.output?.[0];
       let text = "";
       if (msg?.content) {
@@ -347,7 +378,7 @@ Eingabe ist JSON (template, items[] mit regionId/Title und text). Antworte kompa
     }
 
     // ------------------------------
-    // PANEL BOOTSTRAP (HEADLESS vs PANEL)
+    // PANEL BOOTSTRAP
     // ------------------------------
     (async function boot() {
       const url = new URL(window.location.href);
@@ -364,7 +395,8 @@ Eingabe ist JSON (template, items[] mit regionId/Title und text). Antworte kompa
       }
 
       document.getElementById('app').hidden = false;
-      document.getElementById('loadedAt').textContent = "Panel geladen: " + new Date().toLocaleTimeString();
+      document.getElementById('loadedAt').textContent =
+        "Panel geladen: " + new Date().toLocaleTimeString();
 
       document.getElementById('btn-insert').onclick = async () => {
         try { await insertTemplate(); }
@@ -411,7 +443,8 @@ Eingabe ist JSON (template, items[] mit regionId/Title und text). Antworte kompa
       return u.pathname + "?" + u.searchParams.toString();
     }
     function setStatus(id, err) {
-      document.getElementById(id).innerHTML = '<span class="err">' + (err?.message || err) + '</span>';
+      document.getElementById(id).innerHTML =
+        '<span class="err">' + (err?.message || err) + '</span>';
     }
   </script>
 </body>
