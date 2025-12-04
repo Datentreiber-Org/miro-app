@@ -1,0 +1,18 @@
+<!doctype html>
+<meta charset="utf-8">
+<title>loader</title>
+<script src="https://miro.com/app/static/sdk/v2/miro.js"></script>
+<script>
+  const PANEL_BASE = "https://datentreiber-org.github.io/miro-app/app.html";
+
+  function openPanelFresh() {
+    const url = `${PANEL_BASE}?panel=1&v=${Date.now()}`; // unique -> kein Cache
+    return miro.board.ui.openPanel({ url });
+  }
+
+  // Panel nur auf Icon-Klick öffnen (keine Auto-Schleife)
+  miro.board.ui.on('icon:click', openPanelFresh);
+
+  // Optional: Wenn aus „+ More apps“ gestartet, direkt öffnen:
+  // openPanelFresh();
+</script>
