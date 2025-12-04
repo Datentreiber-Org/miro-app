@@ -28,7 +28,7 @@
 <body>
   <h2>OpenAI Chat (ohne Server, nur zum Testen)</h2>
   <div class="muted" style="margin-bottom:8px">
-    Achtung: API-Key wird clientseitig genutzt. Für Produktion bitte Proxy (z. B. Cloud Run) verwenden.
+    Hinweis: API-Key wird clientseitig verwendet. Für Produktion später Proxy (z. B. Cloud Run) einsetzen.
   </div>
 
   <div class="grid">
@@ -48,7 +48,6 @@
       <label>Modell</label>
       <div class="row" style="align-items:flex-start">
         <select id="model" style="min-width:240px">
-          <!-- Wähle ein Modell, das in DEINEM Projekt freigeschaltet ist -->
           <option value="gpt-4.1">gpt-4.1</option>
           <option value="gpt-4o">gpt-4o</option>
           <option value="o3-mini">o3-mini</option>
@@ -101,7 +100,7 @@
     const clearBtn = document.getElementById('clear');
     const toggleKeyBtn = document.getElementById('toggleKey');
 
-    // Gesprächsverlauf im Panel (flüchtig)
+    // Gesprächsverlauf (flüchtig im Panel)
     let chat = [];
 
     // Init: Key/Model/System aus localStorage
@@ -186,17 +185,30 @@
       return v;
     }
 
+    // -------------------- Mapping: Rollen → Content-Typ --------------------
+    // user/system -> input_text, assistant -> output_text
+    function mapMessagesToResponsesInput(messages) {
+      return messages.map(m => {
+        const role = m.role;
+        let type;
+        if (role === 'assistant') {
+          type = 'output_text';
+        } else {
+          // 'user' oder 'system'
+          type = 'input_text';
+        }
+        return {
+          role,
+          content: [{ type, text: m.content }]
+        };
+      });
+    }
+
     // -------------------- Responses API: SSE-Streaming --------------------
-    // Doku: Streaming-Events inkl. 'response.output_text.delta' (aktueller Stand). 
-    // https://platform.openai.com/docs/guides/streaming-responses
     async function streamResponse({ apiKey, model, messages, onDelta }) {
       const body = {
         model,
-        // Responses API erwartet 'input' als Liste aus Rollen + Content-Objekten (input_text etc.)
-        input: messages.map(m => ({
-          role: m.role,
-          content: [{ type: "input_text", text: m.content }]
-        })),
+        input: mapMessagesToResponsesInput(messages),
         stream: true
       };
 
@@ -229,11 +241,9 @@
 
           try {
             const evt = JSON.parse(m[1]);
-            // Textinkremente kommen in 'response.output_text.delta'
             if (evt.type === "response.output_text.delta") {
               onDelta(evt.delta);
             }
-            // Optional: auf 'response.completed' etc. reagieren
           } catch {}
         }
       }
@@ -249,7 +259,7 @@
       if (!apiKey) { statusEl.textContent = 'Bitte API Key eingeben.'; return; }
       if (!user)   { statusEl.textContent = 'Bitte eine Nachricht eingeben.'; return; }
 
-      // Gesprächsverlauf aktualisieren
+      // Gesprächsverlauf zusammenbauen
       const msgs = [];
       if (sys) msgs.push({ role: "system", content: sys });
       for (const m of chat) msgs.push(m);
@@ -271,9 +281,11 @@
           }
         });
         statusEl.textContent = 'Fertig.';
-        // Antwort in Verlauf übernehmen
+
+        // Verlauf pflegen: aktuelle User- und Assistant-Nachricht anhängen
         chat.push({ role: "user", content: user });
         chat.push({ role: "assistant", content: outEl.textContent });
+
       } catch (e) {
         statusEl.textContent = 'Fehler: ' + e.message;
       }
