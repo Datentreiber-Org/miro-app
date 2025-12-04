@@ -1,0 +1,16 @@
+<!doctype html>
+<html>
+  <head><meta charset="utf-8"><title>Miro Hello</title></head>
+  <body>
+    <p>App geladen – klicke das App-Icon in Miro.</p>
+
+    <script src="https://miro.com/app/static/sdk/v2/miro.js"></script>
+    <script>
+      // offizieller Einstieg: Klick aufs App-Icon
+      miro.board.ui.on('icon:click', async () => {
+        const sticky = await miro.board.createStickyNote({ content: '<p>Hello, World!</p>' });
+        await miro.board.viewport.zoomTo(sticky);
+      });
+    </script>
+  </body>
+</html>
