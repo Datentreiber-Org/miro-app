@@ -111,7 +111,7 @@
     let lastTemplate = null;          // { frameId, imageId }
 
     // ------------------------------
-    // GEOMETRIE-UTILS (GLOBAL!)
+    // GEOMETRIE-UTILS
     // ------------------------------
     function rectContainsNorm(px, py, [x1,y1,x2,y2]) {
       const left = Math.min(x1,x2), right = Math.max(x1,x2);
@@ -145,22 +145,20 @@
       });
     }
 
+    // **NEU**: Parent-Frame direkt über parentId ermitteln
     async function getParentFrameOf(item) {
-      const frames = await miro.board.get({ type: 'frame' });
-      for (const f of frames) {
-        if (f.childrenIds && f.childrenIds.includes(item.id)) return f;
-      }
-      return null;
+      if (!item.parentId) return null;
+      const parent = await miro.board.getById(item.parentId);
+      return parent && parent.type === 'frame' ? parent : null;
     }
-    function frameTopLeft(frame) {
-      return { x: frame.x - frame.width/2, y: frame.y - frame.height/2 };
-    }
+
+    // **FIX**: Globale Zentrumsermittlung – Frame-Kinder nutzen OFFSET relativ zum FRAME-ZENTRUM
     async function getGlobalCenter(item) {
       const parent = await getParentFrameOf(item);
       if (!parent) return { x: item.x, y: item.y }; // bereits global
-      const tl = frameTopLeft(parent);
-      return { x: tl.x + item.x, y: tl.y + item.y };
+      return { x: parent.x + item.x, y: parent.y + item.y };
     }
+
     async function centerToImageNormGlobal(sticky, image) {
       const s = await getGlobalCenter(sticky);
       const imgC = await getGlobalCenter(image);
@@ -199,7 +197,7 @@
         width: frameWidth - 40
       });
 
-      await frame.add(image);
+      await frame.add(image); // Bild an Frame hängen
 
       const areasNorm = pxAreasToNormalized(TEMPLATE.areasPx, nat.w, nat.h);
       await image.setMetadata(META_KEY, {
@@ -247,55 +245,48 @@
     }
 
     // ------------------------------
-    // STICKIES KLASSIFIZIEREN (GLOBAL!)
+    // STICKIES KLASSIFIZIEREN (GLOBAL)
     // ------------------------------
     async function classifyStickiesInFrame() {
       const tpl = await findLastTemplate();
       if (!tpl) throw new Error("Kein Template gefunden. Bitte zuerst einfügen.");
-      const { image, frame } = tpl;
+      const { image } = tpl;
 
       const meta = await image.getMetadata(META_KEY);
       if (!meta || !meta.areas || !meta.natural) {
         throw new Error("Template-Metadaten fehlen oder sind unvollständig.");
       }
 
-      // Wir betrachten ALLE Stickies auf dem Board (nicht nur Frame-Kinder),
-      // filtern aber optional per grober Bounding-Box des Bildes.
       const allStickies = await miro.board.get({ type: 'sticky_note' });
 
-      const imgCenter = await getGlobalCenter(image);
-      const imgLeft   = imgCenter.x - image.width/2;
-      const imgTop    = imgCenter.y - image.height/2;
+      // Bild-Grenzen global
+      const imgC = await getGlobalCenter(image);
+      const imgLeft   = imgC.x - image.width/2;
+      const imgTop    = imgC.y - image.height/2;
       const imgRight  = imgLeft + image.width;
       const imgBottom = imgTop  + image.height;
 
-      const candidates = allStickies.filter(async s => {
-        const c = await getGlobalCenter(s);
-        return c.x >= imgLeft && c.x <= imgRight && c.y >= imgTop && c.y <= imgBottom;
-      });
-
-      // candidates ist ein Array von Promises (wegen async filter); richtig lösen:
-      const candWithCenter = [];
+      // Kandidaten: Zentrum innerhalb des Bild-Rechtecks
+      const cand = [];
       for (const s of allStickies) {
         const c = await getGlobalCenter(s);
         if (c.x >= imgLeft && c.x <= imgRight && c.y >= imgTop && c.y <= imgBottom) {
-          candWithCenter.push({ s, c });
+          cand.push(s);
         }
       }
 
+      // Hit-Test gegen normalisierte Areas
       const results = [];
-      for (const { s } of candWithCenter) {
+      for (const s of cand) {
         const text = stripHtml(s.content || "");
         const { px, py } = await centerToImageNormGlobal(s, image);
 
         let hit = null;
         for (const area of meta.areas) {
-          if (area.shape === "rect") {
-            if (rectContainsNorm(px, py, area.coords)) { hit = area; break; }
-          } else if (area.shape === "poly") {
-            if (polyContainsNorm(px, py, area.coords)) { hit = area; break; }
-          }
+          if (area.shape === "rect" && rectContainsNorm(px, py, area.coords)) { hit = area; break; }
+          if (area.shape === "poly" && polyContainsNorm(px, py, area.coords)) { hit = area; break; }
         }
+
         results.push({
           stickyId: s.id,
           regionId: hit ? hit.id : null,
@@ -331,7 +322,7 @@
     }
 
     // ------------------------------
-    // OPENAI – Responses API
+    // OPENAI – Responses API (ohne Streaming)
     // ------------------------------
     async function sendToOpenAI({ apiKey, model, userPrompt, payload }) {
       if (!apiKey || !apiKey.trim()) throw new Error("OpenAI API Key fehlt.");
