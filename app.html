@@ -2,773 +2,634 @@
 <html lang="de">
 <head>
   <meta charset="utf-8">
-  <title>Datentreiber – Template Mapper + GPT</title>
+  <title>Datentreiber – Template Mapper & GPT</title>
   <script src="https://miro.com/app/static/sdk/v2/miro.js"></script>
   <style>
-    :root {
-      font-family: system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
-      color: #111;
-      background: #f5f5f5;
-    }
+    * { box-sizing: border-box; }
     body {
       margin: 0;
-      padding: 12px 16px 16px;
-      font-size: 14px;
+      font-family: system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+      font-size: 13px;
+      color: #111827;
+      background: #f9fafb;
+    }
+    #app {
+      padding: 12px;
+      width: 100%;
+      max-width: 420px;
     }
     h1 {
-      font-size: 18px;
-      margin: 0 0 6px;
+      font-size: 16px;
+      margin: 0 0 8px;
     }
     h2 {
-      font-size: 15px;
-      margin: 16px 0 6px;
-    }
-    h3 {
       font-size: 14px;
-      margin: 12px 0 6px;
+      margin: 16px 0 8px;
     }
-    .muted {
-      color: #666;
-      font-size: 12px;
-    }
-    .row {
-      display: flex;
-      gap: 8px;
-      align-items: center;
-      margin-bottom: 6px;
-    }
-    .row > * {
-      flex: 1 1 auto;
+    .section {
+      background: #ffffff;
+      border-radius: 8px;
+      padding: 10px 10px 12px;
+      margin-bottom: 10px;
+      border: 1px solid #e5e7eb;
     }
     label {
-      font-size: 12px;
-      font-weight: 600;
       display: block;
-      margin-bottom: 3px;
+      margin-bottom: 6px;
+      font-weight: 500;
     }
     input[type="text"],
     input[type="password"],
     select,
     textarea {
       width: 100%;
-      box-sizing: border-box;
       padding: 6px 8px;
       border-radius: 6px;
-      border: 1px solid #ccc;
-      font: inherit;
-      background: #fff;
+      border: 1px solid #d1d5db;
+      font-size: 12px;
+      font-family: inherit;
     }
     textarea {
-      min-height: 80px;
+      min-height: 60px;
       resize: vertical;
     }
     button {
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
       padding: 6px 10px;
       border-radius: 6px;
-      border: 1px solid #ccc;
-      font: inherit;
-      cursor: pointer;
-      background: #fff;
-      white-space: nowrap;
-    }
-    button.primary {
-      background: #0066ff;
-      border-color: #0050c7;
-      color: #fff;
-    }
-    button.small {
-      padding: 4px 8px;
+      border: 1px solid #d1d5db;
+      background: #111827;
+      color: white;
       font-size: 12px;
+      cursor: pointer;
+      margin-right: 6px;
+      margin-top: 4px;
+    }
+    button.secondary {
+      background: #ffffff;
+      color: #111827;
     }
     button:disabled {
-      opacity: 0.6;
+      opacity: 0.5;
       cursor: default;
     }
-    .section {
-      border-radius: 8px;
-      background: #fff;
-      padding: 10px 12px;
-      margin-bottom: 10px;
-      box-shadow: 0 0 0 1px #e0e0e0;
+    .muted {
+      color: #6b7280;
+      font-size: 11px;
     }
-    .section-header {
+    .row {
       display: flex;
-      justify-content: space-between;
-      align-items: center;
+      gap: 6px;
       margin-bottom: 6px;
-      gap: 8px;
     }
-    .badge {
-      font-size: 10px;
-      padding: 2px 6px;
-      border-radius: 999px;
-      background: #eee;
-      color: #555;
+    .row > div {
+      flex: 1;
     }
     pre {
-      background: #111;
-      color: #f5f5f5;
       font-size: 11px;
+      background: #0b1020;
+      color: #e5e7eb;
       padding: 8px;
       border-radius: 6px;
-      max-height: 260px;
+      max-height: 220px;
       overflow: auto;
-      margin: 6px 0 0;
+      margin-top: 6px;
       white-space: pre-wrap;
       word-break: break-word;
     }
-    .pill {
+    .badge {
       display: inline-flex;
       align-items: center;
-      gap: 4px;
-      font-size: 11px;
       padding: 2px 6px;
       border-radius: 999px;
-      background: #eef3ff;
-      color: #123;
-    }
-    .pill-dot {
-      width: 7px;
-      height: 7px;
-      border-radius: 50%;
-      background: #0066ff;
-    }
-    .template-list {
-      display: flex;
-      flex-direction: column;
-      gap: 4px;
-      margin-bottom: 4px;
-    }
-    .template-item {
-      font-size: 12px;
-      padding: 4px 6px;
-      border-radius: 6px;
-      border: 1px solid #e0e0e0;
-      cursor: pointer;
-      display: flex;
-      justify-content: space-between;
-      align-items: center;
-    }
-    .template-item.selected {
-      border-color: #0066ff;
-      background: #eef3ff;
-    }
-    .template-item span {
-      white-space: nowrap;
-      overflow: hidden;
-      text-overflow: ellipsis;
-      max-width: 210px;
-    }
-    .status-line {
-      font-size: 11px;
-      margin-top: 4px;
-    }
-    .status-ok {
-      color: #0a7a20;
-    }
-    .status-warn {
-      color: #b06500;
-    }
-    .status-err {
-      color: #c21807;
-    }
-    #root[hidden] {
-      display: none;
+      background: #eef2ff;
+      color: #3730a3;
+      font-size: 10px;
+      font-weight: 600;
+      margin-left: 4px;
     }
   </style>
 </head>
-
 <body>
-<div id="root" hidden>
-  <div class="section">
-    <div class="section-header">
-      <div>
-        <h1>Datentreiber – Template Mapper (Debug)</h1>
-        <div class="muted">Panel geladen: <span id="loaded-at">–</span></div>
+  <div id="app">
+    <h1>Datentreiber – Template Mapper & GPT</h1>
+    <div class="muted" id="status-line">Panel lädt…</div>
+
+    <!-- OpenAI / GPT Section -->
+    <div class="section">
+      <h2>1) GPT-Chat <span class="badge">OpenAI</span></h2>
+      <label>
+        OpenAI API Key (nur für Tests, bleibt im Browser)
+        <input type="password" id="openai-key" placeholder="sk-...">
+      </label>
+      <div class="row">
+        <div>
+          <label>Modell</label>
+          <select id="openai-model">
+            <option value="gpt-4.1-mini">gpt-4.1-mini</option>
+            <option value="gpt-4.1">gpt-4.1</option>
+            <option value="o3-mini">o3-mini</option>
+          </select>
+        </div>
+        <div>
+          <label>Max. Tokens (Antwort)</label>
+          <input type="text" id="openai-max-tokens" value="512">
+        </div>
       </div>
-      <span class="badge">Web SDK v2 · Panel</span>
+      <label>
+        Deine Frage an GPT
+        <textarea id="openai-user-message" placeholder="Frag GPT etwas zu den Stickies oder allgemein…"></textarea>
+      </label>
+      <button id="btn-openai-send">An GPT senden (ohne Stickies)</button>
+      <button id="btn-openai-send-with-stickies" class="secondary">
+        Stickies klassifizieren & an GPT senden
+      </button>
+      <pre id="openai-output" class="muted">// GPT-Antwort erscheint hier…</pre>
     </div>
-  </div>
 
-  <div class="section">
-    <div class="section-header">
-      <h2>1) OpenAI-Verbindung</h2>
-      <span class="pill">
-        <span class="pill-dot"></span> lokal, ohne Backend
-      </span>
-    </div>
-
-    <div class="row">
-      <div>
-        <label for="openai-key">OpenAI API-Key</label>
-        <input id="openai-key" type="password" placeholder="sk-..." autocomplete="off">
-        <div class="muted">Key wird nur im Browser (localStorage) gespeichert.</div>
+    <!-- Template / Sticky Mapping Section -->
+    <div class="section">
+      <h2>2) Template Mapper <span class="badge">3 Boxes</span></h2>
+      <div class="muted" style="margin-bottom:6px;">
+        Template-Bild: „Datentreiber 3-Boxes v1-1 (20240610)“  
+        PNG wird als <strong>Image</strong> eingefügt; Stickies werden relativ zu diesem Bild vermessen.
       </div>
-      <div>
-        <label for="openai-model">Modell</label>
-        <select id="openai-model">
-          <option value="gpt-4.1-mini">gpt-4.1-mini (günstig)</option>
-          <option value="gpt-4.1">gpt-4.1</option>
-          <option value="gpt-4o-mini">gpt-4o-mini</option>
-          <option value="gpt-4o">gpt-4o</option>
-        </select>
+
+      <button id="btn-insert-template">Template einfügen</button>
+      <button id="btn-list-templates" class="secondary">Vorhandene Templates auflisten</button>
+
+      <div class="row" style="margin-top:6px;">
+        <div>
+          <label>Template-Image auf dem Board</label>
+          <select id="template-select"></select>
+        </div>
       </div>
-    </div>
 
-    <label for="openai-prompt">Prompt / Frage an GPT</label>
-    <textarea id="openai-prompt" placeholder="Z.B. „Fasse die Stickies pro Box zusammen und formuliere daraus 3 Hypothesen.“"></textarea>
-  </div>
+      <button id="btn-zoom-template" class="secondary">Zum Template zoomen</button>
+      <button id="btn-toggle-overlay" class="secondary">Areas einblenden</button>
+      <button id="btn-classify-stickies">Nur Stickies klassifizieren</button>
 
-  <div class="section">
-    <div class="section-header">
-      <h2>2) Template-Canvas</h2>
-      <span class="badge">3-Boxes</span>
-    </div>
-
-    <div class="row">
-      <button id="btn-insert-template" class="small">
-        Template (Frame + Bild) einfügen
-      </button>
-      <button id="btn-list-templates" class="small">
-        Vorhandene Templates auflisten
-      </button>
-    </div>
-
-    <div id="template-list" class="template-list"></div>
-
-    <div class="row">
-      <button id="btn-zoom-template" class="small">
-        Zum ausgewählten Template zoomen
-      </button>
-      <button id="btn-toggle-areas" class="small">
-        Areas einblenden (Overlay)
-      </button>
-    </div>
-
-    <div id="template-status" class="status-line status-warn">
-      Kein Template ausgewählt.
+      <pre id="classification-output" class="muted">// Klassifikation der Stickies erscheint hier…</pre>
     </div>
   </div>
 
-  <div class="section">
-    <div class="section-header">
-      <h2>3) Stickies klassifizieren & an GPT senden</h2>
-    </div>
-
-    <div class="row">
-      <button id="btn-classify" class="primary">
-        Stickies klassifizieren
-      </button>
-      <button id="btn-classify-and-send" class="primary">
-        Klassifizieren & an GPT senden
-      </button>
-    </div>
-
-    <pre id="debug-json">{ }</pre>
-    <pre id="debug-openai">OpenAI-Antwort erscheint hier…</pre>
-  </div>
-</div>
-
-<script>
-  // ========= Konstante Template-Definition (relativ, 0..1) =========
-
-  const TEMPLATE_ID = "datentreiber-3boxes";
-  const TEMPLATE_NAME = "Datentreiber 3-Boxes v1-1 (20240610)";
-  const TEMPLATE_IMAGE_URL =
-    "https://www.datentreiber.com/wp-content/uploads/2024/12/Datentreiber_EN_3-Boxes_v1-1_20240610.png";
-
-  // Wir nehmen ein logisches "natürliches" Seitenverhältnis an (Breite/Höhe egal,
-  // weil wir nur RELATIVE Koordinaten benutzen).
-  const TEMPLATE_DEF = {
-    id: TEMPLATE_ID,
-    name: TEMPLATE_NAME,
-    naturalWidth: 1920,
-    naturalHeight: 1080,
-    // Koordinatensystem: (0,0) = links oben, (1,1) = rechts unten relativ zum Bild.
-    regions: [
-      {
-        id: "box-left",
-        title: "Left Box",
-        rect: { x: 0.07, y: 0.20, width: 0.26, height: 0.70 }
-      },
-      {
-        id: "box-middle",
-        title: "Middle Box",
-        rect: { x: 0.37, y: 0.20, width: 0.26, height: 0.70 }
-      },
-      {
-        id: "box-right",
-        title: "Right Box",
-        rect: { x: 0.67, y: 0.20, width: 0.26, height: 0.70 }
-      }
-    ]
-  };
-
-  // ========= State im Panel =========
-
-  const state = {
-    templates: [],           // { imageId, frameId, name }
-    selectedImageId: null,   // imageId der aktiven Template-Instanz
-    overlayShapeIds: [],     // IDs der aktuell gezeichneten Overlay-Formen
-  };
-
-  // ========= Utility: DOM & Logging =========
-
-  function $(id) {
-    return document.getElementById(id);
-  }
-
-  function setStatus(text, cls) {
-    const el = $("template-status");
-    el.textContent = text;
-    el.className = "status-line " + (cls || "status-warn");
-  }
-
-  function setDebugJson(obj) {
-    $("debug-json").textContent = JSON.stringify(obj, null, 2);
-  }
-
-  function setDebugOpenAI(text) {
-    $("debug-openai").textContent = text;
-  }
-
-  function makePanelUrl() {
-    const url = new URL(window.location.href);
-    url.searchParams.delete("_miro");
-    url.searchParams.delete("_sdk");
-    url.searchParams.set("panel", "1");
-    return url.pathname + "?" + url.searchParams.toString();
-  }
-
-  // ========= Headless-Teil: Icon-Klick verdrahten und Panel öffnen =========
-
-  (function bootstrap() {
-    const url = new URL(window.location.href);
-    const isPanel = url.searchParams.get("panel") === "1";
-
-    if (!isPanel) {
-      // HEADLESS – NUR Einstieg in das Panel verdrahten, sonst nichts.
-      miro.onReady(async () => {
-        const panelUrl = makePanelUrl();
-
-        await miro.board.ui.on("icon:click", async () => {
-          await miro.board.ui.openPanel({ url: panelUrl });
-        });
-
-        // Optional: sofort öffnen (komfortabel beim Testen).
-        await miro.board.ui.openPanel({ url: panelUrl });
-      });
-    } else {
-      // PANEL-MODUS – UI & Logik initialisieren.
-      miro.onReady(initPanel);
-    }
-  })();
-
-  // ========= Panel-Initialisierung =========
-
-  async function initPanel() {
-    $("root").hidden = false;
-    $("loaded-at").textContent = new Date().toLocaleTimeString();
-
-    // OpenAI-Konfiguration aus localStorage laden
-    const savedKey = window.localStorage.getItem("dt_openai_key") || "";
-    const savedModel = window.localStorage.getItem("dt_openai_model") || "gpt-4.1-mini";
-    $("openai-key").value = savedKey;
-    $("openai-model").value = savedModel;
-
-    // Event-Handler
-    $("openai-key").addEventListener("change", () => {
-      window.localStorage.setItem("dt_openai_key", $("openai-key").value.trim());
-    });
-    $("openai-model").addEventListener("change", () => {
-      window.localStorage.setItem("dt_openai_model", $("openai-model").value);
-    });
-
-    $("btn-insert-template").onclick = onInsertTemplate;
-    $("btn-list-templates").onclick = onListTemplates;
-    $("btn-zoom-template").onclick = onZoomTemplate;
-    $("btn-toggle-areas").onclick = onToggleAreas;
-    $("btn-classify").onclick = async () => {
-      const result = await classifyStickies(false);
-      if (result) setDebugJson(result);
-    };
-    $("btn-classify-and-send").onclick = async () => {
-      const result = await classifyStickies(true);
-      if (result) {
-        setDebugJson(result);
-        await sendToOpenAI(result);
-      }
-    };
-
-    // Beim Öffnen direkt einmal Templates scannen
-    await refreshTemplateList();
-  }
-
-  // ========= Template-Erzeugung & -Auswahl =========
-
-  async function onInsertTemplate() {
-    const board = miro.board;
-
-    // Frame als Container erzeugen
-    const frameWidth = 2000;
-    const frameHeight = 1200;
-    const frame = await board.createFrame({
-      title: TEMPLATE_NAME,
-      x: 0,
-      y: 0,
-      width: frameWidth,
-      height: frameHeight,
-    });
-
-    // Bild innerhalb des Frames einfügen
-    const margin = 80;
-    const imageWidth = frameWidth - 2 * margin;
-    const imageHeight = frameHeight - 2 * margin;
-
-    const image = await board.createImage({
-      url: TEMPLATE_IMAGE_URL,
-      x: frame.x,
-      y: frame.y,
-      width: imageWidth,
-      height: imageHeight,
-      parentId: frame.id,
-    });
-
-    state.selectedImageId = image.id;
-    await refreshTemplateList();
-    setStatus(
-      `Template eingefügt ✔︎ (Image ${image.id})`,
-      "status-ok"
-    );
-  }
-
-  async function refreshTemplateList() {
-    const board = miro.board;
-    const images = await board.get({ type: "image" });
-
-    state.templates = images
-      .filter(img => typeof img.url === "string" &&
-                     img.url.indexOf("Datentreiber_EN_3-Boxes_v1-1_20240610.png") !== -1)
-      .map(img => ({
-        imageId: img.id,
-        frameId: img.parentId || null,
-        name: TEMPLATE_NAME
-      }));
-
-    renderTemplateList();
-  }
-
-  function renderTemplateList() {
-    const container = $("template-list");
-    container.innerHTML = "";
-
-    if (state.templates.length === 0) {
-      container.innerHTML = "<div class='muted'>Keine passenden Templates auf dem Board gefunden.</div>";
-      state.selectedImageId = null;
-      setStatus("Kein Template ausgewählt.", "status-warn");
-      return;
-    }
-
-    if (!state.selectedImageId) {
-      state.selectedImageId = state.templates[0].imageId;
-    }
-
-    for (const t of state.templates) {
-      const div = document.createElement("div");
-      div.className = "template-item" + (t.imageId === state.selectedImageId ? " selected" : "");
-      const left = document.createElement("span");
-      left.textContent = `${t.name}`;
-      const right = document.createElement("span");
-      right.textContent = `image:${t.imageId}`;
-      right.style.fontSize = "10px";
-      right.style.color = "#777";
-
-      div.appendChild(left);
-      div.appendChild(right);
-
-      div.onclick = () => {
-        state.selectedImageId = t.imageId;
-        renderTemplateList();
-        setStatus(
-          `${t.name} · image:${t.imageId}`,
-          "status-ok"
-        );
-      };
-
-      container.appendChild(div);
-    }
-
-    const current = state.templates.find(t => t.imageId === state.selectedImageId);
-    if (current) {
-      setStatus(
-        `${current.name} · image:${current.imageId}`,
-        "status-ok"
-      );
-    }
-  }
-
-  async function onListTemplates() {
-    await refreshTemplateList();
-  }
-
-  async function onZoomTemplate() {
-    if (!state.selectedImageId) {
-      setStatus("Kein Template ausgewählt – zuerst einfügen oder wählen.", "status-warn");
-      return;
-    }
-    const image = await miro.board.getById(state.selectedImageId);
-    if (!image) {
-      setStatus("Template-Bild nicht gefunden (vielleicht gelöscht?).", "status-err");
-      await refreshTemplateList();
-      return;
-    }
-    await miro.board.viewport.zoomTo(image);
-  }
-
-  // ========= Overlay für Regionen =========
-
-  async function onToggleAreas() {
-    if (!state.selectedImageId) {
-      setStatus("Kein Template ausgewählt – zuerst einfügen oder wählen.", "status-warn");
-      return;
-    }
-
-    // Falls Overlays existieren → löschen
-    if (state.overlayShapeIds.length > 0) {
-      try {
-        await miro.board.remove(state.overlayShapeIds);
-      } catch (e) {
-        console.warn("Konnte Overlay-Shapes nicht entfernen", e);
-      }
-      state.overlayShapeIds = [];
-      setStatus("Overlay entfernt.", "status-warn");
-      return;
-    }
-
-    const image = await miro.board.getById(state.selectedImageId);
-    if (!image) {
-      setStatus("Template-Bild nicht gefunden (vielleicht gelöscht?).", "status-err");
-      await refreshTemplateList();
-      return;
-    }
-
-    const { x, y, width, height } = image;
-    const left = x - width / 2;
-    const top = y - height / 2;
-
-    const shapesToCreate = TEMPLATE_DEF.regions.map((region, idx) => {
-      const r = region.rect;
-
-      const rx = left + width * r.x;
-      const ry = top + height * r.y;
-      const rw = width * r.width;
-      const rh = height * r.height;
-
-      return {
-        shape: "rectangle",
-        content: region.title,
-        x: rx + rw / 2,
-        y: ry + rh / 2,
-        width: rw,
-        height: rh,
-        style: {
-          borderColor: ["#2196F3", "#4CAF50", "#FFC107"][idx % 3],
-          fillColor: "transparent",
-          borderWidth: 4,
-          backgroundOpacity: 0.0,
-          borderOpacity: 0.9,
-          fontSize: 18,
-          textAlign: "c",
-          textAlignVertical: "m"
-        }
-      };
-    });
-
-    const created = await miro.board.createShape(shapesToCreate);
-    state.overlayShapeIds = created.map(s => s.id);
-    setStatus("Overlay gezeichnet (Areas). Nochmal klicken zum Entfernen.", "status-ok");
-  }
-
-  // ========= Klassifikation von Sticky Notes =========
-
-  function stickyCenterInImageNorm(sticky, image) {
-    // Bildrechteck in Board-Koordinaten
-    const imgLeft = image.x - image.width / 2;
-    const imgTop = image.y - image.height / 2;
-    const imgRight = image.x + image.width / 2;
-    const imgBottom = image.y + image.height / 2;
-
-    const cx = sticky.x;
-    const cy = sticky.y;
-
-    const inRect = (cx >= imgLeft && cx <= imgRight && cy >= imgTop && cy <= imgBottom);
-    if (!inRect) {
-      return { inImageRect: false, px: null, py: null };
-    }
-
-    const px = (cx - imgLeft) / (imgRight - imgLeft);     // 0..1 von links nach rechts
-    const py = (cy - imgTop) / (imgBottom - imgTop);      // 0..1 von oben nach unten
-
-    return { inImageRect: true, px, py };
-  }
-
-  function assignRegion(px, py) {
-    for (const region of TEMPLATE_DEF.regions) {
-      const r = region.rect;
-      if (
-        px >= r.x &&
-        px <= r.x + r.width &&
-        py >= r.y &&
-        py <= r.y + r.height
-      ) {
-        return { regionId: region.id, regionTitle: region.title };
-      }
-    }
-    return { regionId: null, regionTitle: null };
-  }
-
-  async function classifyStickies(showOnlyInside) {
-    if (!state.selectedImageId) {
-      setStatus("Kein Template ausgewählt – zuerst einfügen oder wählen.", "status-warn");
-      return null;
-    }
-
-    const image = await miro.board.getById(state.selectedImageId);
-    if (!image) {
-      setStatus("Template-Bild nicht gefunden (vielleicht gelöscht?).", "status-err");
-      await refreshTemplateList();
-      return null;
-    }
-
-    const stickies = await miro.board.get({ type: "sticky_note" });
-
-    const items = [];
-    for (const s of stickies) {
-      const { inImageRect, px, py } = stickyCenterInImageNorm(s, image);
-      if (!inImageRect && showOnlyInside) {
-        continue;
-      }
-
-      const { regionId, regionTitle } = inImageRect ? assignRegion(px, py) : { regionId: null, regionTitle: null };
-
-      items.push({
-        stickyId: s.id,
-        text: s.content,
-        px: inImageRect ? Number(px.toFixed(4)) : null,
-        py: inImageRect ? Number(py.toFixed(4)) : null,
-        inImageRect,
-        regionId,
-        regionTitle
-      });
-    }
-
-    const counts = {
-      total: items.length,
-      byRegion: {}
-    };
-    for (const item of items) {
-      const key = item.regionId || "none";
-      counts.byRegion[key] = (counts.byRegion[key] || 0) + 1;
-    }
-
-    const result = {
-      template: {
-        id: TEMPLATE_DEF.id,
-        name: TEMPLATE_DEF.name,
-        imageId: image.id
-      },
-      counts,
-      items
-    };
-
-    return result;
-  }
-
-  // ========= OpenAI-Anfrage über Responses API =========
-
-  async function sendToOpenAI(classification) {
-    const apiKey = $("openai-key").value.trim();
-    const model = $("openai-model").value;
-    const userPrompt = $("openai-prompt").value.trim() ||
-      "Analysiere die Sticky Notes pro Region und fasse sie zusammen.";
-
-    if (!apiKey) {
-      setDebugOpenAI("Fehler: Kein OpenAI API-Key eingegeben.");
-      return;
-    }
-
-    const endpoint = "https://api.openai.com/v1/responses";
-
-    const inputBlocks = [
-      {
-        role: "system",
-        content: [
-          {
-            type: "input_text",
-            text:
-              "Du bist ein Assistent, der Sticky Notes auf einem Miro-Canvas analysiert. " +
-              "Du bekommst ein JSON mit 'template', 'counts' und 'items'. " +
-              "Jeder Eintrag in 'items' hat optional 'regionId' und 'regionTitle'. " +
-              "Liefere eine strukturierte, gut lesbare Zusammenfassung und beantworte die Nutzerfrage."
-          }
-        ]
-      },
-      {
-        role: "user",
-        content: [
-          {
-            type: "input_text",
-            text:
-              "Nutzerfrage:\n" + userPrompt +
-              "\n\nJSON:\n" + JSON.stringify(classification, null, 2)
-          }
-        ]
-      }
-    ];
-
-    const body = {
-      model,
-      input: inputBlocks
-    };
-
-    setDebugOpenAI("Sende Anfrage an OpenAI…");
-    $("btn-classify-and-send").disabled = true;
-
-    try {
-      const res = await fetch(endpoint, {
-        method: "POST",
-        headers: {
-          "Authorization": "Bearer " + apiKey,
-          "Content-Type": "application/json"
+  <script>
+    // -----------------------------
+    // Konfiguration Template 3-Boxes
+    // -----------------------------
+    const THREE_BOXES_TEMPLATE = {
+      id: "datentreiber-3boxes",
+      name: "Datentreiber 3-Boxes v1-1 (20240610)",
+      imageUrl: "https://www.datentreiber.com/wp-content/uploads/2024/12/Datentreiber_EN_3-Boxes_v1-1_20240610.png",
+      // Regions sind relativ (0–1) innerhalb des Bildes
+      regions: [
+        {
+          id: "left",
+          title: "Left Box",
+          x0: 0.08,
+          y0: 0.20,
+          x1: 0.32,
+          y1: 0.90,
         },
-        body: JSON.stringify(body)
+        {
+          id: "middle",
+          title: "Middle Box",
+          x0: 0.37,
+          y0: 0.20,
+          x1: 0.62,
+          y1: 0.90,
+        },
+        {
+          id: "right",
+          title: "Right Box",
+          x0: 0.67,
+          y0: 0.20,
+          x1: 0.92,
+          y1: 0.90,
+        },
+      ],
+    };
+
+    // State im Panel
+    let currentTemplateImageId = null;
+    let overlayItemIds = [];
+
+    function setStatus(text) {
+      const el = document.getElementById("status-line");
+      if (el) el.textContent = text;
+    }
+
+    function formatJson(obj) {
+      try {
+        return JSON.stringify(obj, null, 2);
+      } catch {
+        return String(obj);
+      }
+    }
+
+    // ----------------------------------
+    // Template-Helper
+    // ----------------------------------
+
+    async function insertTemplateImage() {
+      setStatus("Template wird eingefügt…");
+      const image = await miro.board.createImage({
+        url: THREE_BOXES_TEMPLATE.imageUrl,
+        x: 0,
+        y: 0,
+        width: 1600, // Miro skaliert proportional
       });
+      currentTemplateImageId = image.id;
+      await populateTemplateSelect();
+      setStatus("Template eingefügt (Image " + image.id + ").");
+      await miro.board.viewport.zoomTo(image);
+    }
 
-      const data = await res.json();
-
-      if (!res.ok) {
-        setDebugOpenAI(
-          "Fehler: OpenAI request failed: " + res.status + "\n" +
-          JSON.stringify(data, null, 2)
+    async function getTemplateImagesOnBoard() {
+      const images = await miro.board.get({ type: "image" });
+      return images.filter((img) => {
+        // Miro speichert die URL ggf. leicht verändert, daher nur Prefix vergleichen
+        return (
+          typeof img.url === "string" &&
+          img.url.startsWith(THREE_BOXES_TEMPLATE.imageUrl.split("?")[0])
         );
+      });
+    }
+
+    async function populateTemplateSelect() {
+      const select = document.getElementById("template-select");
+      if (!select) return;
+
+      const images = await getTemplateImagesOnBoard();
+      select.innerHTML = "";
+      if (!images.length) {
+        const opt = document.createElement("option");
+        opt.value = "";
+        opt.textContent = "Kein Template-Image auf dem Board";
+        select.appendChild(opt);
+        currentTemplateImageId = null;
         return;
       }
 
-      // Responses API: Antwort steht in output[0].content[0].text
-      let text = "";
-      try {
-        text = data.output[0].content[0].text;
-      } catch (e) {
-        text = "Konnte Text im Response-Objekt nicht finden:\n" +
-               JSON.stringify(data, null, 2);
-      }
-      setDebugOpenAI(text);
-    } catch (err) {
-      setDebugOpenAI("Fehler beim Aufruf der OpenAI-API:\n" + String(err));
-    } finally {
-      $("btn-classify-and-send").disabled = false;
+      images.forEach((img, idx) => {
+        const opt = document.createElement("option");
+        opt.value = img.id;
+        opt.textContent = `${THREE_BOXES_TEMPLATE.name} · image:${img.id} (#${idx + 1})`;
+        if (!currentTemplateImageId) {
+          currentTemplateImageId = img.id;
+        }
+        if (img.id === currentTemplateImageId) {
+          opt.selected = true;
+        }
+        select.appendChild(opt);
+      });
     }
-  }
-</script>
+
+    async function listTemplatesOnBoard() {
+      const images = await getTemplateImagesOnBoard();
+      if (!images.length) {
+        alert("Kein 3-Boxes-Template auf diesem Board gefunden.");
+        return;
+      }
+      currentTemplateImageId = images[0].id;
+      await populateTemplateSelect();
+      setStatus(images.length + " Template-Image(s) gefunden.");
+    }
+
+    async function getSelectedTemplateImage() {
+      if (!currentTemplateImageId) {
+        const select = document.getElementById("template-select");
+        if (select && select.value) {
+          currentTemplateImageId = select.value;
+        }
+      }
+      if (!currentTemplateImageId) {
+        const imgs = await getTemplateImagesOnBoard();
+        if (imgs.length) {
+          currentTemplateImageId = imgs[0].id;
+        }
+      }
+      if (!currentTemplateImageId) {
+        alert("Kein Template-Image ausgewählt. Bitte erst Template einfügen oder auswählen.");
+        return null;
+      }
+      return await miro.board.getById(currentTemplateImageId);
+    }
+
+    async function zoomToTemplate() {
+      const image = await getSelectedTemplateImage();
+      if (!image) return;
+      await miro.board.viewport.zoomTo(image);
+    }
+
+    async function toggleOverlay() {
+      const output = document.getElementById("classification-output");
+
+      // Wenn Overlays existieren -> entfernen
+      if (overlayItemIds.length) {
+        await miro.board.remove(overlayItemIds);
+        overlayItemIds = [];
+        setStatus("Areas-Overlay entfernt.");
+        if (output) output.textContent = "// Overlay entfernt.";
+        return;
+      }
+
+      const image = await getSelectedTemplateImage();
+      if (!image) return;
+
+      const imgLeft = image.x - image.width / 2;
+      const imgTop = image.y - image.height / 2;
+
+      const createdIds = [];
+      for (const region of THREE_BOXES_TEMPLATE.regions) {
+        const x0 = imgLeft + region.x0 * image.width;
+        const y0 = imgTop + region.y0 * image.height;
+        const w = (region.x1 - region.x0) * image.width;
+        const h = (region.y1 - region.y0) * image.height;
+
+        const shape = await miro.board.createShape({
+          x: x0 + w / 2,
+          y: y0 + h / 2,
+          width: w,
+          height: h,
+          shape: "round_rectangle",
+          content: `<p>${region.title}</p>`,
+          style: {
+            fillColor: "#f97316",     // orange
+            fillOpacity: 0.06,
+            borderColor: "#ea580c",
+            borderOpacity: 0.7,
+          },
+        });
+        createdIds.push(shape.id);
+      }
+
+      overlayItemIds = createdIds;
+      setStatus("Areas-Overlay eingeblendet.");
+      if (output) {
+        output.textContent =
+          "// Overlay eingeblendet für Template '" +
+          THREE_BOXES_TEMPLATE.name +
+          "'.";
+      }
+    }
+
+    // ----------------------------------
+    // Sticky-Klassifikation
+    // ----------------------------------
+
+    function classifyPoint(px, py) {
+      if (px < 0 || px > 1 || py < 0 || py > 1) {
+        return { inImageRect: false, region: null };
+      }
+      for (const region of THREE_BOXES_TEMPLATE.regions) {
+        if (
+          px >= region.x0 &&
+          px <= region.x1 &&
+          py >= region.y0 &&
+          py <= region.y1
+        ) {
+          return { inImageRect: true, region };
+        }
+      }
+      return { inImageRect: true, region: null };
+    }
+
+    async function classifyStickiesOnly() {
+      const output = document.getElementById("classification-output");
+      const image = await getSelectedTemplateImage();
+      if (!image) {
+        if (output) output.textContent = "// Kein Template-Image ausgewählt.";
+        return null;
+      }
+
+      const imgLeft = image.x - image.width / 2;
+      const imgTop = image.y - image.height / 2;
+
+      const stickies = await miro.board.get({ type: "sticky_note" });
+
+      const result = {
+        template: {
+          id: THREE_BOXES_TEMPLATE.id,
+          name: THREE_BOXES_TEMPLATE.name,
+          imageId: image.id,
+        },
+        counts: {
+          total: stickies.length,
+          byRegion: {},
+        },
+        items: [],
+      };
+
+      for (const s of stickies) {
+        const cx = s.x;
+        const cy = s.y;
+        const px = (cx - imgLeft) / image.width;
+        const py = (cy - imgTop) / image.height;
+
+        const { inImageRect, region } = classifyPoint(px, py);
+
+        const item = {
+          stickyId: s.id,
+          text: s.content ? s.plainText || s.content.replace(/<[^>]+>/g, "") : "",
+          px: Number(px.toFixed(4)),
+          py: Number(py.toFixed(4)),
+          inImageRect,
+          regionId: region ? region.id : null,
+          regionTitle: region ? region.title : null,
+        };
+
+        if (region) {
+          result.counts.byRegion[region.id] =
+            (result.counts.byRegion[region.id] || 0) + 1;
+        }
+
+        result.items.push(item);
+      }
+
+      if (output) {
+        output.textContent = formatJson(result);
+      }
+
+      return result;
+    }
+
+    // ----------------------------------
+    // OpenAI / GPT
+    // ----------------------------------
+
+    async function callOpenAI({ apiKey, model, userText, classificationJson }) {
+      const outEl = document.getElementById("openai-output");
+      function log(msg) {
+        if (outEl) outEl.textContent = msg;
+      }
+
+      if (!apiKey) {
+        log("// Bitte OpenAI API Key eingeben.");
+        return;
+      }
+
+      log("// Anfrage an OpenAI wird gesendet…");
+
+      // Grundprompt – wenn Klassifikation vorhanden, mitverwenden
+      let fullUserText = userText || "";
+      if (classificationJson) {
+        fullUserText =
+          (userText || "Bitte analysiere die folgenden Sticky-Notizen.") +
+          "\n\n=== STICKY-KLASSIFIKATION (JSON) ===\n" +
+          classificationJson;
+      }
+
+      const body = {
+        model,
+        input: [
+          {
+            role: "system",
+            content: [
+              {
+                type: "input_text",
+                text:
+                  "Du bist ein hilfreiches Analyse-Modell für Miro-Boards. " +
+                  "Du erhältst optional JSON-Daten über Sticky-Notes auf einem Datentreiber-Template " +
+                  "und sollst diese strukturiert analysieren.",
+              },
+            ],
+          },
+          {
+            role: "user",
+            content: [
+              {
+                type: "input_text",
+                text: fullUserText,
+              },
+            ],
+          },
+        ],
+        max_output_tokens: Number(
+          document.getElementById("openai-max-tokens").value || "512"
+        ),
+      };
+
+      try {
+        const res = await fetch("https://api.openai.com/v1/responses", {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+            Authorization: `Bearer ${apiKey}`,
+          },
+          body: JSON.stringify(body),
+        });
+
+        const data = await res.json();
+        if (!res.ok) {
+          log(
+            "Fehler: OpenAI request failed: " +
+              res.status +
+              "\n" +
+              formatJson(data)
+          );
+          return;
+        }
+
+        // Responses-API: erste Antwort aus output[0].content[0]
+        let text = "";
+        const firstOut = data.output && data.output[0];
+        if (
+          firstOut &&
+          Array.isArray(firstOut.content) &&
+          firstOut.content[0] &&
+          firstOut.content[0].type === "output_text"
+        ) {
+          text = firstOut.content[0].output_text.text;
+        } else {
+          text = formatJson(data);
+        }
+
+        log(text);
+      } catch (err) {
+        console.error(err);
+        const msg =
+          err && err.message ? String(err.message) : String(err || "Unknown");
+        log("Fehler beim Aufruf der OpenAI API:\n" + msg);
+      }
+    }
+
+    // ----------------------------------
+    // Initialisierung & Event-Handler
+    // ----------------------------------
+
+    miro.onReady(async () => {
+      setStatus("Panel geladen: " + new Date().toLocaleTimeString());
+
+      await populateTemplateSelect();
+
+      // Buttons holen
+      const btnInsertTemplate = document.getElementById("btn-insert-template");
+      const btnListTemplates = document.getElementById("btn-list-templates");
+      const btnZoomTemplate = document.getElementById("btn-zoom-template");
+      const btnToggleOverlay = document.getElementById("btn-toggle-overlay");
+      const btnClassify = document.getElementById("btn-classify-stickies");
+
+      const btnOpenAiSend = document.getElementById("btn-openai-send");
+      const btnOpenAiSendWithStickies = document.getElementById(
+        "btn-openai-send-with-stickies"
+      );
+
+      const selectTemplate = document.getElementById("template-select");
+
+      if (selectTemplate) {
+        selectTemplate.addEventListener("change", () => {
+          currentTemplateImageId = selectTemplate.value || null;
+        });
+      }
+
+      if (btnInsertTemplate) {
+        btnInsertTemplate.onclick = insertTemplateImage;
+      }
+      if (btnListTemplates) {
+        btnListTemplates.onclick = listTemplatesOnBoard;
+      }
+      if (btnZoomTemplate) {
+        btnZoomTemplate.onclick = zoomToTemplate;
+      }
+      if (btnToggleOverlay) {
+        btnToggleOverlay.onclick = toggleOverlay;
+      }
+      if (btnClassify) {
+        btnClassify.onclick = classifyStickiesOnly;
+      }
+
+      if (btnOpenAiSend) {
+        btnOpenAiSend.onclick = async () => {
+          const apiKey = document.getElementById("openai-key").value.trim();
+          const model = document.getElementById("openai-model").value;
+          const userText =
+            document.getElementById("openai-user-message").value.trim();
+          await callOpenAI({ apiKey, model, userText, classificationJson: null });
+        };
+      }
+
+      if (btnOpenAiSendWithStickies) {
+        btnOpenAiSendWithStickies.onclick = async () => {
+          const apiKey = document.getElementById("openai-key").value.trim();
+          const model = document.getElementById("openai-model").value;
+          const userText =
+            document.getElementById("openai-user-message").value.trim();
+          const classification = await classifyStickiesOnly();
+          const classificationJson = classification
+            ? formatJson(classification)
+            : null;
+          await callOpenAI({
+            apiKey,
+            model,
+            userText,
+            classificationJson,
+          });
+        };
+      }
+    });
+  </script>
 </body>
 </html>
