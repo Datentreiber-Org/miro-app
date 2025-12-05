@@ -73,18 +73,18 @@
 </head>
 <body>
   <div id="app">
-    <h3>Datentreiber – Template Mapper</h3>
+    <h3>Datentreiber Bot Beta V.1.0</h3>
 
     <div class="block">
       <h4>1) Template wählen</h4>
       <p class="hint">
-        Option A: „Template-Bild auf Board einfügen“ klickt dein 3-Boxes-PNG als Bild aufs Board.<br>
-        Option B: ein vorhandenes 3-Boxes-PNG auf dem Board auswählen und dann
-        „Aktuelle Auswahl als Template setzen“ klicken.
+        Option A: „Template-Bild auf Board einfügen“ legt dein 3-Boxes-PNG als Bild aufs Board.<br>
+        Option B: ein vorhandenes 3-Boxes-PNG auf dem Board auswählen (blau markiert)
+        und dann „Aktuelle Auswahl als Template setzen“ klicken.
       </p>
-      <button id="btn-insert-template">Template-Bild auf Board einfügen</button>
-      <button id="btn-set-template">Aktuelle Auswahl als Template setzen</button>
-      <button id="btn-classify">Stickies klassifizieren</button>
+      <button onclick="window.dtInsertTemplateImage()">Template-Bild auf Board einfügen</button>
+      <button onclick="window.dtSetTemplateFromSelection()">Aktuelle Auswahl als Template setzen</button>
+      <button onclick="window.dtClassifyStickies()">Stickies klassifizieren</button>
     </div>
 
     <div class="block">
@@ -106,9 +106,7 @@
         <textarea id="user-text" rows="3"
           placeholder="Bitte analysiere die Sticky Notes auf dem 3-Boxes-Canvas ..."></textarea>
       </label>
-      <button id="btn-call-openai">
-        An GPT senden (inkl. aktueller Klassifikation)
-      </button>
+      <button onclick="window.dtCallOpenAI()">An GPT senden (inkl. aktueller Klassifikation)</button>
     </div>
 
     <div class="block">
@@ -125,4 +123,317 @@
     const TEMPLATE_IMAGE_URL =
       "https://www.datentreiber.com/wp-content/uploads/2024/12/Datentreiber_EN_3-Boxes_v1-1_20240610.png";
 
-    let currentTemplateImage = null;   // {i
+    let currentTemplateImage = null;   // {id, title, x, y, width, height}
+    let lastClassification = null;
+    let miroReadyPromise = null;
+
+    function log(msg) {
+      const el = document.getElementById("log");
+      const text = typeof msg === "string" ? msg : JSON.stringify(msg, null, 2);
+      el.textContent = (el.textContent ? el.textContent + "\n\n" : "") + text;
+      el.scrollTop = el.scrollHeight;
+    }
+
+    // Beim Laden sofort sichtbar machen, dass JS läuft:
+    (function initialLog() {
+      const el = document.getElementById("log");
+      if (el) {
+        el.textContent =
+          "Panel-JS geladen: " + new Date().toLocaleTimeString() +
+          "\nWarte auf Miro SDK (dtEnsureMiroReady) ...";
+      }
+      console.log("[DT] app.html Script geladen");
+    })();
+
+    window.onerror = function (msg, src, line, col, err) {
+      log("JS-Fehler: " + msg + " @ " + line + ":" + col);
+    };
+
+    function stripHtml(html) {
+      if (!html) return "";
+      const tmp = document.createElement("div");
+      tmp.innerHTML = html;
+      return tmp.textContent || tmp.innerText || "";
+    }
+
+    // --------------------------------------------------------------------
+    // Miro-Ready-Helfer (einmalig)
+    // --------------------------------------------------------------------
+    function dtEnsureMiroReady() {
+      if (!miroReadyPromise) {
+        miroReadyPromise = new Promise((resolve) => {
+          if (window.miro && typeof miro.onReady === "function") {
+            miro.onReady(() => {
+              console.log("[DT] miro.onReady fired");
+              log("Miro SDK bereit.");
+              resolve();
+            });
+          } else {
+            log("Warnung: miro.onReady nicht verfügbar.");
+            resolve();
+          }
+        });
+      }
+      return miroReadyPromise;
+    }
+
+    // --------------------------------------------------------------------
+    // 1A) Template-Bild neu einfügen
+    // --------------------------------------------------------------------
+    async function dtInsertTemplateImage() {
+      log("Button: Template-Bild auf Board einfügen (klick).");
+      await dtEnsureMiroReady();
+
+      try {
+        const image = await miro.board.createImage({
+          url: TEMPLATE_IMAGE_URL,
+          x: 0,
+          y: 0,
+          width: 2000
+        });
+
+        currentTemplateImage = {
+          id: image.id,
+          title: image.title || "Datentreiber 3-Boxes",
+          x: image.x,
+          y: image.y,
+          width: image.width,
+          height: image.height,
+        };
+
+        log("Template eingefügt: Bild-ID " + image.id +
+            " / " + currentTemplateImage.title +
+            "\nDu kannst das Bild nun verschieben oder skalieren.\n" +
+            "Wenn du später Kopien hast, wähle immer das gewünschte Bild " +
+            "auf dem Board aus und klicke dann „Aktuelle Auswahl als Template setzen“.");
+        await miro.board.viewport.zoomTo(image);
+      } catch (e) {
+        log("Fehler beim Einfügen des Template-Bildes: " + e.message);
+      }
+    }
+
+    // --------------------------------------------------------------------
+    // 1B) Template aus aktueller Auswahl setzen
+    // --------------------------------------------------------------------
+    async function dtSetTemplateFromSelection() {
+      log("Button: Aktuelle Auswahl als Template setzen (klick).");
+      await dtEnsureMiroReady();
+
+      try {
+        const selection = await miro.board.getSelection();
+        if (!selection.length) {
+          log("Kein Element ausgewählt. Bitte das Template-PNG auf dem Board anklicken (blau markiert) und erneut versuchen.");
+          return;
+        }
+
+        const image = selection.find((item) => item.type === "image");
+        if (!image) {
+          log("In der Auswahl ist kein Bild-Element. Bitte direkt das Template-PNG auswählen (nicht den Frame).");
+          return;
+        }
+
+        currentTemplateImage = {
+          id: image.id,
+          title: image.title || "Datentreiber 3-Boxes",
+          x: image.x,
+          y: image.y,
+          width: image.width,
+          height: image.height,
+        };
+
+        log("Template gesetzt aus Auswahl: Bild-ID " + image.id +
+            " / " + currentTemplateImage.title);
+      } catch (e) {
+        log("Fehler beim Setzen des Templates aus Auswahl: " + e.message);
+      }
+    }
+
+    // --------------------------------------------------------------------
+    // Mapping von normalisierten Koordinaten -> Regionen
+    // --------------------------------------------------------------------
+    function dtMapToRegion(px, py) {
+      // Vertikale Begrenzung grob: unterhalb des Headers, oberhalb Fußzeile
+      const yMin = 0.20;
+      const yMax = 0.95;
+      if (py < yMin || py > yMax) return null;
+      if (px < 0 || px > 1) return null;
+
+      const third = 1 / 3;
+      if (px < third) {
+        return { id: "left",   title: "Box 1 (links)" };
+      } else if (px < 2 * third) {
+        return { id: "middle", title: "Box 2 (Mitte)" };
+      } else {
+        return { id: "right",  title: "Box 3 (rechts)" };
+      }
+    }
+
+    // --------------------------------------------------------------------
+    // 2) Stickies klassifizieren
+    // --------------------------------------------------------------------
+    async function dtClassifyStickies() {
+      log("Button: Stickies klassifizieren (klick).");
+      await dtEnsureMiroReady();
+
+      if (!currentTemplateImage) {
+        log("Kein Template gesetzt. Bitte zuerst „Template-Bild auf Board einfügen“ " +
+            "ODER ein vorhandenes PNG auswählen und „Aktuelle Auswahl als Template setzen“.");
+        return;
+      }
+
+      try {
+        const t = currentTemplateImage;
+        const left = t.x - t.width / 2;
+        const top  = t.y - t.height / 2;
+
+        const stickies = await miro.board.get({ type: "sticky_note" });
+
+        const result = {
+          template: {
+            id: TEMPLATE_ID,
+            name: t.title,
+            imageId: t.id,
+          },
+          counts: {
+            total: 0,
+            byRegion: {},
+          },
+          items: [],
+        };
+
+        for (const s of stickies) {
+          const sx = s.x;
+          const sy = s.y;
+
+          const px = (sx - left) / t.width;
+          const py = (sy - top) / t.height;
+          const inImageRect = px >= 0 && px <= 1 && py >= 0 && py <= 1;
+
+          if (!inImageRect) continue; // außerhalb des Templates ignorieren
+
+          let regionId = null;
+          let regionTitle = null;
+          const region = dtMapToRegion(px, py);
+          if (region) {
+            regionId = region.id;
+            regionTitle = region.title;
+          }
+
+          result.counts.total += 1;
+          if (regionId) {
+            result.counts.byRegion[regionId] =
+              (result.counts.byRegion[regionId] || 0) + 1;
+          }
+
+          result.items.push({
+            stickyId: s.id,
+            text: stripHtml(s.content),
+            px: Math.round(px * 10000) / 10000,
+            py: Math.round(py * 10000) / 10000,
+            inImageRect,
+            regionId,
+            regionTitle,
+          });
+        }
+
+        lastClassification = result;
+        log("Klassifikation fertig:");
+        log(result);
+      } catch (e) {
+        log("Fehler bei der Klassifikation: " + e.message);
+      }
+    }
+
+    // --------------------------------------------------------------------
+    // 3) OpenAI-Call mit aktueller Klassifikation
+    // --------------------------------------------------------------------
+    async function dtCallOpenAI() {
+      await dtEnsureMiroReady();
+
+      const apiKey  = document.getElementById("api-key").value.trim();
+      const model   = document.getElementById("model").value;
+      const userText = document.getElementById("user-text").value.trim();
+
+      if (!apiKey) {
+        log("Bitte OpenAI API Key eingeben.");
+        return;
+      }
+      if (!userText) {
+        log("Bitte eine Frage / Aufgabe im Textfeld eingeben.");
+        return;
+      }
+
+      const classificationPart = lastClassification
+        ? "\n\nAktuelle Sticky-Notiz-Klassifikation (JSON):\n" +
+          JSON.stringify(lastClassification, null, 2)
+        : "\n\nHinweis: Es liegt noch keine Klassifikation vor.";
+
+      const fullUserText = userText + classificationPart;
+
+      const body = {
+        model,
+        input: [
+          {
+            role: "system",
+            content: [
+              {
+                type: "input_text",
+                text:
+                  "Du bist ein Assistent, der Miro-Boards analysiert. " +
+                  "Du bekommst Sticky-Notes als JSON und eine Nutzerfrage " +
+                  "und sollst prägnante Antworten liefern. " +
+                  "Antworte standardmäßig auf Deutsch."
+              }
+            ]
+          },
+          {
+            role: "user",
+            content: [
+              {
+                type: "input_text",
+                text: fullUserText
+              }
+            ]
+          }
+        ],
+        max_output_tokens: 512
+      };
+
+      try {
+        log("Sende Anfrage an OpenAI ...");
+        const res = await fetch("https://api.openai.com/v1/responses", {
+          method: "POST",
+          headers: {
+            "Authorization": "Bearer " + apiKey,
+            "Content-Type": "application/json"
+          },
+          body: JSON.stringify(body)
+        });
+
+        const text = await res.text();
+        if (!res.ok) {
+          log("Fehler bei OpenAI-Anfrage: " + res.status + " " + text);
+          return;
+        }
+
+        const data = JSON.parse(text);
+        const firstMessage = data.output && data.output[0];
+        const contentArr = firstMessage && firstMessage.content;
+        const textPart = contentArr && contentArr.find((c) => c.type === "output_text");
+        const answer = textPart ? textPart.text : "(keine Antwort gefunden)";
+
+        log("Antwort von OpenAI:");
+        log(answer);
+      } catch (e) {
+        log("Exception beim Aufruf der OpenAI API: " + e.message);
+      }
+    }
+
+    // Funktionen ins window hängen, damit die inline-onclicks sie sehen
+    window.dtInsertTemplateImage   = dtInsertTemplateImage;
+    window.dtSetTemplateFromSelection = dtSetTemplateFromSelection;
+    window.dtClassifyStickies      = dtClassifyStickies;
+    window.dtCallOpenAI            = dtCallOpenAI;
+  </script>
+</body>
+</html>
