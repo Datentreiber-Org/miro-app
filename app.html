@@ -569,9 +569,12 @@
           color,
           tagIds,
           tags,
+          // Cluster-Zuordnung aus dem Session-State (dtClusterSelection)
+          clusterName: dtClusterAssignments.get(s.id) || null,
           connectionsOut: [],
           connectionsIn: []
         };
+
 
         result.items.push(item);
         stickyMap.set(s.id, item);
@@ -800,9 +803,11 @@
               text: h.text,
               color: (item && item.color) || h.color || null,
               tags: tags,
+              clusterName: item && item.clusterName ? item.clusterName : null,
               connectionsOut: buildConnectionsOut(item),
               connectionsIn: buildConnectionsIn(item)
             };
+
           })
         };
 
@@ -836,9 +841,11 @@
               text: item.text,
               color: item.color || null,
               tags: tags,
+              clusterName: item.clusterName || null,
               connectionsOut: buildConnectionsOut(item),
               connectionsIn: buildConnectionsIn(item)
             };
+
 
             areasByName[areaName].stickies.push(stickObj);
           }
