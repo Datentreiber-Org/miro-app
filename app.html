@@ -87,6 +87,8 @@
       <button onclick="window.dtInsertTemplateImage()">Template-Bild auf Board einfügen</button>
       <button onclick="window.dtSetTemplateFromSelection()">Aktuelle Auswahl als Template setzen</button>
       <button onclick="window.dtClassifyStickies()">Stickies klassifizieren</button>
+      <button onclick="window.dtClusterSelection()">Auswahl clustern (unterstrichener Text = Clustername)</button>
+
     </div>
 
     <div class="block">
@@ -124,6 +126,8 @@
     const TEMPLATE_ID = "datentreiber-3boxes";
     const TEMPLATE_IMAGE_URL =
       "https://www.datentreiber.com/wp-content/uploads/2024/12/Datentreiber_EN_3-Boxes_v1-1_20240610.png";
+    const CLUSTER_META_KEY = "datentreiber-clusters";
+
 
     let currentTemplateImage = null;   // {id, title, x, y, width, height}
     let lastClassification = null;
@@ -156,6 +160,17 @@
       const tmp = document.createElement("div");
       tmp.innerHTML = html;
       return tmp.textContent || tmp.innerText || "";
+    }
+    
+    // Unterstrichenen Text aus dem Sticky-HTML extrahieren (für Cluster-Namen)
+    function dtExtractUnderlinedText(html) {
+      if (!html) return null;
+      const tmp = document.createElement("div");
+      tmp.innerHTML = html;
+      const u = tmp.querySelector("u");
+      if (!u) return null;
+      const txt = (u.textContent || "").trim();
+      return txt || null;
     }
 
     // --------------------------------------------------------------------
@@ -361,6 +376,105 @@
             " / " + currentTemplateImage.title);
       } catch (e) {
         log("Fehler beim Setzen des Templates aus Auswahl: " + e.message);
+      }
+    }
+
+    
+    // --------------------------------------------------------------------
+    // 1C) Auswahl clustern:
+    //      - Auswahl muss Sticky Notes enthalten
+    //      - erster Sticky mit unterstrichenem Text => Clustername
+    //      - alle ausgewählten Stickies bekommen Metadaten mit Cluster-Name
+    //        (Sticky kann immer nur in einem Cluster: Wert wird überschrieben)
+    // --------------------------------------------------------------------
+    async function dtClusterSelection() {
+      log("Button: Auswahl clustern (klick).");
+      await dtEnsureMiroReady();
+
+      let selection = [];
+      try {
+        selection = await miro.board.getSelection();
+      } catch (e) {
+        log("Fehler beim Lesen der Auswahl für Clustering: " + e.message);
+        return;
+      }
+
+      if (!selection || !selection.length) {
+        log("Keine Elemente ausgewählt. Bitte die gewünschten Sticky Notes auswählen und erneut versuchen.");
+        return;
+      }
+
+      const stickies = selection.filter(function (item) {
+        return item.type === "sticky_note";
+      });
+
+      if (!stickies.length) {
+        log("In der Auswahl sind keine Sticky Notes. Bitte mindestens zwei Sticky Notes auswählen.");
+        return;
+      }
+
+      // Cluster-Header bestimmen: erster Sticky mit unterstrichenem Text
+      let headerSticky = null;
+      let clusterName = null;
+
+      for (const s of stickies) {
+        const name = dtExtractUnderlinedText(s.content);
+        if (name) {
+          headerSticky = s;
+          clusterName = name;
+          break;
+        }
+      }
+
+      if (!headerSticky || !clusterName) {
+        log(
+          "Kein Sticky Note mit unterstrichenem Text gefunden. " +
+          "Bitte einen Sticky im Cluster mit unterstrichenem Text als Clusternamen versehen."
+        );
+        return;
+      }
+
+      try {
+        const updates = [];
+
+        for (const s of stickies) {
+          const allMeta = s.metadata || {};
+          const existing = allMeta[CLUSTER_META_KEY] || {};
+
+          // Sticky kann nur in einem Cluster sein: clusterName wird überschrieben
+          const newClusterMeta = {
+            ...existing,
+            clusterName: clusterName,
+            clusterHeaderId: headerSticky.id,
+            isClusterHeader: s.id === headerSticky.id
+          };
+
+          const newMetadata = {
+            ...allMeta,
+            [CLUSTER_META_KEY]: newClusterMeta
+          };
+
+          updates.push(
+            miro.board.update({
+              id: s.id,
+              metadata: newMetadata
+            })
+          );
+        }
+
+        await Promise.all(updates);
+
+        log(
+          'Cluster "' +
+            clusterName +
+            '" gesetzt für ' +
+            stickies.length +
+            " Sticky Notes (Header: " +
+            stripHtml(headerSticky.content) +
+            ")."
+        );
+      } catch (e) {
+        log("Fehler beim Setzen der Cluster-Metadaten: " + e.message);
       }
     }
 
@@ -897,6 +1011,8 @@
     window.dtSetTemplateFromSelection   = dtSetTemplateFromSelection;
     window.dtClassifyStickies           = dtClassifyStickies;
     window.dtCallOpenAI                 = dtCallOpenAI;
+    window.dtClusterSelection           = dtClusterSelection;
+
   </script>
 </body>
 </html>
