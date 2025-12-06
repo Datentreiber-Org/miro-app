@@ -128,10 +128,14 @@
       "https://www.datentreiber.com/wp-content/uploads/2024/12/Datentreiber_EN_3-Boxes_v1-1_20240610.png";
     const CLUSTER_META_KEY = "datentreiber-clusters";
 
-
     let currentTemplateImage = null;   // {id, title, x, y, width, height}
     let lastClassification = null;
     let miroReadyPromise = null;
+
+    // Cluster-Zuordnung: Sticky-ID -> Cluster-Name
+    // (gilt für die Lebensdauer des offenen Panels)
+    const dtClusterAssignments = new Map();
+
 
     function log(msg) {
       const el = document.getElementById("log");
@@ -381,84 +385,75 @@
 
     
     // --------------------------------------------------------------------
-    // 1C) Auswahl clustern:
-    //      - Auswahl muss Sticky Notes enthalten
-    //      - erster Sticky mit unterstrichenem Text => Clustername
-    //      - alle ausgewählten Stickies bekommen Metadaten mit Cluster-Name
-    //        (Sticky kann immer nur in einem Cluster: Wert wird überschrieben)
+    // Auswahl clustern:
+    //  - Auswahl muss Sticky Notes enthalten
+    //  - genau EIN Sticky mit unterstrichenem Text = Cluster-Name
+    //  - alle ausgewählten Stickies bekommen im Session-State diesen Cluster
     // --------------------------------------------------------------------
     async function dtClusterSelection() {
       log("Button: Auswahl clustern (klick).");
       await dtEnsureMiroReady();
-    
+
       try {
         const selection = await miro.board.getSelection();
         if (!selection || !selection.length) {
-          log("Keine Objekte ausgewählt. Bitte alle Sticky Notes eines Clusters auswählen (inkl. der unterstrichenen Überschrift) und erneut versuchen.");
+          log("Keine Auswahl gefunden. Bitte einige Sticky Notes auswählen.");
           return;
         }
-    
-        // Nur Sticky Notes betrachten
-        const stickies = selection.filter((item) => item.type === "sticky_note");
-        if (!stickies.length) {
-          log("In der Auswahl sind keine Sticky Notes. Bitte nur Sticky Notes auswählen.");
+
+        const stickyNotes = selection.filter((item) => item.type === "sticky_note");
+        if (!stickyNotes.length) {
+          log("In der Auswahl sind keine Sticky Notes. Bitte nur Sticky Notes markieren.");
           return;
         }
-    
-        // Cluster-Name: Sticky mit unterstrichenem Text finden
-        let nameSticky = null;
-        for (const s of stickies) {
+
+        // 1) Sticky mit unterstrichenem Text als Cluster-Name finden
+        let headerSticky = null;
+        for (const s of stickyNotes) {
           const html = s.content || "";
-          const hasUnderline =
+          if (
             html.indexOf("<u>") !== -1 ||
-            /text-decoration\s*:\s*underline/i.test(html);
-          if (hasUnderline) {
-            nameSticky = s;
+            html.indexOf("text-decoration:underline") !== -1
+          ) {
+            headerSticky = s;
             break;
           }
         }
-    
-        if (!nameSticky) {
-          log("Es wurde kein Sticky Note mit unterstrichenem Text gefunden. Bitte einen Sticky im Cluster als Überschrift unterstreichen und erneut versuchen.");
+
+        if (!headerSticky) {
+          log(
+            "Kein Sticky mit unterstrichenem Text gefunden. " +
+              "Bitte genau ein Sticky im Cluster als Namen unterstreichen."
+          );
           return;
         }
-    
-        const clusterName = stripHtml(nameSticky.content || "").trim();
+
+        const clusterName = stripHtml(headerSticky.content).trim();
         if (!clusterName) {
-          log("Der Cluster-Name-Sticky hat keinen Text. Bitte einen Namen eintragen.");
+          log(
+            "Der unterstrichene Sticky-Text ist leer. " +
+              "Bitte einen lesbaren Namen unterstreichen und erneut versuchen."
+          );
           return;
         }
-    
-        // Metadaten an allen Stickies des Clusters setzen
-        const syncPromises = [];
-        for (const s of stickies) {
-          if (!s.metadata) {
-            s.metadata = {};
-          }
-          if (!s.metadata["datentreiber.cluster"]) {
-            s.metadata["datentreiber.cluster"] = {};
-          }
-    
-          // Ein Sticky kann immer nur in einem Cluster sein -> Name überschreiben
-          s.metadata["datentreiber.cluster"].name = clusterName;
-    
-          // WICHTIG: Im Web SDK v2 per item.sync() speichern, nicht über miro.board.update()
-          syncPromises.push(s.sync());
+
+        // 2) Session-State: alle ausgewählten Stickies auf diesen Cluster setzen
+        for (const s of stickyNotes) {
+          dtClusterAssignments.set(s.id, clusterName);
         }
-    
-        await Promise.all(syncPromises);
-    
+
         log(
-          'Cluster-Metadaten gesetzt: "' +
+          "Cluster '" +
             clusterName +
-            '" für ' +
-            stickies.length +
-            " Sticky Notes."
+            "' gesetzt für " +
+            stickyNotes.length +
+            " Sticky Notes (Session-State, kein Board-Metafeld)."
         );
       } catch (e) {
         log("Fehler beim Setzen der Cluster-Metadaten: " + e.message);
       }
     }
+
 
     // --------------------------------------------------------------------
     // Mapping von normalisierten Koordinaten -> Regionen (3 Boxen)
