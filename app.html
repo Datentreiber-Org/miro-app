@@ -390,88 +390,70 @@
     async function dtClusterSelection() {
       log("Button: Auswahl clustern (klick).");
       await dtEnsureMiroReady();
-
-      let selection = [];
+    
       try {
-        selection = await miro.board.getSelection();
-      } catch (e) {
-        log("Fehler beim Lesen der Auswahl für Clustering: " + e.message);
-        return;
-      }
-
-      if (!selection || !selection.length) {
-        log("Keine Elemente ausgewählt. Bitte die gewünschten Sticky Notes auswählen und erneut versuchen.");
-        return;
-      }
-
-      const stickies = selection.filter(function (item) {
-        return item.type === "sticky_note";
-      });
-
-      if (!stickies.length) {
-        log("In der Auswahl sind keine Sticky Notes. Bitte mindestens zwei Sticky Notes auswählen.");
-        return;
-      }
-
-      // Cluster-Header bestimmen: erster Sticky mit unterstrichenem Text
-      let headerSticky = null;
-      let clusterName = null;
-
-      for (const s of stickies) {
-        const name = dtExtractUnderlinedText(s.content);
-        if (name) {
-          headerSticky = s;
-          clusterName = name;
-          break;
+        const selection = await miro.board.getSelection();
+        if (!selection || !selection.length) {
+          log("Keine Objekte ausgewählt. Bitte alle Sticky Notes eines Clusters auswählen (inkl. der unterstrichenen Überschrift) und erneut versuchen.");
+          return;
         }
-      }
-
-      if (!headerSticky || !clusterName) {
-        log(
-          "Kein Sticky Note mit unterstrichenem Text gefunden. " +
-          "Bitte einen Sticky im Cluster mit unterstrichenem Text als Clusternamen versehen."
-        );
-        return;
-      }
-
-      try {
-        const updates = [];
-
+    
+        // Nur Sticky Notes betrachten
+        const stickies = selection.filter((item) => item.type === "sticky_note");
+        if (!stickies.length) {
+          log("In der Auswahl sind keine Sticky Notes. Bitte nur Sticky Notes auswählen.");
+          return;
+        }
+    
+        // Cluster-Name: Sticky mit unterstrichenem Text finden
+        let nameSticky = null;
         for (const s of stickies) {
-          const allMeta = s.metadata || {};
-          const existing = allMeta[CLUSTER_META_KEY] || {};
-
-          // Sticky kann nur in einem Cluster sein: clusterName wird überschrieben
-          const newClusterMeta = {
-            ...existing,
-            clusterName: clusterName,
-            clusterHeaderId: headerSticky.id,
-            isClusterHeader: s.id === headerSticky.id
-          };
-
-          const newMetadata = {
-            ...allMeta,
-            [CLUSTER_META_KEY]: newClusterMeta
-          };
-
-          updates.push(
-            miro.board.update({
-              id: s.id,
-              metadata: newMetadata
-            })
-          );
+          const html = s.content || "";
+          const hasUnderline =
+            html.indexOf("<u>") !== -1 ||
+            /text-decoration\s*:\s*underline/i.test(html);
+          if (hasUnderline) {
+            nameSticky = s;
+            break;
+          }
         }
-
-        await Promise.all(updates);
-
+    
+        if (!nameSticky) {
+          log("Es wurde kein Sticky Note mit unterstrichenem Text gefunden. Bitte einen Sticky im Cluster als Überschrift unterstreichen und erneut versuchen.");
+          return;
+        }
+    
+        const clusterName = stripHtml(nameSticky.content || "").trim();
+        if (!clusterName) {
+          log("Der Cluster-Name-Sticky hat keinen Text. Bitte einen Namen eintragen.");
+          return;
+        }
+    
+        // Metadaten an allen Stickies des Clusters setzen
+        const syncPromises = [];
+        for (const s of stickies) {
+          if (!s.metadata) {
+            s.metadata = {};
+          }
+          if (!s.metadata["datentreiber.cluster"]) {
+            s.metadata["datentreiber.cluster"] = {};
+          }
+    
+          // Ein Sticky kann immer nur in einem Cluster sein -> Name überschreiben
+          s.metadata["datentreiber.cluster"].name = clusterName;
+    
+          // WICHTIG: Im Web SDK v2 per item.sync() speichern, nicht über miro.board.update()
+          syncPromises.push(s.sync());
+        }
+    
+        await Promise.all(syncPromises);
+    
         log(
-          'Cluster "' +
+          'Cluster-Metadaten gesetzt: "' +
             clusterName +
-            '" gesetzt für ' +
+            '" für ' +
             stickies.length +
-            " Sticky Notes (Header: " +
-            stripHtml(headerSticky.content) +
-            ")."
+            " Sticky Notes."
         );
       } catch (e) {
         log("Fehler beim Setzen der Cluster-Metadaten: " + e.message);
