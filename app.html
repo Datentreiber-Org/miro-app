@@ -628,6 +628,173 @@
       }
     }
 
+
+    // --------------------------------------------------------------------
+    // 2c) Reduziertes JSON für das Sprachmodell aus der Klassifikation bauen
+    // --------------------------------------------------------------------
+    function dtBuildPromptPayloadFromClassification(classification) {
+      if (!classification) {
+        return null;
+      }
+
+      const perTemplate = Array.isArray(classification.templates) && classification.templates.length
+        ? classification.templates
+        : [classification];
+
+      function transformOne(one) {
+        const idToItem = {};
+        if (Array.isArray(one.items)) {
+          for (const item of one.items) {
+            if (item && item.stickyId) {
+              idToItem[item.stickyId] = item;
+            }
+          }
+        }
+
+        function buildConnectionsOut(item) {
+          const result = [];
+          if (!item || !Array.isArray(item.connectionsOut)) {
+            return result;
+          }
+          for (const co of item.connectionsOut) {
+            const target = co && idToItem[co.toStickyId];
+            const toText = target ? target.text : null;
+            const toArea = target
+              ? (target.regionTitle || (target.role === "header" ? "Header" : null))
+              : null;
+            result.push({
+              connectorId: co.connectorId,
+              toText: toText,
+              toArea: toArea
+            });
+          }
+          return result;
+        }
+
+        function buildConnectionsIn(item) {
+          const result = [];
+          if (!item || !Array.isArray(item.connectionsIn)) {
+            return result;
+          }
+          for (const ci of item.connectionsIn) {
+            const source = ci && idToItem[ci.fromStickyId];
+            const fromText = source ? source.text : null;
+            const fromArea = source
+              ? (source.regionTitle || (source.role === "header" ? "Header" : null))
+              : null;
+            result.push({
+              connectorId: ci.connectorId,
+              fromText: fromText,
+              fromArea: fromArea
+            });
+          }
+          return result;
+        }
+
+        const headerStickiesRaw =
+          (one.header && Array.isArray(one.header.stickies) && one.header.stickies) || [];
+
+        const header = {
+          summary: one.template && one.template.headerSummary,
+          stickies: headerStickiesRaw.map(function (h) {
+            const item = h.stickyId ? idToItem[h.stickyId] : null;
+            const tagObjs = item && Array.isArray(item.tags)
+              ? item.tags
+              : (Array.isArray(h.tags) ? h.tags : []);
+            const tags = tagObjs
+              .map(function (t) { return t && t.title; })
+              .filter(function (title) { return !!title; });
+
+            return {
+              text: h.text,
+              color: (item && item.color) || h.color || null,
+              tags: tags,
+              connectionsOut: buildConnectionsOut(item),
+              connectionsIn: buildConnectionsIn(item)
+            };
+          })
+        };
+
+        const areasByName = {};
+
+        if (Array.isArray(one.items)) {
+          for (const item of one.items) {
+            if (!item) {
+              continue;
+            }
+            if (item.role === "header") {
+              // Header-Stickies laufen separat unter "header"
+              continue;
+            }
+
+            const areaName = item.regionTitle || "Ohne Area";
+            if (!areasByName[areaName]) {
+              areasByName[areaName] = {
+                name: areaName,
+                stickies: []
+              };
+            }
+
+            const tags = Array.isArray(item.tags)
+              ? item.tags
+                  .map(function (t) { return t && t.title; })
+                  .filter(function (title) { return !!title; })
+              : [];
+
+            const stickObj = {
+              text: item.text,
+              color: item.color || null,
+              tags: tags,
+              connectionsOut: buildConnectionsOut(item),
+              connectionsIn: buildConnectionsIn(item)
+            };
+
+            areasByName[areaName].stickies.push(stickObj);
+          }
+        }
+
+        const connectionsSummary = Array.isArray(one.connections)
+          ? one.connections.map(function (c) {
+              const fromItem = c.fromStickyId ? idToItem[c.fromStickyId] : null;
+              const toItem = c.toStickyId ? idToItem[c.toStickyId] : null;
+
+              const fromArea = fromItem
+                ? (fromItem.regionTitle || (fromItem.role === "header" ? "Header" : null))
+                : null;
+              const toArea = toItem
+                ? (toItem.regionTitle || (toItem.role === "header" ? "Header" : null))
+                : null;
+
+              return {
+                connectorId: c.connectorId,
+                fromText: fromItem ? fromItem.text : null,
+                fromArea: fromArea,
+                toText: toItem ? toItem.text : null,
+                toArea: toArea
+              };
+            })
+          : [];
+
+        return {
+          template: {
+            name: one.template && one.template.name,
+            headerSummary: one.template && one.template.headerSummary
+          },
+          header: header,
+          areas: Object.keys(areasByName).map(function (key) {
+            return areasByName[key];
+          }),
+          connections: connectionsSummary
+        };
+      }
+
+      const templatesPayload = perTemplate.map(transformOne);
+
+      return {
+        templates: templatesPayload
+      };
+    }
+
     // --------------------------------------------------------------------
     // 3) OpenAI-Call mit aktueller Klassifikation
     //    - ruft intern zuerst dtClassifyStickies({ silent: true }) auf
@@ -652,13 +819,19 @@
       // inkl. aller aktuell ausgewählten Template-Instanzen).
       const classification = await dtClassifyStickies({ silent: true });
 
-      const classificationPart = classification
-        ? "\n\nAktuelle Sticky-Notiz-Klassifikation (JSON):\n" +
-          JSON.stringify(classification, null, 2)
+      // Reduziertes, modellfreundliches JSON aus der Klassifikation bauen
+      const promptPayload = classification
+        ? dtBuildPromptPayloadFromClassification(classification)
+        : null;
+
+      const classificationPart = promptPayload
+        ? "\n\nAktuelle Sticky-Notiz-Klassifikation (reduziertes JSON für das Sprachmodell):\n" +
+          JSON.stringify(promptPayload, null, 2)
         : "\n\nHinweis: Es liegt noch keine Klassifikation vor (kein Template gesetzt " +
           "oder keine Stickies innerhalb der Templates).";
 
       const fullUserText = userText + classificationPart;
+
 
       const body = {
         model,
