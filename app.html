@@ -80,7 +80,9 @@
       <p class="hint">
         Option A: „Template-Bild auf Board einfügen“ legt dein 3-Boxes-PNG als Bild aufs Board.<br>
         Option B: ein vorhandenes 3-Boxes-PNG auf dem Board auswählen (blau markiert)
-        und dann „Aktuelle Auswahl als Template setzen“ klicken.
+        und dann „Aktuelle Auswahl als Template setzen“ klicken.<br>
+        Beim Klassifizieren / GPT-Call wird immer die aktuell ausgewählte Template-Instanz
+        bevorzugt (das markierte 3-Boxes-PNG).
       </p>
       <button onclick="window.dtInsertTemplateImage()">Template-Bild auf Board einfügen</button>
       <button onclick="window.dtSetTemplateFromSelection()">Aktuelle Auswahl als Template setzen</button>
@@ -182,6 +184,90 @@
     }
 
     // --------------------------------------------------------------------
+    // Helper: aktive Template-Instanz ermitteln
+    //  - 1. Priorität: ausgewähltes Bild mit TEMPLATE_IMAGE_URL
+    //  - 2. Priorität: zuletzt gemerktes Template-Bild (Koordinaten vom Board aktualisiert)
+    // --------------------------------------------------------------------
+    async function dtResolveTemplateImage(options) {
+      const silent = options && options.silent;
+      await dtEnsureMiroReady();
+
+      // 1) Auswahl prüfen
+      try {
+        const selection = await miro.board.getSelection();
+        if (selection && selection.length) {
+          const imgFromSelection = selection.find(
+            (item) =>
+              item.type === "image" &&
+              typeof item.url === "string" &&
+              item.url.indexOf(TEMPLATE_IMAGE_URL) !== -1
+          );
+          if (imgFromSelection) {
+            const t = {
+              id: imgFromSelection.id,
+              title: imgFromSelection.title || "Datentreiber 3-Boxes",
+              x: imgFromSelection.x,
+              y: imgFromSelection.y,
+              width: imgFromSelection.width,
+              height: imgFromSelection.height
+            };
+            currentTemplateImage = t;
+            if (!silent) {
+              log(
+                "Template aus aktueller Auswahl verwendet: Bild-ID " +
+                t.id + " / " + t.title
+              );
+            }
+            return t;
+          }
+        }
+      } catch (e) {
+        if (!silent) {
+          log("Fehler beim Auslesen der Auswahl: " + e.message);
+        }
+      }
+
+      // 2) Fallback: letztes Template-Bild anhand der ID vom Board holen
+      if (currentTemplateImage && currentTemplateImage.id) {
+        try {
+          const arr = await miro.board.get({ id: currentTemplateImage.id });
+          if (arr && arr.length) {
+            const img = arr[0];
+            const t = {
+              id: img.id,
+              title: img.title || "Datentreiber 3-Boxes",
+              x: img.x,
+              y: img.y,
+              width: img.width,
+              height: img.height
+            };
+            currentTemplateImage = t;
+            if (!silent) {
+              log(
+                "Template aktualisiert (Position/Größe vom Board gelesen): Bild-ID " +
+                t.id + " / " + t.title
+              );
+            }
+            return t;
+          } else {
+            if (!silent) {
+              log("Das zuletzt gespeicherte Template-Bild ist nicht mehr auf dem Board.");
+            }
+          }
+        } catch (e) {
+          if (!silent) {
+            log("Fehler beim Nachladen des Template-Bildes: " + e.message);
+          }
+        }
+      }
+
+      if (!silent) {
+        log("Kein Template gefunden. Bitte Template-Bild einfügen oder ein vorhandenes PNG auswählen.");
+      }
+      return null;
+    }
+
+    // --------------------------------------------------------------------
     // 1A) Template-Bild neu einfügen
     // --------------------------------------------------------------------
     async function dtInsertTemplateImage() {
@@ -202,7 +288,7 @@
           x: image.x,
           y: image.y,
           width: image.width,
-          height: image.height,
+          height: image.height
         };
         lastClassification = null;
 
@@ -210,8 +296,8 @@
           "Template eingefügt: Bild-ID " + image.id +
           " / " + currentTemplateImage.title +
           "\nDu kannst das Bild nun verschieben oder skalieren.\n" +
-          "Wenn du später Kopien hast, wähle immer das gewünschte Bild " +
-          "auf dem Board aus und klicke dann „Aktuelle Auswahl als Template setzen“."
+          "Wenn du mehrere Instanzen hast, wähle das gewünschte Bild " +
+          "einfach aus (blauer Rahmen) und starte dann Klassifikation / GPT."
         );
         await miro.board.viewport.zoomTo(image);
       } catch (e) {
@@ -220,7 +306,7 @@
     }
 
     // --------------------------------------------------------------------
-    // 1B) Template aus aktueller Auswahl setzen
+    // 1B) Template aus aktueller Auswahl setzen (manuelle Fokussierung)
     // --------------------------------------------------------------------
     async function dtSetTemplateFromSelection() {
       log("Button: Aktuelle Auswahl als Template setzen (klick).");
@@ -245,7 +331,7 @@
           x: image.x,
           y: image.y,
           width: image.width,
-          height: image.height,
+          height: image.height
         };
         lastClassification = null;
 
@@ -284,8 +370,7 @@
     }
 
     // --------------------------------------------------------------------
-    // 2) Stickies klassifizieren (für das aktuell gesetzte Template)
-    //    - Kann manuell (Button) oder „silent“ aus dtCallOpenAI aufgerufen werden
+    // 2) Stickies klassifizieren (für das aktuell gesetzte/ausgewählte Template)
     // --------------------------------------------------------------------
     async function dtClassifyStickies(options) {
       const silent = options && options.silent;
@@ -293,18 +378,12 @@
         log("Button: Stickies klassifizieren (klick).");
       }
 
-      await dtEnsureMiroReady();
-
-      if (!currentTemplateImage) {
-        if (!silent) {
-          log("Kein Template gesetzt. Bitte zuerst „Template-Bild auf Board einfügen“ " +
-              "ODER ein vorhandenes PNG auswählen und „Aktuelle Auswahl als Template setzen“.");
-        }
+      const t = await dtResolveTemplateImage({ silent });
+      if (!t) {
         return null;
       }
 
       try {
-        const t = currentTemplateImage;
         const left = t.x - t.width / 2;
         const top  = t.y - t.height / 2;
 
