@@ -81,8 +81,8 @@
         Option A: „Template-Bild auf Board einfügen“ legt dein 3-Boxes-PNG als Bild aufs Board.<br>
         Option B: ein vorhandenes 3-Boxes-PNG auf dem Board auswählen (blau markiert)
         und dann „Aktuelle Auswahl als Template setzen“ klicken.<br>
-        Beim Klassifizieren / GPT-Call wird immer die aktuell ausgewählte Template-Instanz
-        bevorzugt (das markierte 3-Boxes-PNG).
+        Beim Klassifizieren / GPT-Call werden alle aktuell ausgewählten 3-Boxes-PNGs
+        als eigene Template-Instanzen berücksichtigt (1..n).
       </p>
       <button onclick="window.dtInsertTemplateImage()">Template-Bild auf Board einfügen</button>
       <button onclick="window.dtSetTemplateFromSelection()">Aktuelle Auswahl als Template setzen</button>
@@ -184,87 +184,109 @@
     }
 
     // --------------------------------------------------------------------
-    // Helper: aktive Template-Instanz ermitteln
-    //  - 1. Priorität: ausgewähltes Bild mit TEMPLATE_IMAGE_URL
-    //  - 2. Priorität: zuletzt gemerktes Template-Bild (Koordinaten vom Board aktualisiert)
+    // Template-Resolver: 1..n Bild-Instanzen bestimmen
+    //  - 1. Priorität: ausgewählte 3-Boxes-PNGs (URL enthält TEMPLATE_IMAGE_URL)
+    //  - 2. Priorität: zuletzt gemerkte Template-Instanz
     // --------------------------------------------------------------------
-    async function dtResolveTemplateImage(options) {
+    async function dtResolveTemplateImages(options) {
       const silent = options && options.silent;
       await dtEnsureMiroReady();
 
-      // 1) Auswahl prüfen
+      let selection = [];
       try {
-        const selection = await miro.board.getSelection();
-        if (selection && selection.length) {
-          const imgFromSelection = selection.find(
-            (item) =>
-              item.type === "image" &&
-              typeof item.url === "string" &&
-              item.url.indexOf(TEMPLATE_IMAGE_URL) !== -1
-          );
-          if (imgFromSelection) {
-            const t = {
-              id: imgFromSelection.id,
-              title: imgFromSelection.title || "Datentreiber 3-Boxes",
-              x: imgFromSelection.x,
-              y: imgFromSelection.y,
-              width: imgFromSelection.width,
-              height: imgFromSelection.height
-            };
-            currentTemplateImage = t;
-            if (!silent) {
-              log(
-                "Template aus aktueller Auswahl verwendet: Bild-ID " +
-                t.id + " / " + t.title
-              );
-            }
-            return t;
-          }
-        }
+        selection = await miro.board.getSelection();
       } catch (e) {
         if (!silent) {
-          log("Fehler beim Auslesen der Auswahl: " + e.message);
+          log("Fehler beim Lesen der Auswahl: " + e.message);
         }
       }
 
-      // 2) Fallback: letztes Template-Bild anhand der ID vom Board holen
-      if (currentTemplateImage && currentTemplateImage.id) {
-        try {
-          const arr = await miro.board.get({ id: currentTemplateImage.id });
-          if (arr && arr.length) {
-            const img = arr[0];
-            const t = {
-              id: img.id,
-              title: img.title || "Datentreiber 3-Boxes",
-              x: img.x,
-              y: img.y,
-              width: img.width,
-              height: img.height
-            };
-            currentTemplateImage = t;
-            if (!silent) {
+      // 1) Alle ausgewählten 3-Boxes-Bilder als Templates verwenden
+      if (selection && selection.length) {
+        const images = selection.filter(
+          (item) =>
+            item.type === "image" &&
+            typeof item.url === "string" &&
+            item.url.indexOf(TEMPLATE_IMAGE_URL) !== -1
+        );
+
+        if (images.length) {
+          const templates = images.map((img) => ({
+            id: img.id,
+            title: img.title || "Datentreiber 3-Boxes",
+            x: img.x,
+            y: img.y,
+            width: img.width,
+            height: img.height
+          }));
+
+          // Für Abwärtskompatibilität: erste Instanz merken
+          currentTemplateImage = templates[0];
+
+          if (!silent) {
+            if (templates.length === 1) {
               log(
-                "Template aktualisiert (Position/Größe vom Board gelesen): Bild-ID " +
-                t.id + " / " + t.title
+                "Template aus Auswahl verwendet: Bild-ID " +
+                templates[0].id + " / " + templates[0].title
+              );
+            } else {
+              log(
+                "Mehrere Template-Bilder aus Auswahl verwendet (" +
+                templates.length + " Stück)."
               );
             }
-            return t;
-          } else {
-            if (!silent) {
-              log("Das zuletzt gespeicherte Template-Bild ist nicht mehr auf dem Board.");
-            }
           }
-        } catch (e) {
-          if (!silent) {
-            log("Fehler beim Nachladen des Template-Bildes: " + e.message);
-          }
+          return templates;
         }
       }
 
-      if (!silent) {
-        log("Kein Template gefunden. Bitte Template-Bild einfügen oder ein vorhandenes PNG auswählen.");
+      // 2) Fallback: gespeichertes Template-Bild anhand seiner ID vom Board holen
+      if (!currentTemplateImage || !currentTemplateImage.id) {
+        if (!silent) {
+          log(
+            "Kein Template gesetzt und keine passende Bild-Auswahl vorhanden. " +
+            "Bitte zuerst ein 3-Boxes-PNG einfügen oder auswählen."
+          );
+        }
+        return [];
       }
-      return null;
+
+      try {
+        const arr = await miro.board.get({ id: currentTemplateImage.id });
+        const img = Array.isArray(arr) ? arr[0] : arr;
+
+        if (!img) {
+          if (!silent) {
+            log("Das gespeicherte Template-Bild existiert nicht mehr auf dem Board.");
+          }
+          return [];
+        }
+
+        const t = {
+          id: img.id,
+          title: img.title || currentTemplateImage.title || "Datentreiber 3-Boxes",
+          x: img.x,
+          y: img.y,
+          width: img.width,
+          height: img.height
+        };
+
+        currentTemplateImage = t;
+
+        if (!silent) {
+          log(
+            "Template aus gespeicherter Referenz verwendet: Bild-ID " +
+            t.id + " / " + t.title
+          );
+        }
+
+        return [t];
+      } catch (e) {
+        if (!silent) {
+          log("Fehler beim Laden des gespeicherten Template-Bildes: " + e.message);
+        }
+        return [];
+      }
     }
 
     // --------------------------------------------------------------------
@@ -296,8 +318,8 @@
           "Template eingefügt: Bild-ID " + image.id +
           " / " + currentTemplateImage.title +
           "\nDu kannst das Bild nun verschieben oder skalieren.\n" +
-          "Wenn du mehrere Instanzen hast, wähle das gewünschte Bild " +
-          "einfach aus (blauer Rahmen) und starte dann Klassifikation / GPT."
+          "Wenn du mehrere Instanzen hast, kannst du eine oder mehrere " +
+          "davon auswählen (blauer Rahmen) und dann klassifizieren / GPT senden."
         );
         await miro.board.viewport.zoomTo(image);
       } catch (e) {
@@ -370,7 +392,178 @@
     }
 
     // --------------------------------------------------------------------
-    // 2) Stickies klassifizieren (für das aktuell gesetzte/ausgewählte Template)
+    // 2a) Klassifikation für EIN Template (intern)
+    //      - inkl. Farbe, Tags und Verbindungen
+    // --------------------------------------------------------------------
+    function dtClassifyStickiesForTemplate(template, ctx) {
+      const t = template;
+      const left = t.x - t.width / 2;
+      const top  = t.y - t.height / 2;
+
+      const result = {
+        template: {
+          id: TEMPLATE_ID,
+          name: t.title,
+          imageId: t.id,
+          headerSummary: null
+        },
+        header: {
+          stickies: []
+        },
+        counts: {
+          total: 0,
+          byRegion: {}
+        },
+        items: [],
+        connections: []
+      };
+
+      const stickyMap = new Map();
+
+      // --- Stickies einsammeln ------------------------------------------------
+      for (const s of ctx.stickies) {
+        const sx = s.x;
+        const sy = s.y;
+
+        const px = (sx - left) / t.width;
+        const py = (sy - top) / t.height;
+        const inImageRect = px >= 0 && px <= 1 && py >= 0 && py <= 1;
+
+        if (!inImageRect) {
+          // außerhalb dieses Template-Bildes -> ignorieren
+          continue;
+        }
+
+        const role = dtRoleFromNormalizedY(py);
+
+        let regionId = null;
+        let regionTitle = null;
+        if (role === "body") {
+          const region = dtMapToRegion(px, py);
+          if (region) {
+            regionId = region.id;
+            regionTitle = region.title;
+          }
+        }
+
+        result.counts.total += 1;
+        if (regionId) {
+          result.counts.byRegion[regionId] =
+            (result.counts.byRegion[regionId] || 0) + 1;
+        }
+
+        const cleanText = stripHtml(s.content);
+        const color =
+          (s.style && (s.style.fillColor || s.style.backgroundColor)) || null;
+        const tagIds = Array.isArray(s.tagIds) ? s.tagIds.slice() : [];
+        const tags =
+          tagIds && tagIds.length && ctx.tagsById
+            ? tagIds
+                .map((id) => ({
+                  id,
+                  title: ctx.tagsById[id] || null
+                }))
+                .filter((t) => t.id)
+            : [];
+
+        const item = {
+          stickyId: s.id,
+          text: cleanText,
+          px: Math.round(px * 10000) / 10000,
+          py: Math.round(py * 10000) / 10000,
+          inImageRect,
+          role,
+          regionId,
+          regionTitle,
+          color,
+          tagIds,
+          tags,
+          connectionsOut: [],
+          connectionsIn: []
+        };
+
+        result.items.push(item);
+        stickyMap.set(s.id, item);
+
+        if (role === "header") {
+          result.header.stickies.push({
+            stickyId: s.id,
+            text: cleanText,
+            px: item.px,
+            py: item.py,
+            color,
+            tagIds,
+            tags
+          });
+        }
+      }
+
+      // Header-Text grob zusammenfassen, damit jede Instanz identifizierbar ist
+      if (result.header.stickies.length) {
+        const pieces = result.header.stickies
+          .map((h) => h.text)
+          .filter(Boolean);
+        if (pieces.length) {
+          const joined = pieces.join(" | ");
+          result.template.headerSummary =
+            joined.length > 200 ? joined.slice(0, 197) + "..." : joined;
+        }
+      }
+
+      // --- Connector-Beziehungen zwischen Stickies innerhalb dieses Templates
+      if (ctx.connectors && ctx.connectors.length) {
+        for (const c of ctx.connectors) {
+          const startId = c.start && c.start.item;
+          const endId   = c.end   && c.end.item;
+          if (!startId || !endId) continue;
+
+          const fromItem = stickyMap.get(startId);
+          const toItem   = stickyMap.get(endId);
+          if (!fromItem || !toItem) continue; // mind. ein Ende nicht in diesem Template
+
+          const conn = {
+            connectorId: c.id,
+            fromStickyId: startId,
+            toStickyId: endId
+          };
+
+          if (c.shape) {
+            conn.shape = c.shape;
+          }
+          if (c.style) {
+            const style = {};
+            if (typeof c.style.startStrokeCap !== "undefined") {
+              style.startStrokeCap = c.style.startStrokeCap;
+            }
+            if (typeof c.style.endStrokeCap !== "undefined") {
+              style.endStrokeCap = c.style.endStrokeCap;
+            }
+            if (typeof c.style.strokeColor !== "undefined") {
+              style.strokeColor = c.style.strokeColor;
+            }
+            if (Object.keys(style).length) {
+              conn.style = style;
+            }
+          }
+
+          result.connections.push(conn);
+          fromItem.connectionsOut.push({
+            connectorId: c.id,
+            toStickyId: endId
+          });
+          toItem.connectionsIn.push({
+            connectorId: c.id,
+            fromStickyId: startId
+          });
+        }
+      }
+
+      return result;
+    }
+
+    // --------------------------------------------------------------------
+    // 2b) Stickies klassifizieren (für 1..n Templates)
+    //     - Kann manuell (Button) oder „silent“ aus dtCallOpenAI aufgerufen werden
     // --------------------------------------------------------------------
     async function dtClassifyStickies(options) {
       const silent = options && options.silent;
@@ -378,108 +571,53 @@
         log("Button: Stickies klassifizieren (klick).");
       }
 
-      const t = await dtResolveTemplateImage({ silent });
-      if (!t) {
+      await dtEnsureMiroReady();
+
+      const templates = await dtResolveTemplateImages({ silent });
+      if (!templates || !templates.length) {
+        if (!silent) {
+          log(
+            "Es konnten keine Template-Bilder ermittelt werden. " +
+            "Bitte wähle mindestens ein 3-Boxes-PNG aus oder füge eines ein."
+          );
+        }
         return null;
       }
 
       try {
-        const left = t.x - t.width / 2;
-        const top  = t.y - t.height / 2;
+        const [stickies, connectors, tags] = await Promise.all([
+          miro.board.get({ type: "sticky_note" }),
+          miro.board.get({ type: "connector" }),
+          miro.board.get({ type: "tag" })
+        ]);
 
-        const stickies = await miro.board.get({ type: "sticky_note" });
-
-        const result = {
-          template: {
-            id: TEMPLATE_ID,
-            name: t.title,
-            imageId: t.id,
-            headerSummary: null
-          },
-          header: {
-            stickies: []
-          },
-          counts: {
-            total: 0,
-            byRegion: {}
-          },
-          items: []
-        };
-
-        for (const s of stickies) {
-          const sx = s.x;
-          const sy = s.y;
-
-          const px = (sx - left) / t.width;
-          const py = (sy - top) / t.height;
-          const inImageRect = px >= 0 && px <= 1 && py >= 0 && py <= 1;
-
-          if (!inImageRect) {
-            // außerhalb des aktuell gesetzten Template-Bildes -> ignorieren
-            continue;
-          }
-
-          const role = dtRoleFromNormalizedY(py);
-
-          let regionId = null;
-          let regionTitle = null;
-          if (role === "body") {
-            const region = dtMapToRegion(px, py);
-            if (region) {
-              regionId = region.id;
-              regionTitle = region.title;
-            }
-          }
-
-          result.counts.total += 1;
-          if (regionId) {
-            result.counts.byRegion[regionId] =
-              (result.counts.byRegion[regionId] || 0) + 1;
-          }
-
-          const cleanText = stripHtml(s.content);
-          const item = {
-            stickyId: s.id,
-            text: cleanText,
-            px: Math.round(px * 10000) / 10000,
-            py: Math.round(py * 10000) / 10000,
-            inImageRect,
-            role,
-            regionId,
-            regionTitle
-          };
-
-          result.items.push(item);
-
-          if (role === "header") {
-            result.header.stickies.push({
-              stickyId: s.id,
-              text: cleanText,
-              px: item.px,
-              py: item.py
-            });
+        const tagsById = {};
+        if (Array.isArray(tags)) {
+          for (const tag of tags) {
+            const title = tag.title || tag.text || tag.content || "";
+            tagsById[tag.id] = title;
           }
         }
 
-        // Header-Text grob zusammenfassen, damit jede Instanz identifizierbar ist
-        if (result.header.stickies.length) {
-          const pieces = result.header.stickies
-            .map((h) => h.text)
-            .filter(Boolean);
-          if (pieces.length) {
-            const joined = pieces.join(" | ");
-            result.template.headerSummary =
-              joined.length > 200 ? joined.slice(0, 197) + "..." : joined;
-          }
-        }
+        const ctx = { stickies, connectors, tagsById };
+        const results = templates.map((t) =>
+          dtClassifyStickiesForTemplate(t, ctx)
+        );
 
-        lastClassification = result;
+        lastClassification =
+          results.length === 1 ? results[0] : { templates: results };
 
         if (!silent) {
-          log("Klassifikation fertig:");
-          log(result);
+          if (results.length === 1) {
+            log("Klassifikation fertig (1 Template):");
+            log(lastClassification);
+          } else {
+            log("Klassifikation fertig für " + results.length + " Templates:");
+            log(lastClassification);
+          }
         }
-        return result;
+
+        return lastClassification;
       } catch (e) {
         if (!silent) {
           log("Fehler bei der Klassifikation: " + e.message);
@@ -510,16 +648,15 @@
         return;
       }
 
-      // Immer vor dem GPT-Call frisch klassifizieren (aktueller Zustand)
+      // Immer vor dem GPT-Call frisch klassifizieren (aktueller Zustand,
+      // inkl. aller aktuell ausgewählten Template-Instanzen).
       const classification = await dtClassifyStickies({ silent: true });
 
       const classificationPart = classification
-        ? "\n\nAktuelle Sticky-Notiz-Klassifikation (JSON, Template: " +
-          (classification.template && classification.template.name || "unbekannt") +
-          "):\n" +
+        ? "\n\nAktuelle Sticky-Notiz-Klassifikation (JSON):\n" +
           JSON.stringify(classification, null, 2)
         : "\n\nHinweis: Es liegt noch keine Klassifikation vor (kein Template gesetzt " +
-          "oder keine Stickies innerhalb des Templates).";
+          "oder keine Stickies innerhalb der Templates).";
 
       const fullUserText = userText + classificationPart;
 
