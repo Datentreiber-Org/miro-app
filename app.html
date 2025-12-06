@@ -162,14 +162,18 @@
     function dtEnsureMiroReady() {
       if (!miroReadyPromise) {
         miroReadyPromise = new Promise((resolve) => {
-          if (window.miro && typeof miro.onReady === "function") {
-            miro.onReady(() => {
+          if (window.miro && typeof window.miro.board !== "undefined") {
+            console.log("[DT] Miro SDK v2 direkt verfügbar");
+            log("Miro SDK bereit.");
+            resolve();
+          } else if (window.miro && typeof window.miro.onReady === "function") {
+            window.miro.onReady(() => {
               console.log("[DT] miro.onReady fired");
-              log("Miro SDK bereit.");
+              log("Miro SDK bereit (onReady).");
               resolve();
             });
           } else {
-            log("Warnung: miro.onReady nicht verfügbar.");
+            log("Warnung: miro.onReady nicht verfügbar, versuche SDK direkt zu verwenden.");
             resolve();
           }
         });
@@ -200,12 +204,15 @@
           width: image.width,
           height: image.height,
         };
+        lastClassification = null;
 
-        log("Template eingefügt: Bild-ID " + image.id +
-            " / " + currentTemplateImage.title +
-            "\nDu kannst das Bild nun verschieben oder skalieren.\n" +
-            "Wenn du später Kopien hast, wähle immer das gewünschte Bild " +
-            "auf dem Board aus und klicke dann „Aktuelle Auswahl als Template setzen“.");
+        log(
+          "Template eingefügt: Bild-ID " + image.id +
+          " / " + currentTemplateImage.title +
+          "\nDu kannst das Bild nun verschieben oder skalieren.\n" +
+          "Wenn du später Kopien hast, wähle immer das gewünschte Bild " +
+          "auf dem Board aus und klicke dann „Aktuelle Auswahl als Template setzen“."
+        );
         await miro.board.viewport.zoomTo(image);
       } catch (e) {
         log("Fehler beim Einfügen des Template-Bildes: " + e.message);
@@ -240,6 +247,7 @@
           width: image.width,
           height: image.height,
         };
+        lastClassification = null;
 
         log("Template gesetzt aus Auswahl: Bild-ID " + image.id +
             " / " + currentTemplateImage.title);
@@ -249,7 +257,7 @@
     }
 
     // --------------------------------------------------------------------
-    // Mapping von normalisierten Koordinaten -> Regionen
+    // Mapping von normalisierten Koordinaten -> Regionen (3 Boxen)
     // --------------------------------------------------------------------
     function dtMapToRegion(px, py) {
       // Vertikale Begrenzung grob: unterhalb des Headers, oberhalb Fußzeile
@@ -268,17 +276,31 @@
       }
     }
 
+    // Sehr grob: Rolle aus Y-Position ableiten (Header / Body / Footer)
+    function dtRoleFromNormalizedY(py) {
+      if (py < 0.20) return "header";  // oberer Streifen über den drei Boxen
+      if (py > 0.95) return "footer";  // unterer Streifen
+      return "body";
+    }
+
     // --------------------------------------------------------------------
-    // 2) Stickies klassifizieren
+    // 2) Stickies klassifizieren (für das aktuell gesetzte Template)
+    //    - Kann manuell (Button) oder „silent“ aus dtCallOpenAI aufgerufen werden
     // --------------------------------------------------------------------
-    async function dtClassifyStickies() {
-      log("Button: Stickies klassifizieren (klick).");
+    async function dtClassifyStickies(options) {
+      const silent = options && options.silent;
+      if (!silent) {
+        log("Button: Stickies klassifizieren (klick).");
+      }
+
       await dtEnsureMiroReady();
 
       if (!currentTemplateImage) {
-        log("Kein Template gesetzt. Bitte zuerst „Template-Bild auf Board einfügen“ " +
-            "ODER ein vorhandenes PNG auswählen und „Aktuelle Auswahl als Template setzen“.");
-        return;
+        if (!silent) {
+          log("Kein Template gesetzt. Bitte zuerst „Template-Bild auf Board einfügen“ " +
+              "ODER ein vorhandenes PNG auswählen und „Aktuelle Auswahl als Template setzen“.");
+        }
+        return null;
       }
 
       try {
@@ -293,12 +315,16 @@
             id: TEMPLATE_ID,
             name: t.title,
             imageId: t.id,
+            headerSummary: null
+          },
+          header: {
+            stickies: []
           },
           counts: {
             total: 0,
-            byRegion: {},
+            byRegion: {}
           },
-          items: [],
+          items: []
         };
 
         for (const s of stickies) {
@@ -309,14 +335,21 @@
           const py = (sy - top) / t.height;
           const inImageRect = px >= 0 && px <= 1 && py >= 0 && py <= 1;
 
-          if (!inImageRect) continue; // außerhalb des Templates ignorieren
+          if (!inImageRect) {
+            // außerhalb des aktuell gesetzten Template-Bildes -> ignorieren
+            continue;
+          }
+
+          const role = dtRoleFromNormalizedY(py);
 
           let regionId = null;
           let regionTitle = null;
-          const region = dtMapToRegion(px, py);
-          if (region) {
-            regionId = region.id;
-            regionTitle = region.title;
+          if (role === "body") {
+            const region = dtMapToRegion(px, py);
+            if (region) {
+              regionId = region.id;
+              regionTitle = region.title;
+            }
           }
 
           result.counts.total += 1;
@@ -325,27 +358,62 @@
               (result.counts.byRegion[regionId] || 0) + 1;
           }
 
-          result.items.push({
+          const cleanText = stripHtml(s.content);
+          const item = {
             stickyId: s.id,
-            text: stripHtml(s.content),
+            text: cleanText,
             px: Math.round(px * 10000) / 10000,
             py: Math.round(py * 10000) / 10000,
             inImageRect,
+            role,
             regionId,
-            regionTitle,
-          });
+            regionTitle
+          };
+
+          result.items.push(item);
+
+          if (role === "header") {
+            result.header.stickies.push({
+              stickyId: s.id,
+              text: cleanText,
+              px: item.px,
+              py: item.py
+            });
+          }
+        }
+
+        // Header-Text grob zusammenfassen, damit jede Instanz identifizierbar ist
+        if (result.header.stickies.length) {
+          const pieces = result.header.stickies
+            .map((h) => h.text)
+            .filter(Boolean);
+          if (pieces.length) {
+            const joined = pieces.join(" | ");
+            result.template.headerSummary =
+              joined.length > 200 ? joined.slice(0, 197) + "..." : joined;
+          }
         }
 
         lastClassification = result;
-        log("Klassifikation fertig:");
-        log(result);
+
+        if (!silent) {
+          log("Klassifikation fertig:");
+          log(result);
+        }
+        return result;
       } catch (e) {
-        log("Fehler bei der Klassifikation: " + e.message);
+        if (!silent) {
+          log("Fehler bei der Klassifikation: " + e.message);
+        } else {
+          console.error("[DT] Fehler bei der Klassifikation (silent):", e);
+        }
+        return null;
       }
     }
 
     // --------------------------------------------------------------------
     // 3) OpenAI-Call mit aktueller Klassifikation
+    //    - ruft intern zuerst dtClassifyStickies({ silent: true }) auf
     // --------------------------------------------------------------------
     async function dtCallOpenAI() {
       await dtEnsureMiroReady();
@@ -363,10 +431,16 @@
         return;
       }
 
-      const classificationPart = lastClassification
-        ? "\n\nAktuelle Sticky-Notiz-Klassifikation (JSON):\n" +
-          JSON.stringify(lastClassification, null, 2)
-        : "\n\nHinweis: Es liegt noch keine Klassifikation vor.";
+      // Immer vor dem GPT-Call frisch klassifizieren (aktueller Zustand)
+      const classification = await dtClassifyStickies({ silent: true });
+
+      const classificationPart = classification
+        ? "\n\nAktuelle Sticky-Notiz-Klassifikation (JSON, Template: " +
+          (classification.template && classification.template.name || "unbekannt") +
+          "):\n" +
+          JSON.stringify(classification, null, 2)
+        : "\n\nHinweis: Es liegt noch keine Klassifikation vor (kein Template gesetzt " +
+          "oder keine Stickies innerhalb des Templates).";
 
       const fullUserText = userText + classificationPart;
 
@@ -430,10 +504,10 @@
     }
 
     // Funktionen ins window hängen, damit die inline-onclicks sie sehen
-    window.dtInsertTemplateImage   = dtInsertTemplateImage;
-    window.dtSetTemplateFromSelection = dtSetTemplateFromSelection;
-    window.dtClassifyStickies      = dtClassifyStickies;
-    window.dtCallOpenAI            = dtCallOpenAI;
+    window.dtInsertTemplateImage        = dtInsertTemplateImage;
+    window.dtSetTemplateFromSelection   = dtSetTemplateFromSelection;
+    window.dtClassifyStickies           = dtClassifyStickies;
+    window.dtCallOpenAI                 = dtCallOpenAI;
   </script>
 </body>
 </html>
