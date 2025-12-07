@@ -79,7 +79,7 @@
       <h4>1) Template wählen</h4>
       <p class="hint">
         „Template-Bild auf Board einfügen“ legt dein 3-Boxes-PNG als Bild aufs Board
-        und registriert eine Canvas-Instanz inkl. Action-Buttons direkt unter dem Canvas (App Cards).<br>
+        und registriert eine Canvas-Instanz inkl. Action-Buttons direkt unter dem Canvas (Shapes als Buttons).<br>
         „Aktuelle Auswahl als Template setzen“ ist vor allem für die Entwicklungsphase da:
         ein ausgewähltes 3-Boxes-PNG wird als Instanz registriert.<br>
         Beim Klassifizieren / GPT-Call werden die Instanzen intern per Image-Rect und Koordinaten erkannt.
@@ -146,6 +146,12 @@
 
     // Cluster-Zuordnung: Sticky-ID -> Cluster-Name (nur Panel-Session)
     const dtClusterAssignments = new Map();
+
+    // Letzte Selektion von Sticky Notes (für den Cluster-Button auf dem Board)
+    let dtLastStickySelectionIds = [];
+
+    // Schutzflag, um rekursive selection:update-Events zu vermeiden
+    let dtHandlingSelection = false;
 
     // Sehr einfacher Prompt-Katalog (später erweiterbar für 25 Canvas-Typen)
     const DT_PROMPT_CATALOG = {
@@ -253,20 +259,17 @@
     async function dtAfterMiroReady() {
       if (dtInitialized) return;
       dtInitialized = true;
-    
+
       try {
         await dtScanTemplateInstances();
       } catch (e) {
         console.error("[DT] Fehler beim initialen Template-Scan:", e);
       }
-    
+
       try {
         if (miro.board && miro.board.ui && typeof miro.board.ui.on === "function") {
-          // Spezielles Event fuer App Cards, falls es von Miro gefeuert wird
-          miro.board.ui.on("app_card:open", dtOnAppCardOpen);
-          // Zusaetzliche Absicherung: generisches Klick-Event auf Items
-          // Wir filtern in dtOnItemClick auf type === "app_card"
-          miro.board.ui.on("item:click", dtOnItemClick);
+          // Wir nutzen selection:update als Trigger für unsere Shape-Buttons
+          miro.board.ui.on("selection:update", dtOnSelectionUpdate);
         }
       } catch (e) {
         console.error("[DT] Fehler bei Registrierung von UI-Events:", e);
@@ -274,34 +277,11 @@
       }
     }
 
-
     // --------------------------------------------------------------------
     // Instanz-Management
     // --------------------------------------------------------------------
-
-    // Meta-Informationen in App-Card-Description codieren
-    function dtBuildAppCardDescription(baseText, meta) {
-      const metaJson = JSON.stringify(meta);
-      return baseText + "\n\n@@dt-meta@@" + metaJson;
-    }
-
-    function dtParseAppCardMeta(description) {
-      if (!description) return null;
-      const marker = "@@dt-meta@@";
-      const idx = description.indexOf(marker);
-      if (idx === -1) return null;
-      const jsonStr = description.slice(idx + marker.length).trim();
-      if (!jsonStr) return null;
-      try {
-        return JSON.parse(jsonStr);
-      } catch (e) {
-        console.warn("[DT] Konnte App-Card-Meta nicht parsen:", e);
-        return null;
-      }
-    }
-
-    async function dtCreateInstanceActionCards(instance, image) {
-      if (!miro.board || !miro.board.createAppCard) {
+    async function dtCreateInstanceActionShapes(instance, image) {
+      if (!miro.board || !miro.board.createShape) {
         return;
       }
 
@@ -309,33 +289,27 @@
       const baseX = image.x;
       const dx = 260;
 
-      // AI-Card
-      const aiMeta = { instanceId: instance.instanceId, action: "run_ai" };
-      const aiCard = await miro.board.createAppCard({
-        title: `[DT] AI – ${instance.instanceId}`,
-        description: dtBuildAppCardDescription(
-          "Starte die Datentreiber-AI für diese Canvas-Instanz.",
-          aiMeta
-        ),
+      const aiShape = await miro.board.createShape({
+        content: `[DT] AI – ${instance.instanceId}`,
+        shape: "round_rectangle",
         x: baseX - dx / 2,
-        y: baseY
+        y: baseY,
+        width: 260,
+        height: 60
       });
 
-      // Cluster-Card (benutzt die aktuelle Board-Auswahl; Instanz dient nur als Kontext)
-      const clusterMeta = { instanceId: instance.instanceId, action: "cluster" };
-      const clusterCard = await miro.board.createAppCard({
-        title: `[DT] Cluster – ${instance.instanceId}`,
-        description: dtBuildAppCardDescription(
-          "Cluster die aktuell ausgewählten Sticky Notes (unterstrichener Text = Clustername).",
-          clusterMeta
-        ),
+      const clusterShape = await miro.board.createShape({
+        content: `[DT] Cluster – ${instance.instanceId}`,
+        shape: "round_rectangle",
         x: baseX + dx / 2,
-        y: baseY
+        y: baseY,
+        width: 260,
+        height: 60
       });
 
-      instance.actionCards = {
-        aiCardId: aiCard.id,
-        clusterCardId: clusterCard.id
+      instance.actionItems = {
+        aiItemId: aiShape.id,
+        clusterItemId: clusterShape.id
       };
     }
 
@@ -371,7 +345,7 @@
         lastStateJson: null,
         lastStickyCount: 0,
         lastChangedAt: null,
-        actionCards: {}
+        actionItems: {}
       };
 
       dtInstancesByImageId.set(image.id, instance);
@@ -379,9 +353,9 @@
 
       log("Neue Canvas-Instanz registriert: " + instanceId + " (Bild-ID " + image.id + ")");
       try {
-        await dtCreateInstanceActionCards(instance, image);
+        await dtCreateInstanceActionShapes(instance, image);
       } catch (e) {
-        console.error("[DT] Fehler beim Erzeugen der Action-Cards:", e);
+        console.error("[DT] Fehler beim Erzeugen der Action-Shapes:", e);
       }
 
       return instance;
@@ -433,61 +407,62 @@
       return { instances };
     }
 
-    async function dtOnAppCardOpen(event) {
-      try {
-        const card = event && event.appCard;
-        if (!card) return;
-        const title = card.title || "";
-        if (!title.startsWith("[DT]")) return; // nur unsere Karten
-
-        const meta = dtParseAppCardMeta(card.description);
-        if (!meta || !meta.action) return;
-
-        if (meta.action === "run_ai") {
-          log("Agent-Call für Instanz " + meta.instanceId + " ausgelöst (App Card).");
-          await dtRunAgentForInstance(meta.instanceId);
-        } else if (meta.action === "cluster") {
-          log("Cluster-Button (App Card) für Instanz " + meta.instanceId + " ausgelöst.");
-          await dtClusterSelection();
-        }
-      } catch (e) {
-        console.error("[DT] Fehler im app_card:open-Handler:", e);
-        log("Fehler im app_card:open-Handler: " + e.message);
+    async function dtOnSelectionUpdate(event) {
+      if (dtHandlingSelection) {
+        return;
       }
-    }
 
+      const items = event && event.items ? event.items : [];
 
-    async function dtOnItemClick(event) {
+      const stickyIdsInSelection = items
+        .filter(function (it) { return it.type === "sticky_note"; })
+        .map(function (it) { return it.id; });
+
+      if (stickyIdsInSelection.length > 0) {
+        dtLastStickySelectionIds = stickyIdsInSelection.slice();
+      }
+
+      if (items.length !== 1) {
+        return;
+      }
+
+      const item = items[0];
+      if (item.type !== "shape") {
+        return;
+      }
+
+      const text = stripHtml(item.content || "");
+      if (text.indexOf("[DT]") !== 0) {
+        return;
+      }
+
+      const aiMatch = text.match(/^\[DT\]\s*AI\s*–\s*(.+)$/);
+      const clusterMatch = text.match(/^\[DT\]\s*Cluster\s*–\s*(.+)$/);
+
+      let instanceId = null;
+      let action = null;
+
+      if (aiMatch) {
+        action = "run_ai";
+        instanceId = aiMatch[1].trim();
+      } else if (clusterMatch) {
+        action = "cluster";
+        instanceId = clusterMatch[1].trim();
+      } else {
+        return;
+      }
+
+      dtHandlingSelection = true;
       try {
-        const item = event && event.item;
-        if (!item) {
-          return;
+        if (action === "run_ai") {
+          log("Agent-Button (Shape) für Instanz " + instanceId + " ausgelöst.");
+          await dtRunAgentForInstance(instanceId);
+        } else if (action === "cluster") {
+          log("Cluster-Button (Shape) für Instanz " + instanceId + " ausgelöst.");
+          await dtClusterSelectionWithIds(dtLastStickySelectionIds);
         }
-    
-        // Nur App Cards interessieren uns hier
-        if (item.type !== "app_card") {
-          return;
-        }
-    
-        // Karte noch einmal vollstaendig vom Board holen
-        const arr = await miro.board.get({ id: item.id });
-        const card = Array.isArray(arr) ? arr[0] : arr;
-        if (!card) {
-          return;
-        }
-    
-        const wrappedEvent = {
-          appCard: {
-            id: card.id,
-            title: card.title,
-            description: card.description
-          }
-        };
-    
-        await dtOnAppCardOpen(wrappedEvent);
-      } catch (e) {
-        console.error("[DT] Fehler im item:click Handler fuer App Cards:", e);
-        log("Fehler im item:click Handler fuer App Cards: " + e.message);
+      } finally {
+        dtHandlingSelection = false;
       }
     }
 
@@ -590,9 +565,10 @@
           "Template eingefügt: Bild-ID " + image.id +
           " / " + currentTemplateImage.title +
           "\nDu kannst das Bild nun verschieben oder skalieren.\n" +
-          "Unterhalb des Canvas findest du zwei App Cards:\n" +
-          "- [DT] AI – startet den Agenten für diese Instanz\n" +
-          "- [DT] Cluster – clustert die aktuelle Sticky-Auswahl."
+          "Unterhalb des Canvas findest du zwei Shape-Buttons:\n" +
+          "- [DT] AI – startet den Agenten für diese Instanz (Shape anklicken)\n" +
+          "- [DT] Cluster – clustert die aktuelle Sticky-Auswahl " +
+          "(Sticky Notes auswählen, dann den Button-Shape anklicken)."
         );
         await miro.board.viewport.zoomTo(image);
       } catch (e) {
@@ -649,18 +625,28 @@
     //  - genau EIN Sticky mit unterstrichenem Text = Cluster-Name
     //  - alle ausgewählten Stickies bekommen im Session-State diesen Cluster
     // --------------------------------------------------------------------
-    async function dtClusterSelection() {
-      log("Button: Auswahl clustern (klick).");
+    async function dtClusterSelectionWithIds(stickyIds) {
       await dtEnsureMiroReady();
 
       try {
-        const selection = await miro.board.getSelection();
-        if (!selection || !selection.length) {
-          log("Keine Auswahl gefunden. Bitte einige Sticky Notes auswählen.");
-          return;
+        let stickyNotes = [];
+
+        if (Array.isArray(stickyIds) && stickyIds.length > 0) {
+          const arr = await miro.board.get({ id: stickyIds });
+          if (Array.isArray(arr)) {
+            stickyNotes = arr.filter(function (it) { return it.type === "sticky_note"; });
+          } else if (arr && arr.type === "sticky_note") {
+            stickyNotes = [arr];
+          }
+        } else {
+          const selection = await miro.board.getSelection();
+          if (!selection || !selection.length) {
+            log("Keine Auswahl gefunden. Bitte einige Sticky Notes auswählen.");
+            return;
+          }
+          stickyNotes = selection.filter(function (item) { return item.type === "sticky_note"; });
         }
 
-        const stickyNotes = selection.filter((item) => item.type === "sticky_note");
         if (!stickyNotes.length) {
           log("In der Auswahl sind keine Sticky Notes. Bitte nur Sticky Notes markieren.");
           return;
@@ -682,7 +668,7 @@
         if (!headerSticky) {
           log(
             "Kein Sticky mit unterstrichenem Text gefunden. " +
-              "Bitte genau ein Sticky im Cluster als Namen unterstreichen."
+            "Bitte genau ein Sticky im Cluster als Namen unterstreichen."
           );
           return;
         }
@@ -691,7 +677,7 @@
         if (!clusterName) {
           log(
             "Der unterstrichene Sticky-Text ist leer. " +
-              "Bitte einen lesbaren Namen unterstreichen und erneut versuchen."
+            "Bitte einen lesbaren Namen unterstreichen und erneut versuchen."
           );
           return;
         }
@@ -703,14 +689,19 @@
 
         log(
           "Cluster '" +
-            clusterName +
-            "' gesetzt für " +
-            stickyNotes.length +
-            " Sticky Notes (Session-State, kein Board-Metafeld)."
+          clusterName +
+          "' gesetzt für " +
+          stickyNotes.length +
+          " Sticky Notes (Session-State, kein Board-Metafeld)."
         );
       } catch (e) {
         log("Fehler beim Setzen der Cluster-Metadaten: " + e.message);
       }
+    }
+
+    async function dtClusterSelection() {
+      log("Button: Auswahl clustern (klick).");
+      await dtClusterSelectionWithIds(null);
     }
 
     // --------------------------------------------------------------------
