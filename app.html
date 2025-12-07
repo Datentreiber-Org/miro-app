@@ -153,6 +153,10 @@
     // Schutzflag, um rekursive selection:update-Events zu vermeiden
     let dtHandlingSelection = false;
 
+    // Automatische Cluster-Namen (Fallback), Zähler pro Instanz
+    const dtClusterCounterByInstanceId = new Map();
+    let dtGlobalClusterCounter = 1;
+
     // Sehr einfacher Prompt-Katalog (später erweiterbar für 25 Canvas-Typen)
     const DT_PROMPT_CATALOG = {
       [TEMPLATE_ID]: {
@@ -280,6 +284,7 @@
     // --------------------------------------------------------------------
     // Instanz-Management
     // --------------------------------------------------------------------
+
     async function dtCreateInstanceActionShapes(instance, image) {
       if (!miro.board || !miro.board.createShape) {
         return;
@@ -459,7 +464,7 @@
           await dtRunAgentForInstance(instanceId);
         } else if (action === "cluster") {
           log("Cluster-Button (Shape) für Instanz " + instanceId + " ausgelöst.");
-          await dtClusterSelectionWithIds(dtLastStickySelectionIds);
+          await dtClusterSelectionWithIds(instanceId, dtLastStickySelectionIds);
         }
       } finally {
         dtHandlingSelection = false;
@@ -622,10 +627,10 @@
     // --------------------------------------------------------------------
     // Auswahl clustern:
     //  - Auswahl muss Sticky Notes enthalten
-    //  - genau EIN Sticky mit unterstrichenem Text = Cluster-Name
-    //  - alle ausgewählten Stickies bekommen im Session-State diesen Cluster
+    //  - genau EIN Sticky mit unterstrichenem Text = Cluster-Name (optional)
+    //  - Fallback: generischer Clustername, wenn kein unterstrichener Text
     // --------------------------------------------------------------------
-    async function dtClusterSelectionWithIds(stickyIds) {
+    async function dtClusterSelectionWithIds(instanceId, stickyIds) {
       await dtEnsureMiroReady();
 
       try {
@@ -647,12 +652,30 @@
           stickyNotes = selection.filter(function (item) { return item.type === "sticky_note"; });
         }
 
+        // Wenn eine Instanz angegeben ist, nur Stickies innerhalb dieses Canvas berücksichtigen
+        if (instanceId) {
+          const instance = dtInstancesById.get(instanceId);
+          if (!instance || !instance.lastGeometry) {
+            log("Unbekannte Canvas-Instanz: " + instanceId);
+            return;
+          }
+          const geom = instance.lastGeometry;
+          const left = geom.x - geom.width / 2;
+          const top = geom.y - geom.height / 2;
+          const right = geom.x + geom.width / 2;
+          const bottom = geom.y + geom.height / 2;
+
+          stickyNotes = stickyNotes.filter(function (s) {
+            return s.x >= left && s.x <= right && s.y >= top && s.y <= bottom;
+          });
+        }
+
         if (!stickyNotes.length) {
-          log("In der Auswahl sind keine Sticky Notes. Bitte nur Sticky Notes markieren.");
+          log("In der Auswahl sind keine Sticky Notes. Bitte nur Sticky Notes innerhalb eines Canvas markieren.");
           return;
         }
 
-        // 1) Sticky mit unterstrichenem Text als Cluster-Name finden
+        // 1) Sticky mit unterstrichenem Text als Cluster-Name finden (optional)
         let headerSticky = null;
         for (const s of stickyNotes) {
           const html = s.content || "";
@@ -665,24 +688,32 @@
           }
         }
 
-        if (!headerSticky) {
-          log(
-            "Kein Sticky mit unterstrichenem Text gefunden. " +
-            "Bitte genau ein Sticky im Cluster als Namen unterstreichen."
-          );
-          return;
+        let clusterName = null;
+
+        if (headerSticky) {
+          const candidate = stripHtml(headerSticky.content).trim();
+          if (!candidate) {
+            log(
+              "Der unterstrichene Sticky-Text ist leer. " +
+              "Bitte einen lesbaren Namen unterstreichen oder ohne Unterstreichung arbeiten, dann wird ein generischer Clustername vergeben."
+            );
+            return;
+          }
+          clusterName = candidate;
+        } else {
+          // Fallback: generischer Clustername, wenn kein unterstrichener Text vorhanden ist
+          if (instanceId) {
+            let count = dtClusterCounterByInstanceId.get(instanceId) || 0;
+            count += 1;
+            dtClusterCounterByInstanceId.set(instanceId, count);
+            clusterName = "Cluster " + count;
+          } else {
+            const n = dtGlobalClusterCounter++;
+            clusterName = "Cluster " + n;
+          }
         }
 
-        const clusterName = stripHtml(headerSticky.content).trim();
-        if (!clusterName) {
-          log(
-            "Der unterstrichene Sticky-Text ist leer. " +
-            "Bitte einen lesbaren Namen unterstreichen und erneut versuchen."
-          );
-          return;
-        }
-
-        // 2) Session-State: alle ausgewählten Stickies auf diesen Cluster setzen
+        // 2) Session-State: alle betroffenen Stickies auf diesen Cluster setzen
         for (const s of stickyNotes) {
           dtClusterAssignments.set(s.id, clusterName);
         }
@@ -701,7 +732,7 @@
 
     async function dtClusterSelection() {
       log("Button: Auswahl clustern (klick).");
-      await dtClusterSelectionWithIds(null);
+      await dtClusterSelectionWithIds(null, null);
     }
 
     // --------------------------------------------------------------------
