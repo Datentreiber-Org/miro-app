@@ -79,8 +79,7 @@
       <h4>1) Template wählen</h4>
       <p class="hint">
         „Template-Bild auf Board einfügen“ legt dein 3-Boxes-PNG als Bild aufs Board
-        und registriert eine Canvas-Instanz. Clustern und Agent-Run startest du über
-        die Kontextleiste / das Kontextmenü der Auswahl.<br>
+        und registriert eine Canvas-Instanz inkl. eines Action-Shape-Buttons direkt unter dem Canvas ([DT] AI).<br>
         „Aktuelle Auswahl als Template setzen“ ist vor allem für die Entwicklungsphase da:
         ein ausgewähltes 3-Boxes-PNG wird als Instanz registriert.<br>
         Beim Klassifizieren / GPT-Call werden die Instanzen intern per Image-Rect und Koordinaten erkannt.
@@ -112,7 +111,7 @@
       </label>
       <button onclick="window.dtCallOpenAI()">An GPT senden (inkl. aktueller Klassifikation)</button>
       <p class="hint">
-        Hinweis: Die neuen Agent-Buttons im Kontextmenü („DT: Run Agent“) starten einen instanzspezifischen Lauf
+        Hinweis: Der Shape-Button auf dem Board („[DT] AI – inst-X“) startet einen instanzspezifischen Agentenlauf
         mit eigener JSON-Action-Ausgabe und Board-Manipulation.
       </p>
     </div>
@@ -147,6 +146,9 @@
 
     // Cluster-Zuordnung: Sticky-ID -> Cluster-Name (nur Panel-Session)
     const dtClusterAssignments = new Map();
+
+    // Schutzflag, um rekursive selection:update-Events zu vermeiden
+    let dtHandlingSelection = false;
 
     // Automatische Cluster-Namen (Fallback), Zähler pro Instanz
     const dtClusterCounterByInstanceId = new Map();
@@ -267,9 +269,8 @@
 
       try {
         if (miro.board && miro.board.ui && typeof miro.board.ui.on === "function") {
-          // Kontextleisten-/Kontextmenü-Actions für Clustern und Agenten-Run
-          miro.board.ui.on("custom:dt-cluster-selection", dtOnClusterContextAction);
-          miro.board.ui.on("custom:dt-run-agent", dtOnRunAgentContextAction);
+          // Wir nutzen selection:update als Trigger für unseren AI-Shape-Button
+          miro.board.ui.on("selection:update", dtOnSelectionUpdate);
         }
       } catch (e) {
         console.error("[DT] Fehler bei Registrierung von UI-Events:", e);
@@ -280,6 +281,28 @@
     // --------------------------------------------------------------------
     // Instanz-Management
     // --------------------------------------------------------------------
+    async function dtCreateInstanceActionShapes(instance, image) {
+      if (!miro.board || !miro.board.createShape) {
+        return;
+      }
+
+      const baseY = image.y + image.height / 2 + 80;
+      const baseX = image.x;
+      const dx = 260;
+
+      const aiShape = await miro.board.createShape({
+        content: `[DT] AI – ${instance.instanceId}`,
+        shape: "round_rectangle",
+        x: baseX - dx / 2,
+        y: baseY,
+        width: 260,
+        height: 60
+      });
+
+      instance.actionItems = {
+        aiItemId: aiShape.id
+      };
+    }
 
     async function dtRegisterInstanceFromImage(image) {
       if (!image || !image.id) return null;
@@ -313,6 +336,7 @@
         lastStateJson: null,
         lastStickyCount: 0,
         lastChangedAt: null,
+        lastDiff: null,
         actionItems: {}
       };
 
@@ -320,6 +344,11 @@
       dtInstancesById.set(instanceId, instance);
 
       log("Neue Canvas-Instanz registriert: " + instanceId + " (Bild-ID " + image.id + ")");
+      try {
+        await dtCreateInstanceActionShapes(instance, image);
+      } catch (e) {
+        console.error("[DT] Fehler beim Erzeugen der Action-Shapes:", e);
+      }
 
       return instance;
     }
@@ -347,9 +376,22 @@
       }
     }
 
+    function dtDiffHasChanges(diff) {
+      if (!diff) {
+        return false;
+      }
+      const createdCount = Array.isArray(diff.created) ? diff.created.length : 0;
+      const deletedCount = Array.isArray(diff.deleted) ? diff.deleted.length : 0;
+      const updatedCount = Array.isArray(diff.updated) ? diff.updated.length : 0;
+      return createdCount > 0 || deletedCount > 0 || updatedCount > 0;
+    }
+
     function dtBuildBoardCatalogSummary(activeInstanceId) {
       const instances = [];
       dtInstancesById.forEach((instance, id) => {
+        const diff = instance.lastDiff;
+        const hasChanges = dtDiffHasChanges(diff);
+
         const entry = {
           instanceId: id,
           canvasTypeId: instance.canvasTypeId,
@@ -363,7 +405,14 @@
             instance.lastClassification.template.headerSummary
               ? instance.lastClassification.template.headerSummary
               : null,
-          isActive: id === activeInstanceId
+          isActive: (id === activeInstanceId) || hasChanges,
+          changesSinceLastAgent: hasChanges
+            ? {
+                created: diff.created || [],
+                deleted: diff.deleted || [],
+                updated: diff.updated || []
+              }
+            : null
         };
         instances.push(entry);
       });
@@ -371,70 +420,63 @@
     }
 
     function dtFindInstanceForPoint(x, y) {
-      let found = null;
+      let foundInstance = null;
+
       dtInstancesById.forEach(function (instance) {
         const geom = instance.lastGeometry;
         if (!geom) {
           return;
         }
+
         const left = geom.x - geom.width / 2;
         const top = geom.y - geom.height / 2;
         const right = geom.x + geom.width / 2;
         const bottom = geom.y + geom.height / 2;
+
         if (x >= left && x <= right && y >= top && y <= bottom) {
-          found = instance;
+          if (!foundInstance) {
+            foundInstance = instance;
+          }
         }
       });
-      return found;
+
+      return foundInstance;
     }
 
-    async function dtOnClusterContextAction(event) {
+    async function dtOnSelectionUpdate(event) {
+      if (dtHandlingSelection) {
+        return;
+      }
+
       const items = event && event.items ? event.items : [];
 
-      const stickyIds = items
-        .filter(function (it) { return it.type === "sticky_note"; })
-        .map(function (it) { return it.id; });
-
-      if (!stickyIds.length) {
-        log("Kontext-Aktion: Keine Sticky Notes ausgewählt zum Clustern.");
+      if (items.length !== 1) {
         return;
       }
 
-      log("Kontext-Aktion: Auswahl clustern (Contextbar).");
-      await dtClusterSelectionWithIds(null, stickyIds);
-    }
-
-    async function dtOnRunAgentContextAction(event) {
-      await dtEnsureMiroReady();
-      await dtScanTemplateInstances();
-
-      const items = event && event.items ? event.items : [];
-      if (!items.length) {
-        log("Kontext-Aktion: Keine Auswahl für den Agenten-Run gefunden.");
+      const item = items[0];
+      if (item.type !== "shape") {
         return;
       }
 
-      const imageIds = items
-        .filter(function (it) { return it.type === "image"; })
-        .map(function (it) { return it.id; });
-
-      const instanceIds = [];
-
-      for (const imageId of imageIds) {
-        const inst = dtInstancesByImageId.get(imageId);
-        if (inst && instanceIds.indexOf(inst.instanceId) === -1) {
-          instanceIds.push(inst.instanceId);
-        }
-      }
-
-      if (!instanceIds.length) {
-        log("Kontext-Aktion: Bitte mindestens ein 3-Boxes-Template-Bild auswählen, um den Agenten zu starten.");
+      const text = stripHtml(item.content || "");
+      if (text.indexOf("[DT]") !== 0) {
         return;
       }
 
-      for (const instanceId of instanceIds) {
-        log("Kontext-Aktion: Agent-Run für Instanz " + instanceId + " (Contextbar).");
+      const aiMatch = text.match(/^\[DT\]\s*AI\s*–\s*(.+)$/);
+      if (!aiMatch) {
+        return;
+      }
+
+      const instanceId = aiMatch[1].trim();
+
+      dtHandlingSelection = true;
+      try {
+        log("Agent-Button (Shape) für Instanz " + instanceId + " ausgelöst.");
         await dtRunAgentForInstance(instanceId);
+      } finally {
+        dtHandlingSelection = false;
       }
     }
 
@@ -537,9 +579,10 @@
           "Template eingefügt: Bild-ID " + image.id +
           " / " + currentTemplateImage.title +
           "\nDu kannst das Bild nun verschieben oder skalieren.\n" +
-          "Für diese Instanz kannst du im Kontextmenü:\n" +
-          "- Sticky-Auswahl clustern (Custom Action z.B. „DT: Cluster Selection“)\n" +
-          "- den Agenten für das Template-Bild starten (Custom Action z.B. „DT: Run Agent“)."
+          "Unterhalb des Canvas findest du einen Shape-Button:\n" +
+          "- [DT] AI – startet den Agenten für diese Instanz (Shape anklicken)\n" +
+          "\nZum Clustern verwende den Button 'Auswahl clustern' im Side-Panel. " +
+          "Er wirkt nur auf Sticky Notes innerhalb genau einer Canvas-Instanz."
         );
         await miro.board.viewport.zoomTo(image);
       } catch (e) {
@@ -595,9 +638,9 @@
     //  - Auswahl muss Sticky Notes enthalten
     //  - genau EIN Sticky mit unterstrichenem Text = Cluster-Name (optional)
     //  - Fallback: generischer Clustername, wenn kein unterstrichener Text
-    //  - alle Stickies müssen zur selben Canvas-Instanz gehören
+    //  - nur Sticky Notes innerhalb genau EINER Canvas-Instanz
     // --------------------------------------------------------------------
-    async function dtClusterSelectionWithIds(instanceId, stickyIds) {
+    async function dtClusterSelectionWithIds(stickyIds) {
       await dtEnsureMiroReady();
       await dtScanTemplateInstances();
 
@@ -621,69 +664,58 @@
         }
 
         if (!stickyNotes.length) {
-          log("In der Auswahl sind keine Sticky Notes. Bitte nur Sticky Notes markieren.");
+          log("In der Auswahl sind keine Sticky Notes. Bitte nur Sticky Notes auswählen.");
           return;
         }
 
-        let resolvedInstance = null;
+        const byInstance = {};
+        const outside = [];
 
-        if (instanceId) {
-          const inst = dtInstancesById.get(instanceId);
-          if (!inst || !inst.lastGeometry) {
-            log("Unbekannte Canvas-Instanz: " + instanceId);
+        stickyNotes.forEach(function (s) {
+          const instance = dtFindInstanceForPoint(s.x, s.y);
+          if (!instance) {
+            outside.push(s);
             return;
           }
-          const geom = inst.lastGeometry;
-          const left = geom.x - geom.width / 2;
-          const top = geom.y - geom.height / 2;
-          const right = geom.x + geom.width / 2;
-          const bottom = geom.y + geom.height / 2;
-
-          const filtered = [];
-          for (const s of stickyNotes) {
-            if (s.x >= left && s.x <= right && s.y >= top && s.y <= bottom) {
-              filtered.push(s);
-            } else {
-              log(
-                "Auswahl enthält Sticky Notes außerhalb des Canvas der Instanz " +
-                instanceId +
-                ". Bitte Auswahl einschränken."
-              );
-              return;
-            }
+          const id = instance.instanceId;
+          if (!byInstance[id]) {
+            byInstance[id] = [];
           }
-          stickyNotes = filtered;
-          resolvedInstance = inst;
-        } else {
-          for (const s of stickyNotes) {
-            const inst = dtFindInstanceForPoint(s.x, s.y);
-            if (!inst) {
-              log(
-                "Auswahl enthält Sticky Notes, die nicht über einem 3-Boxes-Canvas liegen. " +
-                "Bitte nur Stickies innerhalb einer Instanz auswählen."
-              );
-              return;
-            }
-            if (!resolvedInstance) {
-              resolvedInstance = inst;
-            } else if (resolvedInstance.instanceId !== inst.instanceId) {
-              log(
-                "Auswahl enthält Sticky Notes aus mehreren Canvas-Instanzen. " +
-                "Bitte pro Instanz separat clustern."
-              );
-              return;
-            }
-          }
-        }
+          byInstance[id].push(s);
+        });
 
-        if (!resolvedInstance) {
-          log("Keine passende Canvas-Instanz für die Auswahl gefunden.");
+        const instanceIds = Object.keys(byInstance);
+
+        if (outside.length > 0) {
+          log(
+            "Die Auswahl enthält Sticky Notes, die nicht über einem 3-Boxes-Canvas liegen. " +
+            "Bitte nur Sticky Notes innerhalb einer Canvas-Instanz auswählen."
+          );
           return;
         }
+
+        if (!instanceIds.length) {
+          log(
+            "Keine der ausgewählten Sticky Notes liegt über einem 3-Boxes-Canvas. " +
+            "Bitte zuerst das Template verwenden und die Sticky Notes innerhalb des Canvas platzieren."
+          );
+          return;
+        }
+
+        if (instanceIds.length > 1) {
+          log(
+            "Die Auswahl enthält Sticky Notes aus mehreren Canvas-Instanzen. " +
+            "Bitte nur Sticky Notes aus genau einer Instanz gleichzeitig clustern."
+          );
+          return;
+        }
+
+        const instanceId = instanceIds[0];
+        const notesInInstance = byInstance[instanceId];
 
         // 1) Sticky mit unterstrichenem Text als Cluster-Name finden (optional)
         let headerSticky = null;
-        for (const s of stickyNotes) {
+        for (const s of notesInInstance) {
           const html = s.content || "";
           if (
             html.indexOf("<u>") !== -1 ||
@@ -709,15 +741,14 @@
           clusterName = candidate;
         } else {
           // Fallback: generischer Clustername, wenn kein unterstrichener Text vorhanden ist
-          const instId = resolvedInstance.instanceId;
-          let count = dtClusterCounterByInstanceId.get(instId) || 0;
+          let count = dtClusterCounterByInstanceId.get(instanceId) || 0;
           count += 1;
-          dtClusterCounterByInstanceId.set(instId, count);
+          dtClusterCounterByInstanceId.set(instanceId, count);
           clusterName = "Cluster " + count;
         }
 
         // 2) Session-State: alle betroffenen Stickies auf diesen Cluster setzen
-        for (const s of stickyNotes) {
+        for (const s of notesInInstance) {
           dtClusterAssignments.set(s.id, clusterName);
         }
 
@@ -725,7 +756,7 @@
           "Cluster '" +
           clusterName +
           "' gesetzt für " +
-          stickyNotes.length +
+          notesInInstance.length +
           " Sticky Notes (Session-State, kein Board-Metafeld)."
         );
       } catch (e) {
@@ -735,7 +766,7 @@
 
     async function dtClusterSelection() {
       log("Button: Auswahl clustern (klick).");
-      await dtClusterSelectionWithIds(null, null);
+      await dtClusterSelectionWithIds(null);
     }
 
     // --------------------------------------------------------------------
@@ -1329,11 +1360,142 @@
     }
 
     // --------------------------------------------------------------------
-    // 4) Agent-Variante A (Headless) für eine Instanz
-    //    - nutzt Board-Katalog + Instanz-JSON
-    //    - gibt JSON-Actions zurück und manipuliert das Board
+    // 4) Change-Tracker für Instanzen
     // --------------------------------------------------------------------
-    async function dtGetInstanceStateForAgent(instance) {
+    function dtComputeInstanceDiff(prevClassification, newClassification) {
+      const diff = {
+        created: [],
+        deleted: [],
+        updated: []
+      };
+
+      if (!newClassification || !Array.isArray(newClassification.items)) {
+        if (prevClassification && Array.isArray(prevClassification.items)) {
+          prevClassification.items.forEach(function (oldItem) {
+            diff.deleted.push({
+              stickyId: oldItem.stickyId,
+              text: oldItem.text || "",
+              regionId: oldItem.regionId || null,
+              color: oldItem.color || null,
+              clusterName: oldItem.clusterName || null
+            });
+          });
+        }
+        return diff;
+      }
+
+      const prevItemsById = {};
+      if (prevClassification && Array.isArray(prevClassification.items)) {
+        prevClassification.items.forEach(function (item) {
+          if (item && item.stickyId) {
+            prevItemsById[item.stickyId] = item;
+          }
+        });
+      }
+
+      const newItemsById = {};
+      newClassification.items.forEach(function (item) {
+        if (item && item.stickyId) {
+          newItemsById[item.stickyId] = item;
+        }
+      });
+
+      const prevIds = Object.keys(prevItemsById);
+      const newIds = Object.keys(newItemsById);
+
+      const prevIdSet = {};
+      prevIds.forEach(function (id) { prevIdSet[id] = true; });
+
+      const newIdSet = {};
+      newIds.forEach(function (id) { newIdSet[id] = true; });
+
+      // created
+      newIds.forEach(function (id) {
+        if (!prevIdSet[id]) {
+          const it = newItemsById[id];
+          diff.created.push({
+            stickyId: it.stickyId,
+            text: it.text || "",
+            regionId: it.regionId || null,
+            color: it.color || null,
+            clusterName: it.clusterName || null
+          });
+        }
+      });
+
+      // deleted
+      prevIds.forEach(function (id) {
+        if (!newIdSet[id]) {
+          const it = prevItemsById[id];
+          diff.deleted.push({
+            stickyId: it.stickyId,
+            text: it.text || "",
+            regionId: it.regionId || null,
+            color: it.color || null,
+            clusterName: it.clusterName || null
+          });
+        }
+      });
+
+      // updated (inhaltlich)
+      function normalizeTags(tags) {
+        if (!Array.isArray(tags)) {
+          return "";
+        }
+        const titles = tags
+          .map(function (t) { return t && t.title; })
+          .filter(function (t) { return !!t; })
+          .sort();
+        return titles.join("|");
+      }
+
+      newIds.forEach(function (id) {
+        const oldItem = prevItemsById[id];
+        const newItem = newItemsById[id];
+        if (!oldItem || !newItem) {
+          return;
+        }
+
+        const oldSummary = {
+          text: oldItem.text || "",
+          regionId: oldItem.regionId || null,
+          color: oldItem.color || null,
+          clusterName: oldItem.clusterName || null,
+          tags: normalizeTags(oldItem.tags)
+        };
+
+        const newSummary = {
+          text: newItem.text || "",
+          regionId: newItem.regionId || null,
+          color: newItem.color || null,
+          clusterName: newItem.clusterName || null,
+          tags: normalizeTags(newItem.tags)
+        };
+
+        const isSame =
+          oldSummary.text === newSummary.text &&
+          oldSummary.regionId === newSummary.regionId &&
+          oldSummary.color === newSummary.color &&
+          oldSummary.clusterName === newSummary.clusterName &&
+          oldSummary.tags === newSummary.tags;
+
+        if (!isSame) {
+          diff.updated.push({
+            stickyId: newItem.stickyId,
+            before: oldSummary,
+            after: newSummary
+          });
+        }
+      });
+
+      return diff;
+    }
+
+    // --------------------------------------------------------------------
+    // 5) Agent-Variante A (Headless) für eine Instanz
+    //    - nutzt Board-Katalog + Instanz-JSON + Change-Tracker
+    // --------------------------------------------------------------------
+    async function dtGetInstanceStateForAgent(instance, options) {
       await dtEnsureMiroReady();
 
       if (!instance || !instance.imageId) {
@@ -1363,7 +1525,13 @@
         height: img.height
       };
 
-      const ctx = await dtGetBoardBaseContext();
+      let ctx = options && options.ctx;
+      if (!ctx) {
+        ctx = await dtGetBoardBaseContext();
+      }
+
+      const previousClassification = instance.lastClassification || null;
+
       const classification = dtClassifyStickiesForTemplate(
         {
           id: img.id,
@@ -1376,6 +1544,8 @@
         ctx
       );
 
+      const diff = dtComputeInstanceDiff(previousClassification, classification);
+
       const payload = dtBuildPromptPayloadFromClassification(classification);
       const stateJson = JSON.stringify(payload, null, 2);
 
@@ -1387,13 +1557,18 @@
         : (Array.isArray(classification.items) ? classification.items.length : 0);
 
       if (!prevStateJson || prevStateJson !== stateJson) {
-        instance.lastChangedAt = new Date().toISOString();
+        if (dtDiffHasChanges(diff)) {
+          instance.lastChangedAt = new Date().toISOString();
+        }
       }
+
+      instance.lastDiff = diff;
 
       return {
         classification,
         promptPayload: payload,
-        stateJson
+        stateJson,
+        diff
       };
     }
 
@@ -1547,7 +1722,23 @@
 
       log("Starte Agent (Variante A, headless) für Instanz " + instanceId + " ...");
 
-      const state = await dtGetInstanceStateForAgent(instance);
+      // Alle Instanzen frisch scannen, um den Change-Tracker zu aktualisieren
+      const ctx = await dtGetBoardBaseContext();
+      const stateById = {};
+
+      const allInstances = [];
+      dtInstancesById.forEach(function (inst) {
+        allInstances.push(inst);
+      });
+
+      for (const inst of allInstances) {
+        const st = await dtGetInstanceStateForAgent(inst, { ctx: ctx });
+        if (st) {
+          stateById[inst.instanceId] = st;
+        }
+      }
+
+      const state = stateById[instanceId];
       if (!state || !state.promptPayload) {
         log("Konnte Instanzzustand für den Agenten nicht ermitteln.");
         return;
@@ -1560,7 +1751,8 @@
         activeInstanceId: instanceId,
         boardCatalog: boardCatalog,
         activeCanvasState: state.promptPayload,
-        hint: "boardCatalog = Kurzüberblick über alle Instanzen, activeCanvasState = detaillierte Stickies/Areas/Verbindungen nur für die aktive Instanz."
+        activeInstanceChangesSinceLastAgent: state.diff || null,
+        hint: "boardCatalog = Kurzüberblick über alle Instanzen (inkl. Changes seit letztem Agent-Run), activeCanvasState = detaillierte Stickies/Areas/Verbindungen nur für die aktive Instanz."
       };
 
       const body = {
