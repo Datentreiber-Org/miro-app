@@ -111,7 +111,7 @@
       </label>
       <button onclick="window.dtCallOpenAI()">An GPT senden (inkl. aktueller Klassifikation)</button>
       <p class="hint">
-        Hinweis: Der Shape-Button auf dem Board („[DT] AI – inst-X“) startet einen instanzspezifischen Agentenlauf
+        Hinweis: Der Shape-Button auf dem Board („[DT] AI“) startet einen instanzspezifischen Agentenlauf
         mit eigener JSON-Action-Ausgabe und Board-Manipulation.
       </p>
     </div>
@@ -152,7 +152,10 @@
 
     // Automatische Cluster-Namen (Fallback), Zähler pro Instanz
     const dtClusterCounterByInstanceId = new Map();
-    let dtGlobalClusterCounter = 1;
+    let dtGlobalClusterCounter = 1; // aktuell nicht genutzt, bleibt als Reserve
+
+    // Letzte ID-Alias-Tabelle für Agent-Actions (Alias -> echte Sticky-ID)
+    let dtLastAliasMap = null;
 
     // Sehr einfacher Prompt-Katalog (später erweiterbar für 25 Canvas-Typen)
     const DT_PROMPT_CATALOG = {
@@ -166,13 +169,15 @@
           "1) die Situation auf der aktiven Instanz verstehen (Input / Processing / Output),\n" +
           "2) sinnvolle nächste Schritte vorschlagen und\n" +
           "3) optionale Board-Aktionen als JSON liefern (z.B. Stickies verschieben oder anlegen).\n" +
+          "Jede Sticky Note in 'activeCanvasState' hat eine kurze ID im Feld 'id' (z.B. \"S1\"). " +
+          "Wenn du eine Sticky Note in einer Action referenzierst, verwende genau diese kurze ID im Feld 'stickyId'.\n" +
           "WICHTIG: Antworte ausschließlich mit einem JSON-Objekt im folgenden Format:\n" +
           "{\n" +
           '  "analysis": "kurze Erklärung in natürlicher Sprache",\n' +
           '  "actions": [\n' +
-          '    { "type": "move_sticky", "stickyId": "id", "targetArea": "Box 2 (Mitte)" },\n' +
+          '    { "type": "move_sticky", "stickyId": "S1", "targetArea": "Box 2 (Mitte)" },\n' +
           '    { "type": "create_sticky", "area": "Box 3 (rechts)", "text": "Neuer Inhalt" },\n' +
-          '    { "type": "delete_sticky", "stickyId": "id" }\n' +
+          '    { "type": "delete_sticky", "stickyId": "S2" }\n' +
           "  ]\n" +
           "}\n" +
           "Falls du keine Aktionen vorschlagen möchtest, setze actions auf ein leeres Array []."
@@ -269,12 +274,70 @@
 
       try {
         if (miro.board && miro.board.ui && typeof miro.board.ui.on === "function") {
-          // Wir nutzen selection:update als Trigger für unseren AI-Shape-Button
+          // AI-Shape-Button reagieren lassen
           miro.board.ui.on("selection:update", dtOnSelectionUpdate);
         }
+        // Custom Action fürs Kontextmenü registrieren (falls im Headless-Iframe möglich)
+        await dtRegisterCustomClusterAction();
       } catch (e) {
-        console.error("[DT] Fehler bei Registrierung von UI-Events:", e);
-        log("Fehler bei Registrierung von UI-Events: " + e.message);
+        console.error("[DT] Fehler bei Registrierung von UI-Events / Custom Actions:", e);
+        log("Fehler bei Registrierung von UI-Events / Custom Actions: " + e.message);
+      }
+    }
+
+    // Custom Action „Auswahl clustern“ im Kontextmenü
+    async function dtRegisterCustomClusterAction() {
+      if (
+        !miro.board ||
+        !miro.board.ui ||
+        typeof miro.board.ui.on !== "function" ||
+        !miro.board.experimental ||
+        !miro.board.experimental.action ||
+        typeof miro.board.experimental.action.register !== "function"
+      ) {
+        return;
+      }
+
+      try {
+        // 1) Event-Handler abonnieren
+        await miro.board.ui.on("custom:dt-cluster-selection", async (event) => {
+          log("Custom Action: Auswahl clustern (Kontextmenü) ausgelöst.");
+          await dtClusterSelectionWithIds(null);
+        });
+
+        // 2) Custom Action registrieren
+        await miro.board.experimental.action.register({
+          event: "dt-cluster-selection",
+          ui: {
+            label: {
+              en: "Cluster selection",
+              de: "Auswahl clustern"
+            },
+            icon: "chat-two", // Beispiel-Icon aus der Doku
+            description: {
+              en: "Cluster the selected sticky notes inside a Datentreiber 3-Boxes canvas.",
+              de: "Gruppiert die ausgewählten Sticky Notes innerhalb eines Datentreiber 3-Boxes Canvas."
+            }
+          },
+          scope: "local",
+          selection: "multi",
+          predicate: {
+            type: {
+              $eq: "sticky_note"
+            }
+          },
+          contexts: {
+            item: {}
+          }
+        });
+
+        log("Custom Action für das Kontextmenü registriert: dt-cluster-selection.");
+      } catch (e) {
+        // Laut Doku schlägt das im Panel/Modal-Iframe fehl – das fangen wir nur sauber ab.
+        log(
+          "Registrierung der Custom Action im Kontextmenü nicht möglich (vermutlich Panel-Kontext): " +
+          e.message
+        );
       }
     }
 
@@ -291,7 +354,7 @@
       const dx = 260;
 
       const aiShape = await miro.board.createShape({
-        content: `[DT] AI – ${instance.instanceId}`,
+        content: "[DT] AI",
         shape: "round_rectangle",
         x: baseX - dx / 2,
         y: baseY,
@@ -355,7 +418,7 @@
 
     async function dtScanTemplateInstances() {
       if (!miro.board || !miro.board.get) return;
-      // Wenn bereits Instanzen bekannt sind, trotzdem einmal scannen, um ggf. neue zu erfassen.
+
       let images = [];
       try {
         images = await miro.board.get({ type: "image" });
@@ -365,13 +428,35 @@
       }
       if (!Array.isArray(images)) return;
 
+      const templateImageIdsOnBoard = new Set();
+
       for (const img of images) {
         if (
           img.type === "image" &&
           typeof img.url === "string" &&
           img.url.indexOf(TEMPLATE_IMAGE_URL) !== -1
         ) {
+          templateImageIdsOnBoard.add(img.id);
           await dtRegisterInstanceFromImage(img);
+        }
+      }
+
+      // Instanzen entfernen, deren Template-Bild nicht mehr existiert
+      const knownImageIds = Array.from(dtInstancesByImageId.keys());
+      for (const imageId of knownImageIds) {
+        if (!templateImageIdsOnBoard.has(imageId)) {
+          const inst = dtInstancesByImageId.get(imageId);
+          dtInstancesByImageId.delete(imageId);
+          if (inst) {
+            dtInstancesById.delete(inst.instanceId);
+            log(
+              "Canvas-Instanz entfernt (Template-Bild gelöscht): " +
+              inst.instanceId +
+              " (Bild-ID " +
+              imageId +
+              ")"
+            );
+          }
         }
       }
     }
@@ -449,7 +534,6 @@
       }
 
       const items = event && event.items ? event.items : [];
-
       if (items.length !== 1) {
         return;
       }
@@ -459,17 +543,17 @@
         return;
       }
 
-      const text = stripHtml(item.content || "");
-      if (text.indexOf("[DT]") !== 0) {
+      // Finde heraus, ob diese Shape der AI-Button einer Instanz ist
+      let instanceId = null;
+      dtInstancesById.forEach(function (inst, id) {
+        if (inst.actionItems && inst.actionItems.aiItemId === item.id) {
+          instanceId = id;
+        }
+      });
+
+      if (!instanceId) {
         return;
       }
-
-      const aiMatch = text.match(/^\[DT\]\s*AI\s*–\s*(.+)$/);
-      if (!aiMatch) {
-        return;
-      }
-
-      const instanceId = aiMatch[1].trim();
 
       dtHandlingSelection = true;
       try {
@@ -581,8 +665,9 @@
           "\nDu kannst das Bild nun verschieben oder skalieren.\n" +
           "Unterhalb des Canvas findest du einen Shape-Button:\n" +
           "- [DT] AI – startet den Agenten für diese Instanz (Shape anklicken)\n" +
-          "\nZum Clustern verwende den Button 'Auswahl clustern' im Side-Panel. " +
-          "Er wirkt nur auf Sticky Notes innerhalb genau einer Canvas-Instanz."
+          "\nZum Clustern verwende entweder den Button 'Auswahl clustern' im Side-Panel " +
+          "oder den Kontextmenü-Eintrag (Rechtsklick auf die Stickies). " +
+          "Beides wirkt nur auf Sticky Notes innerhalb genau einer Canvas-Instanz."
         );
         await miro.board.viewport.zoomTo(image);
       } catch (e) {
@@ -747,7 +832,7 @@
           clusterName = "Cluster " + count;
         }
 
-        // 2) Session-State: alle betroffenen Stickies auf diesen Cluster setzen
+        // 2) Session-State: alle betroffenen Stickies auf diesen Cluster setzen (überschreibend)
         for (const s of notesInInstance) {
           dtClusterAssignments.set(s.id, clusterName);
         }
@@ -1097,15 +1182,43 @@
 
     // --------------------------------------------------------------------
     // 2c) Reduziertes JSON für das Sprachmodell aus der Klassifikation bauen
+    //      - optional mit Sticky-ID-Aliassen (S1, S2, ...)
     // --------------------------------------------------------------------
-    function dtBuildPromptPayloadFromClassification(classification) {
+    function dtBuildPromptPayloadFromClassification(classification, options) {
       if (!classification) {
         return null;
+      }
+
+      options = options || {};
+      const useAliases = !!options.useAliases;
+
+      if (useAliases) {
+        dtLastAliasMap = {
+          sticky: {},
+          stickyReverse: {}
+        };
       }
 
       const perTemplate = Array.isArray(classification.templates) && classification.templates.length
         ? classification.templates
         : [classification];
+
+      function getOrCreateStickyAlias(stickyId) {
+        if (!useAliases || !stickyId) {
+          return null;
+        }
+        const map = dtLastAliasMap;
+        const reverse = map.stickyReverse;
+        let alias = reverse[stickyId];
+        if (alias) {
+          return alias;
+        }
+        const nextIndex = Object.keys(map.sticky).length + 1;
+        alias = "S" + nextIndex;
+        map.sticky[alias] = stickyId;
+        reverse[stickyId] = alias;
+        return alias;
+      }
 
       function transformOne(one) {
         const idToItem = {};
@@ -1171,7 +1284,10 @@
               .map(function (t) { return t && t.title; })
               .filter(function (title) { return !!title; });
 
+            const alias = item && item.stickyId ? getOrCreateStickyAlias(item.stickyId) : null;
+
             return {
+              id: alias,
               text: h.text,
               color: (item && item.color) || h.color || null,
               tags: tags,
@@ -1179,7 +1295,6 @@
               connectionsOut: buildConnectionsOut(item),
               connectionsIn: buildConnectionsIn(item)
             };
-
           })
         };
 
@@ -1209,7 +1324,10 @@
                   .filter(function (title) { return !!title; })
               : [];
 
+            const alias = getOrCreateStickyAlias(item.stickyId);
+
             const stickObj = {
+              id: alias,
               text: item.text,
               color: item.color || null,
               tags: tags,
@@ -1259,9 +1377,18 @@
 
       const templatesPayload = perTemplate.map(transformOne);
 
-      return {
+      const result = {
         templates: templatesPayload
       };
+
+      if (useAliases && dtLastAliasMap && dtLastAliasMap.sticky) {
+        // Nur Alias -> echte ID nach außen geben
+        result.idAliases = {
+          sticky: dtLastAliasMap.sticky
+        };
+      }
+
+      return result;
     }
 
     // --------------------------------------------------------------------
@@ -1288,8 +1415,9 @@
       const classification = await dtClassifyStickies({ silent: true });
 
       // Reduziertes, modellfreundliches JSON aus der Klassifikation bauen
+      // -> ohne Aliasse, dieses JSON ist nur für Debug / klassische Abfrage
       const promptPayload = classification
-        ? dtBuildPromptPayloadFromClassification(classification)
+        ? dtBuildPromptPayloadFromClassification(classification, { useAliases: false })
         : null;
 
       const classificationPart = promptPayload
@@ -1369,13 +1497,20 @@
         updated: []
       };
 
+      function itemAreaName(it) {
+        if (!it) return null;
+        if (it.regionTitle) return it.regionTitle;
+        if (it.role === "header") return "Header";
+        return null;
+      }
+
       if (!newClassification || !Array.isArray(newClassification.items)) {
         if (prevClassification && Array.isArray(prevClassification.items)) {
           prevClassification.items.forEach(function (oldItem) {
             diff.deleted.push({
               stickyId: oldItem.stickyId,
               text: oldItem.text || "",
-              regionId: oldItem.regionId || null,
+              areaName: itemAreaName(oldItem),
               color: oldItem.color || null,
               clusterName: oldItem.clusterName || null
             });
@@ -1416,7 +1551,7 @@
           diff.created.push({
             stickyId: it.stickyId,
             text: it.text || "",
-            regionId: it.regionId || null,
+            areaName: itemAreaName(it),
             color: it.color || null,
             clusterName: it.clusterName || null
           });
@@ -1430,7 +1565,7 @@
           diff.deleted.push({
             stickyId: it.stickyId,
             text: it.text || "",
-            regionId: it.regionId || null,
+            areaName: itemAreaName(it),
             color: it.color || null,
             clusterName: it.clusterName || null
           });
@@ -1458,7 +1593,7 @@
 
         const oldSummary = {
           text: oldItem.text || "",
-          regionId: oldItem.regionId || null,
+          areaName: itemAreaName(oldItem),
           color: oldItem.color || null,
           clusterName: oldItem.clusterName || null,
           tags: normalizeTags(oldItem.tags)
@@ -1466,7 +1601,7 @@
 
         const newSummary = {
           text: newItem.text || "",
-          regionId: newItem.regionId || null,
+          areaName: itemAreaName(newItem),
           color: newItem.color || null,
           clusterName: newItem.clusterName || null,
           tags: normalizeTags(newItem.tags)
@@ -1474,7 +1609,7 @@
 
         const isSame =
           oldSummary.text === newSummary.text &&
-          oldSummary.regionId === newSummary.regionId &&
+          oldSummary.areaName === newSummary.areaName &&
           oldSummary.color === newSummary.color &&
           oldSummary.clusterName === newSummary.clusterName &&
           oldSummary.tags === newSummary.tags;
@@ -1546,7 +1681,8 @@
 
       const diff = dtComputeInstanceDiff(previousClassification, classification);
 
-      const payload = dtBuildPromptPayloadFromClassification(classification);
+      // payload hier noch ohne Aliasse bauen (nur für internen Vergleich)
+      const payload = dtBuildPromptPayloadFromClassification(classification, { useAliases: false });
       const stateJson = JSON.stringify(payload, null, 2);
 
       const prevStateJson = instance.lastStateJson;
@@ -1597,8 +1733,17 @@
       return { px: 0.5, py: 0.5 };
     }
 
+    function dtResolveStickyId(stickyIdOrAlias) {
+      if (!stickyIdOrAlias) return null;
+      if (dtLastAliasMap && dtLastAliasMap.sticky && dtLastAliasMap.sticky[stickyIdOrAlias]) {
+        return dtLastAliasMap.sticky[stickyIdOrAlias];
+      }
+      return stickyIdOrAlias;
+    }
+
     async function dtActionMoveSticky(templateGeometry, action) {
-      const stickyId = action.stickyId;
+      const rawId = action.stickyId;
+      const stickyId = dtResolveStickyId(rawId);
       if (!stickyId) return;
 
       let targetPx = action.targetPx;
@@ -1648,8 +1793,10 @@
     }
 
     async function dtActionDeleteSticky(action) {
-      const stickyId = action.stickyId;
+      const rawId = action.stickyId;
+      const stickyId = dtResolveStickyId(rawId);
       if (!stickyId) return;
+
       try {
         const arr = await miro.board.get({ id: stickyId });
         const sticky = Array.isArray(arr) ? arr[0] : arr;
@@ -1739,8 +1886,18 @@
       }
 
       const state = stateById[instanceId];
-      if (!state || !state.promptPayload) {
+      if (!state || !state.classification) {
         log("Konnte Instanzzustand für den Agenten nicht ermitteln.");
+        return;
+      }
+
+      // Aktiven Canvas-State mit Alias-IDs bauen
+      const activeCanvasState = dtBuildPromptPayloadFromClassification(
+        state.classification,
+        { useAliases: true }
+      );
+      if (!activeCanvasState) {
+        log("Konnte aktiven Canvas-Status mit Alias-IDs nicht aufbereiten.");
         return;
       }
 
@@ -1750,7 +1907,7 @@
         userQuestion: userText,
         activeInstanceId: instanceId,
         boardCatalog: boardCatalog,
-        activeCanvasState: state.promptPayload,
+        activeCanvasState: activeCanvasState,
         activeInstanceChangesSinceLastAgent: state.diff || null,
         hint: "boardCatalog = Kurzüberblick über alle Instanzen (inkl. Changes seit letztem Agent-Run), activeCanvasState = detaillierte Stickies/Areas/Verbindungen nur für die aktive Instanz."
       };
