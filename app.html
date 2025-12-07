@@ -154,8 +154,16 @@
     const dtClusterCounterByInstanceId = new Map();
     let dtGlobalClusterCounter = 1; // Reserve
 
+    // Globale Kurz-ID-Zählung für Sticky-Aliasse (S00001, S00002, ...)
+    let dtNextStickyAliasIndex = 1;
+
     // Letzte ID-Alias-Tabelle für Agent-Actions (Alias -> echte Sticky-ID)
     let dtLastAliasMap = null;
+
+    // Letzte Auswahl von Sticky Notes (für den Cluster-Button auf dem Board)
+    let dtLastStickySelectionIds = [];
+
+
 
     // Sehr einfacher Prompt-Katalog
     const DT_PROMPT_CATALOG = {
@@ -347,8 +355,9 @@
       const baseX = image.x;
       const dx = 260;
 
+      // AI-Button (Send to OpenAI)
       const aiShape = await miro.board.createShape({
-        content: "[DT] AI",
+        content: "Send to OpenAI",
         shape: "round_rectangle",
         x: baseX - dx / 2,
         y: baseY,
@@ -356,10 +365,32 @@
         height: 60
       });
 
+      // Cluster-Button
+      const clusterShape = await miro.board.createShape({
+        content: "Cluster",
+        shape: "round_rectangle",
+        x: baseX + dx / 2,
+        y: baseY,
+        width: 260,
+        height: 60
+      });
+
+      // Versuchen, Canvas-Bild und Buttons zu gruppieren,
+      // damit sie sich gemeinsam bewegen lassen.
+      try {
+        if (typeof miro.board.group === "function") {
+          await miro.board.group({ items: [image, aiShape, clusterShape] });
+        }
+      } catch (e) {
+        console.error("[DT] Fehler beim Gruppieren von Canvas-Bild und Buttons:", e);
+      }
+
       instance.actionItems = {
-        aiItemId: aiShape.id
+        aiItemId: aiShape.id,
+        clusterItemId: clusterShape.id
       };
     }
+
 
     async function dtRegisterInstanceFromImage(image) {
       if (!image || !image.id) return null;
@@ -532,6 +563,16 @@
       }
 
       const items = event && event.items ? event.items : [];
+
+      // Sticky-Auswahl merken (für den Cluster-Button)
+      const stickyIdsInSelection = items
+        .filter(function (it) { return it.type === "sticky_note"; })
+        .map(function (it) { return it.id; });
+
+      if (stickyIdsInSelection.length > 0) {
+        dtLastStickySelectionIds = stickyIdsInSelection.slice();
+      }
+
       if (items.length !== 1) {
         return;
       }
@@ -541,22 +582,38 @@
         return;
       }
 
-      // Ist dies der AI-Button einer Instanz?
+      // Herausfinden, ob es der AI- oder Cluster-Button einer Instanz ist
       let instanceId = null;
+      let buttonType = null; // "ai" oder "cluster"
+
       dtInstancesById.forEach(function (inst, id) {
-        if (inst.actionItems && inst.actionItems.aiItemId === item.id) {
+        if (!inst.actionItems) return;
+        if (inst.actionItems.aiItemId === item.id) {
           instanceId = id;
+          buttonType = "ai";
+        } else if (inst.actionItems.clusterItemId === item.id) {
+          instanceId = id;
+          buttonType = "cluster";
         }
       });
 
-      if (!instanceId) {
+      if (!instanceId || !buttonType) {
         return;
       }
 
       dtHandlingSelection = true;
       try {
-        log("Agent-Button (Shape) für Instanz " + instanceId + " ausgelöst.");
-        await dtRunAgentForInstance(instanceId);
+        if (buttonType === "ai") {
+          log("Agent-Button (Shape) für Instanz " + instanceId + " ausgelöst.");
+          await dtRunAgentForInstance(instanceId);
+        } else if (buttonType === "cluster") {
+          if (!dtLastStickySelectionIds || !dtLastStickySelectionIds.length) {
+            log("Cluster-Button: Keine vorherige Sticky-Auswahl gefunden. Bitte zuerst Sticky Notes auswählen.");
+            return;
+          }
+          log("Cluster-Button (Shape) für Instanz " + instanceId + " ausgelöst.");
+          await dtClusterSelectionWithIds(dtLastStickySelectionIds, instanceId);
+        }
       } finally {
         dtHandlingSelection = false;
       }
@@ -659,11 +716,11 @@
           "Template eingefügt: Bild-ID " + image.id +
           " / " + currentTemplateImage.title +
           "\nDu kannst das Bild nun verschieben oder skalieren.\n" +
-          "Unterhalb des Canvas findest du einen Shape-Button:\n" +
-          "- [DT] AI – startet den Agenten für diese Instanz (Shape anklicken)\n" +
-          "\nZum Clustern verwende entweder den Button 'Auswahl clustern' im Side-Panel " +
-          "oder später eine headless-Kontextmenü-Action. " +
-          "Beides wirkt nur auf Sticky Notes innerhalb genau einer Canvas-Instanz."
+          "Unterhalb des Canvas findest du zwei Shape-Buttons (mit dem Canvas gruppiert):\n" +
+          "- Send to OpenAI – startet den Agenten für diese Instanz (Shape anklicken)\n" +
+          "- Cluster – clustert die zuvor ausgewählte Sticky-Auswahl innerhalb dieses Canvas\n" +
+          "\nAlternativ kannst du auch den Button 'Auswahl clustern' im Side-Panel verwenden. " +
+          "Alle Varianten wirken nur auf Sticky Notes innerhalb genau einer Canvas-Instanz."
         );
         await miro.board.viewport.zoomTo(image);
       } catch (e) {
@@ -717,13 +774,13 @@
     // --------------------------------------------------------------------
     // Auswahl clustern
     // --------------------------------------------------------------------
-    async function dtClusterSelectionWithIds(stickyIds) {
+    async function dtClusterSelectionWithIds(stickyIds, expectedInstanceId) {
       await dtEnsureMiroReady();
       await dtScanTemplateInstances();
-
+    
       try {
         let stickyNotes = [];
-
+    
         if (Array.isArray(stickyIds) && stickyIds.length > 0) {
           const arr = await miro.board.get({ id: stickyIds });
           if (Array.isArray(arr)) {
@@ -739,15 +796,15 @@
           }
           stickyNotes = selection.filter(function (item) { return item.type === "sticky_note"; });
         }
-
+    
         if (!stickyNotes.length) {
           log("In der Auswahl sind keine Sticky Notes. Bitte nur Sticky Notes auswählen.");
           return;
         }
-
+    
         const byInstance = {};
         const outside = [];
-
+    
         stickyNotes.forEach(function (s) {
           const instance = dtFindInstanceForPoint(s.x, s.y);
           if (!instance) {
@@ -760,9 +817,9 @@
           }
           byInstance[id].push(s);
         });
-
+    
         const instanceIds = Object.keys(byInstance);
-
+    
         if (outside.length > 0) {
           log(
             "Die Auswahl enthält Sticky Notes, die nicht über einem 3-Boxes-Canvas liegen. " +
@@ -770,7 +827,7 @@
           );
           return;
         }
-
+    
         if (!instanceIds.length) {
           log(
             "Keine der ausgewählten Sticky Notes liegt über einem 3-Boxes-Canvas. " +
@@ -778,7 +835,7 @@
           );
           return;
         }
-
+    
         if (instanceIds.length > 1) {
           log(
             "Die Auswahl enthält Sticky Notes aus mehreren Canvas-Instanzen. " +
@@ -786,10 +843,21 @@
           );
           return;
         }
-
+    
         const instanceId = instanceIds[0];
+    
+        // Sicherstellen, dass die Auswahl zu dem Canvas gehört,
+        // dessen Cluster-Button geklickt wurde (falls übergeben)
+        if (expectedInstanceId && instanceId !== expectedInstanceId) {
+          log(
+            "Cluster-Button gehört zu einem anderen Canvas als die aktuelle Sticky-Auswahl. " +
+            "Bitte nur Sticky Notes innerhalb desselben Canvas auswählen."
+          );
+          return;
+        }
+    
         const notesInInstance = byInstance[instanceId];
-
+    
         let headerSticky = null;
         for (const s of notesInInstance) {
           const html = s.content || "";
@@ -801,9 +869,9 @@
             break;
           }
         }
-
+    
         let clusterName = null;
-
+    
         if (headerSticky) {
           const candidate = stripHtml(headerSticky.content).trim();
           if (!candidate) {
@@ -821,11 +889,11 @@
           dtClusterCounterByInstanceId.set(instanceId, count);
           clusterName = "Cluster " + count;
         }
-
+    
         for (const s of notesInInstance) {
           dtClusterAssignments.set(s.id, clusterName);
         }
-
+    
         log(
           "Cluster '" +
           clusterName +
@@ -837,6 +905,7 @@
         log("Fehler beim Setzen der Cluster-Metadaten: " + e.message);
       }
     }
+
 
     async function dtClusterSelection() {
       log("Button: Auswahl clustern (klick).");
@@ -1193,12 +1262,15 @@
         if (alias) {
           return alias;
         }
-        const nextIndex = Object.keys(map.sticky).length + 1;
-        alias = "S" + nextIndex;
+        // Globale fortlaufende Kurz-ID erzeugen (S0001, S0002, ...)
+        const index = dtNextStickyAliasIndex++;
+        const padded = String(index).padStart(4, "0");
+        alias = "S" + padded;
         map.sticky[alias] = stickyId;
         reverse[stickyId] = alias;
         return alias;
       }
+
 
       function transformOne(one) {
         const idToItem = {};
