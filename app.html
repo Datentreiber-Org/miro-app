@@ -78,21 +78,20 @@
     <div class="block">
       <h4>1) Template wählen</h4>
       <p class="hint">
-        Option A: „Template-Bild auf Board einfügen“ legt dein 3-Boxes-PNG als Bild aufs Board.<br>
-        Option B: ein vorhandenes 3-Boxes-PNG auf dem Board auswählen (blau markiert)
-        und dann „Aktuelle Auswahl als Template setzen“ klicken.<br>
-        Beim Klassifizieren / GPT-Call werden alle aktuell ausgewählten 3-Boxes-PNGs
-        als eigene Template-Instanzen berücksichtigt (1..n).
+        „Template-Bild auf Board einfügen“ legt dein 3-Boxes-PNG als Bild aufs Board
+        und registriert eine Canvas-Instanz inkl. Action-Buttons direkt unter dem Canvas (App Cards).<br>
+        „Aktuelle Auswahl als Template setzen“ ist vor allem für die Entwicklungsphase da:
+        ein ausgewähltes 3-Boxes-PNG wird als Instanz registriert.<br>
+        Beim Klassifizieren / GPT-Call werden die Instanzen intern per Image-Rect und Koordinaten erkannt.
       </p>
       <button onclick="window.dtInsertTemplateImage()">Template-Bild auf Board einfügen</button>
       <button onclick="window.dtSetTemplateFromSelection()">Aktuelle Auswahl als Template setzen</button>
       <button onclick="window.dtClassifyStickies()">Stickies klassifizieren</button>
       <button onclick="window.dtClusterSelection()">Auswahl clustern (unterstrichener Text = Clustername)</button>
-
     </div>
 
     <div class="block">
-      <h4>2) GPT-Abfrage</h4>
+      <h4>2) GPT-Abfrage (Side-Panel / Debug)</h4>
       <label>
         OpenAI API Key:
         <input id="api-key" type="password" placeholder="sk-..." autocomplete="off">
@@ -111,6 +110,10 @@
           placeholder="Bitte analysiere die Sticky Notes auf dem 3-Boxes-Canvas ..."></textarea>
       </label>
       <button onclick="window.dtCallOpenAI()">An GPT senden (inkl. aktueller Klassifikation)</button>
+      <p class="hint">
+        Hinweis: Die neuen Agent-Buttons auf dem Board („[DT] AI“) starten einen instanzspezifischen Lauf
+        mit eigener JSON-Action-Ausgabe und Board-Manipulation.
+      </p>
     </div>
 
     <div class="block">
@@ -128,15 +131,51 @@
       "https://www.datentreiber.com/wp-content/uploads/2024/12/Datentreiber_EN_3-Boxes_v1-1_20240610.png";
     const CLUSTER_META_KEY = "datentreiber-clusters";
 
-    let currentTemplateImage = null;   // {id, title, x, y, width, height}
+    // Instanz-Management (alle 3-Boxes-Bilder auf dem Board)
+    let currentTemplateImage = null;   // {id, title, x, y, width, height} (Legacy/Fallback)
     let lastClassification = null;
     let miroReadyPromise = null;
 
-    // Cluster-Zuordnung: Sticky-ID -> Cluster-Name
-    // (gilt für die Lebensdauer des offenen Panels)
+    let dtInitialized = false;
+    let dtNextInstanceCounter = 1;
+
+    // imageId -> instance
+    // instanceId -> instance
+    const dtInstancesByImageId = new Map();
+    const dtInstancesById = new Map();
+
+    // Cluster-Zuordnung: Sticky-ID -> Cluster-Name (nur Panel-Session)
     const dtClusterAssignments = new Map();
 
+    // Sehr einfacher Prompt-Katalog (später erweiterbar für 25 Canvas-Typen)
+    const DT_PROMPT_CATALOG = {
+      [TEMPLATE_ID]: {
+        system: (
+          "Du bist ein Facilitation-Bot für Miro-Workshops.\n" +
+          "Du siehst:\n" +
+          "- eine aktive Canvas-Instanz (3-Boxes-Canvas) mit allen Sticky Notes als JSON\n" +
+          "- einen Board-Katalog mit allen weiteren Instanzen (nur als Zusammenfassung).\n" +
+          "Du sollst:\n" +
+          "1) die Situation auf der aktiven Instanz verstehen (Input / Processing / Output),\n" +
+          "2) sinnvolle nächste Schritte vorschlagen und\n" +
+          "3) optionale Board-Aktionen als JSON liefern (z.B. Stickies verschieben oder anlegen).\n" +
+          "WICHTIG: Antworte ausschließlich mit einem JSON-Objekt im folgenden Format:\n" +
+          "{\n" +
+          '  "analysis": "kurze Erklärung in natürlicher Sprache",\n' +
+          '  "actions": [\n' +
+          '    { "type": "move_sticky", "stickyId": "id", "targetArea": "Box 2 (Mitte)" },\n' +
+          '    { "type": "create_sticky", "area": "Box 3 (rechts)", "text": "Neuer Inhalt" },\n' +
+          '    { "type": "delete_sticky", "stickyId": "id" }\n' +
+          "  ]\n" +
+          "}\n" +
+          "Falls du keine Aktionen vorschlagen möchtest, setze actions auf ein leeres Array []."
+        )
+      }
+    };
 
+    // --------------------------------------------------------------------
+    // Logging & Helper
+    // --------------------------------------------------------------------
     function log(msg) {
       const el = document.getElementById("log");
       const text = typeof msg === "string" ? msg : JSON.stringify(msg, null, 2);
@@ -165,7 +204,7 @@
       tmp.innerHTML = html;
       return tmp.textContent || tmp.innerText || "";
     }
-    
+
     // Unterstrichenen Text aus dem Sticky-HTML extrahieren (für Cluster-Namen)
     function dtExtractUnderlinedText(html) {
       if (!html) return null;
@@ -177,24 +216,33 @@
       return txt || null;
     }
 
+    function dtGetCurrentUserQuestion() {
+      const el = document.getElementById("user-text");
+      const t = el && el.value ? el.value.trim() : "";
+      if (t) return t;
+      return "Bitte analysiere diese Canvas-Instanz und führe sinnvolle nächste Schritte innerhalb des Workshop-Workflows aus.";
+    }
+
     // --------------------------------------------------------------------
     // Miro-Ready-Helfer (einmalig)
     // --------------------------------------------------------------------
     function dtEnsureMiroReady() {
       if (!miroReadyPromise) {
         miroReadyPromise = new Promise((resolve) => {
-          if (window.miro && typeof window.miro.board !== "undefined") {
-            console.log("[DT] Miro SDK v2 direkt verfügbar");
+          const onReady = () => {
+            console.log("[DT] Miro SDK v2 bereit");
             log("Miro SDK bereit.");
+            dtAfterMiroReady();
             resolve();
+          };
+
+          if (window.miro && typeof window.miro.board !== "undefined") {
+            onReady();
           } else if (window.miro && typeof window.miro.onReady === "function") {
-            window.miro.onReady(() => {
-              console.log("[DT] miro.onReady fired");
-              log("Miro SDK bereit (onReady).");
-              resolve();
-            });
+            window.miro.onReady(onReady);
           } else {
             log("Warnung: miro.onReady nicht verfügbar, versuche SDK direkt zu verwenden.");
+            dtAfterMiroReady();
             resolve();
           }
         });
@@ -202,10 +250,603 @@
       return miroReadyPromise;
     }
 
+    async function dtAfterMiroReady() {
+      if (dtInitialized) return;
+      dtInitialized = true;
+
+      try {
+        await dtScanTemplateInstances();
+      } catch (e) {
+        console.error("[DT] Fehler beim initialen Template-Scan:", e);
+      }
+
+      try {
+        if (miro.board && miro.board.ui && typeof miro.board.ui.on === "function") {
+          miro.board.ui.on("app_card:open", dtOnAppCardOpen);
+        }
+      } catch (e) {
+        console.error("[DT] Fehler bei Registrierung app_card:open-Handler:", e);
+      }
+    }
+
     // --------------------------------------------------------------------
-    // Template-Resolver: 1..n Bild-Instanzen bestimmen
-    //  - 1. Priorität: ausgewählte 3-Boxes-PNGs (URL enthält TEMPLATE_IMAGE_URL)
-    //  - 2. Priorität: zuletzt gemerkte Template-Instanz
+    // Instanz-Management
+    // --------------------------------------------------------------------
+
+    // Meta-Informationen in App-Card-Description codieren
+    function dtBuildAppCardDescription(baseText, meta) {
+      const metaJson = JSON.stringify(meta);
+      return baseText + "\n\n@@dt-meta@@" + metaJson;
+    }
+
+    function dtParseAppCardMeta(description) {
+      if (!description) return null;
+      const marker = "@@dt-meta@@";
+      const idx = description.indexOf(marker);
+      if (idx === -1) return null;
+      const jsonStr = description.slice(idx + marker.length).trim();
+      if (!jsonStr) return null;
+      try {
+        return JSON.parse(jsonStr);
+      } catch (e) {
+        console.warn("[DT] Konnte App-Card-Meta nicht parsen:", e);
+        return null;
+      }
+    }
+
+    async function dtCreateInstanceActionCards(instance, image) {
+      if (!miro.board || !miro.board.createAppCard) {
+        return;
+      }
+
+      const baseY = image.y + image.height / 2 + 80;
+      const baseX = image.x;
+      const dx = 260;
+
+      // AI-Card
+      const aiMeta = { instanceId: instance.instanceId, action: "run_ai" };
+      const aiCard = await miro.board.createAppCard({
+        title: `[DT] AI – ${instance.instanceId}`,
+        description: dtBuildAppCardDescription(
+          "Starte die Datentreiber-AI für diese Canvas-Instanz.",
+          aiMeta
+        ),
+        x: baseX - dx / 2,
+        y: baseY
+      });
+
+      // Cluster-Card (benutzt die aktuelle Board-Auswahl; Instanz dient nur als Kontext)
+      const clusterMeta = { instanceId: instance.instanceId, action: "cluster" };
+      const clusterCard = await miro.board.createAppCard({
+        title: `[DT] Cluster – ${instance.instanceId}`,
+        description: dtBuildAppCardDescription(
+          "Cluster die aktuell ausgewählten Sticky Notes (unterstrichener Text = Clustername).",
+          clusterMeta
+        ),
+        x: baseX + dx / 2,
+        y: baseY
+      });
+
+      instance.actionCards = {
+        aiCardId: aiCard.id,
+        clusterCardId: clusterCard.id
+      };
+    }
+
+    async function dtRegisterInstanceFromImage(image) {
+      if (!image || !image.id) return null;
+
+      let instance = dtInstancesByImageId.get(image.id);
+      if (instance) {
+        // Geometrie aktualisieren
+        instance.title = image.title || instance.title || "Datentreiber 3-Boxes";
+        instance.lastGeometry = {
+          x: image.x,
+          y: image.y,
+          width: image.width,
+          height: image.height
+        };
+        return instance;
+      }
+
+      const instanceId = "inst-" + (dtNextInstanceCounter++);
+      instance = {
+        instanceId,
+        canvasTypeId: TEMPLATE_ID,
+        imageId: image.id,
+        title: image.title || "Datentreiber 3-Boxes",
+        lastGeometry: {
+          x: image.x,
+          y: image.y,
+          width: image.width,
+          height: image.height
+        },
+        lastClassification: null,
+        lastStateJson: null,
+        lastStickyCount: 0,
+        lastChangedAt: null,
+        actionCards: {}
+      };
+
+      dtInstancesByImageId.set(image.id, instance);
+      dtInstancesById.set(instanceId, instance);
+
+      log("Neue Canvas-Instanz registriert: " + instanceId + " (Bild-ID " + image.id + ")");
+      try {
+        await dtCreateInstanceActionCards(instance, image);
+      } catch (e) {
+        console.error("[DT] Fehler beim Erzeugen der Action-Cards:", e);
+      }
+
+      return instance;
+    }
+
+    async function dtScanTemplateInstances() {
+      if (!miro.board || !miro.board.get) return;
+      // Wenn bereits Instanzen bekannt sind, trotzdem einmal scannen, um ggf. neue zu erfassen.
+      let images = [];
+      try {
+        images = await miro.board.get({ type: "image" });
+      } catch (e) {
+        console.error("[DT] Fehler beim Laden der Images:", e);
+        return;
+      }
+      if (!Array.isArray(images)) return;
+
+      for (const img of images) {
+        if (
+          img.type === "image" &&
+          typeof img.url === "string" &&
+          img.url.indexOf(TEMPLATE_IMAGE_URL) !== -1
+        ) {
+          await dtRegisterInstanceFromImage(img);
+        }
+      }
+    }
+
+    function dtBuildBoardCatalogSummary(activeInstanceId) {
+      const instances = [];
+      dtInstancesById.forEach((instance, id) => {
+        const entry = {
+          instanceId: id,
+          canvasTypeId: instance.canvasTypeId,
+          title: instance.title,
+          imageId: instance.imageId,
+          lastStickyCount: instance.lastStickyCount || 0,
+          lastChangedAt: instance.lastChangedAt,
+          headerSummary:
+            instance.lastClassification &&
+            instance.lastClassification.template &&
+            instance.lastClassification.template.headerSummary
+              ? instance.lastClassification.template.headerSummary
+              : null,
+          isActive: id === activeInstanceId
+        };
+        instances.push(entry);
+      });
+      return { instances };
+    }
+
+    async function dtOnAppCardOpen(event) {
+      try {
+        const card = event && event.appCard;
+        if (!card) return;
+        const title = card.title || "";
+        if (!title.startsWith("[DT]")) return; // nur unsere Karten
+
+        const meta = dtParseAppCardMeta(card.description);
+        if (!meta || !meta.action) return;
+
+        if (meta.action === "run_ai") {
+          log("Agent-Call für Instanz " + meta.instanceId + " ausgelöst (App Card).");
+          await dtRunAgentForInstance(meta.instanceId);
+        } else if (meta.action === "cluster") {
+          log("Cluster-Button (App Card) für Instanz " + meta.instanceId + " ausgelöst.");
+          await dtClusterSelection();
+        }
+      } catch (e) {
+        console.error("[DT] Fehler im app_card:open-Handler:", e);
+        log("Fehler im app_card:open-Handler: " + e.message);
+      }
+    }
+
+    // --------------------------------------------------------------------
+    // Mapping von normalisierten Koordinaten -> Regionen (3 Boxen)
+    // --------------------------------------------------------------------
+    function dtMapToRegion(px, py) {
+      // Vertikale Begrenzung grob: unterhalb des Headers, oberhalb Fußzeile
+      const yMin = 0.20;
+      const yMax = 0.95;
+      if (py < yMin || py > yMax) return null;
+      if (px < 0 || px > 1) return null;
+
+      const third = 1 / 3;
+      if (px < third) {
+        return { id: "left",   title: "Box 1 (links)" };
+      } else if (px < 2 * third) {
+        return { id: "middle", title: "Box 2 (Mitte)" };
+      } else {
+        return { id: "right",  title: "Box 3 (rechts)" };
+      }
+    }
+
+    function dtAreaNameToRegion(areaName) {
+      if (!areaName) return null;
+      const norm = areaName.toLowerCase();
+      if (norm.indexOf("box 1") !== -1 || norm.indexOf("links") !== -1) {
+        return { id: "left", title: "Box 1 (links)" };
+      }
+      if (norm.indexOf("box 2") !== -1 || norm.indexOf("mitte") !== -1) {
+        return { id: "middle", title: "Box 2 (Mitte)" };
+      }
+      if (norm.indexOf("box 3") !== -1 || norm.indexOf("rechts") !== -1) {
+        return { id: "right", title: "Box 3 (rechts)" };
+      }
+      return null;
+    }
+
+    // Sehr grob: Rolle aus Y-Position ableiten (Header / Body / Footer)
+    function dtRoleFromNormalizedY(py) {
+      if (py < 0.20) return "header";  // oberer Streifen über den drei Boxen
+      if (py > 0.95) return "footer";  // unterer Streifen
+      return "body";
+    }
+
+    // --------------------------------------------------------------------
+    // Board-Kontext (für Klassifikation & Agent)
+    // --------------------------------------------------------------------
+    async function dtGetBoardBaseContext() {
+      await dtEnsureMiroReady();
+      try {
+        const [stickies, connectors, tags] = await Promise.all([
+          miro.board.get({ type: "sticky_note" }),
+          miro.board.get({ type: "connector" }),
+          miro.board.get({ type: "tag" })
+        ]);
+
+        const tagsById = {};
+        if (Array.isArray(tags)) {
+          for (const tag of tags) {
+            const title = tag.title || tag.text || tag.content || "";
+            tagsById[tag.id] = title;
+          }
+        }
+        return { stickies: stickies || [], connectors: connectors || [], tagsById };
+      } catch (e) {
+        log("Fehler beim Laden des Board-Kontexts: " + e.message);
+        return { stickies: [], connectors: [], tagsById: {} };
+      }
+    }
+
+    // --------------------------------------------------------------------
+    // 1A) Template-Bild neu einfügen
+    // --------------------------------------------------------------------
+    async function dtInsertTemplateImage() {
+      log("Button: Template-Bild auf Board einfügen (klick).");
+      await dtEnsureMiroReady();
+
+      try {
+        const image = await miro.board.createImage({
+          url: TEMPLATE_IMAGE_URL,
+          x: 0,
+          y: 0,
+          width: 2000
+        });
+
+        currentTemplateImage = {
+          id: image.id,
+          title: image.title || "Datentreiber 3-Boxes",
+          x: image.x,
+          y: image.y,
+          width: image.width,
+          height: image.height
+        };
+        lastClassification = null;
+
+        await dtRegisterInstanceFromImage(image);
+
+        log(
+          "Template eingefügt: Bild-ID " + image.id +
+          " / " + currentTemplateImage.title +
+          "\nDu kannst das Bild nun verschieben oder skalieren.\n" +
+          "Unterhalb des Canvas findest du zwei App Cards:\n" +
+          "- [DT] AI – startet den Agenten für diese Instanz\n" +
+          "- [DT] Cluster – clustert die aktuelle Sticky-Auswahl."
+        );
+        await miro.board.viewport.zoomTo(image);
+      } catch (e) {
+        log("Fehler beim Einfügen des Template-Bildes: " + e.message);
+      }
+    }
+
+    // --------------------------------------------------------------------
+    // 1B) Template aus aktueller Auswahl setzen (manuelle Fokussierung)
+    // --------------------------------------------------------------------
+    async function dtSetTemplateFromSelection() {
+      log("Button: Aktuelle Auswahl als Template setzen (klick).");
+      await dtEnsureMiroReady();
+
+      try {
+        const selection = await miro.board.getSelection();
+        if (!selection.length) {
+          log("Kein Element ausgewählt. Bitte das Template-PNG auf dem Board anklicken (blau markiert) und erneut versuchen.");
+          return;
+        }
+
+        const image = selection.find((item) => item.type === "image" &&
+          typeof item.url === "string" &&
+          item.url.indexOf(TEMPLATE_IMAGE_URL) !== -1
+        );
+        if (!image) {
+          log("In der Auswahl ist kein passendes 3-Boxes-Bild-Element. Bitte direkt das Template-PNG auswählen (nicht den Frame).");
+          return;
+        }
+
+        currentTemplateImage = {
+          id: image.id,
+          title: image.title || "Datentreiber 3-Boxes",
+          x: image.x,
+          y: image.y,
+          width: image.width,
+          height: image.height
+        };
+        lastClassification = null;
+
+        await dtRegisterInstanceFromImage(image);
+
+        log("Template gesetzt aus Auswahl: Bild-ID " + image.id +
+            " / " + currentTemplateImage.title +
+            "\n(Hinweis: In Zukunft wird die Template-Auswahl nur noch über das Side-Panel / Template-Bibliothek erfolgen.)");
+      } catch (e) {
+        log("Fehler beim Setzen des Templates aus Auswahl: " + e.message);
+      }
+    }
+
+    // --------------------------------------------------------------------
+    // Auswahl clustern:
+    //  - Auswahl muss Sticky Notes enthalten
+    //  - genau EIN Sticky mit unterstrichenem Text = Cluster-Name
+    //  - alle ausgewählten Stickies bekommen im Session-State diesen Cluster
+    // --------------------------------------------------------------------
+    async function dtClusterSelection() {
+      log("Button: Auswahl clustern (klick).");
+      await dtEnsureMiroReady();
+
+      try {
+        const selection = await miro.board.getSelection();
+        if (!selection || !selection.length) {
+          log("Keine Auswahl gefunden. Bitte einige Sticky Notes auswählen.");
+          return;
+        }
+
+        const stickyNotes = selection.filter((item) => item.type === "sticky_note");
+        if (!stickyNotes.length) {
+          log("In der Auswahl sind keine Sticky Notes. Bitte nur Sticky Notes markieren.");
+          return;
+        }
+
+        // 1) Sticky mit unterstrichenem Text als Cluster-Name finden
+        let headerSticky = null;
+        for (const s of stickyNotes) {
+          const html = s.content || "";
+          if (
+            html.indexOf("<u>") !== -1 ||
+            html.indexOf("text-decoration:underline") !== -1
+          ) {
+            headerSticky = s;
+            break;
+          }
+        }
+
+        if (!headerSticky) {
+          log(
+            "Kein Sticky mit unterstrichenem Text gefunden. " +
+              "Bitte genau ein Sticky im Cluster als Namen unterstreichen."
+          );
+          return;
+        }
+
+        const clusterName = stripHtml(headerSticky.content).trim();
+        if (!clusterName) {
+          log(
+            "Der unterstrichene Sticky-Text ist leer. " +
+              "Bitte einen lesbaren Namen unterstreichen und erneut versuchen."
+          );
+          return;
+        }
+
+        // 2) Session-State: alle ausgewählten Stickies auf diesen Cluster setzen
+        for (const s of stickyNotes) {
+          dtClusterAssignments.set(s.id, clusterName);
+        }
+
+        log(
+          "Cluster '" +
+            clusterName +
+            "' gesetzt für " +
+            stickyNotes.length +
+            " Sticky Notes (Session-State, kein Board-Metafeld)."
+        );
+      } catch (e) {
+        log("Fehler beim Setzen der Cluster-Metadaten: " + e.message);
+      }
+    }
+
+    // --------------------------------------------------------------------
+    // 2a) Klassifikation für EIN Template (intern)
+    //      - inkl. Farbe, Tags und Verbindungen
+    // --------------------------------------------------------------------
+    function dtClassifyStickiesForTemplate(template, ctx) {
+      const t = template;
+      const left = t.x - t.width / 2;
+      const top  = t.y - t.height / 2;
+
+      const result = {
+        template: {
+          id: TEMPLATE_ID,
+          name: t.title,
+          imageId: t.id,
+          headerSummary: null
+        },
+        header: {
+          stickies: []
+        },
+        counts: {
+          total: 0,
+          byRegion: {}
+        },
+        items: [],
+        connections: []
+      };
+
+      const stickyMap = new Map();
+
+      // --- Stickies einsammeln ------------------------------------------------
+      for (const s of ctx.stickies) {
+        const sx = s.x;
+        const sy = s.y;
+
+        const px = (sx - left) / t.width;
+        const py = (sy - top) / t.height;
+        const inImageRect = px >= 0 && px <= 1 && py >= 0 && py <= 1;
+
+        if (!inImageRect) {
+          // außerhalb dieses Template-Bildes -> ignorieren
+          continue;
+        }
+
+        const role = dtRoleFromNormalizedY(py);
+
+        let regionId = null;
+        let regionTitle = null;
+        if (role === "body") {
+          const region = dtMapToRegion(px, py);
+          if (region) {
+            regionId = region.id;
+            regionTitle = region.title;
+          }
+        }
+
+        result.counts.total += 1;
+        if (regionId) {
+          result.counts.byRegion[regionId] =
+            (result.counts.byRegion[regionId] || 0) + 1;
+        }
+
+        const cleanText = stripHtml(s.content);
+        const color =
+          (s.style && (s.style.fillColor || s.style.backgroundColor)) || null;
+        const tagIds = Array.isArray(s.tagIds) ? s.tagIds.slice() : [];
+        const tags =
+          tagIds && tagIds.length && ctx.tagsById
+            ? tagIds
+                .map((id) => ({
+                  id,
+                  title: ctx.tagsById[id] || null
+                }))
+                .filter((t) => t.id)
+            : [];
+
+        const item = {
+          stickyId: s.id,
+          text: cleanText,
+          px: Math.round(px * 10000) / 10000,
+          py: Math.round(py * 10000) / 10000,
+          inImageRect,
+          role,
+          regionId,
+          regionTitle,
+          color,
+          tagIds,
+          tags,
+          // Cluster-Zuordnung aus dem Session-State (dtClusterSelection)
+          clusterName: dtClusterAssignments.get(s.id) || null,
+          connectionsOut: [],
+          connectionsIn: []
+        };
+
+        result.items.push(item);
+        stickyMap.set(s.id, item);
+
+        if (role === "header") {
+          result.header.stickies.push({
+            stickyId: s.id,
+            text: cleanText,
+            px: item.px,
+            py: item.py,
+            color,
+            tagIds,
+            tags
+          });
+        }
+      }
+
+      // Header-Text grob zusammenfassen, damit jede Instanz identifizierbar ist
+      if (result.header.stickies.length) {
+        const pieces = result.header.stickies
+          .map((h) => h.text)
+          .filter(Boolean);
+        if (pieces.length) {
+          const joined = pieces.join(" | ");
+          result.template.headerSummary =
+            joined.length > 200 ? joined.slice(0, 197) + "..." : joined;
+        }
+      }
+
+      // --- Connector-Beziehungen zwischen Stickies innerhalb dieses Templates
+      if (ctx.connectors && ctx.connectors.length) {
+        for (const c of ctx.connectors) {
+          const startId = c.start && c.start.item;
+          const endId   = c.end   && c.end.item;
+          if (!startId || !endId) continue;
+
+          const fromItem = stickyMap.get(startId);
+          const toItem   = stickyMap.get(endId);
+          if (!fromItem || !toItem) continue; // mind. ein Ende nicht in diesem Template
+
+          const conn = {
+            connectorId: c.id,
+            fromStickyId: startId,
+            toStickyId: endId
+          };
+
+          if (c.shape) {
+            conn.shape = c.shape;
+          }
+          if (c.style) {
+            const style = {};
+            if (typeof c.style.startStrokeCap !== "undefined") {
+              style.startStrokeCap = c.style.startStrokeCap;
+            }
+            if (typeof c.style.endStrokeCap !== "undefined") {
+              style.endStrokeCap = c.style.endStrokeCap;
+            }
+            if (typeof c.style.strokeColor !== "undefined") {
+              style.strokeColor = c.style.strokeColor;
+            }
+            if (Object.keys(style).length) {
+              conn.style = style;
+            }
+          }
+
+          result.connections.push(conn);
+          fromItem.connectionsOut.push({
+            connectorId: c.id,
+            toStickyId: endId
+          });
+          toItem.connectionsIn.push({
+            connectorId: c.id,
+            fromStickyId: startId
+          });
+        }
+      }
+
+      return result;
+    }
+
+    // --------------------------------------------------------------------
+    // 2b) Stickies klassifizieren (für 1..n Templates)
+    //     - Kann manuell (Button) oder „silent“ aus dtCallOpenAI aufgerufen werden
     // --------------------------------------------------------------------
     async function dtResolveTemplateImages(options) {
       const silent = options && options.silent;
@@ -308,357 +949,6 @@
       }
     }
 
-    // --------------------------------------------------------------------
-    // 1A) Template-Bild neu einfügen
-    // --------------------------------------------------------------------
-    async function dtInsertTemplateImage() {
-      log("Button: Template-Bild auf Board einfügen (klick).");
-      await dtEnsureMiroReady();
-
-      try {
-        const image = await miro.board.createImage({
-          url: TEMPLATE_IMAGE_URL,
-          x: 0,
-          y: 0,
-          width: 2000
-        });
-
-        currentTemplateImage = {
-          id: image.id,
-          title: image.title || "Datentreiber 3-Boxes",
-          x: image.x,
-          y: image.y,
-          width: image.width,
-          height: image.height
-        };
-        lastClassification = null;
-
-        log(
-          "Template eingefügt: Bild-ID " + image.id +
-          " / " + currentTemplateImage.title +
-          "\nDu kannst das Bild nun verschieben oder skalieren.\n" +
-          "Wenn du mehrere Instanzen hast, kannst du eine oder mehrere " +
-          "davon auswählen (blauer Rahmen) und dann klassifizieren / GPT senden."
-        );
-        await miro.board.viewport.zoomTo(image);
-      } catch (e) {
-        log("Fehler beim Einfügen des Template-Bildes: " + e.message);
-      }
-    }
-
-    // --------------------------------------------------------------------
-    // 1B) Template aus aktueller Auswahl setzen (manuelle Fokussierung)
-    // --------------------------------------------------------------------
-    async function dtSetTemplateFromSelection() {
-      log("Button: Aktuelle Auswahl als Template setzen (klick).");
-      await dtEnsureMiroReady();
-
-      try {
-        const selection = await miro.board.getSelection();
-        if (!selection.length) {
-          log("Kein Element ausgewählt. Bitte das Template-PNG auf dem Board anklicken (blau markiert) und erneut versuchen.");
-          return;
-        }
-
-        const image = selection.find((item) => item.type === "image");
-        if (!image) {
-          log("In der Auswahl ist kein Bild-Element. Bitte direkt das Template-PNG auswählen (nicht den Frame).");
-          return;
-        }
-
-        currentTemplateImage = {
-          id: image.id,
-          title: image.title || "Datentreiber 3-Boxes",
-          x: image.x,
-          y: image.y,
-          width: image.width,
-          height: image.height
-        };
-        lastClassification = null;
-
-        log("Template gesetzt aus Auswahl: Bild-ID " + image.id +
-            " / " + currentTemplateImage.title);
-      } catch (e) {
-        log("Fehler beim Setzen des Templates aus Auswahl: " + e.message);
-      }
-    }
-
-    
-    // --------------------------------------------------------------------
-    // Auswahl clustern:
-    //  - Auswahl muss Sticky Notes enthalten
-    //  - genau EIN Sticky mit unterstrichenem Text = Cluster-Name
-    //  - alle ausgewählten Stickies bekommen im Session-State diesen Cluster
-    // --------------------------------------------------------------------
-    async function dtClusterSelection() {
-      log("Button: Auswahl clustern (klick).");
-      await dtEnsureMiroReady();
-
-      try {
-        const selection = await miro.board.getSelection();
-        if (!selection || !selection.length) {
-          log("Keine Auswahl gefunden. Bitte einige Sticky Notes auswählen.");
-          return;
-        }
-
-        const stickyNotes = selection.filter((item) => item.type === "sticky_note");
-        if (!stickyNotes.length) {
-          log("In der Auswahl sind keine Sticky Notes. Bitte nur Sticky Notes markieren.");
-          return;
-        }
-
-        // 1) Sticky mit unterstrichenem Text als Cluster-Name finden
-        let headerSticky = null;
-        for (const s of stickyNotes) {
-          const html = s.content || "";
-          if (
-            html.indexOf("<u>") !== -1 ||
-            html.indexOf("text-decoration:underline") !== -1
-          ) {
-            headerSticky = s;
-            break;
-          }
-        }
-
-        if (!headerSticky) {
-          log(
-            "Kein Sticky mit unterstrichenem Text gefunden. " +
-              "Bitte genau ein Sticky im Cluster als Namen unterstreichen."
-          );
-          return;
-        }
-
-        const clusterName = stripHtml(headerSticky.content).trim();
-        if (!clusterName) {
-          log(
-            "Der unterstrichene Sticky-Text ist leer. " +
-              "Bitte einen lesbaren Namen unterstreichen und erneut versuchen."
-          );
-          return;
-        }
-
-        // 2) Session-State: alle ausgewählten Stickies auf diesen Cluster setzen
-        for (const s of stickyNotes) {
-          dtClusterAssignments.set(s.id, clusterName);
-        }
-
-        log(
-          "Cluster '" +
-            clusterName +
-            "' gesetzt für " +
-            stickyNotes.length +
-            " Sticky Notes (Session-State, kein Board-Metafeld)."
-        );
-      } catch (e) {
-        log("Fehler beim Setzen der Cluster-Metadaten: " + e.message);
-      }
-    }
-
-
-    // --------------------------------------------------------------------
-    // Mapping von normalisierten Koordinaten -> Regionen (3 Boxen)
-    // --------------------------------------------------------------------
-    function dtMapToRegion(px, py) {
-      // Vertikale Begrenzung grob: unterhalb des Headers, oberhalb Fußzeile
-      const yMin = 0.20;
-      const yMax = 0.95;
-      if (py < yMin || py > yMax) return null;
-      if (px < 0 || px > 1) return null;
-
-      const third = 1 / 3;
-      if (px < third) {
-        return { id: "left",   title: "Box 1 (links)" };
-      } else if (px < 2 * third) {
-        return { id: "middle", title: "Box 2 (Mitte)" };
-      } else {
-        return { id: "right",  title: "Box 3 (rechts)" };
-      }
-    }
-
-    // Sehr grob: Rolle aus Y-Position ableiten (Header / Body / Footer)
-    function dtRoleFromNormalizedY(py) {
-      if (py < 0.20) return "header";  // oberer Streifen über den drei Boxen
-      if (py > 0.95) return "footer";  // unterer Streifen
-      return "body";
-    }
-
-    // --------------------------------------------------------------------
-    // 2a) Klassifikation für EIN Template (intern)
-    //      - inkl. Farbe, Tags und Verbindungen
-    // --------------------------------------------------------------------
-    function dtClassifyStickiesForTemplate(template, ctx) {
-      const t = template;
-      const left = t.x - t.width / 2;
-      const top  = t.y - t.height / 2;
-
-      const result = {
-        template: {
-          id: TEMPLATE_ID,
-          name: t.title,
-          imageId: t.id,
-          headerSummary: null
-        },
-        header: {
-          stickies: []
-        },
-        counts: {
-          total: 0,
-          byRegion: {}
-        },
-        items: [],
-        connections: []
-      };
-
-      const stickyMap = new Map();
-
-      // --- Stickies einsammeln ------------------------------------------------
-      for (const s of ctx.stickies) {
-        const sx = s.x;
-        const sy = s.y;
-
-        const px = (sx - left) / t.width;
-        const py = (sy - top) / t.height;
-        const inImageRect = px >= 0 && px <= 1 && py >= 0 && py <= 1;
-
-        if (!inImageRect) {
-          // außerhalb dieses Template-Bildes -> ignorieren
-          continue;
-        }
-
-        const role = dtRoleFromNormalizedY(py);
-
-        let regionId = null;
-        let regionTitle = null;
-        if (role === "body") {
-          const region = dtMapToRegion(px, py);
-          if (region) {
-            regionId = region.id;
-            regionTitle = region.title;
-          }
-        }
-
-        result.counts.total += 1;
-        if (regionId) {
-          result.counts.byRegion[regionId] =
-            (result.counts.byRegion[regionId] || 0) + 1;
-        }
-
-        const cleanText = stripHtml(s.content);
-        const color =
-          (s.style && (s.style.fillColor || s.style.backgroundColor)) || null;
-        const tagIds = Array.isArray(s.tagIds) ? s.tagIds.slice() : [];
-        const tags =
-          tagIds && tagIds.length && ctx.tagsById
-            ? tagIds
-                .map((id) => ({
-                  id,
-                  title: ctx.tagsById[id] || null
-                }))
-                .filter((t) => t.id)
-            : [];
-
-        const item = {
-          stickyId: s.id,
-          text: cleanText,
-          px: Math.round(px * 10000) / 10000,
-          py: Math.round(py * 10000) / 10000,
-          inImageRect,
-          role,
-          regionId,
-          regionTitle,
-          color,
-          tagIds,
-          tags,
-          // Cluster-Zuordnung aus dem Session-State (dtClusterSelection)
-          clusterName: dtClusterAssignments.get(s.id) || null,
-          connectionsOut: [],
-          connectionsIn: []
-        };
-
-
-        result.items.push(item);
-        stickyMap.set(s.id, item);
-
-        if (role === "header") {
-          result.header.stickies.push({
-            stickyId: s.id,
-            text: cleanText,
-            px: item.px,
-            py: item.py,
-            color,
-            tagIds,
-            tags
-          });
-        }
-      }
-
-      // Header-Text grob zusammenfassen, damit jede Instanz identifizierbar ist
-      if (result.header.stickies.length) {
-        const pieces = result.header.stickies
-          .map((h) => h.text)
-          .filter(Boolean);
-        if (pieces.length) {
-          const joined = pieces.join(" | ");
-          result.template.headerSummary =
-            joined.length > 200 ? joined.slice(0, 197) + "..." : joined;
-        }
-      }
-
-      // --- Connector-Beziehungen zwischen Stickies innerhalb dieses Templates
-      if (ctx.connectors && ctx.connectors.length) {
-        for (const c of ctx.connectors) {
-          const startId = c.start && c.start.item;
-          const endId   = c.end   && c.end.item;
-          if (!startId || !endId) continue;
-
-          const fromItem = stickyMap.get(startId);
-          const toItem   = stickyMap.get(endId);
-          if (!fromItem || !toItem) continue; // mind. ein Ende nicht in diesem Template
-
-          const conn = {
-            connectorId: c.id,
-            fromStickyId: startId,
-            toStickyId: endId
-          };
-
-          if (c.shape) {
-            conn.shape = c.shape;
-          }
-          if (c.style) {
-            const style = {};
-            if (typeof c.style.startStrokeCap !== "undefined") {
-              style.startStrokeCap = c.style.startStrokeCap;
-            }
-            if (typeof c.style.endStrokeCap !== "undefined") {
-              style.endStrokeCap = c.style.endStrokeCap;
-            }
-            if (typeof c.style.strokeColor !== "undefined") {
-              style.strokeColor = c.style.strokeColor;
-            }
-            if (Object.keys(style).length) {
-              conn.style = style;
-            }
-          }
-
-          result.connections.push(conn);
-          fromItem.connectionsOut.push({
-            connectorId: c.id,
-            toStickyId: endId
-          });
-          toItem.connectionsIn.push({
-            connectorId: c.id,
-            fromStickyId: startId
-          });
-        }
-      }
-
-      return result;
-    }
-
-    // --------------------------------------------------------------------
-    // 2b) Stickies klassifizieren (für 1..n Templates)
-    //     - Kann manuell (Button) oder „silent“ aus dtCallOpenAI aufgerufen werden
-    // --------------------------------------------------------------------
     async function dtClassifyStickies(options) {
       const silent = options && options.silent;
       if (!silent) {
@@ -679,21 +969,7 @@
       }
 
       try {
-        const [stickies, connectors, tags] = await Promise.all([
-          miro.board.get({ type: "sticky_note" }),
-          miro.board.get({ type: "connector" }),
-          miro.board.get({ type: "tag" })
-        ]);
-
-        const tagsById = {};
-        if (Array.isArray(tags)) {
-          for (const tag of tags) {
-            const title = tag.title || tag.text || tag.content || "";
-            tagsById[tag.id] = title;
-          }
-        }
-
-        const ctx = { stickies, connectors, tagsById };
+        const ctx = await dtGetBoardBaseContext();
         const results = templates.map((t) =>
           dtClassifyStickiesForTemplate(t, ctx)
         );
@@ -721,7 +997,6 @@
         return null;
       }
     }
-
 
     // --------------------------------------------------------------------
     // 2c) Reduziertes JSON für das Sprachmodell aus der Klassifikation bauen
@@ -846,7 +1121,6 @@
               connectionsIn: buildConnectionsIn(item)
             };
 
-
             areasByName[areaName].stickies.push(stickObj);
           }
         }
@@ -894,7 +1168,7 @@
     }
 
     // --------------------------------------------------------------------
-    // 3) OpenAI-Call mit aktueller Klassifikation
+    // 3) Klassischer OpenAI-Call (Side-Panel)
     //    - ruft intern zuerst dtClassifyStickies({ silent: true }) auf
     // --------------------------------------------------------------------
     async function dtCallOpenAI() {
@@ -913,8 +1187,7 @@
         return;
       }
 
-      // Immer vor dem GPT-Call frisch klassifizieren (aktueller Zustand,
-      // inkl. aller aktuell ausgewählten Template-Instanzen).
+      // Immer vor dem GPT-Call frisch klassifizieren (aktueller Zustand)
       const classification = await dtClassifyStickies({ silent: true });
 
       // Reduziertes, modellfreundliches JSON aus der Klassifikation bauen
@@ -929,7 +1202,6 @@
           "oder keine Stickies innerhalb der Templates).";
 
       const fullUserText = userText + classificationPart;
-
 
       const body = {
         model,
@@ -961,7 +1233,7 @@
       };
 
       try {
-        log("Sende Anfrage an OpenAI ...");
+        log("Sende Anfrage an OpenAI (klassischer Call) ...");
         const res = await fetch("https://api.openai.com/v1/responses", {
           method: "POST",
           headers: {
@@ -983,19 +1255,333 @@
         const textPart = contentArr && contentArr.find((c) => c.type === "output_text");
         const answer = textPart ? textPart.text : "(keine Antwort gefunden)";
 
-        log("Antwort von OpenAI:");
+        log("Antwort von OpenAI (klassischer Call):");
         log(answer);
       } catch (e) {
         log("Exception beim Aufruf der OpenAI API: " + e.message);
       }
     }
 
-    // Funktionen ins window hängen, damit die inline-onclicks sie sehen
-    window.dtInsertTemplateImage        = dtInsertTemplateImage;
-    window.dtSetTemplateFromSelection   = dtSetTemplateFromSelection;
-    window.dtClassifyStickies           = dtClassifyStickies;
-    window.dtCallOpenAI                 = dtCallOpenAI;
-    window.dtClusterSelection           = dtClusterSelection;
+    // --------------------------------------------------------------------
+    // 4) Agent-Variante A (Headless) für eine Instanz
+    //    - nutzt Board-Katalog + Instanz-JSON
+    //    - gibt JSON-Actions zurück und manipuliert das Board
+    // --------------------------------------------------------------------
+    async function dtGetInstanceStateForAgent(instance) {
+      await dtEnsureMiroReady();
+
+      if (!instance || !instance.imageId) {
+        log("dtGetInstanceStateForAgent: Instanz hat kein imageId.");
+        return null;
+      }
+
+      // Aktuelle Bild-Geometrie laden
+      let imgArr = null;
+      try {
+        imgArr = await miro.board.get({ id: instance.imageId });
+      } catch (e) {
+        log("Fehler beim Laden des Template-Bildes der Instanz: " + e.message);
+        return null;
+      }
+      const img = Array.isArray(imgArr) ? imgArr[0] : imgArr;
+      if (!img) {
+        log("Das Template-Bild der Instanz existiert nicht mehr auf dem Board.");
+        return null;
+      }
+
+      instance.title = img.title || instance.title || "Datentreiber 3-Boxes";
+      instance.lastGeometry = {
+        x: img.x,
+        y: img.y,
+        width: img.width,
+        height: img.height
+      };
+
+      const ctx = await dtGetBoardBaseContext();
+      const classification = dtClassifyStickiesForTemplate(
+        {
+          id: img.id,
+          title: instance.title,
+          x: img.x,
+          y: img.y,
+          width: img.width,
+          height: img.height
+        },
+        ctx
+      );
+
+      const payload = dtBuildPromptPayloadFromClassification(classification);
+      const stateJson = JSON.stringify(payload, null, 2);
+
+      const prevStateJson = instance.lastStateJson;
+      instance.lastClassification = classification;
+      instance.lastStateJson = stateJson;
+      instance.lastStickyCount = classification && classification.counts
+        ? (classification.counts.total || 0)
+        : (Array.isArray(classification.items) ? classification.items.length : 0);
+
+      if (!prevStateJson || prevStateJson !== stateJson) {
+        instance.lastChangedAt = new Date().toISOString();
+      }
+
+      return {
+        classification,
+        promptPayload: payload,
+        stateJson
+      };
+    }
+
+    function dtNormalizedToBoardCoords(templateGeometry, px, py) {
+      const { x, y, width, height } = templateGeometry;
+      const left = x - width / 2;
+      const top = y - height / 2;
+      const bx = left + px * width;
+      const by = top + py * height;
+      return { x: bx, y: by };
+    }
+
+    function dtAreaCenterNormalized(regionId) {
+      const yMin = 0.20;
+      const yMax = 0.95;
+      const py = (yMin + yMax) / 2;
+
+      if (regionId === "left") {
+        return { px: 1 / 6, py };
+      } else if (regionId === "middle") {
+        return { px: 0.5, py };
+      } else if (regionId === "right") {
+        return { px: 5 / 6, py };
+      }
+      // Fallback: Mitte
+      return { px: 0.5, py: 0.5 };
+    }
+
+    async function dtActionMoveSticky(templateGeometry, action) {
+      const stickyId = action.stickyId;
+      if (!stickyId) return;
+
+      let targetPx = action.targetPx;
+      let targetPy = action.targetPy;
+
+      if (typeof targetPx !== "number" || typeof targetPy !== "number") {
+        // Area-Name verwenden
+        const region = dtAreaNameToRegion(action.targetArea);
+        const center = dtAreaCenterNormalized(region ? region.id : null);
+        targetPx = center.px;
+        targetPy = center.py;
+      }
+
+      try {
+        let arr = await miro.board.get({ id: stickyId });
+        const sticky = Array.isArray(arr) ? arr[0] : arr;
+        if (!sticky) {
+          log("move_sticky: Sticky mit ID " + stickyId + " nicht gefunden.");
+          return;
+        }
+
+        const coords = dtNormalizedToBoardCoords(templateGeometry, targetPx, targetPy);
+        sticky.x = coords.x;
+        sticky.y = coords.y;
+        await sticky.sync();
+      } catch (e) {
+        log("Fehler bei move_sticky (" + stickyId + "): " + e.message);
+      }
+    }
+
+    async function dtActionCreateSticky(templateGeometry, action) {
+      const areaName = action.area;
+      const text = action.text || "";
+      const region = dtAreaNameToRegion(areaName);
+      const center = dtAreaCenterNormalized(region ? region.id : null);
+      const coords = dtNormalizedToBoardCoords(templateGeometry, center.px, center.py);
+
+      try {
+        await miro.board.createStickyNote({
+          content: text || "(leer)",
+          x: coords.x,
+          y: coords.y
+        });
+      } catch (e) {
+        log("Fehler bei create_sticky: " + e.message);
+      }
+    }
+
+    async function dtActionDeleteSticky(action) {
+      const stickyId = action.stickyId;
+      if (!stickyId) return;
+      try {
+        const arr = await miro.board.get({ id: stickyId });
+        const sticky = Array.isArray(arr) ? arr[0] : arr;
+        if (!sticky) {
+          log("delete_sticky: Sticky mit ID " + stickyId + " nicht gefunden.");
+          return;
+        }
+        await miro.board.remove(sticky);
+      } catch (e) {
+        log("Fehler bei delete_sticky (" + stickyId + "): " + e.message);
+      }
+    }
+
+    async function dtApplyCanvasActions(instanceId, actions) {
+      if (!Array.isArray(actions) || !actions.length) {
+        log("Keine Actions vom Agenten erhalten (actions-Array ist leer).");
+        return;
+      }
+
+      const instance = dtInstancesById.get(instanceId);
+      if (!instance) {
+        log("dtApplyCanvasActions: Unbekannte Instanz-ID " + instanceId);
+        return;
+      }
+
+      const geom = instance.lastGeometry;
+      if (!geom) {
+        log("dtApplyCanvasActions: Keine Geometrie für Instanz " + instanceId);
+        return;
+      }
+
+      log("Wende " + actions.length + " Action(s) auf Instanz " + instanceId + " an ...");
+
+      for (const action of actions) {
+        if (!action || !action.type) continue;
+        const type = action.type;
+        if (type === "move_sticky") {
+          await dtActionMoveSticky(geom, action);
+        } else if (type === "create_sticky") {
+          await dtActionCreateSticky(geom, action);
+        } else if (type === "delete_sticky") {
+          await dtActionDeleteSticky(action);
+        } else {
+          log("Unbekannter Action-Typ vom Agenten: " + type);
+        }
+      }
+    }
+
+    async function dtRunAgentForInstance(instanceId, options) {
+      await dtEnsureMiroReady();
+      await dtScanTemplateInstances();
+
+      const apiKey  = document.getElementById("api-key").value.trim();
+      const model   = document.getElementById("model").value;
+      const userText = (options && options.userText) || dtGetCurrentUserQuestion();
+
+      if (!apiKey) {
+        log("Bitte OpenAI API Key eingeben (für den Agenten-Run).");
+        return;
+      }
+
+      const instance = dtInstancesById.get(instanceId);
+      if (!instance) {
+        log("Unbekannte Canvas-Instanz: " + instanceId);
+        return;
+      }
+
+      const promptCfg = DT_PROMPT_CATALOG[instance.canvasTypeId] || DT_PROMPT_CATALOG[TEMPLATE_ID];
+      const systemPrompt = promptCfg.system;
+
+      log("Starte Agent (Variante A, headless) für Instanz " + instanceId + " ...");
+
+      const state = await dtGetInstanceStateForAgent(instance);
+      if (!state || !state.promptPayload) {
+        log("Konnte Instanzzustand für den Agenten nicht ermitteln.");
+        return;
+      }
+
+      const boardCatalog = dtBuildBoardCatalogSummary(instanceId);
+
+      const userPayload = {
+        userQuestion: userText,
+        activeInstanceId: instanceId,
+        boardCatalog: boardCatalog,
+        activeCanvasState: state.promptPayload,
+        hint: "boardCatalog = Kurzüberblick über alle Instanzen, activeCanvasState = detaillierte Stickies/Areas/Verbindungen nur für die aktive Instanz."
+      };
+
+      const body = {
+        model,
+        input: [
+          {
+            role: "system",
+            content: [
+              {
+                type: "input_text",
+                text: systemPrompt
+              }
+            ]
+          },
+          {
+            role: "user",
+            content: [
+              {
+                type: "input_text",
+                text: JSON.stringify(userPayload, null, 2)
+              }
+            ]
+          }
+        ],
+        max_output_tokens: 4000
+      };
+
+      try {
+        log("Sende Agent-Request an OpenAI (Instanz " + instanceId + ") ...");
+        const res = await fetch("https://api.openai.com/v1/responses", {
+          method: "POST",
+          headers: {
+            "Authorization": "Bearer " + apiKey,
+            "Content-Type": "application/json"
+          },
+          body: JSON.stringify(body)
+        });
+
+        const text = await res.text();
+        if (!res.ok) {
+          log("Fehler bei OpenAI-Agent-Anfrage: " + res.status + " " + text);
+          return;
+        }
+
+        const data = JSON.parse(text);
+        const firstMessage = data.output && data.output[0];
+        const contentArr = firstMessage && firstMessage.content;
+        const textPart = contentArr && contentArr.find((c) => c.type === "output_text");
+        const answer = textPart ? textPart.text : null;
+
+        if (!answer) {
+          log("Agent: Keine output_text-Antwort gefunden.");
+          return;
+        }
+
+        let agentObj = null;
+        try {
+          agentObj = JSON.parse(answer);
+        } catch (e) {
+          log("Agent-Antwort ist kein valides JSON. Rohantwort:");
+          log(answer);
+          return;
+        }
+
+        log("Agent-Analyse (analysis):");
+        log(agentObj.analysis || "(keine analysis)");
+
+        if (Array.isArray(agentObj.actions) && agentObj.actions.length) {
+          await dtApplyCanvasActions(instanceId, agentObj.actions);
+        } else {
+          log("Agent lieferte keine Actions (actions-Array ist leer).");
+        }
+      } catch (e) {
+        log("Exception beim Agent-Run: " + e.message);
+      }
+    }
+
+    // --------------------------------------------------------------------
+    // Exporte ins window (für inline-onclick)
+    // --------------------------------------------------------------------
+    window.dtInsertTemplateImage      = dtInsertTemplateImage;
+    window.dtSetTemplateFromSelection = dtSetTemplateFromSelection;
+    window.dtClassifyStickies         = dtClassifyStickies;
+    window.dtCallOpenAI               = dtCallOpenAI;
+    window.dtClusterSelection         = dtClusterSelection;
+    // Agent-Funktion exportieren (kann bei Bedarf auch aus der Konsole getestet werden)
+    window.dtRunAgentForInstance      = dtRunAgentForInstance;
 
   </script>
 </body>
