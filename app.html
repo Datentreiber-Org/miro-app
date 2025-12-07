@@ -253,21 +253,27 @@
     async function dtAfterMiroReady() {
       if (dtInitialized) return;
       dtInitialized = true;
-
+    
       try {
         await dtScanTemplateInstances();
       } catch (e) {
         console.error("[DT] Fehler beim initialen Template-Scan:", e);
       }
-
+    
       try {
         if (miro.board && miro.board.ui && typeof miro.board.ui.on === "function") {
+          // Spezielles Event fuer App Cards, falls es von Miro gefeuert wird
           miro.board.ui.on("app_card:open", dtOnAppCardOpen);
+          // Zusaetzliche Absicherung: generisches Klick-Event auf Items
+          // Wir filtern in dtOnItemClick auf type === "app_card"
+          miro.board.ui.on("item:click", dtOnItemClick);
         }
       } catch (e) {
-        console.error("[DT] Fehler bei Registrierung app_card:open-Handler:", e);
+        console.error("[DT] Fehler bei Registrierung von UI-Events:", e);
+        log("Fehler bei Registrierung von UI-Events: " + e.message);
       }
     }
+
 
     // --------------------------------------------------------------------
     // Instanz-Management
@@ -447,6 +453,41 @@
       } catch (e) {
         console.error("[DT] Fehler im app_card:open-Handler:", e);
         log("Fehler im app_card:open-Handler: " + e.message);
+      }
+    }
+
+
+    async function dtOnItemClick(event) {
+      try {
+        const item = event && event.item;
+        if (!item) {
+          return;
+        }
+    
+        // Nur App Cards interessieren uns hier
+        if (item.type !== "app_card") {
+          return;
+        }
+    
+        // Karte noch einmal vollstaendig vom Board holen
+        const arr = await miro.board.get({ id: item.id });
+        const card = Array.isArray(arr) ? arr[0] : arr;
+        if (!card) {
+          return;
+        }
+    
+        const wrappedEvent = {
+          appCard: {
+            id: card.id,
+            title: card.title,
+            description: card.description
+          }
+        };
+    
+        await dtOnAppCardOpen(wrappedEvent);
+      } catch (e) {
+        console.error("[DT] Fehler im item:click Handler fuer App Cards:", e);
+        log("Fehler im item:click Handler fuer App Cards: " + e.message);
       }
     }
 
