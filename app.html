@@ -1812,8 +1812,12 @@
       return diff;
     }
 
+
     // --------------------------------------------------------------------
     // 5) Agent-Hilfsfunktionen (Instanzzustand)
+    //    WICHTIG: Bounding Box ist ausschließlich das PNG-Bild.
+    //    Die Klassifikation nutzt den globalen Board-Kontext und filtert
+    //    Stickies über dtClassifyStickiesForTemplate anhand der Bildgeometrie.
     // --------------------------------------------------------------------
     async function dtGetInstanceStateForAgent(instance, options) {
       await dtEnsureMiroReady();
@@ -1823,6 +1827,7 @@
         return null;
       }
     
+      // Aktuelle Bild-Geometrie laden, damit Image Map immer exakt am PNG hängt
       let imgArr = null;
       try {
         imgArr = await miro.board.get({ id: instance.imageId });
@@ -1830,12 +1835,14 @@
         log("Fehler beim Laden des Template-Bildes der Instanz: " + e.message);
         return null;
       }
+    
       const img = Array.isArray(imgArr) ? imgArr[0] : imgArr;
       if (!img) {
         log("Das Template-Bild der Instanz existiert nicht mehr auf dem Board.");
         return null;
       }
     
+      // Bounding Box der Instanz ist immer das PNG-Bild
       instance.title = img.title || instance.title || "Datentreiber 3-Boxes";
       instance.lastGeometry = {
         x: img.x,
@@ -1844,42 +1851,13 @@
         height: img.height
       };
     
+      // Globalen Board-Kontext laden oder wiederverwenden
       let ctx = options && options.ctx;
       if (!ctx) {
         ctx = await dtGetBoardBaseContext();
       }
     
-      // Kontext auf genau diese Instanz einschränken:
-      // nur Stickies, für die dtFindInstanceForPoint dieselbe Instanz zurückgibt,
-      // plus die dazugehörigen Connectoren.
-      const allStickies = Array.isArray(ctx.stickies) ? ctx.stickies : [];
-      const allConnectors = Array.isArray(ctx.connectors) ? ctx.connectors : [];
-    
-      const instStickies = [];
-      for (const s of allStickies) {
-        if (!s) continue;
-        const instAtPoint = dtFindInstanceForPoint(s.x, s.y);
-        if (instAtPoint && instAtPoint.instanceId === instance.instanceId) {
-          instStickies.push(s);
-        }
-      }
-    
-      const instStickyIdSet = new Set(instStickies.map((s) => s.id));
-      const instConnectors = allConnectors.filter(function (c) {
-        const startId = c.start && c.start.item;
-        const endId = c.end && c.end.item;
-        return (startId && instStickyIdSet.has(startId)) ||
-               (endId && instStickyIdSet.has(endId));
-      });
-    
-      const ctxForInstance = {
-        stickies: instStickies,
-        connectors: instConnectors,
-        tagsById: ctx.tagsById || {}
-      };
-    
-      const previousClassification = instance.lastClassification || null;
-    
+      // Klassifikation nur über das PNG-Bild als Bounding Box
       const classification = dtClassifyStickiesForTemplate(
         {
           id: img.id,
@@ -1889,21 +1867,29 @@
           width: img.width,
           height: img.height
         },
-        ctxForInstance
+        ctx
       );
     
+      // Diff zwischen vorherigem und aktuellem Zustand berechnen
+      const previousClassification = instance.lastClassification || null;
       const diff = dtComputeInstanceDiff(previousClassification, classification);
     
-      const payload = dtBuildPromptPayloadFromClassification(classification, { useAliases: false });
-      const stateJson = JSON.stringify(payload, null, 2);
+      // Prompt-Payload für das Sprachmodell bauen (zunächst ohne Aliasse)
+      const payload = dtBuildPromptPayloadFromClassification(classification, {
+        useAliases: false
+      });
     
+      const stateJson = JSON.stringify(payload, null, 2);
       const prevStateJson = instance.lastStateJson;
+    
+      // Instanz-Metadaten aktualisieren
       instance.lastClassification = classification;
       instance.lastStateJson = stateJson;
       instance.lastStickyCount = classification && classification.counts
         ? (classification.counts.total || 0)
         : (Array.isArray(classification.items) ? classification.items.length : 0);
     
+      // lastChangedAt nur setzen, wenn sich inhaltlich wirklich etwas geändert hat
       if (!prevStateJson || prevStateJson !== stateJson) {
         if (dtDiffHasChanges(diff)) {
           instance.lastChangedAt = new Date().toISOString();
@@ -1919,6 +1905,7 @@
         diff
       };
     }
+
 
 
     function dtNormalizedToBoardCoords(templateGeometry, px, py) {
