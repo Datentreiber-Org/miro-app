@@ -363,21 +363,23 @@
       if (!miro.board) {
         return;
       }
-
+    
       const hasCreateShape = typeof miro.board.createShape === "function";
       const hasCreateText = typeof miro.board.createText === "function";
       const hasCreateFrame = typeof miro.board.createFrame === "function";
-
+    
       if (!hasCreateShape || !hasCreateFrame) {
         return;
       }
-
-      // Frame so anlegen, dass das Bild plus Buttons und Eingabefeld logisch gekapselt sind,
-      // ohne die Geometrie-Logik des Bildes zu verändern (Koordinaten bleiben Board-Koordinaten).
+    
+      // Frame so anlegen, dass das Canvas-Bild sowie Buttons und Eingabefeld
+      // gemeinsam verschiebbar sind. Die Geometrie-Logik für das Bild selbst
+      // (x, y, width, height) bleibt unverändert, alle Koordinaten bleiben
+      // im Board-Koordinatensystem.
       const frameWidth = image.width + 200;
       const frameHeight = image.height + 260;
       const frameY = image.y + 80;
-
+    
       const frame = await miro.board.createFrame({
         title: image.title || "Datentreiber 3-Boxes",
         x: image.x,
@@ -385,13 +387,13 @@
         width: frameWidth,
         height: frameHeight
       });
-
+    
       const baseY = image.y + image.height / 2 + 80;
       const baseX = image.x;
       const dx = 260;
       const buttonWidth = 260;
       const buttonHeight = 60;
-
+    
       // AI-Button (Send to OpenAI, Modus B)
       const aiShape = await miro.board.createShape({
         content: "Send to OpenAI",
@@ -401,7 +403,7 @@
         width: buttonWidth,
         height: buttonHeight
       });
-
+    
       // Cluster-Button
       const clusterShape = await miro.board.createShape({
         content: "Cluster",
@@ -411,7 +413,7 @@
         width: buttonWidth,
         height: buttonHeight
       });
-
+    
       // Globaler Agent-Button (Modus A)
       const globalAgentShape = await miro.board.createShape({
         content: "Global Agent",
@@ -421,7 +423,7 @@
         width: buttonWidth,
         height: buttonHeight
       });
-
+    
       // Globales Eingabefeld (Textfeld) in räumlicher Nähe zum globalen Button
       let globalInput = null;
       if (hasCreateText) {
@@ -431,29 +433,23 @@
           y: baseY + buttonHeight + 40
         });
       }
-
-      // Alle Items in den Frame hängen. Koordinaten bleiben in Board-Koordinaten,
-      // die Klassifikationslogik arbeitet weiter nur mit dem Bild.
+    
+      // Alle Items explizit als Kinder in den Frame aufnehmen.
+      // Der Frame liegt damit logisch "unter" Bild und Buttons, die Buttons
+      // bleiben direkt anklickbar und beim Verschieben des Frames geht alles mit.
       try {
-        image.parentId = frame.id;
-        await image.sync();
-
-        aiShape.parentId = frame.id;
-        clusterShape.parentId = frame.id;
-        globalAgentShape.parentId = frame.id;
-
-        await aiShape.sync();
-        await clusterShape.sync();
-        await globalAgentShape.sync();
-
+        await frame.add(image);
+        await frame.add(aiShape);
+        await frame.add(clusterShape);
+        await frame.add(globalAgentShape);
         if (globalInput) {
-          globalInput.parentId = frame.id;
-          await globalInput.sync();
+          await frame.add(globalInput);
         }
+        await frame.sync();
       } catch (e) {
-        console.error("[DT] Fehler beim Zuweisen der Items zum Frame:", e);
+        console.error("[DT] Fehler beim Hinzufügen der Items zum Frame:", e);
       }
-
+    
       instance.actionItems = {
         aiItemId: aiShape.id,
         clusterItemId: clusterShape.id,
@@ -462,6 +458,7 @@
         frameId: frame.id
       };
     }
+
 
     async function dtRegisterInstanceFromImage(image) {
       if (!image || !image.id) return null;
@@ -1798,12 +1795,12 @@
     // --------------------------------------------------------------------
     async function dtGetInstanceStateForAgent(instance, options) {
       await dtEnsureMiroReady();
-
+    
       if (!instance || !instance.imageId) {
         log("dtGetInstanceStateForAgent: Instanz hat kein imageId.");
         return null;
       }
-
+    
       let imgArr = null;
       try {
         imgArr = await miro.board.get({ id: instance.imageId });
@@ -1816,7 +1813,7 @@
         log("Das Template-Bild der Instanz existiert nicht mehr auf dem Board.");
         return null;
       }
-
+    
       instance.title = img.title || instance.title || "Datentreiber 3-Boxes";
       instance.lastGeometry = {
         x: img.x,
@@ -1824,14 +1821,43 @@
         width: img.width,
         height: img.height
       };
-
+    
       let ctx = options && options.ctx;
       if (!ctx) {
         ctx = await dtGetBoardBaseContext();
       }
-
+    
+      // Kontext auf genau diese Instanz einschränken:
+      // nur Stickies, für die dtFindInstanceForPoint dieselbe Instanz zurückgibt,
+      // plus die dazugehörigen Connectoren.
+      const allStickies = Array.isArray(ctx.stickies) ? ctx.stickies : [];
+      const allConnectors = Array.isArray(ctx.connectors) ? ctx.connectors : [];
+    
+      const instStickies = [];
+      for (const s of allStickies) {
+        if (!s) continue;
+        const instAtPoint = dtFindInstanceForPoint(s.x, s.y);
+        if (instAtPoint && instAtPoint.instanceId === instance.instanceId) {
+          instStickies.push(s);
+        }
+      }
+    
+      const instStickyIdSet = new Set(instStickies.map((s) => s.id));
+      const instConnectors = allConnectors.filter(function (c) {
+        const startId = c.start && c.start.item;
+        const endId = c.end && c.end.item;
+        return (startId && instStickyIdSet.has(startId)) ||
+               (endId && instStickyIdSet.has(endId));
+      });
+    
+      const ctxForInstance = {
+        stickies: instStickies,
+        connectors: instConnectors,
+        tagsById: ctx.tagsById || {}
+      };
+    
       const previousClassification = instance.lastClassification || null;
-
+    
       const classification = dtClassifyStickiesForTemplate(
         {
           id: img.id,
@@ -1841,29 +1867,29 @@
           width: img.width,
           height: img.height
         },
-        ctx
+        ctxForInstance
       );
-
+    
       const diff = dtComputeInstanceDiff(previousClassification, classification);
-
+    
       const payload = dtBuildPromptPayloadFromClassification(classification, { useAliases: false });
       const stateJson = JSON.stringify(payload, null, 2);
-
+    
       const prevStateJson = instance.lastStateJson;
       instance.lastClassification = classification;
       instance.lastStateJson = stateJson;
       instance.lastStickyCount = classification && classification.counts
         ? (classification.counts.total || 0)
         : (Array.isArray(classification.items) ? classification.items.length : 0);
-
+    
       if (!prevStateJson || prevStateJson !== stateJson) {
         if (dtDiffHasChanges(diff)) {
           instance.lastChangedAt = new Date().toISOString();
         }
       }
-
+    
       instance.lastDiff = diff;
-
+    
       return {
         classification,
         promptPayload: payload,
@@ -1871,6 +1897,7 @@
         diff
       };
     }
+
 
     function dtNormalizedToBoardCoords(templateGeometry, px, py) {
       const { x, y, width, height } = templateGeometry;
@@ -2223,67 +2250,70 @@
     async function dtRunAgentForInstance(instanceId, options) {
       await dtEnsureMiroReady();
       await dtScanTemplateInstances();
-
+    
       const apiKey  = document.getElementById("api-key").value.trim();
       const model   = document.getElementById("model").value;
       const userText = (options && options.userText) || dtGetCurrentUserQuestion();
-
+    
       if (!apiKey) {
         log("Bitte OpenAI API Key eingeben (für den Agenten-Run).");
         return;
       }
-
+    
       const instance = dtInstancesById.get(instanceId);
       if (!instance) {
         log("Unbekannte Canvas-Instanz: " + instanceId);
         return;
       }
-
+    
       const promptCfg = DT_PROMPT_CATALOG[instance.canvasTypeId] || DT_PROMPT_CATALOG[TEMPLATE_ID];
       const systemPrompt = promptCfg.system;
-
+    
       log("Starte Agent (Modus B, instanzspezifisch) für Instanz " + instanceId + " ...");
-
+    
       const ctx = await dtGetBoardBaseContext();
       const stateById = {};
-
-      const allInstances = [];
-      dtInstancesById.forEach(function (inst) {
-        allInstances.push(inst);
-      });
-
-      for (const inst of allInstances) {
-        const st = await dtGetInstanceStateForAgent(inst, { ctx: ctx });
-        if (st) {
-          stateById[inst.instanceId] = st;
-        }
-      }
-
-      const mainState = stateById[instanceId];
-      if (!mainState || !mainState.classification) {
-        log("Konnte Instanzzustand für den Agenten nicht ermitteln.");
-        return;
-      }
-
-      // Bestimmen, welche Instanzen im Detail-Modus B übertragen werden sollen
+    
+      // Bestimmen, welche Instanzen im Detail-Modus B übertragen werden sollen:
+      // - immer mindestens die Instanz, deren Button geklickt wurde
+      // - zusätzlich weitere Instanzen, wenn ihre Frames/Bilder beim Klick
+      //   noch in der Auswahl waren (dtLastCanvasSelectionInstanceIds).
       const selectedSet = new Set(
         Array.isArray(dtLastCanvasSelectionInstanceIds)
           ? dtLastCanvasSelectionInstanceIds
           : []
       );
-
+    
       let detailInstanceIds = [];
       if (selectedSet.size > 0 && selectedSet.has(instanceId)) {
         detailInstanceIds = Array.from(selectedSet);
       } else {
         detailInstanceIds = [instanceId];
       }
-
+    
+      // Zustände nur für die tatsächlich relevanten Instanzen ermitteln
+      for (const id of detailInstanceIds) {
+        const inst = dtInstancesById.get(id);
+        if (!inst) {
+          continue;
+        }
+        const st = await dtGetInstanceStateForAgent(inst, { ctx: ctx });
+        if (st) {
+          stateById[id] = st;
+        }
+      }
+    
+      const mainState = stateById[instanceId];
+      if (!mainState || !mainState.classification) {
+        log("Konnte Instanzzustand für den Agenten nicht ermitteln.");
+        return;
+      }
+    
       // Nur Instanzen berücksichtigen, für die wir tatsächlich State haben
       detailInstanceIds = detailInstanceIds.filter(function (id) {
         return !!stateById[id];
       });
-
+    
       const activeCanvasStates = {};
       for (const id of detailInstanceIds) {
         const st = stateById[id];
@@ -2293,16 +2323,16 @@
           activeCanvasStates[id] = payload;
         }
       }
-
+    
       const activeCanvasState = activeCanvasStates[instanceId];
       if (!activeCanvasState) {
         log("Konnte aktiven Canvas-Status mit Alias-IDs nicht aufbereiten.");
         return;
       }
-
+    
       const boardCatalog = dtBuildBoardCatalogSummary(instanceId);
       const aliasDiff = dtAliasDiffForActiveInstance(mainState.diff);
-
+    
       const userPayload = {
         userQuestion: userText,
         activeInstanceId: instanceId,
@@ -2313,7 +2343,7 @@
         activeInstanceChangesSinceLastAgent: aliasDiff || null,
         hint: "boardCatalog = Kurzüberblick über alle Instanzen (inkl. Changes seit letztem Agent-Run, nur als Summary), activeCanvasStates = detaillierte Stickies/Areas/Verbindungen nur für die selektierten Instanzen."
       };
-
+    
       const body = {
         model,
         input: [
@@ -2338,7 +2368,7 @@
         ],
         max_output_tokens: 4000
       };
-
+    
       try {
         log("Sende Agent-Request an OpenAI (Instanz " + instanceId + ", Modus B) ...");
         const res = await fetch("https://api.openai.com/v1/responses", {
@@ -2349,24 +2379,24 @@
           },
           body: JSON.stringify(body)
         });
-
+    
         const text = await res.text();
         if (!res.ok) {
           log("Fehler bei OpenAI-Agent-Anfrage: " + res.status + " " + text);
           return;
         }
-
+    
         const data = JSON.parse(text);
         const firstMessage = data.output && data.output[0];
         const contentArr = firstMessage && firstMessage.content;
         const textPart = contentArr && contentArr.find((c) => c.type === "output_text");
         const answer = textPart ? textPart.text : null;
-
+    
         if (!answer) {
           log("Agent: Keine output_text-Antwort gefunden.");
           return;
         }
-
+    
         let agentObj = null;
         try {
           agentObj = JSON.parse(answer);
@@ -2375,10 +2405,10 @@
           log(answer);
           return;
         }
-
+    
         log("Agent-Analyse (analysis):");
         log(agentObj.analysis || "(keine analysis)");
-
+    
         if (Array.isArray(agentObj.actions) && agentObj.actions.length) {
           // Modus B: Actions weiterhin instanzspezifisch auf die ausgelöste Instanz anwenden
           await dtApplyCanvasActions(instanceId, agentObj.actions);
