@@ -2025,24 +2025,70 @@
         log("Keine Actions vom Agenten erhalten (actions-Array ist leer).");
         return;
       }
-
+    
       const instance = dtInstancesById.get(instanceId);
       if (!instance) {
         log("dtApplyCanvasActions: Unbekannte Instanz-ID " + instanceId);
         return;
       }
-
-      const geom = instance.lastGeometry;
+    
+      // WICHTIG:
+      // Für jede Ausführung der Actions holen wir die Geometrie der Instanz
+      // direkt vom PNG-Bild. Damit ist die Bounding-Box immer exakt die
+      // aktuelle Position/Skalierung der Image-Map auf dem Board.
+      let geom = null;
+    
+      if (instance.imageId) {
+        try {
+          const imgArr = await miro.board.get({ id: instance.imageId });
+          const img = Array.isArray(imgArr) ? imgArr[0] : imgArr;
+    
+          if (img) {
+            instance.lastGeometry = {
+              x: img.x,
+              y: img.y,
+              width: img.width,
+              height: img.height
+            };
+            geom = instance.lastGeometry;
+          } else {
+            log(
+              "dtApplyCanvasActions: Template-Bild der Instanz " +
+              instanceId +
+              " wurde nicht gefunden."
+            );
+          }
+        } catch (e) {
+          log("dtApplyCanvasActions: Fehler beim Nachladen der Bild-Geometrie: " + e.message);
+        }
+      }
+    
+      // Fallback: falls das Nachladen aus irgendeinem Grund fehlschlägt,
+      // verwenden wir die zuletzt bekannte Geometrie.
+      if (!geom && instance.lastGeometry) {
+        geom = instance.lastGeometry;
+      }
+    
       if (!geom) {
-        log("dtApplyCanvasActions: Keine Geometrie für Instanz " + instanceId);
+        log("dtApplyCanvasActions: Keine Geometrie für Instanz " + instanceId + " verfügbar.");
         return;
       }
-
-      log("Wende " + actions.length + " Action(s) auf Instanz " + instanceId + " an ...");
-
+    
+      log(
+        "Wende " +
+        actions.length +
+        " Action(s) auf Instanz " +
+        instanceId +
+        " an (aktuelle PNG-Geometrie wird verwendet)."
+      );
+    
       for (const action of actions) {
-        if (!action || !action.type) continue;
+        if (!action || !action.type) {
+          continue;
+        }
+    
         const type = action.type;
+    
         if (type === "move_sticky") {
           await dtActionMoveSticky(geom, action);
         } else if (type === "create_sticky") {
@@ -2054,6 +2100,7 @@
         }
       }
     }
+
 
     // Diff auf Alias-IDs ummappen
     function dtAliasDiffForActiveInstance(diff) {
