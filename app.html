@@ -2116,26 +2116,47 @@ async function dtActionCreateSticky(instance, templateGeometry, action) {
     // Liefert die aktuelle Geometrie des Canvas (PNG) für eine Instanz
     // – bevorzugt abgeleitet aus dem Frame, falls vorhanden.
     async function dtComputeTemplateGeometry(instance) {
-      if (!instance) return null;
+      if (!instance) {
+        return null;
+      }
+    
       await dtEnsureMiroReady();
     
-      // 1) Wenn es einen Frame gibt, leiten wir die PNG-Geometrie aus dem Frame ab
+      // 1) Primäre Quelle: das tatsächliche Template-Bild auf dem Board
+      if (instance.imageId) {
+        try {
+          const imgArr = await miro.board.get({ id: instance.imageId });
+          const img = Array.isArray(imgArr) ? imgArr[0] : imgArr;
+    
+          if (img && typeof img.x === "number" && typeof img.y === "number") {
+            const geom = {
+              x: img.x,
+              y: img.y,
+              width: img.width,
+              height: img.height
+            };
+            instance.lastGeometry = geom;
+            return geom;
+          }
+        } catch (e) {
+          log("Fehler beim Laden der Template-Geometrie aus dem Bild: " + e.message);
+        }
+      }
+    
+      // 2) Fallback: Geometrie grob aus dem Frame ableiten, falls das Bild nicht mehr vorhanden ist
       if (instance.actionItems && instance.actionItems.frameId) {
         try {
           const frameArr = await miro.board.get({ id: instance.actionItems.frameId });
           const frame = Array.isArray(frameArr) ? frameArr[0] : frameArr;
     
-          if (frame) {
-            // In dtCreateInstanceActionShapes hast du:
-            // frameWidth  = image.width  + 200
-            // frameHeight = image.height + 260
-            // frameY      = image.y + 80
-            //
-            // → Umkehrung:
-            const width  = frame.width  - 200;
+          if (frame && typeof frame.x === "number" && typeof frame.y === "number") {
+            // Achtung: dies ist nur ein Notfallpfad für alte oder beschädigte Instanzen.
+            // Die Werte müssen zur Art passen, wie der Frame in dtCreateInstanceActionShapes
+            // angelegt wurde. Im Normalfall sollte dieser Zweig nicht benötigt werden.
+            const width = frame.width - 200;
             const height = frame.height - 260;
-            const x      = frame.x;       // Bildzentrum == Framezentrum in X
-            const y      = frame.y - 80;  // Bildzentrum liegt 80px über dem Framezentrum
+            const x = frame.x;
+            const y = frame.y - 80;
     
             const geom = { x, y, width, height };
             instance.lastGeometry = geom;
@@ -2146,25 +2167,10 @@ async function dtActionCreateSticky(instance, templateGeometry, action) {
         }
       }
     
-      // 2) Fallback: direkt vom Image lesen (für alte Instanzen ohne Frame)
-      if (instance.imageId) {
-        try {
-          const imgArr = await miro.board.get({ id: instance.imageId });
-          const img = Array.isArray(imgArr) ? imgArr[0] : imgArr;
-    
-          if (img) {
-            const geom = { x: img.x, y: img.y, width: img.width, height: img.height };
-            instance.lastGeometry = geom;
-            return geom;
-          }
-        } catch (e) {
-          log("Fehler beim Laden des Template-Bildes: " + e.message);
-        }
-      }
-    
-      // 3) Letzter Notnagel: falls etwas schiefgeht, nimm die zuletzt bekannte Geometrie
+      // 3) Letzter Notnagel: zuletzt bekannte Geometrie verwenden
       return instance.lastGeometry || null;
     }
+
 
     // --------------------------------------------------------------------
     // 6) Globaler Agenten-Modus A
