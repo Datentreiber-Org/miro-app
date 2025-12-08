@@ -895,144 +895,165 @@
     // --------------------------------------------------------------------
     // Auswahl clustern
     // --------------------------------------------------------------------
-    async function dtClusterSelectionWithIds(stickyIds, expectedInstanceId) {
-      await dtEnsureMiroReady();
-      await dtScanTemplateInstances();
-    
-      try {
-        let stickyNotes = [];
-    
-        if (Array.isArray(stickyIds) && stickyIds.length > 0) {
-          const arr = await miro.board.get({ id: stickyIds });
-          if (Array.isArray(arr)) {
-            stickyNotes = arr.filter(function (it) { return it.type === "sticky_note"; });
-          } else if (arr && arr.type === "sticky_note") {
-            stickyNotes = [arr];
-          }
-        } else {
-          const selection = await miro.board.getSelection();
-          if (!selection || !selection.length) {
-            log("Keine Auswahl gefunden. Bitte einige Sticky Notes auswählen.");
-            return;
-          }
-          stickyNotes = selection.filter(function (item) { return item.type === "sticky_note"; });
-        }
-    
-        if (!stickyNotes.length) {
-          log("In der Auswahl sind keine Sticky Notes. Bitte nur Sticky Notes auswählen.");
-          return;
-        }
-    
-        const byInstance = {};
-        const outside = [];
-    
-        stickyNotes.forEach(function (s) {
-          const instance = dtFindInstanceForPoint(s.x, s.y);
-          if (!instance) {
-            outside.push(s);
-            return;
-          }
-          const id = instance.instanceId;
-          if (!byInstance[id]) {
-            byInstance[id] = [];
-          }
-          byInstance[id].push(s);
-        });
-    
-        const instanceIds = Object.keys(byInstance);
-    
-        if (!instanceIds.length) {
-          log(
-            "Keine der ausgewählten Sticky Notes liegt über einem 3-Boxes-Canvas. " +
-            "Bitte zuerst das Template verwenden und die Sticky Notes innerhalb des Canvas platzieren."
-          );
-          return;
-        }
-    
-        if (instanceIds.length > 1) {
-          log(
-            "Die Auswahl enthält Sticky Notes aus mehreren Canvas-Instanzen. " +
-            "Bitte nur Sticky Notes aus genau einer Instanz gleichzeitig clustern."
-          );
-          return;
-        }
-    
-        const instanceId = instanceIds[0];
+async function dtClusterSelectionWithIds(stickyIds, expectedInstanceId) {
+  await dtEnsureMiroReady();
+  await dtScanTemplateInstances();
 
-        if (outside.length > 0) {
-          log(
-            "Hinweis: Die Auswahl enthält Sticky Notes, die nicht über einem 3-Boxes-Canvas liegen. " +
-            "Sie werden trotzdem dem gewählten Cluster zugeordnet."
-          );
-        }
-    
-        // Sicherstellen, dass die Auswahl zu dem Canvas gehört,
-        // dessen Cluster-Button geklickt wurde (falls übergeben)
-        if (expectedInstanceId && instanceId !== expectedInstanceId) {
-          log(
-            "Cluster-Button gehört zu einem anderen Canvas als die aktuelle Sticky-Auswahl. " +
-            "Bitte nur Sticky Notes innerhalb desselben Canvas auswählen."
-          );
-          return;
-        }
-    
-        const notesInInstance = byInstance[instanceId];
-    
-        let headerSticky = null;
-        for (const s of notesInInstance) {
-          const html = s.content || "";
-          if (
-            html.indexOf("<u>") !== -1 ||
-            html.indexOf("text-decoration:underline") !== -1
-          ) {
-            headerSticky = s;
-            break;
-          }
-        }
-    
-        let clusterName = null;
-    
-        if (headerSticky) {
-          const candidate = stripHtml(headerSticky.content).trim();
-          if (!candidate) {
-            log(
-              "Der unterstrichene Sticky-Text ist leer. " +
-              "Bitte einen lesbaren Namen unterstreichen oder ohne Unterstreichung arbeiten, " +
-              "dann wird ein generischer Clustername vergeben."
-            );
-            return;
-          }
-          clusterName = candidate;
-        } else {
-          let count = dtClusterCounterByInstanceId.get(instanceId) || 0;
-          count += 1;
-          dtClusterCounterByInstanceId.set(instanceId, count);
-          clusterName = "Cluster " + count;
-        }
-    
-        for (const s of notesInInstance) {
-          dtClusterAssignments.set(s.id, clusterName);
-        }
+  try {
+    let stickyNotes = [];
 
-        if (outside.length > 0) {
-          for (const s of outside) {
-            dtClusterAssignments.set(s.id, clusterName);
-          }
-        }
+    if (Array.isArray(stickyIds) && stickyIds.length > 0) {
+      const arr = await miro.board.get({ id: stickyIds });
+      if (Array.isArray(arr)) {
+        stickyNotes = arr.filter(function (it) { return it.type === "sticky_note"; });
+      } else if (arr && arr.type === "sticky_note") {
+        stickyNotes = [arr];
+      }
+    } else {
+      const selection = await miro.board.getSelection();
+      if (!selection || !selection.length) {
+        log("Keine Auswahl gefunden. Bitte einige Sticky Notes auswählen.");
+        return;
+      }
+      stickyNotes = selection.filter(function (item) { return item.type === "sticky_note"; });
+    }
 
-        const totalCount = notesInInstance.length + outside.length;
-    
-        log(
-          "Cluster '" +
-          clusterName +
-          "' gesetzt für " +
-          totalCount +
-          " Sticky Notes (Session-State, kein Board-Metafeld)."
-        );
-      } catch (e) {
-        log("Fehler beim Setzen der Cluster-Metadaten: " + e.message);
+    if (!stickyNotes.length) {
+      log("In der Auswahl sind keine Sticky Notes. Bitte nur Sticky Notes auswählen.");
+      return;
+    }
+
+    const byInstance = {};
+    const outside = [];
+
+    // Wenn der Cluster-Button von einer Instanz kommt, holen wir uns dazu
+    // die Instanz und deren Frame-ID, um „im selben Frame“ zu priorisieren.
+    const expectedInstance = expectedInstanceId ? dtInstancesById.get(expectedInstanceId) : null;
+    const expectedFrameId =
+      expectedInstance && expectedInstance.actionItems
+        ? expectedInstance.actionItems.frameId
+        : null;
+
+    stickyNotes.forEach(function (s) {
+      let instance = null;
+
+      // 1) Falls Sticky in genau dem Frame liegt, zu dem der Cluster-Button gehört,
+      //    ordnen wir ihn eindeutig dieser Instanz zu.
+      if (expectedInstance && expectedFrameId && s.parentId === expectedFrameId) {
+        instance = expectedInstance;
+      } else {
+        // 2) Fallback: geometrisch über dem Canvas-Bild (wie bisher)
+        instance = dtFindInstanceForPoint(s.x, s.y);
+      }
+
+      if (!instance) {
+        outside.push(s);
+        return;
+      }
+
+      const id = instance.instanceId;
+      if (!byInstance[id]) {
+        byInstance[id] = [];
+      }
+      byInstance[id].push(s);
+    });
+
+    const instanceIds = Object.keys(byInstance);
+
+    if (!instanceIds.length) {
+      log(
+        "Keine der ausgewählten Sticky Notes liegt über einem 3-Boxes-Canvas. " +
+        "Bitte zuerst das Template verwenden und die Sticky Notes innerhalb des Canvas platzieren."
+      );
+      return;
+    }
+
+    if (instanceIds.length > 1) {
+      log(
+        "Die Auswahl enthält Sticky Notes aus mehreren Canvas-Instanzen. " +
+        "Bitte nur Sticky Notes aus genau einer Instanz gleichzeitig clustern."
+      );
+      return;
+    }
+
+    const instanceId = instanceIds[0];
+
+    // Sicherstellen, dass die Auswahl zu dem Canvas gehört,
+    // dessen Cluster-Button geklickt wurde (falls übergeben)
+    if (expectedInstanceId && instanceId !== expectedInstanceId) {
+      log(
+        "Cluster-Button gehört zu einem anderen Canvas als die aktuelle Sticky-Auswahl. " +
+        "Bitte nur Sticky Notes innerhalb desselben Canvas (bzw. desselben Frames) auswählen."
+      );
+      return;
+    }
+
+    if (outside.length > 0) {
+      log(
+        "Hinweis: Die Auswahl enthält Sticky Notes, die nicht über einem 3-Boxes-Canvas liegen. " +
+        "Sie werden trotzdem dem gewählten Cluster zugeordnet."
+      );
+      return;
+    }
+
+    const notesInInstance = byInstance[instanceId];
+
+    let headerSticky = null;
+    for (const s of notesInInstance) {
+      const html = s.content || "";
+      if (
+        html.indexOf("<u>") !== -1 ||
+        html.indexOf("text-decoration:underline") !== -1
+      ) {
+        headerSticky = s;
+        break;
       }
     }
+
+    let clusterName = null;
+
+    if (headerSticky) {
+      const candidate = stripHtml(headerSticky.content).trim();
+      if (!candidate) {
+        log(
+          "Der unterstrichene Sticky-Text ist leer. " +
+          "Bitte einen lesbaren Namen unterstreichen oder ohne Unterstreichung arbeiten, " +
+          "dann wird ein generischer Clustername vergeben."
+        );
+        return;
+      }
+      clusterName = candidate;
+    } else {
+      let count = dtClusterCounterByInstanceId.get(instanceId) || 0;
+      count += 1;
+      dtClusterCounterByInstanceId.set(instanceId, count);
+      clusterName = "Cluster " + count;
+    }
+
+    for (const s of notesInInstance) {
+      dtClusterAssignments.set(s.id, clusterName);
+    }
+
+    if (outside.length > 0) {
+      for (const s of outside) {
+        dtClusterAssignments.set(s.id, clusterName);
+      }
+    }
+
+    const totalCount = notesInInstance.length + outside.length;
+
+    log(
+      "Cluster '" +
+      clusterName +
+      "' gesetzt für " +
+      totalCount +
+      " Sticky Notes (Session-State, kein Board-Metafeld)."
+    );
+  } catch (e) {
+    log("Fehler beim Setzen der Cluster-Metadaten: " + e.message);
+  }
+}
+
 
     async function dtClusterSelection() {
       log("Button: Auswahl clustern (klick).");
