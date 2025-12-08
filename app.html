@@ -1825,11 +1825,11 @@
     }
 
 
+
     // --------------------------------------------------------------------
     // 5) Agent-Hilfsfunktionen (Instanzzustand)
-    //    WICHTIG: Bounding Box ist ausschließlich das PNG-Bild.
-    //    Die Klassifikation nutzt den globalen Board-Kontext und filtert
-    //    Stickies über dtClassifyStickiesForTemplate anhand der Bildgeometrie.
+    //    WICHTIG: Bounding Box ist ausschließlich das PNG-Bild bzw. die
+    //    daraus abgeleitete Canvas-Geometrie.
     // --------------------------------------------------------------------
     async function dtGetInstanceStateForAgent(instance, options) {
       await dtEnsureMiroReady();
@@ -1839,45 +1839,28 @@
         return null;
       }
     
-      // Aktuelle Bild-Geometrie laden, damit Image Map immer exakt am PNG hängt
-      let imgArr = null;
-      try {
-        imgArr = await miro.board.get({ id: instance.imageId });
-      } catch (e) {
-        log("Fehler beim Laden des Template-Bildes der Instanz: " + e.message);
+      // Zentrale Geometrie-Bestimmung (Frame oder Bild, immer aktuell)
+      const geom = await dtComputeTemplateGeometry(instance);
+      if (!geom) {
+        log("dtGetInstanceStateForAgent: Keine Geometrie für Instanz verfügbar.");
         return null;
       }
     
-      const img = Array.isArray(imgArr) ? imgArr[0] : imgArr;
-      if (!img) {
-        log("Das Template-Bild der Instanz existiert nicht mehr auf dem Board.");
-        return null;
-      }
-    
-      // Bounding Box der Instanz ist immer das PNG-Bild
-      instance.title = img.title || instance.title || "Datentreiber 3-Boxes";
-      instance.lastGeometry = {
-        x: img.x,
-        y: img.y,
-        width: img.width,
-        height: img.height
-      };
-    
-      // Globalen Board-Kontext laden oder wiederverwenden
+      // Board-Kontext laden oder wiederverwenden
       let ctx = options && options.ctx;
       if (!ctx) {
         ctx = await dtGetBoardBaseContext();
       }
     
-      // Klassifikation nur über das PNG-Bild als Bounding Box
+      // Klassifikation ausschließlich über die aktuelle Canvas-Geometrie
       const classification = dtClassifyStickiesForTemplate(
         {
-          id: img.id,
-          title: instance.title,
-          x: img.x,
-          y: img.y,
-          width: img.width,
-          height: img.height
+          id: instance.imageId,
+          title: instance.title || "Datentreiber 3-Boxes",
+          x: geom.x,
+          y: geom.y,
+          width: geom.width,
+          height: geom.height
         },
         ctx
       );
@@ -1897,9 +1880,12 @@
       // Instanz-Metadaten aktualisieren
       instance.lastClassification = classification;
       instance.lastStateJson = stateJson;
-      instance.lastStickyCount = classification && classification.counts
-        ? (classification.counts.total || 0)
-        : (Array.isArray(classification.items) ? classification.items.length : 0);
+      instance.lastStickyCount =
+        classification && classification.counts
+          ? classification.counts.total || 0
+          : Array.isArray(classification.items)
+            ? classification.items.length
+            : 0;
     
       // lastChangedAt nur setzen, wenn sich inhaltlich wirklich etwas geändert hat
       if (!prevStateJson || prevStateJson !== stateJson) {
@@ -1911,10 +1897,10 @@
       instance.lastDiff = diff;
     
       return {
-        classification,
+        classification: classification,
         promptPayload: payload,
-        stateJson,
-        diff
+        stateJson: stateJson,
+        diff: diff
       };
     }
 
@@ -1984,23 +1970,31 @@
       }
     }
 
-    async function dtActionCreateSticky(templateGeometry, action) {
-      const areaName = action.area;
-      const text = action.text || "";
-      const region = dtAreaNameToRegion(areaName);
-      const center = dtAreaCenterNormalized(region ? region.id : null);
-      const coords = dtNormalizedToBoardCoords(templateGeometry, center.px, center.py);
+async function dtActionCreateSticky(instance, templateGeometry, action) {
+  const areaName = action.area;
+  const text = action.text || "";
+  const region = dtAreaNameToRegion(areaName);
+  const center = dtAreaCenterNormalized(region ? region.id : null);
+  const coords = dtNormalizedToBoardCoords(templateGeometry, center.px, center.py);
 
-      try {
-        await miro.board.createStickyNote({
-          content: text || "(leer)",
-          x: coords.x,
-          y: coords.y
-        });
-      } catch (e) {
-        log("Fehler bei create_sticky: " + e.message);
-      }
-    }
+  const createPayload = {
+    content: text || "(leer)",
+    x: coords.x,
+    y: coords.y
+  };
+
+  // Wenn es einen Frame für diese Instanz gibt, Sticky direkt als Kind dieses Frames anlegen
+  if (instance && instance.actionItems && instance.actionItems.frameId) {
+    createPayload.parentId = instance.actionItems.frameId;
+  }
+
+  try {
+    await miro.board.createStickyNote(createPayload);
+  } catch (e) {
+    log("Fehler bei create_sticky: " + e.message);
+  }
+}
+
 
     async function dtActionDeleteSticky(action) {
       const rawId = action.stickyId;
@@ -2147,6 +2141,59 @@
       }
 
       return out;
+    }
+
+    // Liefert die aktuelle Geometrie des Canvas (PNG) für eine Instanz
+    // – bevorzugt abgeleitet aus dem Frame, falls vorhanden.
+    async function dtComputeTemplateGeometry(instance) {
+      if (!instance) return null;
+      await dtEnsureMiroReady();
+    
+      // 1) Wenn es einen Frame gibt, leiten wir die PNG-Geometrie aus dem Frame ab
+      if (instance.actionItems && instance.actionItems.frameId) {
+        try {
+          const frameArr = await miro.board.get({ id: instance.actionItems.frameId });
+          const frame = Array.isArray(frameArr) ? frameArr[0] : frameArr;
+    
+          if (frame) {
+            // In dtCreateInstanceActionShapes hast du:
+            // frameWidth  = image.width  + 200
+            // frameHeight = image.height + 260
+            // frameY      = image.y + 80
+            //
+            // → Umkehrung:
+            const width  = frame.width  - 200;
+            const height = frame.height - 260;
+            const x      = frame.x;       // Bildzentrum == Framezentrum in X
+            const y      = frame.y - 80;  // Bildzentrum liegt 80px über dem Framezentrum
+    
+            const geom = { x, y, width, height };
+            instance.lastGeometry = geom;
+            return geom;
+          }
+        } catch (e) {
+          log("Fehler beim Berechnen der Template-Geometrie aus dem Frame: " + e.message);
+        }
+      }
+    
+      // 2) Fallback: direkt vom Image lesen (für alte Instanzen ohne Frame)
+      if (instance.imageId) {
+        try {
+          const imgArr = await miro.board.get({ id: instance.imageId });
+          const img = Array.isArray(imgArr) ? imgArr[0] : imgArr;
+    
+          if (img) {
+            const geom = { x: img.x, y: img.y, width: img.width, height: img.height };
+            instance.lastGeometry = geom;
+            return geom;
+          }
+        } catch (e) {
+          log("Fehler beim Laden des Template-Bildes: " + e.message);
+        }
+      }
+    
+      // 3) Letzter Notnagel: falls etwas schiefgeht, nimm die zuletzt bekannte Geometrie
+      return instance.lastGeometry || null;
     }
 
     // --------------------------------------------------------------------
