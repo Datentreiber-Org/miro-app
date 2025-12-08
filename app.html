@@ -460,11 +460,16 @@
     }
 
 
-    async function dtRegisterInstanceFromImage(image) {
+    async function dtRegisterInstanceFromImage(image, options) {
       if (!image || !image.id) return null;
-
+    
+      options = options || {};
+      // Standard: Frames/Buttons erzeugen, außer es wird explizit abgeschaltet
+      const createActionShapes = options.createActionShapes !== false;
+    
       let instance = dtInstancesByImageId.get(image.id);
       if (instance) {
+        // Geometrie aktualisieren
         instance.title = image.title || instance.title || "Datentreiber 3-Boxes";
         instance.lastGeometry = {
           x: image.x,
@@ -474,7 +479,7 @@
         };
         return instance;
       }
-
+    
       const instanceId = "inst-" + (dtNextInstanceCounter++);
       instance = {
         instanceId,
@@ -494,23 +499,28 @@
         lastDiff: null,
         actionItems: {}
       };
-
+    
       dtInstancesByImageId.set(image.id, instance);
       dtInstancesById.set(instanceId, instance);
-
+    
       log("Neue Canvas-Instanz registriert: " + instanceId + " (Bild-ID " + image.id + ")");
-      try {
-        await dtCreateInstanceActionShapes(instance, image);
-      } catch (e) {
-        console.error("[DT] Fehler beim Erzeugen der Action-Shapes:", e);
+    
+      // WICHTIG: nur bei echten neuen Templates (Button-Aktion) UI-Elemente anlegen.
+      if (createActionShapes) {
+        try {
+          await dtCreateInstanceActionShapes(instance, image);
+        } catch (e) {
+          console.error("[DT] Fehler beim Erzeugen der Action-Shapes:", e);
+        }
       }
-
+    
       return instance;
     }
 
+
     async function dtScanTemplateInstances() {
       if (!miro.board || !miro.board.get) return;
-
+    
       let images = [];
       try {
         images = await miro.board.get({ type: "image" });
@@ -519,9 +529,9 @@
         return;
       }
       if (!Array.isArray(images)) return;
-
+    
       const templateImageIdsOnBoard = new Set();
-
+    
       for (const img of images) {
         if (
           img.type === "image" &&
@@ -529,10 +539,11 @@
           img.url.indexOf(TEMPLATE_IMAGE_URL) !== -1
         ) {
           templateImageIdsOnBoard.add(img.id);
-          await dtRegisterInstanceFromImage(img);
+          // Nur Instanzen registrieren, KEINE neuen Frames/Buttons bauen
+          await dtRegisterInstanceFromImage(img, { createActionShapes: false });
         }
       }
-
+    
       // Instanzen entfernen, deren Template-Bild nicht mehr existiert
       const knownImageIds = Array.from(dtInstancesByImageId.keys());
       for (const imageId of knownImageIds) {
@@ -552,6 +563,7 @@
         }
       }
     }
+
 
     // Eine Instanz gilt als "geändert", wenn sich Text, Area-Name, Farbe,
     // Tags oder Cluster-Zuordnung von Stickies verändert haben oder Stickies
