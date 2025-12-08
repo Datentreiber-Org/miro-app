@@ -2026,45 +2026,14 @@ async function dtActionCreateSticky(instance, templateGeometry, action) {
         return;
       }
     
-      // WICHTIG:
-      // Für jede Ausführung der Actions holen wir die Geometrie der Instanz
-      // direkt vom PNG-Bild. Damit ist die Bounding-Box immer exakt die
-      // aktuelle Position/Skalierung der Image-Map auf dem Board.
-      let geom = null;
-    
-      if (instance.imageId) {
-        try {
-          const imgArr = await miro.board.get({ id: instance.imageId });
-          const img = Array.isArray(imgArr) ? imgArr[0] : imgArr;
-    
-          if (img) {
-            instance.lastGeometry = {
-              x: img.x,
-              y: img.y,
-              width: img.width,
-              height: img.height
-            };
-            geom = instance.lastGeometry;
-          } else {
-            log(
-              "dtApplyCanvasActions: Template-Bild der Instanz " +
-              instanceId +
-              " wurde nicht gefunden."
-            );
-          }
-        } catch (e) {
-          log("dtApplyCanvasActions: Fehler beim Nachladen der Bild-Geometrie: " + e.message);
-        }
-      }
-    
-      // Fallback: falls das Nachladen aus irgendeinem Grund fehlschlägt,
-      // verwenden wir die zuletzt bekannte Geometrie.
-      if (!geom && instance.lastGeometry) {
-        geom = instance.lastGeometry;
-      }
-    
+      // Zentrale Geometrie-Bestimmung (immer aktuelle Canvas-Geometrie)
+      const geom = await dtComputeTemplateGeometry(instance);
       if (!geom) {
-        log("dtApplyCanvasActions: Keine Geometrie für Instanz " + instanceId + " verfügbar.");
+        log(
+          "dtApplyCanvasActions: Keine Geometrie für Instanz " +
+          instanceId +
+          " verfügbar."
+        );
         return;
       }
     
@@ -2073,7 +2042,7 @@ async function dtActionCreateSticky(instance, templateGeometry, action) {
         actions.length +
         " Action(s) auf Instanz " +
         instanceId +
-        " an (aktuelle PNG-Geometrie wird verwendet)."
+        " an (aktuelle Canvas-Geometrie wird verwendet)."
       );
     
       for (const action of actions) {
@@ -2086,7 +2055,7 @@ async function dtActionCreateSticky(instance, templateGeometry, action) {
         if (type === "move_sticky") {
           await dtActionMoveSticky(geom, action);
         } else if (type === "create_sticky") {
-          await dtActionCreateSticky(geom, action);
+          await dtActionCreateSticky(instance, geom, action);
         } else if (type === "delete_sticky") {
           await dtActionDeleteSticky(action);
         } else {
@@ -2094,6 +2063,7 @@ async function dtActionCreateSticky(instance, templateGeometry, action) {
         }
       }
     }
+
 
 
     // Diff auf Alias-IDs ummappen
