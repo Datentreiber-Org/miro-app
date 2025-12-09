@@ -139,6 +139,9 @@
     let dtInitialized = false;
     let dtNextInstanceCounter = 1;
 
+    // Globaler Baseline-Status für den globalen Agenten (Modus A)
+    let dtHasGlobalBaseline = false;
+
     // imageId -> instance
     // instanceId -> instance
     const dtInstancesByImageId = new Map();
@@ -492,11 +495,16 @@
           width: image.width,
           height: image.height
         },
+        // Letzter berechneter Zustand (für Debug / Anzeige)
         lastClassification: null,
         lastStateJson: null,
         lastStickyCount: 0,
         lastChangedAt: null,
         lastDiff: null,
+        // Baseline-Zustand nach dem letzten Agenten-Run
+        baselineClassification: null,
+        baselineStateJson: null,
+        lastAgentRunAt: null,
         actionItems: {}
       };
     
@@ -594,19 +602,18 @@
           };
         }
 
+        const headerSummary =
+          instance.lastClassification &&
+          instance.lastClassification.template &&
+          instance.lastClassification.template.headerSummary
+            ? instance.lastClassification.template.headerSummary
+            : null;
+
         const entry = {
           instanceId: id,
           canvasTypeId: instance.canvasTypeId,
-          title: instance.title,
-          imageId: instance.imageId,
           lastStickyCount: instance.lastStickyCount || 0,
-          lastChangedAt: instance.lastChangedAt,
-          headerSummary:
-            instance.lastClassification &&
-            instance.lastClassification.template &&
-            instance.lastClassification.template.headerSummary
-              ? instance.lastClassification.template.headerSummary
-              : null,
+          headerSummary: headerSummary,
           // aktiv, wenn explizit aktiv (activeInstanceId) oder seit letztem Agent-Run
           // inhaltlich geändert (Text, Area, Farbe, Tags, Cluster; keine reinen Positionsänderungen)
           isActive: (id === activeInstanceId) || hasChanges,
@@ -1708,6 +1715,10 @@
       if (!newClassification || !Array.isArray(newClassification.items)) {
         if (prevClassification && Array.isArray(prevClassification.items)) {
           prevClassification.items.forEach(function (oldItem) {
+            // Sticky existierte vorher, ist jetzt aber nicht mehr da
+            if (oldItem && oldItem.stickyId) {
+              dtClusterAssignments.delete(oldItem.stickyId);
+            }
             diff.deleted.push({
               stickyId: oldItem.stickyId,
               text: oldItem.text || "",
@@ -1761,6 +1772,9 @@
       prevIds.forEach(function (id) {
         if (!newIdSet[id]) {
           const it = prevItemsById[id];
+          if (it && it.stickyId) {
+            dtClusterAssignments.delete(it.stickyId);
+          }
           diff.deleted.push({
             stickyId: it.stickyId,
             text: it.text || "",
@@ -1804,6 +1818,16 @@
           clusterName: newItem.clusterName || null,
           tags: normalizeTags(newItem.tags)
         };
+
+        // Automatisches Entclustern, wenn sich die Area ändert
+        const areaChanged = oldSummary.areaName !== newSummary.areaName;
+        if (areaChanged && oldSummary.clusterName) {
+          dtClusterAssignments.delete(newItem.stickyId);
+          newSummary.clusterName = null;
+          if (newItem) {
+            newItem.clusterName = null;
+          }
+        }
 
         const isSame =
           oldSummary.text === newSummary.text &&
@@ -1865,9 +1889,16 @@
         ctx
       );
     
-      // Diff zwischen vorherigem und aktuellem Zustand berechnen
-      const previousClassification = instance.lastClassification || null;
-      const diff = dtComputeInstanceDiff(previousClassification, classification);
+      // Diff relativ zum Baseline-Zustand berechnen
+      const baselineClassification = instance.baselineClassification || null;
+      let diff = null;
+      if (baselineClassification) {
+        diff = dtComputeInstanceDiff(baselineClassification, classification);
+      } else {
+        // Noch keine Baseline vorhanden: Differenz zu einem "leeren" Zustand
+        // (wird nur als ChangesSinceLastAgent interpretiert, sobald eine Baseline existiert)
+        diff = dtComputeInstanceDiff(null, classification);
+      }
     
       // Prompt-Payload für das Sprachmodell bauen (zunächst ohne Aliasse)
       const payload = dtBuildPromptPayloadFromClassification(classification, {
@@ -1875,7 +1906,6 @@
       });
     
       const stateJson = JSON.stringify(payload, null, 2);
-      const prevStateJson = instance.lastStateJson;
     
       // Instanz-Metadaten aktualisieren
       instance.lastClassification = classification;
@@ -1887,13 +1917,7 @@
             ? classification.items.length
             : 0;
     
-      // lastChangedAt nur setzen, wenn sich inhaltlich wirklich etwas geändert hat
-      if (!prevStateJson || prevStateJson !== stateJson) {
-        if (dtDiffHasChanges(diff)) {
-          instance.lastChangedAt = new Date().toISOString();
-        }
-      }
-    
+      // lastDiff = Änderungen relativ zum Baseline-Zustand
       instance.lastDiff = diff;
     
       return {
@@ -1970,30 +1994,41 @@
       }
     }
 
-async function dtActionCreateSticky(instance, templateGeometry, action) {
-  const areaName = action.area;
-  const text = action.text || "";
-  const region = dtAreaNameToRegion(areaName);
-  const center = dtAreaCenterNormalized(region ? region.id : null);
-  const coords = dtNormalizedToBoardCoords(templateGeometry, center.px, center.py);
+    // PATCHED: create_sticky ohne parentId im Create-Payload, danach in Frame verschieben
+    async function dtActionCreateSticky(instance, templateGeometry, action) {
+      const areaName = action.area;
+      const text = action.text || "";
+      const region = dtAreaNameToRegion(areaName);
+      const center = dtAreaCenterNormalized(region ? region.id : null);
+      const coords = dtNormalizedToBoardCoords(templateGeometry, center.px, center.py);
 
-  const createPayload = {
-    content: text || "(leer)",
-    x: coords.x,
-    y: coords.y
-  };
+      const createPayload = {
+        content: text || "(leer)",
+        x: coords.x,
+        y: coords.y
+        // parentId hier bewusst NICHT setzen, um den Read-Only-Fehler zu vermeiden
+      };
 
-  // Wenn es einen Frame für diese Instanz gibt, Sticky direkt als Kind dieses Frames anlegen
-  if (instance && instance.actionItems && instance.actionItems.frameId) {
-    createPayload.parentId = instance.actionItems.frameId;
-  }
+      try {
+        const sticky = await miro.board.createStickyNote(createPayload);
 
-  try {
-    await miro.board.createStickyNote(createPayload);
-  } catch (e) {
-    log("Fehler bei create_sticky: " + e.message);
-  }
-}
+        // Falls die Instanz einen Frame hat, Sticky nachträglich in diesen Frame verschieben
+        if (instance && instance.actionItems && instance.actionItems.frameId) {
+          try {
+            const frameArr = await miro.board.get({ id: instance.actionItems.frameId });
+            const frame = Array.isArray(frameArr) ? frameArr[0] : frameArr;
+            if (frame && typeof frame.add === "function") {
+              await frame.add(sticky);
+              await frame.sync();
+            }
+          } catch (e2) {
+            log("Fehler beim Hinzufügen des neu erstellten Stickies zum Frame: " + e2.message);
+          }
+        }
+      } catch (e) {
+        log("Fehler bei create_sticky: " + e.message);
+      }
+    }
 
 
     async function dtActionDeleteSticky(action) {
@@ -2114,7 +2149,7 @@ async function dtActionCreateSticky(instance, templateGeometry, action) {
     }
 
     // Liefert die aktuelle Geometrie des Canvas (PNG) für eine Instanz
-    // – bevorzugt abgeleitet aus dem Frame, falls vorhanden.
+    // – bevorzugt direkt aus dem Bild, ansonsten Fallback Frame/lastGeometry
     async function dtComputeTemplateGeometry(instance) {
       if (!instance) {
         return null;
@@ -2212,7 +2247,7 @@ async function dtActionCreateSticky(instance, templateGeometry, action) {
         }
       }
 
-      // Aktive Instanzen im globalen Sinne: inhaltliche Änderungen seit letztem Agent-Call
+      // Aktive Instanzen im globalen Sinne: inhaltliche Änderungen seit Baseline
       const activeInstanceIds = [];
       for (const inst of allInstances) {
         if (dtDiffHasChanges(inst.lastDiff)) {
@@ -2239,12 +2274,21 @@ async function dtActionCreateSticky(instance, templateGeometry, action) {
         }
       }
 
-      // Diffs auf Aliasse abbilden
+      // Diffs auf Aliasse abbilden (nur wenn es bereits eine globale Baseline gibt)
       for (const id of activeInstanceIds) {
         const st = stateById[id];
-        if (!st || !st.diff) continue;
-        const aliasDiff = dtAliasDiffForActiveInstance(st.diff);
-        activeInstanceChangesSinceLastAgent[id] = aliasDiff || null;
+        if (!st || !st.diff) {
+          activeInstanceChangesSinceLastAgent[id] = null;
+          continue;
+        }
+        if (!dtHasGlobalBaseline) {
+          // Vor dem ersten globalen Agenten-Run gibt es noch keinen sinnvollen
+          // "Changes since last Agent"-Bezug.
+          activeInstanceChangesSinceLastAgent[id] = null;
+        } else {
+          const aliasDiff = dtAliasDiffForActiveInstance(st.diff);
+          activeInstanceChangesSinceLastAgent[id] = aliasDiff || null;
+        }
       }
 
       const boardCatalog = dtBuildBoardCatalogSummary(triggerInstanceId || null);
@@ -2252,6 +2296,7 @@ async function dtActionCreateSticky(instance, templateGeometry, action) {
       const userPayload = {
         userQuestion: finalUserText,
         triggerInstanceId: triggerInstanceId || null,
+        hasBaseline: dtHasGlobalBaseline,
         boardCatalog: boardCatalog,
         activeInstanceIds: activeInstanceIds,
         activeCanvasStates: activeCanvasStates,
@@ -2330,13 +2375,31 @@ async function dtActionCreateSticky(instance, templateGeometry, action) {
         } else {
           log("Globaler Agent lieferte keine Actions (actions-Array ist leer).");
         }
+
+        // Nach einem erfolgreichen globalen Agenten-Run: Baseline für alle Instanzen aktualisieren
+        try {
+          const nowIso = new Date().toISOString();
+          dtInstancesById.forEach(function (inst) {
+            const st = stateById[inst.instanceId];
+            if (st && st.classification) {
+              inst.baselineClassification = st.classification;
+              inst.baselineStateJson = st.stateJson;
+              inst.lastDiff = null;
+              inst.lastAgentRunAt = nowIso;
+              inst.lastChangedAt = nowIso;
+            }
+          });
+          dtHasGlobalBaseline = true;
+        } catch (e2) {
+          log("Fehler beim Aktualisieren der Baseline nach globalem Agent-Run: " + e2.message);
+        }
       } catch (e) {
         log("Exception beim globalen Agent-Run: " + e.message);
       }
     }
 
     // --------------------------------------------------------------------
-    // 7) Instanzspezifischer Agenten-Modus B (bestehender Button)
+    // 7) Instanzspezifischer Agenten-Modus B (bestehender Button) – strikt 1 Instanz
     // --------------------------------------------------------------------
     async function dtRunAgentForInstance(instanceId, options) {
       await dtEnsureMiroReady();
@@ -2365,33 +2428,18 @@ async function dtActionCreateSticky(instance, templateGeometry, action) {
       const ctx = await dtGetBoardBaseContext();
       const stateById = {};
     
-      // Bestimmen, welche Instanzen im Detail-Modus B übertragen werden sollen:
-      // - immer mindestens die Instanz, deren Button geklickt wurde
-      // - zusätzlich weitere Instanzen, wenn ihre Frames/Bilder beim Klick
-      //   noch in der Auswahl waren (dtLastCanvasSelectionInstanceIds).
-      const selectedSet = new Set(
-        Array.isArray(dtLastCanvasSelectionInstanceIds)
-          ? dtLastCanvasSelectionInstanceIds
-          : []
-      );
+      // Strikt instanzspezifisch: nur diese eine Instanz im Detail betrachten
+      const detailInstanceIds = [instanceId];
     
-      let detailInstanceIds = [];
-      if (selectedSet.size > 0 && selectedSet.has(instanceId)) {
-        detailInstanceIds = Array.from(selectedSet);
-      } else {
-        detailInstanceIds = [instanceId];
+      const instForState = dtInstancesById.get(instanceId);
+      if (!instForState) {
+        log("Konnte Instanz " + instanceId + " nicht im Instanz-Register finden.");
+        return;
       }
     
-      // Zustände nur für die tatsächlich relevanten Instanzen ermitteln
-      for (const id of detailInstanceIds) {
-        const inst = dtInstancesById.get(id);
-        if (!inst) {
-          continue;
-        }
-        const st = await dtGetInstanceStateForAgent(inst, { ctx: ctx });
-        if (st) {
-          stateById[id] = st;
-        }
+      const st = await dtGetInstanceStateForAgent(instForState, { ctx: ctx });
+      if (st) {
+        stateById[instanceId] = st;
       }
     
       const mainState = stateById[instanceId];
@@ -2400,18 +2448,14 @@ async function dtActionCreateSticky(instance, templateGeometry, action) {
         return;
       }
     
-      // Nur Instanzen berücksichtigen, für die wir tatsächlich State haben
-      detailInstanceIds = detailInstanceIds.filter(function (id) {
-        return !!stateById[id];
-      });
-    
       const activeCanvasStates = {};
-      for (const id of detailInstanceIds) {
-        const st = stateById[id];
-        if (!st || !st.classification) continue;
-        const payload = dtBuildPromptPayloadFromClassification(st.classification, { useAliases: true });
-        if (payload) {
-          activeCanvasStates[id] = payload;
+      {
+        const stLocal = stateById[instanceId];
+        if (stLocal && stLocal.classification) {
+          const payload = dtBuildPromptPayloadFromClassification(stLocal.classification, { useAliases: true });
+          if (payload) {
+            activeCanvasStates[instanceId] = payload;
+          }
         }
       }
     
@@ -2422,7 +2466,10 @@ async function dtActionCreateSticky(instance, templateGeometry, action) {
       }
     
       const boardCatalog = dtBuildBoardCatalogSummary(instanceId);
-      const aliasDiff = dtAliasDiffForActiveInstance(mainState.diff);
+      let aliasDiff = null;
+      if (instance.baselineClassification) {
+        aliasDiff = dtAliasDiffForActiveInstance(mainState.diff);
+      }
     
       const userPayload = {
         userQuestion: userText,
@@ -2431,8 +2478,8 @@ async function dtActionCreateSticky(instance, templateGeometry, action) {
         boardCatalog: boardCatalog,
         activeCanvasState: activeCanvasState,
         activeCanvasStates: activeCanvasStates,
-        activeInstanceChangesSinceLastAgent: aliasDiff || null,
-        hint: "boardCatalog = Kurzüberblick über alle Instanzen (inkl. Changes seit letztem Agent-Run, nur als Summary), activeCanvasStates = detaillierte Stickies/Areas/Verbindungen nur für die selektierten Instanzen."
+        activeInstanceChangesSinceLastAgent: aliasDiff,
+        hint: "boardCatalog = Kurzüberblick über alle Instanzen (inkl. Changes seit letztem Agent-Run, nur als Summary), activeCanvasStates = detaillierte Stickies/Areas/Verbindungen nur für diese Instanz."
       };
     
       const body = {
@@ -2505,6 +2552,21 @@ async function dtActionCreateSticky(instance, templateGeometry, action) {
           await dtApplyCanvasActions(instanceId, agentObj.actions);
         } else {
           log("Agent lieferte keine Actions (actions-Array ist leer).");
+        }
+
+        // Nach einem erfolgreichen Agenten-Run (Modus B): Baseline für diese Instanz aktualisieren
+        try {
+          const postState = await dtGetInstanceStateForAgent(instForState, {});
+          if (postState && postState.classification) {
+            const nowIso = new Date().toISOString();
+            instForState.baselineClassification = postState.classification;
+            instForState.baselineStateJson = postState.stateJson;
+            instForState.lastDiff = null;
+            instForState.lastAgentRunAt = nowIso;
+            instForState.lastChangedAt = nowIso;
+          }
+        } catch (e2) {
+          log("Fehler beim Aktualisieren der Baseline nach Agent-Run: " + e2.message);
         }
       } catch (e) {
         log("Exception beim Agent-Run: " + e.message);
