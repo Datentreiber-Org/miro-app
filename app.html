@@ -587,43 +587,70 @@
       return createdCount > 0 || deletedCount > 0 || updatedCount > 0;
     }
 
-    function dtBuildBoardCatalogSummary(activeInstanceId) {
+    function dtBuildBoardCatalogSummary(options) {
+      options = options || {};
+      const activeInstanceId = options.activeInstanceId || null;
+      const mode = options.mode || "generic"; // "global" oder "instance"
+      const hasGlobalBaseline =
+        typeof options.hasGlobalBaseline === "boolean"
+          ? options.hasGlobalBaseline
+          : dtHasGlobalBaseline;
+    
       const instances = [];
       dtInstancesById.forEach((instance, id) => {
         const diff = instance.lastDiff;
         const hasChanges = dtDiffHasChanges(diff);
-
+    
         let changesSummary = null;
         if (hasChanges && diff) {
-          changesSummary = {
-            createdCount: Array.isArray(diff.created) ? diff.created.length : 0,
-            deletedCount: Array.isArray(diff.deleted) ? diff.deleted.length : 0,
-            updatedCount: Array.isArray(diff.updated) ? diff.updated.length : 0
-          };
+          const shouldSummarize =
+            !(mode === "global" && !hasGlobalBaseline);
+          if (shouldSummarize) {
+            changesSummary = {
+              createdCount: Array.isArray(diff.created) ? diff.created.length : 0,
+              deletedCount: Array.isArray(diff.deleted) ? diff.deleted.length : 0,
+              updatedCount: Array.isArray(diff.updated) ? diff.updated.length : 0
+            };
+          }
         }
-
+    
         const headerSummary =
           instance.lastClassification &&
           instance.lastClassification.template &&
           instance.lastClassification.template.headerSummary
             ? instance.lastClassification.template.headerSummary
             : null;
-
+    
+        let isActive;
+        if (mode === "global") {
+          // Globaler Agent (Modus A):
+          // - vor dem ersten globalen Baseline-Run gilt jede Instanz als aktiv
+          // - danach gelten nur Instanzen mit inhaltlichen Änderungen als aktiv
+          if (!hasGlobalBaseline) {
+            isActive = true;
+          } else {
+            isActive = hasChanges;
+          }
+        } else {
+          // Instanz-Agent oder generischer Modus:
+          // - die ausgewählte Instanz ist aktiv
+          // - zusätzlich Instanzen mit inhaltlichen Änderungen
+          isActive = (id === activeInstanceId) || hasChanges;
+        }
+    
         const entry = {
           instanceId: id,
           canvasTypeId: instance.canvasTypeId,
           lastStickyCount: instance.lastStickyCount || 0,
           headerSummary: headerSummary,
-          // aktiv, wenn explizit aktiv (activeInstanceId) oder seit letztem Agent-Run
-          // inhaltlich geändert (Text, Area, Farbe, Tags, Cluster; keine reinen Positionsänderungen)
-          isActive: (id === activeInstanceId) || hasChanges,
-          // nur Summary, keine Sticky-Details
+          isActive: isActive,
           changesSinceLastAgent: changesSummary
         };
         instances.push(entry);
       });
       return { instances };
     }
+
 
     function dtFindInstanceForPoint(x, y) {
       let foundInstance = null;
@@ -2234,47 +2261,58 @@
 
       const ctx = await dtGetBoardBaseContext();
       const stateById = {};
-
+    
       const allInstances = [];
       dtInstancesById.forEach(function (inst) {
         allInstances.push(inst);
       });
-
+    
       for (const inst of allInstances) {
         const st = await dtGetInstanceStateForAgent(inst, { ctx: ctx });
         if (st) {
           stateById[inst.instanceId] = st;
         }
       }
-
-      // Aktive Instanzen im globalen Sinne: inhaltliche Änderungen seit Baseline
-      const activeInstanceIds = [];
-      for (const inst of allInstances) {
-        if (dtDiffHasChanges(inst.lastDiff)) {
-          activeInstanceIds.push(inst.instanceId);
-        }
-      }
-
+    
+      // Board-Katalog zuerst berechnen, damit "isActive" und "activeInstanceIds"
+      // denselben Regeln folgen.
+      const boardCatalog = dtBuildBoardCatalogSummary({
+        mode: "global",
+        hasGlobalBaseline: dtHasGlobalBaseline
+      });
+    
+      // Aktive Instanzen im globalen Sinne:
+      // - vor dem ersten globalen Baseline-Run: alle Instanzen
+      // - danach: nur Instanzen mit inhaltlichen Änderungen seit ihrem Baseline-Stand
+      const activeInstanceIds = boardCatalog.instances
+        .filter((entry) => entry.isActive)
+        .map((entry) => entry.instanceId);
+    
       if (!activeInstanceIds.length) {
         log("Globaler Agent: Es wurden keine aktiven Instanzen mit inhaltlichen Änderungen seit dem letzten Agenten-Call gefunden.");
       }
-
+    
       const activeCanvasStates = {};
       const activeInstanceChangesSinceLastAgent = {};
-
+    
       // Alias-IDs für alle aktiven Instanzen aufbauen
       for (const id of activeInstanceIds) {
         const st = stateById[id];
         if (!st || !st.classification) {
           continue;
         }
-        const payload = dtBuildPromptPayloadFromClassification(st.classification, { useAliases: true });
+        const payload = dtBuildPromptPayloadFromClassification(
+          st.classification,
+          { useAliases: true }
+        );
         if (payload) {
           activeCanvasStates[id] = payload;
         }
       }
-
-      // Diffs auf Aliasse abbilden (nur wenn es bereits eine globale Baseline gibt)
+    
+      // Diffs auf Aliasse abbilden:
+      // - vor dem ersten globalen Baseline-Run wird kein sinnvolles Diff geliefert (null)
+      // - danach werden die Diffs der aktiven Instanzen alias-basiert mitgegeben
       for (const id of activeInstanceIds) {
         const st = stateById[id];
         if (!st || !st.diff) {
@@ -2282,8 +2320,6 @@
           continue;
         }
         if (!dtHasGlobalBaseline) {
-          // Vor dem ersten globalen Agenten-Run gibt es noch keinen sinnvollen
-          // "Changes since last Agent"-Bezug.
           activeInstanceChangesSinceLastAgent[id] = null;
         } else {
           const aliasDiff = dtAliasDiffForActiveInstance(st.diff);
@@ -2291,7 +2327,6 @@
         }
       }
 
-      const boardCatalog = dtBuildBoardCatalogSummary(triggerInstanceId || null);
 
       const userPayload = {
         userQuestion: finalUserText,
@@ -2465,10 +2500,26 @@
         return;
       }
     
-      const boardCatalog = dtBuildBoardCatalogSummary(instanceId);
+      const boardCatalog = dtBuildBoardCatalogSummary({
+        mode: "instance",
+        activeInstanceId: instanceId
+      });
+    
       let aliasDiff = null;
       if (instance.baselineClassification) {
-        aliasDiff = dtAliasDiffForActiveInstance(mainState.diff);
+        const rawDiff = mainState.diff;
+        const mapped = dtAliasDiffForActiveInstance(rawDiff);
+        if (
+          mapped &&
+          Array.isArray(mapped.created) &&
+          Array.isArray(mapped.deleted) &&
+          Array.isArray(mapped.updated) &&
+          (mapped.created.length || mapped.deleted.length || mapped.updated.length)
+        ) {
+          aliasDiff = mapped;
+        } else {
+          aliasDiff = null;
+        }
       }
     
       const userPayload = {
@@ -2481,6 +2532,7 @@
         activeInstanceChangesSinceLastAgent: aliasDiff,
         hint: "boardCatalog = Kurzüberblick über alle Instanzen (inkl. Changes seit letztem Agent-Run, nur als Summary), activeCanvasStates = detaillierte Stickies/Areas/Verbindungen nur für diese Instanz."
       };
+
     
       const body = {
         model,
