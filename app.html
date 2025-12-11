@@ -2318,10 +2318,15 @@ async function dtRebindActionShapesAfterScan(images) {
     const region = dtAreaNameToRegion(areaName);
     const canvasTypeId = instance ? instance.canvasTypeId : TEMPLATE_ID;
   
-    // 1) Normiertes Zentrum der Ziel-Region bestimmen (Image-Map)
-    const center = dtAreaCenterNormalized(region ? region.id : null, canvasTypeId);
+    // Falls aus irgendeinem Grund keine Geometrie vorhanden ist, lieber abbrechen
+    if (!templateGeometry) {
+      log("create_sticky: Keine Template-Geometrie für Instanz " +
+          (instance ? instance.instanceId : "(unbekannt)") +
+          " – Sticky wird nicht erstellt.");
+      return;
+    }
   
-    // 2) Normierte Koordinaten -> Board-Koordinaten relativ zum PNG (Template-Geometrie)
+    const center = dtAreaCenterNormalized(region ? region.id : null, canvasTypeId);
     const coords = dtNormalizedToBoardCoords(templateGeometry, center.px, center.py);
   
     const createPayload = {
@@ -2331,12 +2336,56 @@ async function dtRebindActionShapesAfterScan(images) {
     };
   
     try {
-      await miro.board.createStickyNote(createPayload);
-      // Wichtig: Wir hängen das Sticky NICHT mehr an einen Frame,
-      // damit der Frame für die Logik komplett irrelevant bleibt.
-      // Die Instanz-Zugehörigkeit erfolgt ausschließlich über die PNG-Geometrie.
+      const sticky = await miro.board.createStickyNote(createPayload);
+  
+      if (!sticky || !sticky.id) {
+        log(
+          "create_sticky: createStickyNote hat kein gültiges Sticky zurückgegeben. Payload:\n" +
+          JSON.stringify(createPayload, null, 2)
+        );
+        return;
+      }
+  
+      log(
+        "create_sticky: Neues Sticky erstellt (" +
+        sticky.id +
+        ") für Instanz " +
+        (instance ? instance.instanceId : "(unbekannt)") +
+        " in Area '" +
+        areaName +
+        "' bei x=" +
+        coords.x +
+        ", y=" +
+        coords.y
+      );
+  
+      // Frame ist nur kosmetisch – wenn das Hinzufügen fehlschlägt, ist das kein funktionaler Fehler.
+      if (instance && instance.actionItems && instance.actionItems.frameId) {
+        try {
+          const frameArr = await miro.board.get({ id: instance.actionItems.frameId });
+          const frame = Array.isArray(frameArr) ? frameArr[0] : frameArr;
+          if (frame && typeof frame.add === "function") {
+            await frame.add(sticky);
+            await frame.sync();
+          }
+        } catch (e2) {
+          log(
+            "create_sticky: Sticky " +
+            sticky.id +
+            " wurde erstellt, konnte aber nicht dem Frame hinzugefügt werden: " +
+            e2.message
+          );
+        }
+      }
     } catch (e) {
-      log("Fehler bei create_sticky: " + e.message);
+      log(
+        "Fehler bei create_sticky (Instanz " +
+        (instance ? instance.instanceId : "(unbekannt)") +
+        ", Area '" +
+        areaName +
+        "'):\n" +
+        e.message
+      );
     }
   }
 
@@ -2462,7 +2511,7 @@ async function dtRebindActionShapesAfterScan(images) {
   
     await dtEnsureMiroReady();
   
-    // Primäre und einzige Quelle für die Canvas-Geometrie ist das Template-PNG.
+    // 1. Wahrheit: Geometrie des Template-PNGs
     if (instance.imageId) {
       try {
         const imgArr = await miro.board.get({ id: instance.imageId });
@@ -2483,9 +2532,10 @@ async function dtRebindActionShapesAfterScan(images) {
       }
     }
   
-    // Fallback: letzte bekannte Geometrie, falls das Bild nicht mehr geladen werden kann
+    // 2. Fallback: zuletzt bekannte Geometrie (vom PNG)
     return instance.lastGeometry || null;
   }
+
 
 
   // --------------------------------------------------------------------
