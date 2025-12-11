@@ -1306,6 +1306,14 @@ async function dtRebindActionShapesAfterScan(images) {
       }
     }
 
+    // Sicherstellen, dass für jede Instanz ein Live-Eintrag existiert,
+    // auch wenn (noch) keine Stickies gefunden wurden.
+    for (const inst of instList) {
+      // ensureLiveInstance ist in dtRebuildLiveCatalog definiert
+      ensureLiveInstance(inst);
+    }
+
+
     // NEU: Frame-ID -> Instanz (für Zuordnung über parentId)
     const frameIdToInstance = new Map();
     dtInstancesById.forEach((inst) => {
@@ -2511,6 +2519,7 @@ async function dtRebindActionShapesAfterScan(images) {
   
     await dtEnsureMiroReady();
   
+    // 1. Primärquelle: das Template-Bild selbst
     if (instance.imageId) {
       try {
         const imgArr = await miro.board.get({ id: instance.imageId });
@@ -2520,7 +2529,7 @@ async function dtRebindActionShapesAfterScan(images) {
           let boardX = null;
           let boardY = null;
   
-          // FALL 1: Template-Bild liegt in einem Frame → img.x / img.y sind RELATIV
+          // FALL A: Bild liegt in einem Frame → img.x / img.y sind relativ zum Frame
           if (img.parentId) {
             try {
               const frameArr = await miro.board.get({ id: img.parentId });
@@ -2530,16 +2539,16 @@ async function dtRebindActionShapesAfterScan(images) {
                 const frameLeft = frame.x - frame.width / 2;
                 const frameTop  = frame.y - frame.height / 2;
   
-                // Laut Doku: Child-x/y sind Zentrum relativ zur linken oberen Ecke des Frames.
+                // Child-x/y = Mittelpunkt relativ zur linken oberen Ecke des Frames
                 boardX = frameLeft + img.x;
                 boardY = frameTop  + img.y;
               }
-            } catch (e2) {
-              log("Fehler beim Laden des Frames für Template-Bild: " + e2.message);
+            } catch (eFrame) {
+              log("Fehler beim Laden des Frames für Template-Bild: " + eFrame.message);
             }
           }
   
-          // FALL 2: Kein Parent-Frame oder Fehler → img.x / img.y als Board-Koordinaten verwenden
+          // FALL B: Kein Parent-Frame oder Fehler → img.x / img.y sind Board-Koordinaten
           if (typeof boardX !== "number" || typeof boardY !== "number") {
             boardX = img.x;
             boardY = img.y;
@@ -2552,9 +2561,8 @@ async function dtRebindActionShapesAfterScan(images) {
             height: img.height
           };
   
-          // Für alle Folgefunktionen (dtFindInstanceForPoint, Live-Katalog, Actions, …)
+          // Für alle Folgefunktionen merken
           instance.lastGeometry = geom;
-  
           return geom;
         }
       } catch (e) {
@@ -2562,8 +2570,19 @@ async function dtRebindActionShapesAfterScan(images) {
       }
     }
   
-    // Fallback: zuletzt bekannte Geometrie
-    return instance.lastGeometry || null;
+    // 2. Fallback: zuletzt bekannte Geometrie
+    if (instance.lastGeometry) {
+      return instance.lastGeometry;
+    }
+  
+    // 3. Letzter Fallback: Dummy-Geometrie, damit der Agent wenigstens läuft
+    const dummy = { x: 0, y: 0, width: 2000, height: 1000 };
+    instance.lastGeometry = dummy;
+    log(
+      "WARNUNG: dtComputeTemplateGeometry hat keine echte Geometrie " +
+      "gefunden, verwende Dummy-Geometrie für Instanz " + instance.instanceId
+    );
+    return dummy;
   }
 
 
