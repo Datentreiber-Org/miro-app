@@ -222,15 +222,19 @@
   // Globaler Zwischenspeicher: Sticky -> owning Instance (Eindeutigkeits-Invariante)
   let dtStickyOwnerCache = new Map();
 
-  // *** NEU: Echtzeit-/On-Demand-Live-Katalog ***
-  // 1:1 Abbild des Boards aus Sicht der 3-Boxes-Instanzen
+  // *** Echtzeit-/On-Demand-Live-Katalog ***
+  // 1:1 Abbild des Boards:
+  // Canvas-Typ -> Instanzen -> Regionen -> Stickies
   const dtLiveCatalog = {
-    // instanceId -> LiveInstance
+    // canvasTypeId -> { canvasTypeId, instances: { [instanceId]: LiveInstance } }
+    canvasTypes: Object.create(null),
+    // instanceId -> LiveInstance (bequemer Flat-Index auf dieselben Objekte)
     instances: Object.create(null),
-    // Stickies, die auf keinem Canvas liegen
+    // Stickies, die auf keinem Canvas liegen (z.B. frei herum auf dem Board)
     unassignedStickies: [],
     lastFullRebuildAt: null
   };
+
 
   // Sehr einfacher Prompt-Katalog für Modus B (instanzspezifisch)
   const DT_PROMPT_CATALOG = {
@@ -598,12 +602,27 @@
       actionItems: {},
       liveCatalog: null
     };
-
+  
+    // NEU: Wenn das Template-Bild bereits in einem Frame liegt
+    // (z.B. durch Kopieren eines bestehenden Canvas-Frames),
+    // dann merken wir uns diesen Frame als frameId der Instanz.
+    if (!createActionShapes && image.parentId) {
+      try {
+        const parentArr = await miro.board.get({ id: image.parentId });
+        const parent = Array.isArray(parentArr) ? parentArr[0] : parentArr;
+        if (parent && parent.type === "frame") {
+          instance.actionItems.frameId = parent.id;
+        }
+      } catch (e) {
+        console.error("[DT] Konnte Eltern-Frame für Template-Image nicht laden:", e);
+      }
+    }
+  
     dtInstancesByImageId.set(image.id, instance);
     dtInstancesById.set(instanceId, instance);
-
+  
     log("Neue Canvas-Instanz registriert: " + instanceId + " (Bild-ID " + image.id + ")");
-
+  
     if (createActionShapes) {
       try {
         await dtCreateInstanceActionShapes(instance, image);
@@ -611,9 +630,10 @@
         console.error("[DT] Fehler beim Erzeugen der Action-Shapes:", e);
       }
     }
-
+  
     return instance;
   }
+
 
   async function dtScanTemplateInstances() {
     if (!miro.board || !miro.board.get) return;
@@ -1183,10 +1203,12 @@
       ctx = await dtGetBoardBaseContext();
     }
 
+    dtLiveCatalog.canvasTypes = Object.create(null);
     dtLiveCatalog.instances = Object.create(null);
     dtLiveCatalog.unassignedStickies = [];
     dtLiveCatalog.lastFullRebuildAt = new Date().toISOString();
     dtStickyOwnerCache = new Map();
+
 
     // Instanzliste + Geometrie vorbereiten
     const instList = [];
@@ -1205,6 +1227,14 @@
       }
     }
 
+    // NEU: Frame-ID -> Instanz (für Zuordnung über parentId)
+    const frameIdToInstance = new Map();
+    dtInstancesById.forEach((inst) => {
+      if (inst.actionItems && inst.actionItems.frameId) {
+        frameIdToInstance.set(inst.actionItems.frameId, inst);
+      }
+    });
+
     function ensureLiveInstance(inst) {
       let live = dtLiveCatalog.instances[inst.instanceId];
       if (!live) {
@@ -1220,7 +1250,7 @@
               left:  { stickies: [] },
               middle:{ stickies: [] },
               right: { stickies: [] },
-              none:  { stickies: [] }
+              none:  { stickies: [] }  // im PNG, aber keiner definierten Region
             }
           },
           allStickies: [],
@@ -1231,45 +1261,69 @@
             lastUpdated: null
           }
         };
+
+        // Flat-Index
         dtLiveCatalog.instances[inst.instanceId] = live;
+
+        // Hierarchischer Index: Canvas-Typ -> Instanzen
+        const ctId = inst.canvasTypeId || TEMPLATE_ID;
+        if (!dtLiveCatalog.canvasTypes[ctId]) {
+          dtLiveCatalog.canvasTypes[ctId] = {
+            canvasTypeId: ctId,
+            instances: Object.create(null)
+          };
+        }
+        dtLiveCatalog.canvasTypes[ctId].instances[inst.instanceId] = live;
       }
       return live;
     }
+
 
     // Stickies auf Instanzen + Regionen verteilen
     for (const s of ctx.stickies || []) {
       if (typeof s.x !== "number" || typeof s.y !== "number") continue;
 
-      let bestInst = null;
-      let bestDistSq = Infinity;
-
-      for (const entry of geomList) {
-        const inst = entry.inst;
-        const geom = entry.geom;
-        if (!geom) continue;
-
-        const left  = geom.x - geom.width  / 2;
-        const top   = geom.y - geom.height / 2;
-        const right = geom.x + geom.width  / 2;
-        const bottom= geom.y + geom.height / 2;
-
-        if (s.x >= left && s.x <= right && s.y >= top && s.y <= bottom) {
-          const dx = s.x - geom.x;
-          const dy = s.y - geom.y;
-          const distSq = dx*dx + dy*dy;
-          if (distSq < bestDistSq) {
-            bestDistSq = distSq;
-            bestInst = inst;
-          }
-        }
+      // 1) Primär: Zuordnung über parentId (Frame)
+      let owningInst = null;
+      if (s.parentId && frameIdToInstance.has(s.parentId)) {
+        owningInst = frameIdToInstance.get(s.parentId);
       }
 
-      if (!bestInst) {
+      // 2) Fallback: Geometrie-basierte Zuordnung (Bounding Box / nächstes Canvas)
+      if (!owningInst) {
+        let bestInst = null;
+        let bestDistSq = Infinity;
+
+        for (const entry of geomList) {
+          const inst = entry.inst;
+          const geom = entry.geom;
+          if (!geom) continue;
+
+          const left  = geom.x - geom.width  / 2;
+          const top   = geom.y - geom.height / 2;
+          const right = geom.x + geom.width  / 2;
+          const bottom= geom.y + geom.height / 2;
+
+          if (s.x >= left && s.x <= right && s.y >= top && s.y <= bottom) {
+            const dx = s.x - geom.x;
+            const dy = s.y - geom.y;
+            const distSq = dx*dx + dy*dy;
+            if (distSq < bestDistSq) {
+              bestDistSq = distSq;
+              bestInst = inst;
+            }
+          }
+        }
+
+        owningInst = bestInst;
+      }
+
+      if (!owningInst) {
         dtLiveCatalog.unassignedStickies.push(s.id);
         continue;
       }
 
-      const geom = instGeom.get(bestInst.instanceId);
+      const geom = instGeom.get(owningInst.instanceId);
       if (!geom) {
         dtLiveCatalog.unassignedStickies.push(s.id);
         continue;
@@ -1286,7 +1340,7 @@
         continue;
       }
 
-      const canvasTypeId = bestInst.canvasTypeId;
+      const canvasTypeId = owningInst.canvasTypeId;
       const loc = dtClassifyNormalizedLocation(canvasTypeId, px, py);
       const role       = loc.role;
       const regionId   = loc.regionId || null;
@@ -1317,7 +1371,7 @@
         connectionsIn: []
       };
 
-      const liveInst = ensureLiveInstance(bestInst);
+      const liveInst = ensureLiveInstance(owningInst);
       if (role === "header") {
         liveInst.regions.header.stickies.push(stickObj);
       } else if (role === "footer") {
@@ -1331,8 +1385,9 @@
       }
 
       liveInst.allStickies.push(stickObj);
-      dtStickyOwnerCache.set(s.id, bestInst.instanceId);
+      dtStickyOwnerCache.set(s.id, owningInst.instanceId);
     }
+
 
     // Konnektoren pro Instanz zuordnen
     const stickyToInst = new Map();
@@ -1371,7 +1426,25 @@
       liveInst.meta.connectorCount = liveInst.connections.length;
       liveInst.meta.lastUpdated = dtLiveCatalog.lastFullRebuildAt;
     });
+
+    // Live-Katalog -> Instanz-Snapshot (für Board-Katalog / lastStickyCount)
+    dtInstancesById.forEach((inst) => {
+      const liveInst = dtLiveCatalog.instances[inst.instanceId];
+      if (liveInst && liveInst.meta) {
+        inst.lastStickyCount = liveInst.meta.stickyCount || 0;
+      }
+    });
+
+
+    // NEU: live-Katalog → Instanz-Snapshot (für Board-Katalog)
+    dtInstancesById.forEach((inst) => {
+      const liveInst = dtLiveCatalog.instances[inst.instanceId];
+      if (liveInst && liveInst.meta) {
+        inst.lastStickyCount = liveInst.meta.stickyCount || 0;
+      }
+    });
   }
+
 
   // LiveInstance -> "classification"-Objekt (kompatibel zu dtBuildPromptPayloadFromClassification)
   function dtBuildClassificationFromLiveInstance(instance, liveInst) {
