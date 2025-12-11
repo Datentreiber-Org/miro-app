@@ -2311,28 +2311,40 @@ async function dtRebindActionShapesAfterScan(images) {
     }
   }
 
-  // create_sticky mit Polygon-basiertem Zentrum (ohne Frame-Parent-Zwang)
+  // create_sticky: platziert ein neues Sticky exakt im Schwerpunkt der Ziel-Region
+  // der gegebenen Instanz. Keine Frame-Zuordnung, reine Geometrie-Logik.
   async function dtActionCreateSticky(instance, templateGeometry, action) {
     const areaName = action.area;
     const text = action.text || "";
     const region = dtAreaNameToRegion(areaName);
     const canvasTypeId = instance ? instance.canvasTypeId : TEMPLATE_ID;
   
-    // Falls aus irgendeinem Grund keine Geometrie vorhanden ist, lieber abbrechen
+    // Wenn aus irgendeinem Grund keine Geometrie bekannt ist, brechen wir ab.
     if (!templateGeometry) {
-      log("create_sticky: Keine Template-Geometrie für Instanz " +
-          (instance ? instance.instanceId : "(unbekannt)") +
-          " – Sticky wird nicht erstellt.");
+      log(
+        "create_sticky: Keine Template-Geometrie für Instanz " +
+        (instance ? instance.instanceId : "(unbekannt)") +
+        " – Sticky wird nicht erstellt."
+      );
       return;
     }
   
-    const center = dtAreaCenterNormalized(region ? region.id : null, canvasTypeId);
-    const coords = dtNormalizedToBoardCoords(templateGeometry, center.px, center.py);
+    // 1) Schwerpunkt der Region im normalisierten Canvas holen (0..1)
+    const centerNorm = dtAreaCenterNormalized(region ? region.id : null, canvasTypeId);
+  
+    // 2) Auf Board-Koordinaten der konkreten Instanz abbilden
+    const coords = dtNormalizedToBoardCoords(
+      templateGeometry,
+      centerNorm.px,
+      centerNorm.py
+    );
   
     const createPayload = {
       content: text || "(leer)",
       x: coords.x,
       y: coords.y
+      // Wenn du die Farbe vom Agenten übernehmen willst, kannst du hier
+      // später noch style/fillColor ergänzen.
     };
   
     try {
@@ -2344,6 +2356,20 @@ async function dtRebindActionShapesAfterScan(images) {
           JSON.stringify(createPayload, null, 2)
         );
         return;
+      }
+  
+      // Sicherstellen, dass das Sticky nicht unter dem Template-PNG liegt
+      try {
+        if (typeof sticky.bringToFront === "function") {
+          await sticky.bringToFront();
+        }
+      } catch (e2) {
+        log(
+          "create_sticky: bringToFront nicht möglich für Sticky " +
+          sticky.id +
+          ": " +
+          e2.message
+        );
       }
   
       log(
@@ -2359,24 +2385,10 @@ async function dtRebindActionShapesAfterScan(images) {
         coords.y
       );
   
-      // Frame ist nur kosmetisch – wenn das Hinzufügen fehlschlägt, ist das kein funktionaler Fehler.
-      if (instance && instance.actionItems && instance.actionItems.frameId) {
-        try {
-          const frameArr = await miro.board.get({ id: instance.actionItems.frameId });
-          const frame = Array.isArray(frameArr) ? frameArr[0] : frameArr;
-          if (frame && typeof frame.add === "function") {
-            await frame.add(sticky);
-            await frame.sync();
-          }
-        } catch (e2) {
-          log(
-            "create_sticky: Sticky " +
-            sticky.id +
-            " wurde erstellt, konnte aber nicht dem Frame hinzugefügt werden: " +
-            e2.message
-          );
-        }
-      }
+      // WICHTIG:
+      // Kein frame.add(sticky) mehr, keine Parent-Beziehung zum Frame.
+      // Die Zugehörigkeit zur Instanz erfolgt ausschließlich über die
+      // geometrische Lage relativ zum Template-Bild.
     } catch (e) {
       log(
         "Fehler bei create_sticky (Instanz " +
