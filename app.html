@@ -2311,40 +2311,72 @@ async function dtRebindActionShapesAfterScan(images) {
     }
   }
 
-  // create_sticky: platziert ein neues Sticky exakt im Schwerpunkt der Ziel-Region
-  // der gegebenen Instanz. Keine Frame-Zuordnung, reine Geometrie-Logik.
-  async function dtActionCreateSticky(instance, templateGeometry, action) {
+  // create_sticky: Positioniert Stickies immer relativ zur aktuellen Geometrie
+  // des Template-Bildes der jeweiligen Instanz (Image Map + Instanz-Offset).
+  async function dtActionCreateSticky(instance, _templateGeometry, action) {
     const areaName = action.area;
     const text = action.text || "";
     const region = dtAreaNameToRegion(areaName);
     const canvasTypeId = instance ? instance.canvasTypeId : TEMPLATE_ID;
   
-    // Wenn aus irgendeinem Grund keine Geometrie bekannt ist, brechen wir ab.
-    if (!templateGeometry) {
+    if (!instance || !instance.imageId) {
       log(
-        "create_sticky: Keine Template-Geometrie für Instanz " +
-        (instance ? instance.instanceId : "(unbekannt)") +
-        " – Sticky wird nicht erstellt."
+        "create_sticky: Keine gültige Instanz- oder Image-Referenz – Sticky wird nicht erstellt."
       );
       return;
     }
   
-    // 1) Schwerpunkt der Region im normalisierten Canvas holen (0..1)
-    const centerNorm = dtAreaCenterNormalized(region ? region.id : null, canvasTypeId);
+    await dtEnsureMiroReady();
   
-    // 2) Auf Board-Koordinaten der konkreten Instanz abbilden
-    const coords = dtNormalizedToBoardCoords(
-      templateGeometry,
-      centerNorm.px,
-      centerNorm.py
-    );
+    // 1) Geometrie des *aktuellen* Template-Bildes dieser Instanz holen
+    let imgGeom = null;
+    try {
+      const imgArr = await miro.board.get({ id: instance.imageId });
+      const img = Array.isArray(imgArr) ? imgArr[0] : imgArr;
+  
+      if (
+        img &&
+        typeof img.x === "number" &&
+        typeof img.y === "number" &&
+        typeof img.width === "number" &&
+        typeof img.height === "number"
+      ) {
+        imgGeom = { x: img.x, y: img.y, width: img.width, height: img.height };
+      } else {
+        log(
+          "create_sticky: Template-Image für Instanz " +
+            instance.instanceId +
+            " hat keine gültige Geometrie (x/y/width/height)."
+        );
+      }
+    } catch (e) {
+      log(
+        "create_sticky: Konnte Geometrie des Template-Bildes für Instanz " +
+          instance.instanceId +
+          " nicht laden: " +
+          e.message
+      );
+    }
+  
+    if (!imgGeom) {
+      log(
+        "create_sticky: Keine Template-Geometrie für Instanz " +
+          instance.instanceId +
+          " – Sticky wird nicht erstellt."
+      );
+      return;
+    }
+  
+    // 2) Mittelpunkt der gewünschten Region (in Normal-Koordinaten 0..1) ermitteln
+    const center = dtAreaCenterNormalized(region ? region.id : null, canvasTypeId);
+  
+    // 3) Normalisierte Koordinaten → Board-Koordinaten (relativ zum PNG dieser Instanz)
+    const coords = dtNormalizedToBoardCoords(imgGeom, center.px, center.py);
   
     const createPayload = {
       content: text || "(leer)",
       x: coords.x,
       y: coords.y
-      // Wenn du die Farbe vom Agenten übernehmen willst, kannst du hier
-      // später noch style/fillColor ergänzen.
     };
   
     try {
@@ -2353,50 +2385,52 @@ async function dtRebindActionShapesAfterScan(images) {
       if (!sticky || !sticky.id) {
         log(
           "create_sticky: createStickyNote hat kein gültiges Sticky zurückgegeben. Payload:\n" +
-          JSON.stringify(createPayload, null, 2)
+            JSON.stringify(createPayload, null, 2)
         );
         return;
       }
   
-      // Sicherstellen, dass das Sticky nicht unter dem Template-PNG liegt
-      try {
-        if (typeof sticky.bringToFront === "function") {
-          await sticky.bringToFront();
-        }
-      } catch (e2) {
-        log(
-          "create_sticky: bringToFront nicht möglich für Sticky " +
-          sticky.id +
-          ": " +
-          e2.message
-        );
-      }
-  
       log(
         "create_sticky: Neues Sticky erstellt (" +
-        sticky.id +
-        ") für Instanz " +
-        (instance ? instance.instanceId : "(unbekannt)") +
-        " in Area '" +
-        areaName +
-        "' bei x=" +
-        coords.x +
-        ", y=" +
-        coords.y
+          sticky.id +
+          ") für Instanz " +
+          instance.instanceId +
+          " in Area '" +
+          areaName +
+          "' bei x=" +
+          coords.x +
+          ", y=" +
+          coords.y
       );
   
-      // WICHTIG:
-      // Kein frame.add(sticky) mehr, keine Parent-Beziehung zum Frame.
-      // Die Zugehörigkeit zur Instanz erfolgt ausschließlich über die
-      // geometrische Lage relativ zum Template-Bild.
+      // WICHTIG: Frame ist nur kosmetisch – wenn das Hinzufügen fehlschlägt,
+      // ist das kein funktionaler Fehler. (Instanzen werden ausschließlich
+      // über Geometrie definiert, *nicht* über das Frame.)
+      if (instance.actionItems && instance.actionItems.frameId) {
+        try {
+          const frameArr = await miro.board.get({ id: instance.actionItems.frameId });
+          const frame = Array.isArray(frameArr) ? frameArr[0] : frameArr;
+          if (frame && typeof frame.add === "function") {
+            await frame.add(sticky);
+            await frame.sync();
+          }
+        } catch (e2) {
+          log(
+            "create_sticky: Sticky " +
+              sticky.id +
+              " wurde erstellt, konnte aber nicht dem Frame hinzugefügt werden: " +
+              e2.message
+          );
+        }
+      }
     } catch (e) {
       log(
         "Fehler bei create_sticky (Instanz " +
-        (instance ? instance.instanceId : "(unbekannt)") +
-        ", Area '" +
-        areaName +
-        "'):\n" +
-        e.message
+          instance.instanceId +
+          ", Area '" +
+          areaName +
+          "'):\n" +
+          e.message
       );
     }
   }
