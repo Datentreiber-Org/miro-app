@@ -222,6 +222,16 @@
   // Globaler Zwischenspeicher: Sticky -> owning Instance (Eindeutigkeits-Invariante)
   let dtStickyOwnerCache = new Map();
 
+  // *** NEU: Echtzeit-/On-Demand-Live-Katalog ***
+  // 1:1 Abbild des Boards aus Sicht der 3-Boxes-Instanzen
+  const dtLiveCatalog = {
+    // instanceId -> LiveInstance
+    instances: Object.create(null),
+    // Stickies, die auf keinem Canvas liegen
+    unassignedStickies: [],
+    lastFullRebuildAt: null
+  };
+
   // Sehr einfacher Prompt-Katalog für Modus B (instanzspezifisch)
   const DT_PROMPT_CATALOG = {
     [TEMPLATE_ID]: {
@@ -328,7 +338,7 @@
 
       const intersect =
         (yi > py) !== (yj > py) &&
-        px < ((xj - xi) * (py - yi)) / ((yj - yi) || 1e-9) + xi;
+        px < ((xj - xi) * (py - yi) / ((yj - yi) || 1e-9)) + xi;
       if (intersect) {
         inside = !inside;
       }
@@ -651,8 +661,7 @@
 
   // Eine Instanz gilt als "geändert", wenn sich Text, Area-Name, Farbe,
   // Tags oder Cluster-Zuordnung von Stickies verändert haben oder Stickies
-  // hinzugekommen bzw. entfernt wurden. Reine Verschiebungen innerhalb
-  // derselben Area ohne Area-Wechsel zählen nicht als Änderung.
+  // hinzugekommen bzw. entfernt wurden.
   function dtDiffHasChanges(diff) {
     if (!diff) {
       return false;
@@ -890,7 +899,7 @@
   }
 
   // --------------------------------------------------------------------
-  // Board-Kontext (für Klassifikation & Agent)
+  // Board-Kontext (für Live-Katalog, Klassifikation & Agent)
   // --------------------------------------------------------------------
   async function dtGetBoardBaseContext() {
     await dtEnsureMiroReady();
@@ -1164,325 +1173,90 @@
   }
 
   // --------------------------------------------------------------------
-  // 2a) Klassifikation für EIN Template
+  // *** NEU: Live-Katalog aus dem Boardzustand aufbauen ***
   // --------------------------------------------------------------------
-  function dtClassifyStickiesForTemplate(template, ctx, options) {
-    options = options || {};
-    const instanceId = options.instanceId || null;
-    const canvasTypeId = options.canvasTypeId || TEMPLATE_ID;
-
-    const t = template;
-    const left = t.x - t.width / 2;
-    const top  = t.y - t.height / 2;
-
-    const result = {
-      template: {
-        id: TEMPLATE_ID,
-        name: t.title,
-        imageId: t.id,
-        headerSummary: null
-      },
-      header: {
-        stickies: []
-      },
-      counts: {
-        total: 0,
-        byRegion: {}
-      },
-      items: [],
-      connections: []
-    };
-
-    const stickyMap = new Map();
-
-    for (const s of ctx.stickies) {
-      const sx = s.x;
-      const sy = s.y;
-
-      const px = (sx - left) / t.width;
-      const py = (sy - top) / t.height;
-      const inImageRect = px >= 0 && px <= 1 && py >= 0 && py <= 1;
-
-      if (!inImageRect) {
-        continue;
-      }
-
-      // Globaler Owner-Check: Sticky gehört genau EINER Instanz
-      if (instanceId && dtStickyOwnerCache && dtStickyOwnerCache.size > 0) {
-        const ownerId = dtStickyOwnerCache.get(s.id) || null;
-        if (ownerId && ownerId !== instanceId) {
-          continue;
-        }
-        // Falls kein Owner im Cache steht, darf diese Instanz ihn übernehmen
-        if (!ownerId) {
-          dtStickyOwnerCache.set(s.id, instanceId);
-        }
-      }
-
-      const loc = dtClassifyNormalizedLocation(canvasTypeId, px, py);
-      const role = loc.role;
-      const regionId = loc.regionId || null;
-      const regionTitle = loc.regionTitle || null;
-
-      result.counts.total += 1;
-      if (regionId) {
-        result.counts.byRegion[regionId] =
-          (result.counts.byRegion[regionId] || 0) + 1;
-      }
-
-      const cleanText = stripHtml(s.content);
-      const color =
-        (s.style && (s.style.fillColor || s.style.backgroundColor)) || null;
-      const tagIds = Array.isArray(s.tagIds) ? s.tagIds.slice() : [];
-      const tags =
-        tagIds && tagIds.length && ctx.tagsById
-          ? tagIds
-              .map((id) => ({
-                id,
-                title: ctx.tagsById[id] || null
-              }))
-              .filter((t) => t.id)
-          : [];
-
-      const item = {
-        stickyId: s.id,
-        text: cleanText,
-        px: Math.round(px * 10000) / 10000,
-        py: Math.round(py * 10000) / 10000,
-        inImageRect,
-        role,
-        regionId,
-        regionTitle,
-        color,
-        tagIds,
-        tags,
-        clusterName: dtClusterAssignments.get(s.id) || null,
-        connectionsOut: [],
-        connectionsIn: []
-      };
-
-      result.items.push(item);
-      stickyMap.set(s.id, item);
-
-      if (role === "header") {
-        result.header.stickies.push({
-          stickyId: s.id,
-          text: cleanText,
-          px: item.px,
-          py: item.py,
-          color,
-          tagIds,
-          tags
-        });
-      }
-    }
-
-    if (result.header.stickies.length) {
-      const pieces = result.header.stickies
-        .map((h) => h.text)
-        .filter(Boolean);
-      if (pieces.length) {
-        const joined = pieces.join(" | ");
-        result.template.headerSummary =
-          joined.length > 200 ? joined.slice(0, 197) + "..." : joined;
-      }
-    }
-
-    if (ctx.connectors && ctx.connectors.length) {
-      for (const c of ctx.connectors) {
-        const startId = c.start && c.start.item;
-        const endId   = c.end   && c.end.item;
-        if (!startId || !endId) continue;
-
-        const fromItem = stickyMap.get(startId);
-        const toItem   = stickyMap.get(endId);
-        if (!fromItem || !toItem) continue;
-
-        const conn = {
-          connectorId: c.id,
-          fromStickyId: startId,
-          toStickyId: endId
-        };
-
-        if (c.shape) {
-          conn.shape = c.shape;
-        }
-        if (c.style) {
-          const style = {};
-          if (typeof c.style.startStrokeCap !== "undefined") {
-            style.startStrokeCap = c.style.startStrokeCap;
-          }
-          if (typeof c.style.endStrokeCap !== "undefined") {
-            style.endStrokeCap = c.style.endStrokeCap;
-          }
-          if (typeof c.style.strokeColor !== "undefined") {
-            style.strokeColor = c.style.strokeColor;
-          }
-          if (Object.keys(style).length) {
-            conn.style = style;
-          }
-        }
-
-        result.connections.push(conn);
-        fromItem.connectionsOut.push({
-          connectorId: c.id,
-          toStickyId: endId
-        });
-        toItem.connectionsIn.push({
-          connectorId: c.id,
-          fromStickyId: startId
-        });
-      }
-    }
-
-    return result;
-  }
-
-  // --------------------------------------------------------------------
-  // 2b) Klassifikation (1..n Templates)
-  // --------------------------------------------------------------------
-  async function dtResolveTemplateImages(options) {
-    const silent = options && options.silent;
+  async function dtRebuildLiveCatalog(ctx) {
     await dtEnsureMiroReady();
+    await dtScanTemplateInstances();
 
-    let selection = [];
-    try {
-      selection = await miro.board.getSelection();
-    } catch (e) {
-      if (!silent) {
-        log("Fehler beim Lesen der Auswahl: " + e.message);
-      }
+    if (!ctx) {
+      ctx = await dtGetBoardBaseContext();
     }
 
-    if (selection && selection.length) {
-      const images = selection.filter(
-        (item) =>
-          item.type === "image" &&
-          typeof item.url === "string" &&
-          item.url.indexOf(TEMPLATE_IMAGE_URL) !== -1
-      );
-
-      if (images.length) {
-        const templates = images.map((img) => ({
-          id: img.id,
-          title: img.title || "Datentreiber 3-Boxes",
-          x: img.x,
-          y: img.y,
-          width: img.width,
-          height: img.height
-        }));
-
-        currentTemplateImage = templates[0];
-
-        if (!silent) {
-          if (templates.length === 1) {
-            log(
-              "Template aus Auswahl verwendet: Bild-ID " +
-              templates[0].id + " / " + templates[0].title
-            );
-          } else {
-            log(
-              "Mehrere Template-Bilder aus Auswahl verwendet (" +
-              templates.length + " Stück)."
-            );
-          }
-        }
-        return templates;
-      }
-    }
-
-    if (!currentTemplateImage || !currentTemplateImage.id) {
-      if (!silent) {
-        log(
-          "Kein Template gesetzt und keine passende Bild-Auswahl vorhanden. " +
-          "Bitte zuerst ein 3-Boxes-PNG einfügen oder auswählen."
-        );
-      }
-      return [];
-    }
-
-    try {
-      const arr = await miro.board.get({ id: currentTemplateImage.id });
-      const img = Array.isArray(arr) ? arr[0] : arr;
-
-      if (!img) {
-        if (!silent) {
-          log("Das gespeicherte Template-Bild existiert nicht mehr auf dem Board.");
-        }
-        return [];
-      }
-
-      const t = {
-        id: img.id,
-        title: img.title || currentTemplateImage.title || "Datentreiber 3-Boxes",
-        x: img.x,
-        y: img.y,
-        width: img.width,
-        height: img.height
-      };
-
-      currentTemplateImage = t;
-
-      if (!silent) {
-        log(
-          "Template aus gespeicherter Referenz verwendet: Bild-ID " +
-          t.id + " / " + t.title
-        );
-      }
-
-      return [t];
-    } catch (e) {
-      if (!silent) {
-        log("Fehler beim Laden des gespeicherten Template-Bildes: " + e.message);
-      }
-      return [];
-    }
-  }
-
-  // Globaler Owner-Cache für alle Stickies neu aufbauen
-  async function dtRebuildStickyOwnerCache(ctx) {
+    dtLiveCatalog.instances = Object.create(null);
+    dtLiveCatalog.unassignedStickies = [];
+    dtLiveCatalog.lastFullRebuildAt = new Date().toISOString();
     dtStickyOwnerCache = new Map();
 
-    const instances = [];
-    dtInstancesById.forEach((inst) => {
-      instances.push(inst);
-    });
+    // Instanzliste + Geometrie vorbereiten
+    const instList = [];
+    dtInstancesById.forEach((inst) => instList.push(inst));
 
-    if (!instances.length) {
-      return;
-    }
-
-    const instGeomList = [];
-    for (const inst of instances) {
+    const geomList = [];
+    for (const inst of instList) {
       const geom = await dtComputeTemplateGeometry(inst);
-      if (geom) {
-        instGeomList.push({ inst, geom });
+      geomList.push({ inst, geom });
+    }
+
+    const instGeom = new Map();
+    for (const entry of geomList) {
+      if (entry.geom) {
+        instGeom.set(entry.inst.instanceId, entry.geom);
       }
     }
 
-    if (!instGeomList.length) {
-      return;
+    function ensureLiveInstance(inst) {
+      let live = dtLiveCatalog.instances[inst.instanceId];
+      if (!live) {
+        live = {
+          instanceId: inst.instanceId,
+          canvasTypeId: inst.canvasTypeId,
+          imageId: inst.imageId,
+          geometry: instGeom.get(inst.instanceId) || null,
+          regions: {
+            header: { stickies: [] },
+            footer: { stickies: [] },
+            body: {
+              left:  { stickies: [] },
+              middle:{ stickies: [] },
+              right: { stickies: [] },
+              none:  { stickies: [] }
+            }
+          },
+          allStickies: [],
+          connections: [],
+          meta: {
+            stickyCount: 0,
+            connectorCount: 0,
+            lastUpdated: null
+          }
+        };
+        dtLiveCatalog.instances[inst.instanceId] = live;
+      }
+      return live;
     }
 
+    // Stickies auf Instanzen + Regionen verteilen
     for (const s of ctx.stickies || []) {
-      if (typeof s.x !== "number" || typeof s.y !== "number") {
-        continue;
-      }
+      if (typeof s.x !== "number" || typeof s.y !== "number") continue;
+
       let bestInst = null;
       let bestDistSq = Infinity;
 
-      for (const entry of instGeomList) {
+      for (const entry of geomList) {
         const inst = entry.inst;
         const geom = entry.geom;
-        const left = geom.x - geom.width / 2;
-        const top = geom.y - geom.height / 2;
-        const right = geom.x + geom.width / 2;
-        const bottom = geom.y + geom.height / 2;
+        if (!geom) continue;
+
+        const left  = geom.x - geom.width  / 2;
+        const top   = geom.y - geom.height / 2;
+        const right = geom.x + geom.width  / 2;
+        const bottom= geom.y + geom.height / 2;
 
         if (s.x >= left && s.x <= right && s.y >= top && s.y <= bottom) {
           const dx = s.x - geom.x;
           const dy = s.y - geom.y;
-          const distSq = dx * dx + dy * dy;
+          const distSq = dx*dx + dy*dy;
           if (distSq < bestDistSq) {
             bestDistSq = distSq;
             bestInst = inst;
@@ -1490,67 +1264,291 @@
         }
       }
 
-      if (bestInst) {
-        dtStickyOwnerCache.set(s.id, bestInst.instanceId);
+      if (!bestInst) {
+        dtLiveCatalog.unassignedStickies.push(s.id);
+        continue;
       }
+
+      const geom = instGeom.get(bestInst.instanceId);
+      if (!geom) {
+        dtLiveCatalog.unassignedStickies.push(s.id);
+        continue;
+      }
+
+      const left = geom.x - geom.width / 2;
+      const top  = geom.y - geom.height / 2;
+      const px   = (s.x - left) / geom.width;
+      const py   = (s.y - top)  / geom.height;
+
+      if (px < 0 || px > 1 || py < 0 || py > 1) {
+        // Sicherstellen, dass wir wirklich im PNG sind
+        dtLiveCatalog.unassignedStickies.push(s.id);
+        continue;
+      }
+
+      const canvasTypeId = bestInst.canvasTypeId;
+      const loc = dtClassifyNormalizedLocation(canvasTypeId, px, py);
+      const role       = loc.role;
+      const regionId   = loc.regionId || null;
+      const regionTitle= loc.regionTitle || null;
+
+      const color =
+        (s.style && (s.style.fillColor || s.style.backgroundColor)) || null;
+
+      const tagIds = Array.isArray(s.tagIds) ? s.tagIds : [];
+      const tags = tagIds
+        .map((id) => ctx.tagsById[id])
+        .filter(Boolean);
+
+      const clusterName = dtClusterAssignments.get(s.id) || null;
+
+      const stickObj = {
+        id: s.id,
+        text: stripHtml(s.content),
+        px: Math.round(px * 10000) / 10000,
+        py: Math.round(py * 10000) / 10000,
+        role,
+        regionId,
+        regionTitle,
+        color,
+        tags,
+        clusterName,
+        connectionsOut: [],
+        connectionsIn: []
+      };
+
+      const liveInst = ensureLiveInstance(bestInst);
+      if (role === "header") {
+        liveInst.regions.header.stickies.push(stickObj);
+      } else if (role === "footer") {
+        liveInst.regions.footer.stickies.push(stickObj);
+      } else {
+        const key =
+          regionId === "left" || regionId === "middle" || regionId === "right"
+            ? regionId
+            : "none";
+        liveInst.regions.body[key].stickies.push(stickObj);
+      }
+
+      liveInst.allStickies.push(stickObj);
+      dtStickyOwnerCache.set(s.id, bestInst.instanceId);
     }
+
+    // Konnektoren pro Instanz zuordnen
+    const stickyToInst = new Map();
+    Object.values(dtLiveCatalog.instances).forEach((liveInst) => {
+      liveInst.allStickies.forEach((st) => {
+        stickyToInst.set(st.id, liveInst.instanceId);
+      });
+    });
+
+    for (const c of ctx.connectors || []) {
+      const fromId = c.start && c.start.item;
+      const toId   = c.end   && c.end.item;
+      if (!fromId || !toId) continue;
+
+      const instFrom = stickyToInst.get(fromId);
+      const instTo   = stickyToInst.get(toId);
+      if (!instFrom || instFrom !== instTo) {
+        // Cross-Instance optional separat
+        continue;
+      }
+
+      const liveInst = dtLiveCatalog.instances[instFrom];
+      if (!liveInst) continue;
+
+      const conn = {
+        connectorId: c.id,
+        fromStickyId: fromId,
+        toStickyId: toId
+      };
+      liveInst.connections.push(conn);
+    }
+
+    // Meta aktualisieren
+    Object.values(dtLiveCatalog.instances).forEach((liveInst) => {
+      liveInst.meta.stickyCount = liveInst.allStickies.length;
+      liveInst.meta.connectorCount = liveInst.connections.length;
+      liveInst.meta.lastUpdated = dtLiveCatalog.lastFullRebuildAt;
+    });
   }
 
+  // LiveInstance -> "classification"-Objekt (kompatibel zu dtBuildPromptPayloadFromClassification)
+  function dtBuildClassificationFromLiveInstance(instance, liveInst) {
+    const items = [];
+    const headerStickies = [];
+
+    // Header
+    for (const s of liveInst.regions.header.stickies) {
+      items.push({
+        stickyId: s.id,
+        text: s.text,
+        role: "header",
+        regionId: null,
+        regionTitle: "Header",
+        color: s.color,
+        tags: s.tags.map((title) => ({ id: null, title })),
+        clusterName: s.clusterName,
+        connectionsOut: [],
+        connectionsIn: []
+      });
+      headerStickies.push({
+        stickyId: s.id,
+        text: s.text,
+        px: s.px,
+        py: s.py,
+        color: s.color,
+        tagIds: [],
+        tags: s.tags.map((title) => ({ id: null, title }))
+      });
+    }
+
+    function addBodyRegion(regionId, regionTitle, list) {
+      for (const s of list) {
+        items.push({
+          stickyId: s.id,
+          text: s.text,
+          role: "body",
+          regionId,
+          regionTitle,
+          color: s.color,
+          tags: s.tags.map((title) => ({ id: null, title })),
+          clusterName: s.clusterName,
+          connectionsOut: [],
+          connectionsIn: []
+        });
+      }
+    }
+
+    addBodyRegion("left",   "Box 1 (links)",  liveInst.regions.body.left.stickies);
+    addBodyRegion("middle", "Box 2 (Mitte)",  liveInst.regions.body.middle.stickies);
+    addBodyRegion("right",  "Box 3 (rechts)", liveInst.regions.body.right.stickies);
+    addBodyRegion(null,     null,             liveInst.regions.body.none.stickies);
+
+    // Footer (falls du dort Stickies hast, analog)
+    for (const s of liveInst.regions.footer.stickies) {
+      items.push({
+        stickyId: s.id,
+        text: s.text,
+        role: "footer",
+        regionId: null,
+        regionTitle: "Footer",
+        color: s.color,
+        tags: s.tags.map((title) => ({ id: null, title })),
+        clusterName: s.clusterName,
+        connectionsOut: [],
+        connectionsIn: []
+      });
+    }
+
+    // Verbindungen in items eintragen
+    const idToItem = {};
+    for (const it of items) {
+      if (it && it.stickyId) {
+        idToItem[it.stickyId] = it;
+      }
+    }
+
+    const connections = [];
+    for (const c of liveInst.connections || []) {
+      const fromItem = idToItem[c.fromStickyId];
+      const toItem   = idToItem[c.toStickyId];
+      if (!fromItem || !toItem) continue;
+
+      const conn = {
+        connectorId: c.connectorId,
+        fromStickyId: c.fromStickyId,
+        toStickyId: c.toStickyId
+      };
+      connections.push(conn);
+
+      fromItem.connectionsOut.push({
+        connectorId: c.connectorId,
+        toStickyId: c.toStickyId
+      });
+      toItem.connectionsIn.push({
+        connectorId: c.connectorId,
+        fromStickyId: c.fromStickyId
+      });
+    }
+
+    const counts = {
+      total: items.length,
+      byRegion: {}
+    };
+    for (const it of items) {
+      if (it.role === "body" && it.regionId) {
+        counts.byRegion[it.regionId] = (counts.byRegion[it.regionId] || 0) + 1;
+      }
+    }
+
+    const headerSummaryRaw = headerStickies
+      .map((h) => h.text)
+      .filter(Boolean)
+      .join(" | ");
+    const headerSummary = headerSummaryRaw
+      ? (headerSummaryRaw.length > 200 ? headerSummaryRaw.slice(0, 197) + "..." : headerSummaryRaw)
+      : null;
+
+    return {
+      template: {
+        id: instance.canvasTypeId,
+        name: instance.title || "Datentreiber 3-Boxes",
+        imageId: instance.imageId,
+        headerSummary: headerSummary
+      },
+      header: {
+        stickies: headerStickies
+      },
+      counts,
+      items,
+      connections
+    };
+  }
+
+  // --------------------------------------------------------------------
+  // 2b) Klassifikation (Debug-Button) – nutzt nur noch dtLiveCatalog
+  // --------------------------------------------------------------------
   async function dtClassifyStickies(options) {
     const silent = options && options.silent;
     if (!silent) {
-      log("Button: Stickies klassifizieren (klick).");
+      log("Button: Stickies klassifizieren (Debug-Modus).");
     }
 
     await dtEnsureMiroReady();
+    const ctx = await dtGetBoardBaseContext();
+    await dtRebuildLiveCatalog(ctx);
 
-    const templates = await dtResolveTemplateImages({ silent });
-    if (!templates || !templates.length) {
+    const results = [];
+    dtInstancesById.forEach((inst) => {
+      const liveInst = dtLiveCatalog.instances[inst.instanceId];
+      if (!liveInst) return;
+      const classification = dtBuildClassificationFromLiveInstance(inst, liveInst);
+      results.push(classification);
+    });
+
+    if (!results.length) {
       if (!silent) {
-        log(
-          "Es konnten keine Template-Bilder ermittelt werden. " +
-          "Bitte wähle mindestens ein 3-Boxes-PNG aus oder füge eines ein."
-        );
+        log("Keine Canvas-Instanzen mit Stickies gefunden.");
       }
+      lastClassification = null;
       return null;
     }
 
-    try {
-      const ctx = await dtGetBoardBaseContext();
-      await dtRebuildStickyOwnerCache(ctx);
+    lastClassification =
+      results.length === 1 ? results[0] : { templates: results };
 
-      const results = templates.map((t) => {
-        const inst = dtInstancesByImageId.get(t.id) || null;
-        const canvasTypeId = inst ? inst.canvasTypeId : TEMPLATE_ID;
-        const instanceId = inst ? inst.instanceId : null;
-        return dtClassifyStickiesForTemplate(t, ctx, {
-          instanceId,
-          canvasTypeId
-        });
-      });
-
-      lastClassification =
-        results.length === 1 ? results[0] : { templates: results };
-
-      if (!silent) {
-        if (results.length === 1) {
-          log("Klassifikation fertig (1 Template):");
-          log(lastClassification);
-        } else {
-          log("Klassifikation fertig für " + results.length + " Templates:");
-          log(lastClassification);
-        }
-      }
-
-      return lastClassification;
-    } catch (e) {
-      if (!silent) {
-        log("Fehler bei der Klassifikation: " + e.message);
+    if (!silent) {
+      if (results.length === 1) {
+        log("Klassifikation fertig (1 Instanz):");
+        log(lastClassification);
       } else {
-        console.error("[DT] Fehler bei der Klassifikation (silent):", e);
+        log("Klassifikation fertig für " + results.length + " Instanzen:");
+        log(lastClassification);
       }
-      return null;
     }
+
+    return lastClassification;
   }
 
   // --------------------------------------------------------------------
@@ -1757,7 +1755,7 @@
   }
 
   // --------------------------------------------------------------------
-  // 3) Klassischer OpenAI-Call (Side-Panel)
+  // 3) Klassischer OpenAI-Call (Side-Panel) – nutzt dtClassifyStickies()
   // --------------------------------------------------------------------
   async function dtCallOpenAI() {
     await dtEnsureMiroReady();
@@ -1862,6 +1860,7 @@
       if (!it) return null;
       if (it.regionTitle) return it.regionTitle;
       if (it.role === "header") return "Header";
+      if (it.role === "footer") return "Footer";
       return null;
     }
 
@@ -2000,47 +1999,27 @@
   }
 
   // --------------------------------------------------------------------
-  // 5) Agent-Hilfsfunktionen (Instanzzustand)
+  // 5) Agent-Hilfsfunktionen (Instanzzustand) – jetzt über dtLiveCatalog
   // --------------------------------------------------------------------
   async function dtGetInstanceStateForAgent(instance, options) {
     await dtEnsureMiroReady();
 
-    if (!instance || !instance.imageId) {
-      log("dtGetInstanceStateForAgent: Instanz hat kein imageId.");
+    options = options || {};
+    let ctx = options.ctx;
+    const liveCatalogReady = !!options.liveCatalogReady;
+
+    if (!liveCatalogReady) {
+      ctx = ctx || await dtGetBoardBaseContext();
+      await dtRebuildLiveCatalog(ctx);
+    }
+
+    const liveInst = dtLiveCatalog.instances[instance.instanceId];
+    if (!liveInst) {
+      log("dtGetInstanceStateForAgent: Keine Live-Daten für Instanz " + instance.instanceId);
       return null;
     }
 
-    let ctx = options && options.ctx;
-    if (!ctx) {
-      ctx = await dtGetBoardBaseContext();
-    }
-
-    const ownerCacheReady = options && options.ownerCacheReady;
-    if (!ownerCacheReady) {
-      await dtRebuildStickyOwnerCache(ctx);
-    }
-
-    const geom = await dtComputeTemplateGeometry(instance);
-    if (!geom) {
-      log("dtGetInstanceStateForAgent: Keine Geometrie für Instanz verfügbar.");
-      return null;
-    }
-
-    const classification = dtClassifyStickiesForTemplate(
-      {
-        id: instance.imageId,
-        title: instance.title || "Datentreiber 3-Boxes",
-        x: geom.x,
-        y: geom.y,
-        width: geom.width,
-        height: geom.height
-      },
-      ctx,
-      {
-        instanceId: instance.instanceId,
-        canvasTypeId: instance.canvasTypeId
-      }
-    );
+    const classification = dtBuildClassificationFromLiveInstance(instance, liveInst);
 
     const baselineClassification = instance.baselineClassification || null;
     let diff = null;
@@ -2059,14 +2038,16 @@
     instance.lastClassification = classification;
     instance.lastStateJson = stateJson;
     instance.lastStickyCount =
-      classification && classification.counts
-        ? classification.counts.total || 0
-        : Array.isArray(classification.items)
-          ? classification.items.length
-          : 0;
+      liveInst.meta && typeof liveInst.meta.stickyCount === "number"
+        ? liveInst.meta.stickyCount
+        : (classification && classification.counts
+            ? classification.counts.total || 0
+            : Array.isArray(classification.items)
+              ? classification.items.length
+              : 0);
 
     instance.lastDiff = diff;
-    instance.liveCatalog = payload;
+    instance.liveCatalog = liveInst;
 
     return {
       classification: classification,
@@ -2379,7 +2360,7 @@
   }
 
   // --------------------------------------------------------------------
-  // 6) Globaler Agenten-Modus A
+  // 6) Globaler Agenten-Modus A – nutzt dtLiveCatalog
   // --------------------------------------------------------------------
   async function dtRunGlobalAgent(triggerInstanceId, userText) {
     await dtEnsureMiroReady();
@@ -2404,7 +2385,7 @@
     );
 
     const ctx = await dtGetBoardBaseContext();
-    await dtRebuildStickyOwnerCache(ctx);
+    await dtRebuildLiveCatalog(ctx);
 
     const stateById = {};
 
@@ -2416,7 +2397,7 @@
     for (const inst of allInstances) {
       const st = await dtGetInstanceStateForAgent(inst, {
         ctx: ctx,
-        ownerCacheReady: true
+        liveCatalogReady: true
       });
       if (st) {
         stateById[inst.instanceId] = st;
@@ -2572,7 +2553,7 @@
   }
 
   // --------------------------------------------------------------------
-  // 7) Instanzspezifischer Agenten-Modus B
+  // 7) Instanzspezifischer Agenten-Modus B – nutzt dtLiveCatalog
   // --------------------------------------------------------------------
   async function dtRunAgentForInstance(instanceId, options) {
     await dtEnsureMiroReady();
@@ -2599,7 +2580,8 @@
     log("Starte Agent (Modus B, instanzspezifisch) für Instanz " + instanceId + " ...");
 
     const ctx = await dtGetBoardBaseContext();
-    await dtRebuildStickyOwnerCache(ctx);
+    await dtRebuildLiveCatalog(ctx);
+
     const stateById = {};
 
     const instForState = dtInstancesById.get(instanceId);
@@ -2610,7 +2592,7 @@
 
     const st = await dtGetInstanceStateForAgent(instForState, {
       ctx: ctx,
-      ownerCacheReady: true
+      liveCatalogReady: true
     });
     if (st) {
       stateById[instanceId] = st;
@@ -2746,7 +2728,13 @@
       }
 
       try {
-        const postState = await dtGetInstanceStateForAgent(instForState, {});
+        // Nach den Actions Boardzustand nochmal scannen und neue Baseline setzen
+        const ctx2 = await dtGetBoardBaseContext();
+        await dtRebuildLiveCatalog(ctx2);
+        const postState = await dtGetInstanceStateForAgent(instForState, {
+          ctx: ctx2,
+          liveCatalogReady: true
+        });
         if (postState && postState.classification) {
           const nowIso = new Date().toISOString();
           instForState.baselineClassification = postState.classification;
