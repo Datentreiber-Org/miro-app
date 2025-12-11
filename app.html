@@ -2511,20 +2511,50 @@ async function dtRebindActionShapesAfterScan(images) {
   
     await dtEnsureMiroReady();
   
-    // 1. Wahrheit: Geometrie des Template-PNGs
     if (instance.imageId) {
       try {
         const imgArr = await miro.board.get({ id: instance.imageId });
         const img = Array.isArray(imgArr) ? imgArr[0] : imgArr;
   
-        if (img && typeof img.x === "number" && typeof img.y === "number") {
+        if (img && typeof img.width === "number" && typeof img.height === "number") {
+          let boardX = null;
+          let boardY = null;
+  
+          // FALL 1: Template-Bild liegt in einem Frame → img.x / img.y sind RELATIV
+          if (img.parentId) {
+            try {
+              const frameArr = await miro.board.get({ id: img.parentId });
+              const frame = Array.isArray(frameArr) ? frameArr[0] : frameArr;
+  
+              if (frame && typeof frame.x === "number" && typeof frame.y === "number") {
+                const frameLeft = frame.x - frame.width / 2;
+                const frameTop  = frame.y - frame.height / 2;
+  
+                // Laut Doku: Child-x/y sind Zentrum relativ zur linken oberen Ecke des Frames.
+                boardX = frameLeft + img.x;
+                boardY = frameTop  + img.y;
+              }
+            } catch (e2) {
+              log("Fehler beim Laden des Frames für Template-Bild: " + e2.message);
+            }
+          }
+  
+          // FALL 2: Kein Parent-Frame oder Fehler → img.x / img.y als Board-Koordinaten verwenden
+          if (typeof boardX !== "number" || typeof boardY !== "number") {
+            boardX = img.x;
+            boardY = img.y;
+          }
+  
           const geom = {
-            x: img.x,
-            y: img.y,
+            x: boardX,
+            y: boardY,
             width: img.width,
             height: img.height
           };
+  
+          // Für alle Folgefunktionen (dtFindInstanceForPoint, Live-Katalog, Actions, …)
           instance.lastGeometry = geom;
+  
           return geom;
         }
       } catch (e) {
@@ -2532,9 +2562,10 @@ async function dtRebindActionShapesAfterScan(images) {
       }
     }
   
-    // 2. Fallback: zuletzt bekannte Geometrie (vom PNG)
+    // Fallback: zuletzt bekannte Geometrie
     return instance.lastGeometry || null;
   }
+
 
 
 
