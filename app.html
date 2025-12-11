@@ -95,8 +95,8 @@
 
   <div class="btn-row">
     <button onclick="dtInsertTemplateImage()">Template-Bild einfügen</button>
-    <button onclick="dtSetTemplateFromSelection()">Auswahl als Template setzen</button>
   </div>
+
   <div class="btn-row">
     <button onclick="dtClusterSelection()">Auswahl clustern (Side-Panel)</button>
     <button onclick="dtClassifyStickies()">Stickies klassifizieren (Debug)</button>
@@ -561,6 +561,116 @@
     };
   }
 
+  // Versucht nach einem Board-Scan bestehende Frames/Buttons wieder mit Instanzen zu verknüpfen.
+// Voraussetzung: Instanzen wurden bereits aus den Template-Bildern registriert.
+async function dtRebindActionShapesAfterScan(images) {
+  if (!miro.board) {
+    return;
+  }
+
+  let shapes = [];
+  let textItems = [];
+
+  try {
+    shapes = await miro.board.get({ type: "shape" }) || [];
+    textItems = await miro.board.get({ type: "text" }) || [];
+  } catch (e) {
+    log("Fehler bei Rebind der Action-Shapes: " + e.message);
+    return;
+  }
+
+  // Hilfs-Maps: parentId -> Items
+  const shapesByParent = new Map();
+  shapes.forEach(function (s) {
+    const pid = s.parentId;
+    if (!pid) {
+      return;
+    }
+    if (!shapesByParent.has(pid)) {
+      shapesByParent.set(pid, []);
+    }
+    shapesByParent.get(pid).push(s);
+  });
+
+  const textsByParent = new Map();
+  textItems.forEach(function (t) {
+    const pid = t.parentId;
+    if (!pid) {
+      return;
+    }
+    if (!textsByParent.has(pid)) {
+      textsByParent.set(pid, []);
+    }
+    textsByParent.get(pid).push(t);
+  });
+
+  // Mapping: imageId -> echtes Image-Objekt
+  const imageById = new Map();
+  if (Array.isArray(images)) {
+    images.forEach(function (img) {
+      imageById.set(img.id, img);
+    });
+  }
+
+  // Mapping: imageId -> frameId (über parentId)
+  const frameIdByImageId = new Map();
+  imageById.forEach(function (img, imgId) {
+    if (img.parentId) {
+      frameIdByImageId.set(imgId, img.parentId);
+    }
+  });
+
+  // Für jede registrierte Instanz versuchen wir, die Action-Shapes zu finden
+  dtInstancesByImageId.forEach(function (instance, imageId) {
+    const img = imageById.get(imageId);
+    if (!img) {
+      return;
+    }
+
+    const frameId = frameIdByImageId.get(imageId);
+    if (!frameId) {
+      return;
+    }
+
+    const frameShapes = shapesByParent.get(frameId) || [];
+    const frameTexts = textsByParent.get(frameId) || [];
+
+    let aiShape = null;
+    let clusterShape = null;
+    let globalShape = null;
+    let globalInput = null;
+
+    // Buttons im Frame anhand ihres Inhalts erkennen
+    frameShapes.forEach(function (s) {
+      const raw = (s.content || "").toLowerCase();
+      if (!aiShape && raw.indexOf("send to openai") !== -1) {
+        aiShape = s;
+      } else if (!clusterShape && raw.indexOf("cluster") !== -1) {
+        clusterShape = s;
+      } else if (!globalShape && raw.indexOf("global agent") !== -1) {
+        globalShape = s;
+      }
+    });
+
+    // Ein Text-Item im Frame als Global-Agent-Input verwenden (Heuristik: erstes)
+    if (frameTexts.length > 0) {
+      globalInput = frameTexts[0];
+    }
+
+    if (aiShape || clusterShape || globalShape || globalInput) {
+      instance.actionItems = {
+        aiItemId: aiShape ? aiShape.id : null,
+        clusterItemId: clusterShape ? clusterShape.id : null,
+        globalAgentItemId: globalShape ? globalShape.id : null,
+        globalAgentInputItemId: globalInput ? globalInput.id : null,
+        frameId: frameId
+      };
+      log("Action-Shapes re-gebunden für Instanz " + instance.instanceId);
+    }
+  });
+}
+
+
   async function dtRegisterInstanceFromImage(image, options) {
     if (!image || !image.id) return null;
 
@@ -636,8 +746,10 @@
 
 
   async function dtScanTemplateInstances() {
-    if (!miro.board || !miro.board.get) return;
-
+    if (!miro.board || !miro.board.get) {
+      return;
+    }
+  
     let images = [];
     try {
       images = await miro.board.get({ type: "image" });
@@ -645,10 +757,12 @@
       console.error("[DT] Fehler beim Laden der Images:", e);
       return;
     }
-    if (!Array.isArray(images)) return;
-
+    if (!Array.isArray(images)) {
+      return;
+    }
+  
     const templateImageIdsOnBoard = new Set();
-
+  
     for (const img of images) {
       if (
         img.type === "image" &&
@@ -659,7 +773,7 @@
         await dtRegisterInstanceFromImage(img, { createActionShapes: false });
       }
     }
-
+  
     const knownImageIds = Array.from(dtInstancesByImageId.keys());
     for (const imageId of knownImageIds) {
       if (!templateImageIdsOnBoard.has(imageId)) {
@@ -676,6 +790,14 @@
           );
         }
       }
+    }
+  
+    // Nach dem Scan versuchen, bestehende Frames/Buttons mit den Instanzen zu verknüpfen,
+    // damit nach Panel-Neustart die Buttons wieder funktionieren.
+    try {
+      await dtRebindActionShapesAfterScan(images);
+    } catch (e) {
+      console.error("[DT] Fehler beim Rebind der Action-Shapes:", e);
     }
   }
 
@@ -988,50 +1110,7 @@
     }
   }
 
-  // --------------------------------------------------------------------
-  // 1B) Template aus aktueller Auswahl setzen
-  // --------------------------------------------------------------------
-  async function dtSetTemplateFromSelection() {
-    log("Button: Aktuelle Auswahl als Template setzen (klick).");
-    await dtEnsureMiroReady();
 
-    try {
-      const selection = await miro.board.getSelection();
-      if (!selection.length) {
-        log("Kein Element ausgewählt. Bitte das Template-PNG auf dem Board anklicken (blau markiert) und erneut versuchen.");
-        return;
-      }
-
-      const image = selection.find((item) => item.type === "image" &&
-        typeof item.url === "string" &&
-        item.url.indexOf(TEMPLATE_IMAGE_URL) !== -1
-      );
-      if (!image) {
-        log("In der Auswahl ist kein passendes 3-Boxes-Bild-Element. Bitte direkt das Template-PNG auswählen (nicht den Frame).");
-        return;
-      }
-
-      currentTemplateImage = {
-        id: image.id,
-        title: image.title || "Datentreiber 3-Boxes",
-        x: image.x,
-        y: image.y,
-        width: image.width,
-        height: image.height
-      };
-      lastClassification = null;
-
-      await dtRegisterInstanceFromImage(image);
-
-      log(
-        "Template gesetzt aus Auswahl: Bild-ID " + image.id +
-        " / " + currentTemplateImage.title +
-        "\n(Hinweis: In Zukunft wird die Template-Auswahl nur noch über das Side-Panel / Template-Bibliothek erfolgen.)"
-      );
-    } catch (e) {
-      log("Fehler beim Setzen des Templates aus Auswahl: " + e.message);
-    }
-  }
 
   // --------------------------------------------------------------------
   // Auswahl clustern
@@ -2232,40 +2311,35 @@
     }
   }
 
-  // create_sticky mit Polygon-basiertem Zentrum
+  // create_sticky mit Polygon-basiertem Zentrum (ohne Frame-Parent-Zwang)
   async function dtActionCreateSticky(instance, templateGeometry, action) {
     const areaName = action.area;
     const text = action.text || "";
     const region = dtAreaNameToRegion(areaName);
     const canvasTypeId = instance ? instance.canvasTypeId : TEMPLATE_ID;
+  
+    // 1) Normiertes Zentrum der Ziel-Region bestimmen (Image-Map)
     const center = dtAreaCenterNormalized(region ? region.id : null, canvasTypeId);
+  
+    // 2) Normierte Koordinaten -> Board-Koordinaten relativ zum PNG (Template-Geometrie)
     const coords = dtNormalizedToBoardCoords(templateGeometry, center.px, center.py);
-
+  
     const createPayload = {
       content: text || "(leer)",
       x: coords.x,
       y: coords.y
     };
-
+  
     try {
-      const sticky = await miro.board.createStickyNote(createPayload);
-
-      if (instance && instance.actionItems && instance.actionItems.frameId) {
-        try {
-          const frameArr = await miro.board.get({ id: instance.actionItems.frameId });
-          const frame = Array.isArray(frameArr) ? frameArr[0] : frameArr;
-          if (frame && typeof frame.add === "function") {
-            await frame.add(sticky);
-            await frame.sync();
-          }
-        } catch (e2) {
-          log("Fehler beim Hinzufügen des neu erstellten Stickies zum Frame: " + e2.message);
-        }
-      }
+      await miro.board.createStickyNote(createPayload);
+      // Wichtig: Wir hängen das Sticky NICHT mehr an einen Frame,
+      // damit der Frame für die Logik komplett irrelevant bleibt.
+      // Die Instanz-Zugehörigkeit erfolgt ausschließlich über die PNG-Geometrie.
     } catch (e) {
       log("Fehler bei create_sticky: " + e.message);
     }
   }
+
 
   async function dtActionDeleteSticky(action) {
     const rawId = action.stickyId;
@@ -2381,19 +2455,19 @@
     return out;
   }
 
-  // Geometrie des Canvas (PNG) ermitteln
   async function dtComputeTemplateGeometry(instance) {
     if (!instance) {
       return null;
     }
-
+  
     await dtEnsureMiroReady();
-
+  
+    // Primäre und einzige Quelle für die Canvas-Geometrie ist das Template-PNG.
     if (instance.imageId) {
       try {
         const imgArr = await miro.board.get({ id: instance.imageId });
         const img = Array.isArray(imgArr) ? imgArr[0] : imgArr;
-
+  
         if (img && typeof img.x === "number" && typeof img.y === "number") {
           const geom = {
             x: img.x,
@@ -2408,29 +2482,11 @@
         log("Fehler beim Laden der Template-Geometrie aus dem Bild: " + e.message);
       }
     }
-
-    if (instance.actionItems && instance.actionItems.frameId) {
-      try {
-        const frameArr = await miro.board.get({ id: instance.actionItems.frameId });
-        const frame = Array.isArray(frameArr) ? frameArr[0] : frameArr;
-
-        if (frame && typeof frame.x === "number" && typeof frame.y === "number") {
-          const width = frame.width - 200;
-          const height = frame.height - 260;
-          const x = frame.x;
-          const y = frame.y - 80;
-
-          const geom = { x, y, width, height };
-          instance.lastGeometry = geom;
-          return geom;
-        }
-      } catch (e) {
-        log("Fehler beim Berechnen der Template-Geometrie aus dem Frame: " + e.message);
-      }
-    }
-
+  
+    // Fallback: letzte bekannte Geometrie, falls das Bild nicht mehr geladen werden kann
     return instance.lastGeometry || null;
   }
+
 
   // --------------------------------------------------------------------
   // 6) Globaler Agenten-Modus A – nutzt dtLiveCatalog
@@ -2828,12 +2884,12 @@
   // Exporte ins window
   // --------------------------------------------------------------------
   window.dtInsertTemplateImage      = dtInsertTemplateImage;
-  window.dtSetTemplateFromSelection = dtSetTemplateFromSelection;
   window.dtClassifyStickies         = dtClassifyStickies;
   window.dtCallOpenAI               = dtCallOpenAI;
   window.dtClusterSelection         = dtClusterSelection;
   window.dtRunAgentForInstance      = dtRunAgentForInstance;
   window.dtRunGlobalAgent           = dtRunGlobalAgent;
+
   </script>
 </body>
 </html>
