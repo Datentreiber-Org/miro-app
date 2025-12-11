@@ -1277,51 +1277,37 @@ async function dtRebindActionShapesAfterScan(images) {
   async function dtRebuildLiveCatalog(ctx) {
     await dtEnsureMiroReady();
     await dtScanTemplateInstances();
-
+  
     if (!ctx) {
       ctx = await dtGetBoardBaseContext();
     }
-
+  
+    // Live-Katalog zurücksetzen
     dtLiveCatalog.canvasTypes = Object.create(null);
     dtLiveCatalog.instances = Object.create(null);
     dtLiveCatalog.unassignedStickies = [];
     dtLiveCatalog.lastFullRebuildAt = new Date().toISOString();
     dtStickyOwnerCache = new Map();
-
-
-    // Instanzliste + Geometrie vorbereiten
+  
+    // Alle bekannten Canvas-Instanzen sammeln
     const instList = [];
     dtInstancesById.forEach((inst) => instList.push(inst));
-
+  
+    // Für jede Instanz die aktuelle Template-Geometrie (Board-Koordinaten) ermitteln
     const geomList = [];
     for (const inst of instList) {
       const geom = await dtComputeTemplateGeometry(inst);
       geomList.push({ inst, geom });
     }
-
+  
     const instGeom = new Map();
     for (const entry of geomList) {
       if (entry.geom) {
         instGeom.set(entry.inst.instanceId, entry.geom);
       }
     }
-
-    // Sicherstellen, dass für jede Instanz ein Live-Eintrag existiert,
-    // auch wenn (noch) keine Stickies gefunden wurden.
-    for (const inst of instList) {
-      // ensureLiveInstance ist in dtRebuildLiveCatalog definiert
-      ensureLiveInstance(inst);
-    }
-
-
-    // NEU: Frame-ID -> Instanz (für Zuordnung über parentId)
-    const frameIdToInstance = new Map();
-    dtInstancesById.forEach((inst) => {
-      if (inst.actionItems && inst.actionItems.frameId) {
-        frameIdToInstance.set(inst.actionItems.frameId, inst);
-      }
-    });
-
+  
+    // Hilfsfunktion: sorgt dafür, dass es für jede Instanz ein Live-Objekt gibt
     function ensureLiveInstance(inst) {
       let live = dtLiveCatalog.instances[inst.instanceId];
       if (!live) {
@@ -1334,10 +1320,10 @@ async function dtRebindActionShapesAfterScan(images) {
             header: { stickies: [] },
             footer: { stickies: [] },
             body: {
-              left:  { stickies: [] },
-              middle:{ stickies: [] },
-              right: { stickies: [] },
-              none:  { stickies: [] }  // im PNG, aber keiner definierten Region
+              left:   { stickies: [] },
+              middle: { stickies: [] },
+              right:  { stickies: [] },
+              none:   { stickies: [] } // im PNG, aber keiner expliziten Region
             }
           },
           allStickies: [],
@@ -1348,10 +1334,10 @@ async function dtRebindActionShapesAfterScan(images) {
             lastUpdated: null
           }
         };
-
+  
         // Flat-Index
         dtLiveCatalog.instances[inst.instanceId] = live;
-
+  
         // Hierarchischer Index: Canvas-Typ -> Instanzen
         const ctId = inst.canvasTypeId || TEMPLATE_ID;
         if (!dtLiveCatalog.canvasTypes[ctId]) {
@@ -1364,85 +1350,146 @@ async function dtRebindActionShapesAfterScan(images) {
       }
       return live;
     }
-
-
-    // Stickies auf Instanzen + Regionen verteilen
-    for (const s of ctx.stickies || []) {
-      if (typeof s.x !== "number" || typeof s.y !== "number") continue;
-
-      // 1) Primär: Zuordnung über parentId (Frame)
-      let owningInst = null;
-      if (s.parentId && frameIdToInstance.has(s.parentId)) {
-        owningInst = frameIdToInstance.get(s.parentId);
+  
+    // Sicherstellen, dass alle Instanzen im Katalog auftauchen –
+    // auch wenn (noch) keine Stickies zugeordnet werden
+    for (const inst of instList) {
+      ensureLiveInstance(inst);
+    }
+  
+    // Cache für Parent-Geometrien (Frames / Gruppen),
+    // um Koordinaten von Kind-Items auf Board-Level zu bringen
+    const parentGeomCache = new Map();
+  
+    async function getBoardCoordsForItem(item) {
+      if (!item) {
+        return null;
       }
-
-      // 2) Fallback: Geometrie-basierte Zuordnung (Bounding Box / nächstes Canvas)
-      if (!owningInst) {
-        let bestInst = null;
-        let bestDistSq = Infinity;
-
-        for (const entry of geomList) {
-          const inst = entry.inst;
-          const geom = entry.geom;
-          if (!geom) continue;
-
-          const left  = geom.x - geom.width  / 2;
-          const top   = geom.y - geom.height / 2;
-          const right = geom.x + geom.width  / 2;
-          const bottom= geom.y + geom.height / 2;
-
-          if (s.x >= left && s.x <= right && s.y >= top && s.y <= bottom) {
-            const dx = s.x - geom.x;
-            const dy = s.y - geom.y;
-            const distSq = dx*dx + dy*dy;
-            if (distSq < bestDistSq) {
-              bestDistSq = distSq;
-              bestInst = inst;
+  
+      let boardX = item.x;
+      let boardY = item.y;
+  
+      if (item.parentId) {
+        let parentGeom = parentGeomCache.get(item.parentId);
+        if (!parentGeom) {
+          try {
+            const arr = await miro.board.get({ id: item.parentId });
+            const parent = Array.isArray(arr) ? arr[0] : arr;
+            if (
+              parent &&
+              typeof parent.x === "number" &&
+              typeof parent.y === "number" &&
+              typeof parent.width === "number" &&
+              typeof parent.height === "number"
+            ) {
+              parentGeom = {
+                x: parent.x,
+                y: parent.y,
+                width: parent.width,
+                height: parent.height
+              };
+              parentGeomCache.set(item.parentId, parentGeom);
             }
+          } catch (e) {
+            log("Fehler beim Laden des Parent-Items " + item.parentId + ": " + e.message);
           }
         }
-
-        owningInst = bestInst;
+  
+        if (parentGeom) {
+          const parentLeft = parentGeom.x - parentGeom.width / 2;
+          const parentTop  = parentGeom.y - parentGeom.height / 2;
+          boardX = parentLeft + item.x;
+          boardY = parentTop  + item.y;
+        }
       }
-
-      if (!owningInst) {
+  
+      return { x: boardX, y: boardY };
+    }
+  
+    // ------------------------------------------------------------------
+    // Stickies auf Instanzen + Regionen verteilen
+    // ------------------------------------------------------------------
+    for (const s of ctx.stickies || []) {
+      if (typeof s.x !== "number" || typeof s.y !== "number") {
+        continue;
+      }
+  
+      const boardPos = await getBoardCoordsForItem(s);
+      if (!boardPos) {
         dtLiveCatalog.unassignedStickies.push(s.id);
         continue;
       }
-
+  
+      const sx = boardPos.x;
+      const sy = boardPos.y;
+  
+      // Instanz per Bounding-Box (Board-Koordinaten) bestimmen
+      let owningInst = null;
+      let bestInst = null;
+      let bestDistSq = Infinity;
+  
+      for (const entry of geomList) {
+        const inst = entry.inst;
+        const geom = entry.geom;
+        if (!geom) continue;
+  
+        const left   = geom.x - geom.width  / 2;
+        const top    = geom.y - geom.height / 2;
+        const right  = geom.x + geom.width  / 2;
+        const bottom = geom.y + geom.height / 2;
+  
+        if (sx >= left && sx <= right && sy >= top && sy <= bottom) {
+          const dx = sx - geom.x;
+          const dy = sy - geom.y;
+          const distSq = dx * dx + dy * dy;
+          if (distSq < bestDistSq) {
+            bestDistSq = distSq;
+            bestInst = inst;
+          }
+        }
+      }
+  
+      owningInst = bestInst;
+  
+      if (!owningInst) {
+        // Sticky liegt auf keinem bekannten Canvas
+        dtLiveCatalog.unassignedStickies.push(s.id);
+        continue;
+      }
+  
       const geom = instGeom.get(owningInst.instanceId);
       if (!geom) {
         dtLiveCatalog.unassignedStickies.push(s.id);
         continue;
       }
-
+  
       const left = geom.x - geom.width / 2;
       const top  = geom.y - geom.height / 2;
-      const px   = (s.x - left) / geom.width;
-      const py   = (s.y - top)  / geom.height;
-
+      const px   = (sx - left) / geom.width;
+      const py   = (sy - top)  / geom.height;
+  
       if (px < 0 || px > 1 || py < 0 || py > 1) {
-        // Sicherstellen, dass wir wirklich im PNG sind
+        // Sicherstellen, dass der Punkt tatsächlich im Bild liegt
         dtLiveCatalog.unassignedStickies.push(s.id);
         continue;
       }
-
+  
       const canvasTypeId = owningInst.canvasTypeId;
       const loc = dtClassifyNormalizedLocation(canvasTypeId, px, py);
-      const role       = loc.role;
-      const regionId   = loc.regionId || null;
-      const regionTitle= loc.regionTitle || null;
-
+      const role        = loc.role;
+      const regionId    = loc.regionId || null;
+      const regionTitle = loc.regionTitle || null;
+  
       const color =
         (s.style && (s.style.fillColor || s.style.backgroundColor)) || null;
-
+  
       const tagIds = Array.isArray(s.tagIds) ? s.tagIds : [];
       const tags = tagIds
         .map((id) => ctx.tagsById[id])
         .filter(Boolean);
-
+  
       const clusterName = dtClusterAssignments.get(s.id) || null;
-
+  
       const stickObj = {
         id: s.id,
         text: stripHtml(s.content),
@@ -1457,8 +1504,9 @@ async function dtRebindActionShapesAfterScan(images) {
         connectionsOut: [],
         connectionsIn: []
       };
-
+  
       const liveInst = ensureLiveInstance(owningInst);
+  
       if (role === "header") {
         liveInst.regions.header.stickies.push(stickObj);
       } else if (role === "footer") {
@@ -1470,35 +1518,36 @@ async function dtRebindActionShapesAfterScan(images) {
             : "none";
         liveInst.regions.body[key].stickies.push(stickObj);
       }
-
+  
       liveInst.allStickies.push(stickObj);
       dtStickyOwnerCache.set(s.id, owningInst.instanceId);
     }
-
-
+  
+    // ------------------------------------------------------------------
     // Konnektoren pro Instanz zuordnen
+    // ------------------------------------------------------------------
     const stickyToInst = new Map();
     Object.values(dtLiveCatalog.instances).forEach((liveInst) => {
       liveInst.allStickies.forEach((st) => {
         stickyToInst.set(st.id, liveInst.instanceId);
       });
     });
-
+  
     for (const c of ctx.connectors || []) {
       const fromId = c.start && c.start.item;
       const toId   = c.end   && c.end.item;
       if (!fromId || !toId) continue;
-
+  
       const instFrom = stickyToInst.get(fromId);
       const instTo   = stickyToInst.get(toId);
       if (!instFrom || instFrom !== instTo) {
-        // Cross-Instance optional separat
+        // Cross-Instance optional ignorieren
         continue;
       }
-
+  
       const liveInst = dtLiveCatalog.instances[instFrom];
       if (!liveInst) continue;
-
+  
       const conn = {
         connectorId: c.id,
         fromStickyId: fromId,
@@ -1506,28 +1555,22 @@ async function dtRebindActionShapesAfterScan(images) {
       };
       liveInst.connections.push(conn);
     }
-
-    // Meta aktualisieren
+  
+    // ------------------------------------------------------------------
+    // Meta aktualisieren & Instanz-Snapshots updaten
+    // ------------------------------------------------------------------
     Object.values(dtLiveCatalog.instances).forEach((liveInst) => {
-      liveInst.meta.stickyCount = liveInst.allStickies.length;
+      liveInst.meta.stickyCount    = liveInst.allStickies.length;
       liveInst.meta.connectorCount = liveInst.connections.length;
-      liveInst.meta.lastUpdated = dtLiveCatalog.lastFullRebuildAt;
+      liveInst.meta.lastUpdated    = dtLiveCatalog.lastFullRebuildAt;
     });
-
-    // Live-Katalog -> Instanz-Snapshot (für Board-Katalog / lastStickyCount)
+  
     dtInstancesById.forEach((inst) => {
       const liveInst = dtLiveCatalog.instances[inst.instanceId];
       if (liveInst && liveInst.meta) {
         inst.lastStickyCount = liveInst.meta.stickyCount || 0;
-      }
-    });
-
-
-    // NEU: live-Katalog → Instanz-Snapshot (für Board-Katalog)
-    dtInstancesById.forEach((inst) => {
-      const liveInst = dtLiveCatalog.instances[inst.instanceId];
-      if (liveInst && liveInst.meta) {
-        inst.lastStickyCount = liveInst.meta.stickyCount || 0;
+      } else {
+        inst.lastStickyCount = 0;
       }
     });
   }
