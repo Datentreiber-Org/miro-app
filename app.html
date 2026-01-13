@@ -114,6 +114,21 @@
     "https://www.datentreiber.com/wp-content/uploads/2024/12/Datentreiber_EN_3-Boxes_v1-1_20240610.png";
   const CLUSTER_META_KEY = "datentreiber-clusters";
 
+  // Template-Katalog (wichtig für 24+ Canvas-Typen)
+  // Jeder Canvas-Typ (Template) ist über seine PNG-URL eindeutig identifizierbar.
+  const DT_TEMPLATE_CATALOG = {
+    [TEMPLATE_ID]: {
+      canvasTypeId: TEMPLATE_ID,
+      imageUrl: TEMPLATE_IMAGE_URL
+    }
+  };
+
+  // Persistenz (Global-Baseline seit letztem GLOBALEN Agent-Run)
+  const DT_STORAGE_COLLECTION_NAME = "datentreiber-mirobot";
+  const DT_STORAGE_KEY_META = "dt-global-meta-v1";
+  const DT_STORAGE_KEY_BASELINE_PREFIX = "dt-baseline-v1:";
+
+
   // Canvas-Definitions (Image-Maps) auf Polygonbasis, normalisierte Koordinaten (0..1)
   const DT_CANVAS_DEFS = {
     [TEMPLATE_ID]: {
@@ -190,7 +205,11 @@
   let dtNextInstanceCounter = 1;
 
   // Globaler Baseline-Status für den globalen Agenten (Modus A)
+  // Wichtig: Baseline wird NUR durch den globalen Agenten-Run gesetzt/aktualisiert.
   let dtHasGlobalBaseline = false;
+  let dtGlobalBaselineAt = null;
+  let dtHasLoadedPersistedBaselineMeta = false;
+
 
   // imageId -> instance
   // instanceId -> instance
@@ -329,6 +348,321 @@
     return DT_CANVAS_DEFS[canvasTypeId] || null;
   }
 
+  function dtDetectCanvasTypeIdFromImage(image) {
+    if (!image || image.type !== "image") return null;
+    const url = typeof image.url === "string" ? image.url : "";
+    if (!url) return null;
+
+    const ids = Object.keys(DT_TEMPLATE_CATALOG);
+    for (const id of ids) {
+      const cfg = DT_TEMPLATE_CATALOG[id];
+      if (cfg && typeof cfg.imageUrl === "string" && cfg.imageUrl && url.indexOf(cfg.imageUrl) !== -1) {
+        return id;
+      }
+    }
+    return null;
+  }
+
+  function dtIsFiniteNumber(v) {
+    return typeof v === "number" && Number.isFinite(v);
+  }
+
+  // FNV-1a 32-bit Hash (stabil, schnell, ausreichend für Change-Tracking)
+  function dtFnv1a32(str, seed) {
+    let h = typeof seed === "number" ? (seed >>> 0) : 2166136261;
+    for (let i = 0; i < str.length; i++) {
+      h ^= str.charCodeAt(i);
+      h = Math.imul(h, 16777619);
+    }
+    return h >>> 0;
+  }
+
+  function dtHex8(n) {
+    const s = (n >>> 0).toString(16);
+    return ("00000000" + s).slice(-8);
+  }
+
+  function dtFnv1aHex(str, seed) {
+    return dtHex8(dtFnv1a32(str, seed));
+  }
+
+  function dtNormalizeTagsForSignature(tags) {
+    if (!Array.isArray(tags)) return "";
+    const titles = tags
+      .map(function (t) {
+        if (!t) return "";
+        if (typeof t === "string") return t;
+        if (typeof t.title === "string") return t.title;
+        return "";
+      })
+      .filter(function (t) { return !!t; })
+      .sort();
+    return titles.join("|");
+  }
+
+  // Stabiler Area-Key für Change-Tracking:
+  // - Bewegung innerhalb derselben Region zählt NICHT (px/py ignoriert)
+  // - Wechsel der Region zählt (regionId / role)
+  function dtAreaKeyFromItem(item) {
+    if (!item) return "unknown";
+    if (item.role === "header") return "header";
+    if (item.role === "footer") return "footer";
+    if (item.role === "body") return "body:" + (item.regionId || "none");
+    return "unknown";
+  }
+
+  function dtBuildInstanceSignatureFromClassification(instance, classification) {
+    const nowIso = new Date().toISOString();
+
+    const stickyHashes = {};
+    const stickyIds = [];
+
+    if (classification && Array.isArray(classification.items)) {
+      for (const item of classification.items) {
+        if (!item || !item.stickyId) continue;
+
+        const areaKey = dtAreaKeyFromItem(item);
+        const text = typeof item.text === "string" ? item.text : "";
+        const color = item.color ? String(item.color) : "";
+        const tagsNorm = dtNormalizeTagsForSignature(item.tags);
+
+        const stickyBase = areaKey + "\n" + color + "\n" + tagsNorm + "\n" + text;
+        const stickyHash = dtFnv1aHex(stickyBase);
+
+        stickyHashes[item.stickyId] = stickyHash;
+        stickyIds.push(item.stickyId);
+      }
+    }
+
+    stickyIds.sort();
+
+    const connectorPairs = [];
+    if (classification && Array.isArray(classification.connections)) {
+      for (const c of classification.connections) {
+        if (!c || !c.fromStickyId || !c.toStickyId) continue;
+        connectorPairs.push(String(c.fromStickyId) + "->" + String(c.toStickyId));
+      }
+    }
+    connectorPairs.sort();
+
+    let h = 2166136261;
+    for (const id of stickyIds) {
+      h = dtFnv1a32(id, h);
+      h = dtFnv1a32(stickyHashes[id] || "", h);
+    }
+    for (const p of connectorPairs) {
+      h = dtFnv1a32(p, h);
+    }
+
+    return {
+      version: 1,
+      canvasTypeId: instance && instance.canvasTypeId ? instance.canvasTypeId : (classification && classification.template ? classification.template.id : null),
+      imageId: instance && instance.imageId ? instance.imageId : (classification && classification.template ? classification.template.imageId : null),
+      computedAt: nowIso,
+      stateHash: dtHex8(h),
+      stickyHashes: stickyHashes,
+      connectorPairs: connectorPairs
+    };
+  }
+
+  function dtComputeInstanceDiffFromSignatures(prevSig, newSig) {
+    const diff = {
+      created: [],
+      deleted: [],
+      updated: [],
+      connectorsCreated: [],
+      connectorsDeleted: []
+    };
+
+    const prevSticky = (prevSig && prevSig.stickyHashes) ? prevSig.stickyHashes : Object.create(null);
+    const newSticky = (newSig && newSig.stickyHashes) ? newSig.stickyHashes : Object.create(null);
+
+    const prevIds = Object.keys(prevSticky);
+    const newIds = Object.keys(newSticky);
+
+    const prevSet = Object.create(null);
+    for (const id of prevIds) {
+      prevSet[id] = true;
+    }
+    const newSet = Object.create(null);
+    for (const id of newIds) {
+      newSet[id] = true;
+    }
+
+    for (const id of newIds) {
+      if (!prevSet[id]) {
+        diff.created.push({ stickyId: id });
+      }
+    }
+
+    for (const id of prevIds) {
+      if (!newSet[id]) {
+        diff.deleted.push({ stickyId: id });
+      }
+    }
+
+    for (const id of newIds) {
+      if (prevSet[id]) {
+        const oldHash = prevSticky[id];
+        const newHash = newSticky[id];
+        if (oldHash !== newHash) {
+          diff.updated.push({ stickyId: id });
+        }
+      }
+    }
+
+    const prevPairs = (prevSig && Array.isArray(prevSig.connectorPairs)) ? prevSig.connectorPairs : [];
+    const newPairs = (newSig && Array.isArray(newSig.connectorPairs)) ? newSig.connectorPairs : [];
+
+    const prevPairSet = new Set(prevPairs);
+    const newPairSet = new Set(newPairs);
+
+    for (const p of newPairSet) {
+      if (!prevPairSet.has(p)) {
+        const parts = String(p).split("->");
+        diff.connectorsCreated.push({
+          fromStickyId: parts[0] || null,
+          toStickyId: parts[1] || null
+        });
+      }
+    }
+
+    for (const p of prevPairSet) {
+      if (!newPairSet.has(p)) {
+        const parts = String(p).split("->");
+        diff.connectorsDeleted.push({
+          fromStickyId: parts[0] || null,
+          toStickyId: parts[1] || null
+        });
+      }
+    }
+
+    return diff;
+  }
+
+  function dtGetStorageCollection() {
+    try {
+      if (
+        miro &&
+        miro.board &&
+        miro.board.storage &&
+        typeof miro.board.storage.collection === "function"
+      ) {
+        return miro.board.storage.collection(DT_STORAGE_COLLECTION_NAME);
+      }
+    } catch (e) {
+      // ignore
+    }
+    return null;
+  }
+
+  function dtBaselineKeyForImageId(imageId) {
+    return DT_STORAGE_KEY_BASELINE_PREFIX + String(imageId);
+  }
+
+  async function dtLoadPersistedBaselineMeta() {
+    if (dtHasLoadedPersistedBaselineMeta) {
+      return;
+    }
+    dtHasLoadedPersistedBaselineMeta = true;
+
+    const col = dtGetStorageCollection();
+    if (!col) {
+      log("WARNUNG: Keine Storage Collection verfügbar. Globales Change-Tracking ist nicht persistent.");
+      dtHasGlobalBaseline = false;
+      dtGlobalBaselineAt = null;
+      return;
+    }
+
+    try {
+      const meta = await col.get(DT_STORAGE_KEY_META);
+      if (
+        meta &&
+        typeof meta === "object" &&
+        meta.version === 1 &&
+        meta.hasGlobalBaseline === true
+      ) {
+        dtHasGlobalBaseline = true;
+        dtGlobalBaselineAt = typeof meta.baselineAt === "string" ? meta.baselineAt : null;
+      } else {
+        dtHasGlobalBaseline = false;
+        dtGlobalBaselineAt = null;
+      }
+    } catch (e) {
+      log("Fehler beim Laden der Global-Baseline-Meta aus Storage: " + e.message);
+      dtHasGlobalBaseline = false;
+      dtGlobalBaselineAt = null;
+    }
+  }
+
+  async function dtSavePersistedBaselineMeta() {
+    dtHasLoadedPersistedBaselineMeta = true;
+
+    const col = dtGetStorageCollection();
+    if (!col) {
+      return;
+    }
+    try {
+      await col.set(DT_STORAGE_KEY_META, {
+        version: 1,
+        hasGlobalBaseline: dtHasGlobalBaseline,
+        baselineAt: dtGlobalBaselineAt || null
+      });
+    } catch (e) {
+      log("Fehler beim Speichern der Global-Baseline-Meta in Storage: " + e.message);
+    }
+  }
+
+  async function dtLoadBaselineSignatureForImageId(imageId) {
+    const col = dtGetStorageCollection();
+    if (!col) {
+      return null;
+    }
+    if (!imageId) {
+      return null;
+    }
+    try {
+      const sig = await col.get(dtBaselineKeyForImageId(imageId));
+      if (sig && typeof sig === "object" && sig.version === 1) {
+        return sig;
+      }
+    } catch (e) {
+      log("Fehler beim Laden der Baseline-Signatur für Image " + imageId + ": " + e.message);
+    }
+    return null;
+  }
+
+  async function dtSaveBaselineSignatureForImageId(imageId, signature) {
+    const col = dtGetStorageCollection();
+    if (!col) {
+      return;
+    }
+    if (!imageId || !signature) {
+      return;
+    }
+    try {
+      await col.set(dtBaselineKeyForImageId(imageId), signature);
+    } catch (e) {
+      log("Fehler beim Speichern der Baseline-Signatur für Image " + imageId + ": " + e.message);
+    }
+  }
+
+  async function dtRemoveBaselineSignatureForImageId(imageId) {
+    const col = dtGetStorageCollection();
+    if (!col) {
+      return;
+    }
+    if (!imageId) {
+      return;
+    }
+    try {
+      await col.remove(dtBaselineKeyForImageId(imageId));
+    } catch (e) {
+      log("Fehler beim Entfernen der Baseline-Signatur für Image " + imageId + ": " + e.message);
+    }
+  }
+
+
   // Punkt-in-Polygon-Test (Even-Odd-Regel) für normalisierte Koordinaten
   function dtPointInPolygonNorm(px, py, polygonNorm) {
     let inside = false;
@@ -447,6 +781,12 @@
     dtInitialized = true;
 
     try {
+      await dtLoadPersistedBaselineMeta();
+    } catch (eMeta) {
+      console.error("[DT] Fehler beim Laden der Persistenz-Meta:", eMeta);
+    }
+
+    try {
       await dtScanTemplateInstances();
     } catch (e) {
       console.error("[DT] Fehler beim initialen Template-Scan:", e);
@@ -462,6 +802,7 @@
       log("Fehler bei Registrierung von UI-Events: " + e.message);
     }
   }
+
 
   // --------------------------------------------------------------------
   // Instanz-Management
@@ -677,22 +1018,59 @@ async function dtRebindActionShapesAfterScan(images) {
     options = options || {};
     const createActionShapes = options.createActionShapes !== false;
 
+    const detectedCanvasTypeId =
+      options.canvasTypeId ||
+      dtDetectCanvasTypeIdFromImage(image) ||
+      TEMPLATE_ID;
+
     let instance = dtInstancesByImageId.get(image.id);
     if (instance) {
       instance.title = image.title || instance.title || "Datentreiber 3-Boxes";
+      instance.canvasTypeId = detectedCanvasTypeId || instance.canvasTypeId || TEMPLATE_ID;
+
       instance.lastGeometry = {
         x: image.x,
         y: image.y,
         width: image.width,
         height: image.height
       };
+
+      // Falls das Template-Bild in einem Frame liegt, frameId nachziehen (wichtig nach Copy/Paste)
+      if (!createActionShapes && image.parentId) {
+        if (!instance.actionItems) {
+          instance.actionItems = {};
+        }
+        if (!instance.actionItems.frameId) {
+          try {
+            const parentArr = await miro.board.get({ id: image.parentId });
+            const parent = Array.isArray(parentArr) ? parentArr[0] : parentArr;
+            if (parent && parent.type === "frame") {
+              instance.actionItems.frameId = parent.id;
+            }
+          } catch (e) {
+            console.error("[DT] Konnte Eltern-Frame für Template-Image nicht laden:", e);
+          }
+        }
+      }
+
+      // Persistierte Baseline-Signatur (Global-Baseline) nachladen, falls vorhanden
+      if (dtHasGlobalBaseline && !instance.baselineSignatureLoaded) {
+        try {
+          instance.baselineSignature = await dtLoadBaselineSignatureForImageId(image.id);
+        } catch (eSig) {
+          // ignore (dtLoadBaselineSignatureForImageId loggt selbst)
+        } finally {
+          instance.baselineSignatureLoaded = true;
+        }
+      }
+
       return instance;
     }
 
     const instanceId = "inst-" + (dtNextInstanceCounter++);
     instance = {
       instanceId,
-      canvasTypeId: TEMPLATE_ID,
+      canvasTypeId: detectedCanvasTypeId || TEMPLATE_ID,
       imageId: image.id,
       title: image.title || "Datentreiber 3-Boxes",
       lastGeometry: {
@@ -701,6 +1079,13 @@ async function dtRebindActionShapesAfterScan(images) {
         width: image.width,
         height: image.height
       },
+
+      // Signatur-/Baseline-Tracking (persistenter Global-Baseline-Ansatz)
+      baselineSignature: null,
+      baselineSignatureLoaded: false,
+      lastSignature: null,
+      lastStateHash: null,
+
       lastClassification: null,
       lastStateJson: null,
       lastStickyCount: 0,
@@ -732,6 +1117,17 @@ async function dtRebindActionShapesAfterScan(images) {
     dtInstancesById.set(instanceId, instance);
   
     log("Neue Canvas-Instanz registriert: " + instanceId + " (Bild-ID " + image.id + ")");
+
+    // Persistierte Baseline-Signatur (Global-Baseline) beim Registrieren nachladen (falls vorhanden)
+    if (dtHasGlobalBaseline && !instance.baselineSignatureLoaded) {
+      try {
+        instance.baselineSignature = await dtLoadBaselineSignatureForImageId(image.id);
+      } catch (eSig2) {
+        // ignore
+      } finally {
+        instance.baselineSignatureLoaded = true;
+      }
+    }
   
     if (createActionShapes) {
       try {
@@ -745,11 +1141,12 @@ async function dtRebindActionShapesAfterScan(images) {
   }
 
 
+    
   async function dtScanTemplateInstances() {
     if (!miro.board || !miro.board.get) {
       return;
     }
-  
+
     let images = [];
     try {
       images = await miro.board.get({ type: "image" });
@@ -760,20 +1157,20 @@ async function dtRebindActionShapesAfterScan(images) {
     if (!Array.isArray(images)) {
       return;
     }
-  
+
     const templateImageIdsOnBoard = new Set();
-  
+
     for (const img of images) {
-      if (
-        img.type === "image" &&
-        typeof img.url === "string" &&
-        img.url.indexOf(TEMPLATE_IMAGE_URL) !== -1
-      ) {
+      const canvasTypeId = dtDetectCanvasTypeIdFromImage(img);
+      if (canvasTypeId) {
         templateImageIdsOnBoard.add(img.id);
-        await dtRegisterInstanceFromImage(img, { createActionShapes: false });
+        await dtRegisterInstanceFromImage(img, {
+          createActionShapes: false,
+          canvasTypeId: canvasTypeId
+        });
       }
     }
-  
+
     const knownImageIds = Array.from(dtInstancesByImageId.keys());
     for (const imageId of knownImageIds) {
       if (!templateImageIdsOnBoard.has(imageId)) {
@@ -789,9 +1186,15 @@ async function dtRebindActionShapesAfterScan(images) {
             ")"
           );
         }
+
+        try {
+          await dtRemoveBaselineSignatureForImageId(imageId);
+        } catch (eRemove) {
+          // ignore
+        }
       }
     }
-  
+
     // Nach dem Scan versuchen, bestehende Frames/Buttons mit den Instanzen zu verknüpfen,
     // damit nach Panel-Neustart die Buttons wieder funktionieren.
     try {
@@ -800,6 +1203,7 @@ async function dtRebindActionShapesAfterScan(images) {
       console.error("[DT] Fehler beim Rebind der Action-Shapes:", e);
     }
   }
+
 
   // Eine Instanz gilt als "geändert", wenn sich Text, Area-Name, Farbe,
   // Tags oder Cluster-Zuordnung von Stickies verändert haben oder Stickies
@@ -811,8 +1215,19 @@ async function dtRebindActionShapesAfterScan(images) {
     const createdCount = Array.isArray(diff.created) ? diff.created.length : 0;
     const deletedCount = Array.isArray(diff.deleted) ? diff.deleted.length : 0;
     const updatedCount = Array.isArray(diff.updated) ? diff.updated.length : 0;
-    return createdCount > 0 || deletedCount > 0 || updatedCount > 0;
+
+    const connectorsCreatedCount = Array.isArray(diff.connectorsCreated) ? diff.connectorsCreated.length : 0;
+    const connectorsDeletedCount = Array.isArray(diff.connectorsDeleted) ? diff.connectorsDeleted.length : 0;
+
+    return (
+      createdCount > 0 ||
+      deletedCount > 0 ||
+      updatedCount > 0 ||
+      connectorsCreatedCount > 0 ||
+      connectorsDeletedCount > 0
+    );
   }
+
 
   // Board-Katalog-Summary mit Modi (global / instance / generic)
   function dtBuildBoardCatalogSummary(options) {
@@ -836,7 +1251,9 @@ async function dtRebindActionShapesAfterScan(images) {
           changesSummary = {
             createdCount: Array.isArray(diff.created) ? diff.created.length : 0,
             deletedCount: Array.isArray(diff.deleted) ? diff.deleted.length : 0,
-            updatedCount: Array.isArray(diff.updated) ? diff.updated.length : 0
+            updatedCount: Array.isArray(diff.updated) ? diff.updated.length : 0,
+            connectorsCreatedCount: Array.isArray(diff.connectorsCreated) ? diff.connectorsCreated.length : 0,
+            connectorsDeletedCount: Array.isArray(diff.connectorsDeleted) ? diff.connectorsDeleted.length : 0
           };
         }
       }
@@ -871,6 +1288,7 @@ async function dtRebindActionShapesAfterScan(images) {
     });
     return { instances };
   }
+
 
   function dtFindInstanceForPoint(x, y) {
     let foundInstance = null;
@@ -940,8 +1358,16 @@ async function dtRebindActionShapesAfterScan(images) {
       return;
     }
 
+    // Sicherstellen, dass Instanzen und Action-Shapes auch nach Panel-Neustart gebunden sind
+    try {
+      await dtScanTemplateInstances();
+    } catch (eScan) {
+      console.error("[DT] Fehler beim Template-Scan in selection:update:", eScan);
+    }
+
     let instanceId = null;
     let buttonType = null;
+
 
     dtInstancesById.forEach(function (inst, id) {
       if (!inst.actionItems) return;
@@ -2224,12 +2650,27 @@ async function dtRebindActionShapesAfterScan(images) {
 
     const classification = dtBuildClassificationFromLiveInstance(instance, liveInst);
 
-    const baselineClassification = instance.baselineClassification || null;
+    // Signatur für Change-Tracking (inkl. Connector-Paare)
+    const signature = dtBuildInstanceSignatureFromClassification(instance, classification);
+    instance.lastSignature = signature;
+    instance.lastStateHash = signature ? signature.stateHash : null;
+
+    // Persistierte Baseline-Signatur nachladen (nur relevant, wenn eine Global-Baseline existiert)
+    if (dtHasGlobalBaseline && instance.imageId && !instance.baselineSignatureLoaded) {
+      try {
+        instance.baselineSignature = await dtLoadBaselineSignatureForImageId(instance.imageId);
+      } catch (eSig) {
+        // ignore
+      } finally {
+        instance.baselineSignatureLoaded = true;
+      }
+    }
+
     let diff = null;
-    if (baselineClassification) {
-      diff = dtComputeInstanceDiff(baselineClassification, classification);
+    if (dtHasGlobalBaseline) {
+      diff = dtComputeInstanceDiffFromSignatures(instance.baselineSignature || null, signature || null);
     } else {
-      diff = dtComputeInstanceDiff(null, classification);
+      diff = null;
     }
 
     const payload = dtBuildPromptPayloadFromClassification(classification, {
@@ -2256,9 +2697,11 @@ async function dtRebindActionShapesAfterScan(images) {
       classification: classification,
       promptPayload: payload,
       stateJson: stateJson,
+      signature: signature,
       diff: diff
     };
   }
+
 
   function dtNormalizedToBoardCoords(templateGeometry, px, py) {
     const { x, y, width, height } = templateGeometry;
@@ -2354,8 +2797,47 @@ async function dtRebindActionShapesAfterScan(images) {
       }
 
       const coords = dtNormalizedToBoardCoords(templateGeometry, targetPx, targetPy);
-      sticky.x = coords.x;
-      sticky.y = coords.y;
+      if (!coords || !dtIsFiniteNumber(coords.x) || !dtIsFiniteNumber(coords.y)) {
+        log("move_sticky: Zielkoordinaten ungültig: " + JSON.stringify(coords));
+        return;
+      }
+
+      let newX = coords.x;
+      let newY = coords.y;
+
+      // Wenn Sticky ein Child ist (z.B. im Frame), sind x/y relativ zum Parent.
+      const rel = typeof sticky.relativeTo === "string" ? sticky.relativeTo : null;
+
+      if (sticky.parentId && rel !== "canvas_center") {
+        try {
+          const parentArr = await miro.board.get({ id: sticky.parentId });
+          const parent = Array.isArray(parentArr) ? parentArr[0] : parentArr;
+
+          if (
+            parent &&
+            dtIsFiniteNumber(parent.x) &&
+            dtIsFiniteNumber(parent.y) &&
+            dtIsFiniteNumber(parent.width) &&
+            dtIsFiniteNumber(parent.height)
+          ) {
+            if (rel === "parent_center") {
+              newX = coords.x - parent.x;
+              newY = coords.y - parent.y;
+            } else {
+              // Default: parent_top_left
+              const parentLeft = parent.x - parent.width / 2;
+              const parentTop  = parent.y - parent.height / 2;
+              newX = coords.x - parentLeft;
+              newY = coords.y - parentTop;
+            }
+          }
+        } catch (eParent) {
+          log("move_sticky: Fehler beim Laden des Parent-Items: " + eParent.message);
+        }
+      }
+
+      sticky.x = newX;
+      sticky.y = newY;
       await sticky.sync();
     } catch (e) {
       log("Fehler bei move_sticky (" + stickyId + "): " + e.message);
@@ -2369,25 +2851,23 @@ async function dtRebindActionShapesAfterScan(images) {
     const text = action.text || "";
     const region = dtAreaNameToRegion(areaName);
     const canvasTypeId = instance ? instance.canvasTypeId : TEMPLATE_ID;
-  
-    // Wenn wir keine Geometrie der Instanz haben, brechen wir ab.
-    if (!templateGeometry) {
+
+    // Geometrie muss valide sein (sonst landet das Sticky "am Ursprung" oder an NaN-Positionen)
+    if (
+      !templateGeometry ||
+      !dtIsFiniteNumber(templateGeometry.x) ||
+      !dtIsFiniteNumber(templateGeometry.y) ||
+      !dtIsFiniteNumber(templateGeometry.width) ||
+      !dtIsFiniteNumber(templateGeometry.height)
+    ) {
       log(
-        "create_sticky: Keine Template-Geometrie für Instanz " +
+        "create_sticky: Keine valide Template-Geometrie für Instanz " +
         (instance ? instance.instanceId : "(unbekannt)") +
         " – Sticky wird nicht erstellt."
       );
       return;
     }
-  
-    // *** Debug-Log, damit klar ist, welche Geometrie wirklich benutzt wird ***
-    log(
-      "create_sticky: Verwende Geometrie für Instanz " +
-      (instance ? instance.instanceId : "(unbekannt)") +
-      ": " +
-      JSON.stringify(templateGeometry)
-    );
-  
+
     // Schwerpunkt der Region im normalisierten Raum (0..1) bestimmen
     const centerNorm = dtAreaCenterNormalized(region ? region.id : null, canvasTypeId);
     const coords = dtNormalizedToBoardCoords(
@@ -2395,16 +2875,25 @@ async function dtRebindActionShapesAfterScan(images) {
       centerNorm.px,
       centerNorm.py
     );
-  
+
+    if (!coords || !dtIsFiniteNumber(coords.x) || !dtIsFiniteNumber(coords.y)) {
+      log(
+        "create_sticky: Zielkoordinaten sind ungültig für Instanz " +
+        (instance ? instance.instanceId : "(unbekannt)") +
+        " – coords=" + JSON.stringify(coords)
+      );
+      return;
+    }
+
     const createPayload = {
       content: text || "(leer)",
       x: coords.x,
       y: coords.y
     };
-  
+
     try {
       const sticky = await miro.board.createStickyNote(createPayload);
-  
+
       if (!sticky || !sticky.id) {
         log(
           "create_sticky: createStickyNote hat kein gültiges Sticky zurückgegeben. Payload:\n" +
@@ -2412,7 +2901,24 @@ async function dtRebindActionShapesAfterScan(images) {
         );
         return;
       }
-  
+
+      // Optional: dem Instanz-Frame hinzufügen, damit Sticky beim Verschieben der Instanz mitgeht.
+      const frameId =
+        instance && instance.actionItems ? instance.actionItems.frameId : null;
+
+      if (frameId) {
+        try {
+          const frameArr = await miro.board.get({ id: frameId });
+          const frame = Array.isArray(frameArr) ? frameArr[0] : frameArr;
+          if (frame && frame.type === "frame" && typeof frame.add === "function") {
+            await frame.add(sticky);
+            await frame.sync();
+          }
+        } catch (eFrame) {
+          log("create_sticky: Konnte Sticky nicht dem Frame hinzufügen: " + eFrame.message);
+        }
+      }
+
       log(
         "create_sticky: Neues Sticky erstellt (" +
         sticky.id +
@@ -2425,9 +2931,6 @@ async function dtRebindActionShapesAfterScan(images) {
         ", y=" +
         coords.y
       );
-  
-      // WICHTIG: KEIN Frame-Parenting mehr. Region/Instanz-Zugehörigkeit läuft
-      // nur über Geometrie (Bounding Box + Image Map), nicht über parentId.
     } catch (e) {
       log(
         "Fehler bei create_sticky (Instanz " +
@@ -2524,7 +3027,9 @@ async function dtRebindActionShapesAfterScan(images) {
     const out = {
       created: [],
       deleted: [],
-      updated: []
+      updated: [],
+      connectorsCreated: [],
+      connectorsDeleted: []
     };
 
     if (Array.isArray(diff.created)) {
@@ -2552,59 +3057,94 @@ async function dtRebindActionShapesAfterScan(images) {
       });
     }
 
+    if (Array.isArray(diff.connectorsCreated)) {
+      diff.connectorsCreated.forEach(function (entry) {
+        out.connectorsCreated.push({
+          fromStickyId: aliasId(entry.fromStickyId),
+          toStickyId: aliasId(entry.toStickyId)
+        });
+      });
+    }
+    if (Array.isArray(diff.connectorsDeleted)) {
+      diff.connectorsDeleted.forEach(function (entry) {
+        out.connectorsDeleted.push({
+          fromStickyId: aliasId(entry.fromStickyId),
+          toStickyId: aliasId(entry.toStickyId)
+        });
+      });
+    }
+
     return out;
   }
+
 
   async function dtComputeTemplateGeometry(instance) {
     if (!instance) {
       return null;
     }
-  
+
     await dtEnsureMiroReady();
-  
+
     // 1. Primärquelle: das Template-Bild selbst
     if (instance.imageId) {
       try {
         const imgArr = await miro.board.get({ id: instance.imageId });
         const img = Array.isArray(imgArr) ? imgArr[0] : imgArr;
-  
-        if (img && typeof img.width === "number" && typeof img.height === "number") {
+
+        if (
+          img &&
+          dtIsFiniteNumber(img.x) &&
+          dtIsFiniteNumber(img.y) &&
+          dtIsFiniteNumber(img.width) &&
+          dtIsFiniteNumber(img.height)
+        ) {
           let boardX = null;
           let boardY = null;
-  
-          // FALL A: Bild liegt in einem Frame → img.x / img.y sind relativ zum Frame
-          if (img.parentId) {
+
+          const rel = typeof img.relativeTo === "string" ? img.relativeTo : null;
+
+          // FALL A: Item ist Child (z.B. im Frame). Dann sind x/y i.d.R. relativ zum Parent.
+          if (img.parentId && rel !== "canvas_center") {
             try {
-              const frameArr = await miro.board.get({ id: img.parentId });
-              const frame = Array.isArray(frameArr) ? frameArr[0] : frameArr;
-  
-              if (frame && typeof frame.x === "number" && typeof frame.y === "number") {
-                const frameLeft = frame.x - frame.width / 2;
-                const frameTop  = frame.y - frame.height / 2;
-  
-                // Child-x/y = Mittelpunkt relativ zur linken oberen Ecke des Frames
-                boardX = frameLeft + img.x;
-                boardY = frameTop  + img.y;
+              const parentArr = await miro.board.get({ id: img.parentId });
+              const parent = Array.isArray(parentArr) ? parentArr[0] : parentArr;
+
+              if (
+                parent &&
+                dtIsFiniteNumber(parent.x) &&
+                dtIsFiniteNumber(parent.y) &&
+                dtIsFiniteNumber(parent.width) &&
+                dtIsFiniteNumber(parent.height)
+              ) {
+                if (rel === "parent_center") {
+                  boardX = parent.x + img.x;
+                  boardY = parent.y + img.y;
+                } else {
+                  // Default: parent_top_left (Frames / typische Container)
+                  const parentLeft = parent.x - parent.width / 2;
+                  const parentTop  = parent.y - parent.height / 2;
+                  boardX = parentLeft + img.x;
+                  boardY = parentTop  + img.y;
+                }
               }
-            } catch (eFrame) {
-              log("Fehler beim Laden des Frames für Template-Bild: " + eFrame.message);
+            } catch (eParent) {
+              log("Fehler beim Laden des Parent-Items für Template-Bild: " + eParent.message);
             }
           }
-  
-          // FALL B: Kein Parent-Frame oder Fehler → img.x / img.y sind Board-Koordinaten
-          if (typeof boardX !== "number" || typeof boardY !== "number") {
+
+          // FALL B: Board-Level Koordinaten (canvas_center) oder Parent konnte nicht berechnet werden
+          if (!dtIsFiniteNumber(boardX) || !dtIsFiniteNumber(boardY)) {
             boardX = img.x;
             boardY = img.y;
           }
-  
+
           const geom = {
             x: boardX,
             y: boardY,
             width: img.width,
             height: img.height
           };
-  
-          // Für alle Folgefunktionen merken
+
           instance.lastGeometry = geom;
           return geom;
         }
@@ -2612,13 +3152,22 @@ async function dtRebindActionShapesAfterScan(images) {
         log("Fehler beim Laden der Template-Geometrie aus dem Bild: " + e.message);
       }
     }
-  
-    // 2. Fallback: zuletzt bekannte Geometrie
+
+    // 2. Fallback: zuletzt bekannte Geometrie (nur wenn valide)
     if (instance.lastGeometry) {
-      return instance.lastGeometry;
+      const g = instance.lastGeometry;
+      if (
+        g &&
+        dtIsFiniteNumber(g.x) &&
+        dtIsFiniteNumber(g.y) &&
+        dtIsFiniteNumber(g.width) &&
+        dtIsFiniteNumber(g.height)
+      ) {
+        return g;
+      }
     }
-  
-    // 3. Letzter Fallback: Dummy-Geometrie, damit der Agent wenigstens läuft
+
+    // 3. Letzter Fallback: Dummy-Geometrie
     const dummy = { x: 0, y: 0, width: 2000, height: 1000 };
     instance.lastGeometry = dummy;
     log(
@@ -2627,6 +3176,7 @@ async function dtRebindActionShapesAfterScan(images) {
     );
     return dummy;
   }
+
 
 
 
@@ -2805,20 +3355,42 @@ async function dtRebindActionShapesAfterScan(images) {
 
       try {
         const nowIso = new Date().toISOString();
+
+        // Global-Baseline ist ein Snapshot über ALLE Instanzen.
+        // Wir persistieren pro Template-Image eine Signatur in board.storage,
+        // damit das Change-Tracking nach App-Restart weiter funktioniert.
+        const savePromises = [];
+
         dtInstancesById.forEach(function (inst) {
           const st = stateById[inst.instanceId];
-          if (st && st.classification) {
-            inst.baselineClassification = st.classification;
-            inst.baselineStateJson = st.stateJson;
+
+          if (st && st.signature && inst.imageId) {
+            inst.baselineSignature = st.signature;
+            inst.baselineSignatureLoaded = true;
+
+            inst.lastDiff = null;
+            inst.lastAgentRunAt = nowIso;
+            inst.lastChangedAt = nowIso;
+
+            savePromises.push(
+              dtSaveBaselineSignatureForImageId(inst.imageId, st.signature)
+            );
+          } else {
             inst.lastDiff = null;
             inst.lastAgentRunAt = nowIso;
             inst.lastChangedAt = nowIso;
           }
         });
+
         dtHasGlobalBaseline = true;
+        dtGlobalBaselineAt = nowIso;
+
+        await Promise.all(savePromises);
+        await dtSavePersistedBaselineMeta();
       } catch (e2) {
         log("Fehler beim Aktualisieren der Baseline nach globalem Agent-Run: " + e2.message);
       }
+
     } catch (e) {
       log("Exception beim globalen Agent-Run: " + e.message);
     }
@@ -2898,22 +3470,8 @@ async function dtRebindActionShapesAfterScan(images) {
       activeInstanceId: instanceId
     });
 
-    let aliasDiff = null;
-    if (instance.baselineClassification) {
-      const rawDiff = mainState.diff;
-      const mapped = dtAliasDiffForActiveInstance(rawDiff);
-      if (
-        mapped &&
-        Array.isArray(mapped.created) &&
-        Array.isArray(mapped.deleted) &&
-        Array.isArray(mapped.updated) &&
-        (mapped.created.length || mapped.deleted.length || mapped.updated.length)
-      ) {
-        aliasDiff = mapped;
-      } else {
-        aliasDiff = null;
-      }
-    }
+    const aliasDiff = null;
+
 
     const detailInstanceIds = [instanceId];
 
@@ -3000,24 +3558,22 @@ async function dtRebindActionShapesAfterScan(images) {
       }
 
       try {
-        // Nach den Actions Boardzustand nochmal scannen und neue Baseline setzen
+        // Nach den Actions Boardzustand nochmal scannen und Instanz-Cache aktualisieren
+        // WICHTIG: KEIN Update der Global-Baseline im lokalen Modus (Aussage B).
         const ctx2 = await dtGetBoardBaseContext();
         await dtRebuildLiveCatalog(ctx2);
-        const postState = await dtGetInstanceStateForAgent(instForState, {
+        await dtGetInstanceStateForAgent(instForState, {
           ctx: ctx2,
           liveCatalogReady: true
         });
-        if (postState && postState.classification) {
-          const nowIso = new Date().toISOString();
-          instForState.baselineClassification = postState.classification;
-          instForState.baselineStateJson = postState.stateJson;
-          instForState.lastDiff = null;
-          instForState.lastAgentRunAt = nowIso;
-          instForState.lastChangedAt = nowIso;
-        }
+
+        const nowIso = new Date().toISOString();
+        instForState.lastAgentRunAt = nowIso;
+        instForState.lastChangedAt = nowIso;
       } catch (e2) {
-        log("Fehler beim Aktualisieren der Baseline nach Agent-Run: " + e2.message);
+        log("Fehler beim Aktualisieren des Instanz-Cache nach Agent-Run: " + e2.message);
       }
+
     } catch (e) {
       log("Exception beim Agent-Run: " + e.message);
     }
@@ -3033,6 +3589,15 @@ async function dtRebindActionShapesAfterScan(images) {
   window.dtRunAgentForInstance      = dtRunAgentForInstance;
   window.dtRunGlobalAgent           = dtRunGlobalAgent;
 
+  // --------------------------------------------------------------------
+  // Auto-Init: Miro SDK initialisieren, damit Board-Buttons (Shapes) sofort reagieren
+  // --------------------------------------------------------------------
+  dtEnsureMiroReady().catch(function (e) {
+    console.error("[DT] Auto-Init (dtEnsureMiroReady) fehlgeschlagen:", e);
+    log("Auto-Init Fehler: " + (e && e.message ? e.message : String(e)));
+  });
+
   </script>
+
 </body>
 </html>
