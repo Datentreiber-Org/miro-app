@@ -692,7 +692,9 @@ async function applyAgentActionsToInstance(instanceId, actions) {
       const text = action.text || "(leer)";
       const canvasTypeId = instance.canvasTypeId || TEMPLATE_ID;
 
-      const region = Catalog.areaNameToRegion(action.area);
+      // Robust: Agenten-Outputs variieren manchmal (area vs targetArea)
+      const areaName = action.area || action.targetArea || null;
+      const region = Catalog.areaNameToRegion(areaName);
       const regionId = region?.id || null;
 
       // Fallback: unbekannte Area → altes Verhalten (Center)
