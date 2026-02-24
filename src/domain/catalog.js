@@ -1,6 +1,17 @@
 import { TEMPLATE_ID, DT_CANVAS_DEFS } from "../config.js";
-import { stripHtml, isFiniteNumber, buildInstanceSignatureFromClassification, computeInstanceDiffFromSignatures, diffHasChanges } from "../utils.js";
-import { computeTemplateGeometry, buildInstanceGeometryIndex, resolveBoardCoords, findInstanceByPoint } from "../miro/board.js";
+import {
+  stripHtml,
+  isFiniteNumber,
+  buildInstanceSignatureFromClassification,
+  computeInstanceDiffFromSignatures,
+  diffHasChanges
+} from "../utils.js";
+import {
+  computeTemplateGeometry,
+  buildInstanceGeometryIndex,
+  resolveBoardCoords,
+  findInstanceByPoint
+} from "../miro/board.js";
 
 // --------------------------------------------------------------------
 // Canvas Definitions / Region Mapping
@@ -142,6 +153,179 @@ export function areaCenterNormalized(regionId, canvasTypeId) {
 }
 
 // --------------------------------------------------------------------
+// Region Bounds + Sticky Auto-Layout (Grid mit Wrap, collision-aware)
+// --------------------------------------------------------------------
+function polygonBoundsNorm(polygonNorm) {
+  let minX = Infinity, maxX = -Infinity, minY = Infinity, maxY = -Infinity;
+  for (const pt of polygonNorm || []) {
+    const x = pt[0];
+    const y = pt[1];
+    if (x < minX) minX = x;
+    if (x > maxX) maxX = x;
+    if (y < minY) minY = y;
+    if (y > maxY) maxY = y;
+  }
+  if (!Number.isFinite(minX)) return null;
+  return { minX, maxX, minY, maxY };
+}
+
+export function getBodyRegionBoundsNorm(canvasTypeId, regionId) {
+  const def = getCanvasDef(canvasTypeId);
+
+  // Primär: aus Canvas-Def (Polygon)
+  if (def?.regionPolygons && regionId) {
+    const r = def.regionPolygons.find((rp) => rp.id === regionId);
+    if (r?.polygonNorm?.length) {
+      return polygonBoundsNorm(r.polygonNorm);
+    }
+  }
+
+  // Fallback: 3-Boxes Default (falls defs fehlen)
+  const yMin = 0.18;
+  const yMax = 0.95;
+
+  if (regionId === "left") {
+    return { minX: 0.0, maxX: 1.0 / 3.0, minY: yMin, maxY: yMax };
+  }
+  if (regionId === "middle") {
+    return { minX: 1.0 / 3.0, maxX: 2.0 / 3.0, minY: yMin, maxY: yMax };
+  }
+  if (regionId === "right") {
+    return { minX: 2.0 / 3.0, maxX: 1.0, minY: yMin, maxY: yMax };
+  }
+
+  return null;
+}
+
+export function getBodyRegionBoundsBoard(templateGeometry, canvasTypeId, regionId) {
+  if (!templateGeometry) return null;
+
+  const b = getBodyRegionBoundsNorm(canvasTypeId, regionId);
+  if (!b) return null;
+
+  const left0 = templateGeometry.x - templateGeometry.width / 2;
+  const top0  = templateGeometry.y - templateGeometry.height / 2;
+
+  const left   = left0 + b.minX * templateGeometry.width;
+  const right  = left0 + b.maxX * templateGeometry.width;
+  const top    = top0  + b.minY * templateGeometry.height;
+  const bottom = top0  + b.maxY * templateGeometry.height;
+
+  return {
+    left, right, top, bottom,
+    width: right - left,
+    height: bottom - top,
+    norm: b
+  };
+}
+
+function rectsOverlap(a, b, padding = 0) {
+  const aL = a.x - a.width / 2 - padding;
+  const aR = a.x + a.width / 2 + padding;
+  const aT = a.y - a.height / 2 - padding;
+  const aB = a.y + a.height / 2 + padding;
+
+  const bL = b.x - b.width / 2;
+  const bR = b.x + b.width / 2;
+  const bT = b.y - b.height / 2;
+  const bB = b.y + b.height / 2;
+
+  return !(aR <= bL || aL >= bR || aB <= bT || aT >= bB);
+}
+
+function boardToNormalized(templateGeometry, x, y) {
+  const left0 = templateGeometry.x - templateGeometry.width / 2;
+  const top0  = templateGeometry.y - templateGeometry.height / 2;
+  return {
+    px: (x - left0) / templateGeometry.width,
+    py: (y - top0) / templateGeometry.height
+  };
+}
+
+/**
+ * Liefert die nächste freie Position in einer Body-Region (left/middle/right),
+ * füllt zeilenweise, wrappt, vermeidet Overlaps mit bestehenden Stickies.
+ *
+ * occupiedRects: [{x,y,width,height}, ...] in Board-Koordinaten
+ */
+export function computeNextFreeStickyPositionInBodyRegion({
+  templateGeometry,
+  canvasTypeId,
+  regionId,
+  stickyWidthPx,
+  stickyHeightPx,
+  marginPx = 20,
+  gapPx = 20,
+  occupiedRects = []
+}) {
+  const bounds = getBodyRegionBoundsBoard(templateGeometry, canvasTypeId, regionId);
+  if (!bounds) return null;
+
+  const w = Math.max(10, Number(stickyWidthPx) || 200);
+  const h = Math.max(10, Number(stickyHeightPx) || 200);
+
+  const regionW = bounds.width;
+  const regionH = bounds.height;
+
+  // Margin adaptiv, falls Region kleiner als Sticky
+  const marginX = Math.max(0, Math.min(marginPx, (regionW - w) / 2));
+  const marginY = Math.max(0, Math.min(marginPx, (regionH - h) / 2));
+
+  const availW = Math.max(0, regionW - 2 * marginX);
+  const availH = Math.max(0, regionH - 2 * marginY);
+
+  const stepX = w + gapPx;
+  const stepY = h + gapPx;
+
+  const cols = Math.max(1, Math.floor((availW + gapPx) / stepX));
+  const rows = Math.max(1, Math.floor((availH + gapPx) / stepY));
+
+  const padding = Math.max(0, gapPx * 0.5);
+
+  function isInsideRegionByClassification(x, y) {
+    // robust für Polygon-Regionen: Center muss in derselben Region liegen
+    const n = boardToNormalized(templateGeometry, x, y);
+    if (n.px < 0 || n.px > 1 || n.py < 0 || n.py > 1) return false;
+    const loc = classifyNormalizedLocation(canvasTypeId, n.px, n.py);
+    return loc?.role === "body" && loc?.regionId === regionId;
+  }
+
+  function overlapsAny(candidate) {
+    for (const occ of occupiedRects || []) {
+      if (!occ || typeof occ.x !== "number" || typeof occ.y !== "number") continue;
+      const ow = Math.max(10, Number(occ.width) || w);
+      const oh = Math.max(10, Number(occ.height) || h);
+      if (rectsOverlap(candidate, { ...occ, width: ow, height: oh }, padding)) return true;
+    }
+    return false;
+  }
+
+  // Zeilenweise füllen: erste freie Zelle finden
+  for (let r = 0; r < rows; r++) {
+    for (let c = 0; c < cols; c++) {
+      const x = bounds.left + marginX + w / 2 + c * stepX;
+      const y = bounds.top  + marginY + h / 2 + r * stepY;
+
+      // zusätzliche Sicherheit (Polygon-Regionen)
+      if (!isInsideRegionByClassification(x, y)) continue;
+
+      const candidate = { x, y, width: w, height: h };
+      if (!overlapsAny(candidate)) {
+        return { x, y, col: c, row: r, cols, rows, isFull: false, bounds };
+      }
+    }
+  }
+
+  // Kein freier Slot gefunden → "voll"
+  const lastC = cols - 1;
+  const lastR = rows - 1;
+  const x = bounds.left + marginX + w / 2 + lastC * stepX;
+  const y = bounds.top  + marginY + h / 2 + lastR * stepY;
+
+  return { x, y, col: lastC, row: lastR, cols, rows, isFull: true, bounds };
+}
+
+// --------------------------------------------------------------------
 // Live Catalog
 // --------------------------------------------------------------------
 export async function rebuildLiveCatalog({ ctx, instancesById, clusterAssignments, log }) {
@@ -246,8 +430,18 @@ export async function rebuildLiveCatalog({ ctx, instancesById, clusterAssignment
     const stickObj = {
       id: s.id,
       text: stripHtml(s.content),
+
+      // Board-Koordinaten (wichtig für Overlap-Checks/Layout)
+      x: pos.x,
+      y: pos.y,
+
+      // Miro liefert i.d.R. width/height – falls nicht: null (Fallback später)
+      width: isFiniteNumber(s.width) ? s.width : null,
+      height: isFiniteNumber(s.height) ? s.height : null,
+
       px: Math.round(px * 10000) / 10000,
       py: Math.round(py * 10000) / 10000,
+
       role: loc.role,
       regionId: loc.regionId || null,
       regionTitle: loc.regionTitle || null,
