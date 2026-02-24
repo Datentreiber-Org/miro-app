@@ -128,3 +128,13 @@ export const DT_GLOBAL_SYSTEM_PROMPT = (
   "Wenn du einzelne Sticky Notes in Actions referenzierst, verwende die Kurz-IDs aus den JSON-Strukturen.\n" +
   "Antworte ausschließlich mit einem JSON-Objekt mit den Feldern \"analysis\" und \"actions\"."
 );
+
+// --------------------------------------------------------------------
+// Sticky Auto-Layout (Create/Move Sticky) – Region Fill
+// --------------------------------------------------------------------
+export const STICKY_LAYOUT = {
+  marginPx: 20,              // Abstand zur Region (oben/links/rechts/unten)
+  gapPx: 20,                 // Abstand zwischen Stickies (horizontal/vertikal)
+  defaultWidthPx: 200,       // Fallback, falls Miro keine width/height liefert
+  defaultHeightPx: 200
+};
