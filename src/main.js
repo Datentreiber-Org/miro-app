@@ -3,10 +3,11 @@ import {
   TEMPLATE_IMAGE_URL,
   DT_TEMPLATE_CATALOG,
   DT_PROMPT_CATALOG,
-  DT_GLOBAL_SYSTEM_PROMPT
+  DT_GLOBAL_SYSTEM_PROMPT,
+  STICKY_LAYOUT
 } from "./config.js";
 
-import { createLogger, stripHtml, extractUnderlinedText } from "./utils.js";
+import { createLogger, stripHtml, extractUnderlinedText, isFiniteNumber } from "./utils.js";
 
 import * as Board from "./miro/board.js";
 import * as Catalog from "./domain/catalog.js";
@@ -528,46 +529,248 @@ async function applyAgentActionsToInstance(instanceId, actions) {
     return;
   }
 
+  // ---- Layout State für create_sticky/move_sticky: pro Region belegte Rects ----
+  if (!state.liveCatalog || !state.liveCatalog.instances?.[instanceId]) {
+    await refreshBoardState();
+  }
+
+  const liveInst = state.liveCatalog?.instances?.[instanceId] || null;
+
+  function rectFromLiveSticky(st) {
+    if (!st || typeof st.x !== "number" || typeof st.y !== "number") return null;
+    return {
+      id: st.id,
+      x: st.x,
+      y: st.y,
+      width: isFiniteNumber(st.width) ? st.width : STICKY_LAYOUT.defaultWidthPx,
+      height: isFiniteNumber(st.height) ? st.height : STICKY_LAYOUT.defaultHeightPx
+    };
+  }
+
+  function buildOccupied(list) {
+    const out = [];
+    for (const st of list || []) {
+      const r = rectFromLiveSticky(st);
+      if (r) out.push(r);
+    }
+    return out;
+  }
+
+  const occupiedByRegion = {
+    left:   buildOccupied(liveInst?.regions?.body?.left?.stickies),
+    middle: buildOccupied(liveInst?.regions?.body?.middle?.stickies),
+    right:  buildOccupied(liveInst?.regions?.body?.right?.stickies)
+  };
+
+  function deriveStickySize(regionId) {
+    const occ = occupiedByRegion[regionId] || [];
+    if (occ.length === 0) {
+      return { width: STICKY_LAYOUT.defaultWidthPx, height: STICKY_LAYOUT.defaultHeightPx };
+    }
+    // Nimm als "typische" Größe die erste (stabil genug für Layout)
+    return {
+      width: occ[0].width || STICKY_LAYOUT.defaultWidthPx,
+      height: occ[0].height || STICKY_LAYOUT.defaultHeightPx
+    };
+  }
+
+  function removeFromAllOccupied(stickyId) {
+    if (!stickyId) return;
+    for (const rid of Object.keys(occupiedByRegion)) {
+      occupiedByRegion[rid] = (occupiedByRegion[rid] || []).filter((r) => r && r.id !== stickyId);
+    }
+  }
+
+  function detectBodyRegionIdFromBoardCoords(canvasTypeId, x, y) {
+    if (!geom || !isFiniteNumber(x) || !isFiniteNumber(y)) return null;
+    const left0 = geom.x - geom.width / 2;
+    const top0  = geom.y - geom.height / 2;
+    const px = (x - left0) / geom.width;
+    const py = (y - top0) / geom.height;
+    if (px < 0 || px > 1 || py < 0 || py > 1) return null;
+
+    const loc = Catalog.classifyNormalizedLocation(canvasTypeId, px, py);
+    const rid = loc?.role === "body" ? loc.regionId : null;
+    if (rid === "left" || rid === "middle" || rid === "right") return rid;
+    return null;
+  }
+
   const handlers = {
+    // MOVE: wenn targetPx/targetPy fehlen, dann "snap to next free slot" in targetArea
     "move_sticky": async (action) => {
       const stickyId = Catalog.resolveStickyId(action.stickyId, state.aliasState);
       if (!stickyId) return;
 
       const canvasTypeId = instance.canvasTypeId || TEMPLATE_ID;
 
-      let targetPx = action.targetPx;
-      let targetPy = action.targetPy;
+      // Sticky-Item laden (für echte width/height)
+      let stickyItem = null;
+      try {
+        stickyItem = await Board.getItemById(stickyId, log);
+      } catch (_) {}
 
-      if (typeof targetPx !== "number" || typeof targetPy !== "number") {
+      const stickyW = isFiniteNumber(stickyItem?.width) ? stickyItem.width : STICKY_LAYOUT.defaultWidthPx;
+      const stickyH = isFiniteNumber(stickyItem?.height) ? stickyItem.height : STICKY_LAYOUT.defaultHeightPx;
+
+      // Vorab entfernen (damit wir uns nicht selbst blockieren)
+      removeFromAllOccupied(stickyId);
+
+      let targetX = null;
+      let targetY = null;
+
+      const hasExplicitTarget =
+        (typeof action.targetPx === "number" && typeof action.targetPy === "number");
+
+      if (hasExplicitTarget) {
+        const coords = Catalog.normalizedToBoardCoords(geom, action.targetPx, action.targetPy);
+        targetX = coords.x;
+        targetY = coords.y;
+      } else {
         const region = Catalog.areaNameToRegion(action.targetArea);
-        const center = Catalog.areaCenterNormalized(region ? region.id : null, canvasTypeId);
-        targetPx = center.px;
-        targetPy = center.py;
+        const regionId = region?.id || null;
+
+        if (regionId && occupiedByRegion[regionId]) {
+          const pos = Catalog.computeNextFreeStickyPositionInBodyRegion({
+            templateGeometry: geom,
+            canvasTypeId,
+            regionId,
+            stickyWidthPx: stickyW,
+            stickyHeightPx: stickyH,
+            marginPx: STICKY_LAYOUT.marginPx,
+            gapPx: STICKY_LAYOUT.gapPx,
+            occupiedRects: occupiedByRegion[regionId]
+          });
+
+          if (pos) {
+            if (pos.isFull) {
+              log(
+                "WARNUNG: Region '" + regionId + "' wirkt voll (Grid " +
+                pos.cols + "x" + pos.rows +
+                "). move_sticky setzt auf letzte Zelle."
+              );
+            }
+            targetX = pos.x;
+            targetY = pos.y;
+          } else {
+            // Fallback: Center
+            const center = Catalog.areaCenterNormalized(regionId, canvasTypeId);
+            const coords = Catalog.normalizedToBoardCoords(geom, center.px, center.py);
+            targetX = coords.x;
+            targetY = coords.y;
+          }
+        } else {
+          // Unbekannte Area -> Center (altes Verhalten)
+          const center = Catalog.areaCenterNormalized(null, canvasTypeId);
+          const coords = Catalog.normalizedToBoardCoords(geom, center.px, center.py);
+          targetX = coords.x;
+          targetY = coords.y;
+        }
       }
 
-      const coords = Catalog.normalizedToBoardCoords(geom, targetPx, targetPy);
-      await Board.moveItemByIdToBoardCoords(stickyId, coords.x, coords.y, log);
+      if (!isFiniteNumber(targetX) || !isFiniteNumber(targetY)) {
+        log("move_sticky: Zielkoordinaten ungültig für Sticky " + stickyId);
+        return;
+      }
+
+      await Board.moveItemByIdToBoardCoords(stickyId, targetX, targetY, log);
+
+      // Occupied updaten (damit nachfolgende create/move nicht kollidieren)
+      const destRegionId = detectBodyRegionIdFromBoardCoords(canvasTypeId, targetX, targetY);
+      if (destRegionId && occupiedByRegion[destRegionId]) {
+        occupiedByRegion[destRegionId].push({
+          id: stickyId,
+          x: targetX,
+          y: targetY,
+          width: stickyW,
+          height: stickyH
+        });
+      }
     },
 
+    // CREATE: Region-Fill-Layout (Grid + Wrap + collision-aware)
     "create_sticky": async (action) => {
       const text = action.text || "(leer)";
-      const region = Catalog.areaNameToRegion(action.area);
       const canvasTypeId = instance.canvasTypeId || TEMPLATE_ID;
 
-      const center = Catalog.areaCenterNormalized(region ? region.id : null, canvasTypeId);
-      const coords = Catalog.normalizedToBoardCoords(geom, center.px, center.py);
+      const region = Catalog.areaNameToRegion(action.area);
+      const regionId = region?.id || null;
 
-      await Board.createStickyNoteAtBoardCoords({
+      // Fallback: unbekannte Area → altes Verhalten (Center)
+      if (!regionId || !occupiedByRegion[regionId]) {
+        const center = Catalog.areaCenterNormalized(null, canvasTypeId);
+        const coords = Catalog.normalizedToBoardCoords(geom, center.px, center.py);
+
+        await Board.createStickyNoteAtBoardCoords({
+          content: text,
+          x: coords.x,
+          y: coords.y,
+          frameId: instance.actionItems?.frameId || null
+        }, log);
+        return;
+      }
+
+      const size = deriveStickySize(regionId);
+
+      const pos = Catalog.computeNextFreeStickyPositionInBodyRegion({
+        templateGeometry: geom,
+        canvasTypeId,
+        regionId,
+        stickyWidthPx: size.width,
+        stickyHeightPx: size.height,
+        marginPx: STICKY_LAYOUT.marginPx,
+        gapPx: STICKY_LAYOUT.gapPx,
+        occupiedRects: occupiedByRegion[regionId]
+      });
+
+      if (!pos) {
+        log("create_sticky: Konnte keine Platzierung berechnen (Region=" + regionId + "). Fallback Center.");
+        const center = Catalog.areaCenterNormalized(regionId, canvasTypeId);
+        const coords = Catalog.normalizedToBoardCoords(geom, center.px, center.py);
+
+        await Board.createStickyNoteAtBoardCoords({
+          content: text,
+          x: coords.x,
+          y: coords.y,
+          frameId: instance.actionItems?.frameId || null
+        }, log);
+        return;
+      }
+
+      if (pos.isFull) {
+        log(
+          "WARNUNG: Region '" + regionId + "' wirkt voll (Grid " +
+          pos.cols + "x" + pos.rows +
+          "). Sticky wird auf die letzte Zelle gesetzt."
+        );
+      }
+
+      const sticky = await Board.createStickyNoteAtBoardCoords({
         content: text,
-        x: coords.x,
-        y: coords.y,
+        x: pos.x,
+        y: pos.y,
         frameId: instance.actionItems?.frameId || null
       }, log);
+
+      // Belegte Fläche updaten (damit mehrere create_sticky Actions sauber fortlaufend platzieren)
+      const actualW = (sticky && isFiniteNumber(sticky.width)) ? sticky.width : size.width;
+      const actualH = (sticky && isFiniteNumber(sticky.height)) ? sticky.height : size.height;
+
+      occupiedByRegion[regionId].push({
+        id: sticky?.id || null,
+        x: pos.x,
+        y: pos.y,
+        width: actualW,
+        height: actualH
+      });
     },
 
     "delete_sticky": async (action) => {
       const stickyId = Catalog.resolveStickyId(action.stickyId, state.aliasState);
       if (!stickyId) return;
+
+      // occupied vorher entfernen (damit nachfolgende creates wieder Slots nutzen können)
+      removeFromAllOccupied(stickyId);
+
       await Board.removeItemById(stickyId, log);
     }
   };
