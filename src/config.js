@@ -1,3 +1,4 @@
+// src/config.js
 // OpenAI
 export const OPENAI_ENDPOINT = "https://api.openai.com/v1/responses";
 
@@ -98,16 +99,30 @@ export const DT_PROMPT_CATALOG = {
       "Du sollst:\n" +
       "1) die Situation auf den übergebenen Instanzen verstehen (Input / Processing / Output),\n" +
       "2) sinnvolle nächste Schritte vorschlagen und\n" +
-      "3) optionale Board-Aktionen als JSON liefern (z.B. Stickies verschieben oder anlegen).\n" +
-      "Jede Sticky Note in den Strukturen unter 'activeCanvasState' bzw. 'activeCanvasStates' hat eine kurze ID im Feld 'id' (z.B. \"S0001\"). " +
-      "Wenn du eine Sticky Note in einer Action referenzierst, verwende genau diese kurze ID im Feld 'stickyId'.\n" +
-      "WICHTIG: Antworte ausschließlich mit einem JSON-Objekt im folgenden Format:\n" +
+      "3) optionale Board-Aktionen als JSON liefern.\n" +
+      "\n" +
+      "IDs / Referenzen:\n" +
+      "- Jede existierende Sticky Note in 'activeCanvasState' bzw. 'activeCanvasStates' hat eine kurze ID im Feld 'id' (z.B. \"S0001\").\n" +
+      "- Wenn du eine existierende Sticky Note referenzierst, verwende diese kurze ID in Feldern wie stickyId/fromStickyId/toStickyId.\n" +
+      "- Wenn du neue Stickies erzeugst und sie in derselben Antwort später referenzieren willst (z.B. verbinden oder verschieben), gib bei create_sticky zusätzlich ein Feld \"ref\" an (frei wählbarer, eindeutiger String). Du darfst diese ref später wie eine ID verwenden.\n" +
+      "\n" +
+      "Unterstützte Actions:\n" +
+      "- move_sticky:   { type, stickyId, targetArea? ODER targetPx/targetPy }\n" +
+      "- create_sticky: { type, area (oder targetArea), text, ref? }\n" +
+      "- delete_sticky: { type, stickyId }\n" +
+      "- create_connector: { type, fromStickyId, toStickyId, caption?, shape?, style? }\n" +
+      "- ensure_connector: wie create_connector, erzeugt nur wenn noch keine Verbindung existiert\n" +
+      "- delete_connector: { type, connectorId } ODER { type, fromStickyId, toStickyId, all? }\n" +
+      "- connect_chain: { type, stickyIds: [ ... ] } // verbindet jeweils Nachbarn (A-B, B-C, ...)\n" +
+      "\n" +
+      "WICHTIG: Antworte ausschließlich mit einem JSON-Objekt im folgenden Format (kein Markdown, keine Code-Fences):\n" +
       "{\n" +
-      '  "analysis": "kurze Erklärung in natürlicher Sprache",\n' +
-      '  "actions": [\n' +
-      '    { "type": "move_sticky", "stickyId": "S0001", "targetArea": "Box 2 (Mitte)" },\n' +
-      '    { "type": "create_sticky", "area": "Box 3 (rechts)", "text": "Neuer Inhalt" },\n' +
-      '    { "type": "delete_sticky", "stickyId": "S0002" }\n' +
+      "  \"analysis\": \"kurze Erklärung in natürlicher Sprache\",\n" +
+      "  \"actions\": [\n" +
+      "    { \"type\": \"create_sticky\", \"area\": \"Box 1 (links)\", \"text\": \"Paul\", \"ref\": \"p1_name\" },\n" +
+      "    { \"type\": \"create_sticky\", \"area\": \"Box 2 (Mitte)\", \"text\": \"IT-Experte\", \"ref\": \"p1_job\" },\n" +
+      "    { \"type\": \"create_sticky\", \"area\": \"Box 3 (rechts)\", \"text\": \"Ich will lernen\", \"ref\": \"p1_goal\" },\n" +
+      "    { \"type\": \"connect_chain\", \"stickyIds\": [\"p1_name\", \"p1_job\", \"p1_goal\"] }\n" +
       "  ]\n" +
       "}\n" +
       "Falls du keine Aktionen vorschlagen möchtest, setze actions auf ein leeres Array []."
@@ -124,9 +139,17 @@ export const DT_GLOBAL_SYSTEM_PROMPT = (
   "- einen Board-Katalog mit allen Instanzen (boardCatalog)\n" +
   "- detaillierte JSON-Daten zu allen aktiven Instanzen (activeCanvasStates)\n" +
   "- optionale Changes seit dem letzten Agent-Run (activeInstanceChangesSinceLastAgent).\n" +
+  "\n" +
   "Analysiere die Gesamtsituation auf dem Board, schlage sinnvolle nächste Schritte vor und formuliere bei Bedarf Board-Aktionen als JSON.\n" +
-  "Wenn du einzelne Sticky Notes in Actions referenzierst, verwende die Kurz-IDs aus den JSON-Strukturen.\n" +
-  "Antworte ausschließlich mit einem JSON-Objekt mit den Feldern \"analysis\" und \"actions\"."
+  "\n" +
+  "IDs / Referenzen:\n" +
+  "- Wenn du einzelne Sticky Notes in Actions referenzierst, verwende die Kurz-IDs aus den JSON-Strukturen (z.B. \"S0001\").\n" +
+  "- Wenn du neue Stickies erzeugst und sie in derselben Antwort referenzieren willst, nutze bei create_sticky zusätzlich \"ref\" und verwende diese ref später wie eine ID.\n" +
+  "\n" +
+  "Du darfst zusätzlich zu Sticky-Actions auch Connector-Actions vorschlagen:\n" +
+  "- create_connector / ensure_connector / delete_connector / connect_chain.\n" +
+  "\n" +
+  "Antworte ausschließlich mit einem JSON-Objekt mit den Feldern \"analysis\" und \"actions\" (kein Markdown, keine Code-Fences)."
 );
 
 // --------------------------------------------------------------------
