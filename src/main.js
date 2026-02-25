@@ -1,3 +1,4 @@
+// src/main.js
 import {
   TEMPLATE_ID,
   TEMPLATE_IMAGE_URL,
@@ -79,180 +80,426 @@ function getApiKey() {
 }
 function getModel() {
   const el = document.getElementById("model");
-  return (el?.value || "gpt-4.1-mini").trim();
-}
-function getPanelUserText() {
-  const el = document.getElementById("user-text");
   return (el?.value || "").trim();
 }
-function getCurrentUserQuestion() {
-  const t = getPanelUserText();
-  return t || "Bitte analysiere diese Canvas-Instanz und führe sinnvolle nächste Schritte innerhalb des Workshop-Workflows aus.";
+function getUserQuestionFallback() {
+  return "Bitte analysiere diese Canvas-Instanz und führe sinnvolle nächste Schritte im Workshop-Workflow aus.";
+}
+function getUserTextFromPanel() {
+  const el = document.getElementById("user-text");
+  const t = (el?.value || "").trim();
+  return t || getUserQuestionFallback();
 }
 
 // --------------------------------------------------------------------
-// Init Panel Buttons
+// Miro init + Scan
 // --------------------------------------------------------------------
-function initPanelButtons() {
-  document.getElementById("btn-insert-template")?.addEventListener("click", insertTemplateImage);
-  document.getElementById("btn-cluster-panel")?.addEventListener("click", clusterSelectionFromPanel);
-  document.getElementById("btn-classify-debug")?.addEventListener("click", () => classifyStickies({ silent: false }));
-  document.getElementById("btn-openai-classic")?.addEventListener("click", callOpenAIClassic);
-
-  // optional exports for debugging/back-compat
-  window.dtInsertTemplateImage = insertTemplateImage;
-  window.dtClassifyStickies = (opts) => classifyStickies(opts || {});
-  window.dtCallOpenAI = callOpenAIClassic;
-  window.dtClusterSelection = clusterSelectionFromPanel;
-  window.dtRunAgentForInstance = runAgentForInstance;
-  window.dtRunGlobalAgent = runGlobalAgent;
-}
-initPanelButtons();
-
-// --------------------------------------------------------------------
-// Boot
-// --------------------------------------------------------------------
-(async function boot() {
-  await Board.ensureMiroReady(log);
-  await afterMiroReady();
-})().catch((e) => {
-  console.error("[DT] Boot fehlgeschlagen:", e);
-  log("Boot Fehler: " + (e?.message || String(e)));
-});
-
-async function afterMiroReady() {
+async function initIfNeeded() {
   if (state.initialized) return;
   state.initialized = true;
 
-  // Baseline meta laden
+  await Board.ensureMiroReady(log);
+
+  // Load persisted baseline meta
   const meta = await Board.loadPersistedBaselineMeta(log);
-  state.hasGlobalBaseline = !!meta.hasGlobalBaseline;
-  state.globalBaselineAt = meta.baselineAt || null;
+  if (meta && typeof meta === "object" && meta.version === 1 && meta.hasGlobalBaseline === true) {
+    state.hasGlobalBaseline = true;
+    state.globalBaselineAt = typeof meta.baselineAt === "string" ? meta.baselineAt : null;
+  } else {
+    state.hasGlobalBaseline = false;
+    state.globalBaselineAt = null;
+  }
 
-  // Initial scan
-  await ensureInstancesScanned(true);
+  await scanTemplateInstances({ throttleMs: 0 });
 
-  // UI selection events
-  await Board.registerSelectionUpdateHandler(onSelectionUpdate, log);
-
-  log("Init abgeschlossen. Global baseline: " + (state.hasGlobalBaseline ? ("JA (" + (state.globalBaselineAt || "unknown") + ")") : "NEIN"));
+  // Selection events
+  Board.onSelectionUpdate(onSelectionUpdate, log);
 }
 
-// --------------------------------------------------------------------
-// Scan throttling + Instance scan
-// --------------------------------------------------------------------
-function nextInstanceId() {
-  return "inst-" + (state.nextInstanceCounter++);
-}
-
-async function ensureInstancesScanned(force = false) {
+async function scanTemplateInstances(options = {}) {
   const now = Date.now();
-  const RECENT_MS = 1200;
+  const throttleMs = typeof options.throttleMs === "number" ? options.throttleMs : 1500;
 
-  if (!force && state.lastScanAt && (now - state.lastScanAt) < RECENT_MS) {
-    return;
-  }
-  if (state.scanPromise) {
-    await state.scanPromise;
-    return;
-  }
+  // throttle
+  if (state.scanPromise) return state.scanPromise;
+  if (now - state.lastScanAt < throttleMs) return;
+  state.lastScanAt = now;
 
   state.scanPromise = (async () => {
-    await Board.scanTemplateInstances({
-      templateCatalog: DT_TEMPLATE_CATALOG,
-      defaultTemplateId: TEMPLATE_ID,
-      instancesByImageId: state.instancesByImageId,
-      instancesById: state.instancesById,
-      nextInstanceId: nextInstanceId,
-      hasGlobalBaseline: state.hasGlobalBaseline,
-      log
-    });
-    state.lastScanAt = Date.now();
+    const images = await Board.getItems({ type: "image" }, log);
+
+    const templateImageIdsOnBoard = new Set();
+
+    for (const img of images) {
+      const canvasTypeId = Catalog.detectCanvasTypeIdFromImage(img, DT_TEMPLATE_CATALOG);
+      if (canvasTypeId) {
+        templateImageIdsOnBoard.add(img.id);
+        await registerInstanceFromImage(img, { createActionShapes: false, canvasTypeId });
+      }
+    }
+
+    // Remove instances whose images vanished
+    for (const imageId of Array.from(state.instancesByImageId.keys())) {
+      if (!templateImageIdsOnBoard.has(imageId)) {
+        const inst = state.instancesByImageId.get(imageId);
+        state.instancesByImageId.delete(imageId);
+        if (inst) {
+          state.instancesById.delete(inst.instanceId);
+          log("Instanz entfernt: " + inst.instanceId + " (Bild gelöscht)");
+        }
+        await Board.removeBaselineSignatureForImageId(imageId, log);
+      }
+    }
+
+    // Rebind action shapes (after panel restart)
+    await rebindActionShapesAfterScan(images);
+
+    state.scanPromise = null;
   })();
 
-  try {
-    await state.scanPromise;
-  } finally {
-    state.scanPromise = null;
-  }
+  return state.scanPromise;
 }
 
 // --------------------------------------------------------------------
-// Selection update (Board Buttons)
+// Instance mgmt: frames + buttons
+// --------------------------------------------------------------------
+async function createInstanceActionShapes(instance, image) {
+  const board = Board.getBoard();
+  if (!board) return;
+
+  const canCreateFrame = typeof board.createFrame === "function";
+  const canCreateShape = typeof board.createShape === "function";
+  const canCreateText  = typeof board.createText === "function";
+
+  if (!canCreateFrame || !canCreateShape) return;
+
+  const frameWidth = image.width + 200;
+  const frameHeight = image.height + 260;
+  const frameY = image.y + 80;
+
+  const frame = await Board.createFrame({
+    title: image.title || "Datentreiber 3-Boxes",
+    x: image.x,
+    y: frameY,
+    width: frameWidth,
+    height: frameHeight
+  }, log);
+
+  const baseY = image.y + image.height / 2 + 80;
+  const baseX = image.x;
+  const dx = 260;
+  const buttonWidth = 260;
+  const buttonHeight = 60;
+
+  const aiShape = await Board.createShape({
+    content: "Send to OpenAI",
+    shape: "round_rectangle",
+    x: baseX - dx,
+    y: baseY,
+    width: buttonWidth,
+    height: buttonHeight
+  }, log);
+
+  const clusterShape = await Board.createShape({
+    content: "Cluster",
+    shape: "round_rectangle",
+    x: baseX,
+    y: baseY,
+    width: buttonWidth,
+    height: buttonHeight
+  }, log);
+
+  const globalAgentShape = await Board.createShape({
+    content: "Global Agent",
+    shape: "round_rectangle",
+    x: baseX + dx,
+    y: baseY,
+    width: buttonWidth,
+    height: buttonHeight
+  }, log);
+
+  let globalInput = null;
+  if (canCreateText) {
+    globalInput = await Board.createText({
+      content: "",
+      x: baseX + dx,
+      y: baseY + buttonHeight + 40
+    }, log);
+  }
+
+  try {
+    await frame.add(image);
+    await frame.add(aiShape);
+    await frame.add(clusterShape);
+    await frame.add(globalAgentShape);
+    if (globalInput) await frame.add(globalInput);
+    await frame.sync();
+  } catch (e) {
+    log("Fehler beim Hinzufügen zum Frame: " + e.message);
+  }
+
+  instance.actionItems = {
+    frameId: frame.id,
+    aiItemId: aiShape.id,
+    clusterItemId: clusterShape.id,
+    globalAgentItemId: globalAgentShape.id,
+    globalAgentInputItemId: globalInput ? globalInput.id : null
+  };
+}
+
+async function rebindActionShapesAfterScan(images) {
+  const board = Board.getBoard();
+  if (!board) return;
+
+  let shapes = [];
+  let textItems = [];
+
+  try {
+    shapes = await Board.getItems({ type: "shape" }, log);
+    textItems = await Board.getItems({ type: "text" }, log);
+  } catch (e) {
+    log("Rebind Fehler: " + e.message);
+    return;
+  }
+
+  const shapesByParent = new Map();
+  for (const s of shapes) {
+    const pid = s.parentId;
+    if (!pid) continue;
+    if (!shapesByParent.has(pid)) shapesByParent.set(pid, []);
+    shapesByParent.get(pid).push(s);
+  }
+
+  const textsByParent = new Map();
+  for (const t of textItems) {
+    const pid = t.parentId;
+    if (!pid) continue;
+    if (!textsByParent.has(pid)) textsByParent.set(pid, []);
+    textsByParent.get(pid).push(t);
+  }
+
+  const imageById = new Map();
+  for (const img of images || []) imageById.set(img.id, img);
+
+  const frameIdByImageId = new Map();
+  imageById.forEach((img, imgId) => {
+    if (img.parentId) frameIdByImageId.set(imgId, img.parentId);
+  });
+
+  state.instancesByImageId.forEach((instance, imageId) => {
+    const img = imageById.get(imageId);
+    if (!img) return;
+
+    const frameId = frameIdByImageId.get(imageId);
+    if (!frameId) return;
+
+    const frameShapes = shapesByParent.get(frameId) || [];
+    const frameTexts = textsByParent.get(frameId) || [];
+
+    let aiShape = null;
+    let clusterShape = null;
+    let globalShape = null;
+
+    for (const s of frameShapes) {
+      const raw = (s.content || "").toLowerCase();
+      if (!aiShape && raw.includes("send to openai")) aiShape = s;
+      else if (!clusterShape && raw.includes("cluster")) clusterShape = s;
+      else if (!globalShape && raw.includes("global agent")) globalShape = s;
+    }
+
+    const globalInput = frameTexts.length > 0 ? frameTexts[0] : null;
+
+    if (aiShape || clusterShape || globalShape || globalInput) {
+      instance.actionItems = {
+        frameId,
+        aiItemId: aiShape ? aiShape.id : null,
+        clusterItemId: clusterShape ? clusterShape.id : null,
+        globalAgentItemId: globalShape ? globalShape.id : null,
+        globalAgentInputItemId: globalInput ? globalInput.id : null
+      };
+    }
+  });
+}
+
+async function registerInstanceFromImage(image, options = {}) {
+  if (!image?.id) return null;
+
+  const createActionShapesFlag = options.createActionShapes !== false;
+
+  const detectedCanvasTypeId =
+    options.canvasTypeId ||
+    Catalog.detectCanvasTypeIdFromImage(image, DT_TEMPLATE_CATALOG) ||
+    TEMPLATE_ID;
+
+  let instance = state.instancesByImageId.get(image.id);
+  if (instance) {
+    instance.title = image.title || instance.title || "Datentreiber 3-Boxes";
+    instance.canvasTypeId = detectedCanvasTypeId || instance.canvasTypeId || TEMPLATE_ID;
+    instance.imageId = image.id;
+
+    instance.lastGeometry = {
+      x: image.x,
+      y: image.y,
+      width: image.width,
+      height: image.height
+    };
+
+    // FrameId nachziehen wenn Bild in Frame liegt
+    if (!createActionShapesFlag && image.parentId) {
+      if (!instance.actionItems) instance.actionItems = {};
+      if (!instance.actionItems.frameId) {
+        const parent = await Board.getItemById(image.parentId, log);
+        if (parent?.type === "frame") instance.actionItems.frameId = parent.id;
+      }
+    }
+
+    // Baseline signature lazy load
+    if (state.hasGlobalBaseline && !instance.baselineSignatureLoaded) {
+      instance.baselineSignature = await Board.loadBaselineSignatureForImageId(image.id, log);
+      instance.baselineSignatureLoaded = true;
+    }
+
+    return instance;
+  }
+
+  const instanceId = "inst-" + (state.nextInstanceCounter++);
+  instance = {
+    instanceId,
+    canvasTypeId: detectedCanvasTypeId || TEMPLATE_ID,
+    imageId: image.id,
+    title: image.title || "Datentreiber 3-Boxes",
+    lastGeometry: {
+      x: image.x,
+      y: image.y,
+      width: image.width,
+      height: image.height
+    },
+
+    // signatures
+    baselineSignature: null,
+    baselineSignatureLoaded: false,
+    lastSignature: null,
+    lastStateHash: null,
+    lastClassification: null,
+    lastStateJson: null,
+    lastStickyCount: 0,
+    lastDiff: null,
+
+    lastAgentRunAt: null,
+    lastChangedAt: null,
+
+    actionItems: {},
+    liveCatalog: null
+  };
+
+  // FrameId merken wenn Bild in Frame liegt (z.B. copy/paste)
+  if (!createActionShapesFlag && image.parentId) {
+    const parent = await Board.getItemById(image.parentId, log);
+    if (parent?.type === "frame") instance.actionItems.frameId = parent.id;
+  }
+
+  state.instancesByImageId.set(image.id, instance);
+  state.instancesById.set(instanceId, instance);
+
+  log("Neue Instanz registriert: " + instanceId + " (Bild " + image.id + ")");
+
+  if (state.hasGlobalBaseline && !instance.baselineSignatureLoaded) {
+    instance.baselineSignature = await Board.loadBaselineSignatureForImageId(image.id, log);
+    instance.baselineSignatureLoaded = true;
+  }
+
+  if (createActionShapesFlag) {
+    try {
+      await createInstanceActionShapes(instance, image);
+    } catch (e) {
+      log("Fehler createInstanceActionShapes: " + e.message);
+    }
+  }
+
+  return instance;
+}
+
+// --------------------------------------------------------------------
+// Selection update: detect button shapes + trigger actions
 // --------------------------------------------------------------------
 async function onSelectionUpdate(event) {
   if (state.handlingSelection) return;
 
   const items = event?.items || [];
 
-  // Sticky selection cache
   const stickyIds = items.filter((it) => it.type === "sticky_note").map((it) => it.id);
-  if (stickyIds.length > 0) state.lastStickySelectionIds = stickyIds.slice();
+  if (stickyIds.length > 0) {
+    state.lastStickySelectionIds = stickyIds.slice();
+  }
 
-  // Canvas selection cache
   const canvasInstanceIdSet = new Set();
+
   for (const it of items) {
     if (it.type === "image") {
       const inst = state.instancesByImageId.get(it.id);
       if (inst) canvasInstanceIdSet.add(inst.instanceId);
-    }
-    if (it.type === "frame") {
-      for (const inst of state.instancesById.values()) {
+    } else if (it.type === "frame") {
+      state.instancesById.forEach((inst) => {
         if (inst.actionItems?.frameId === it.id) canvasInstanceIdSet.add(inst.instanceId);
-      }
+      });
     }
   }
-  if (canvasInstanceIdSet.size > 0) state.lastCanvasSelectionInstanceIds = Array.from(canvasInstanceIdSet);
 
-  // Board buttons are shapes, and we only react to single selection
+  if (canvasInstanceIdSet.size > 0) {
+    state.lastCanvasSelectionInstanceIds = Array.from(canvasInstanceIdSet);
+  }
+
   if (items.length !== 1) return;
   const item = items[0];
   if (item.type !== "shape") return;
 
-  // Re-scan to ensure rebind after panel restart
-  await ensureInstancesScanned(true);
+  // ensure instances + action shapes exist after panel restart
+  await scanTemplateInstances({ throttleMs: 0 });
 
   let instanceId = null;
   let buttonType = null;
 
-  for (const [id, inst] of state.instancesById.entries()) {
-    const aiId = inst.actionItems?.aiItemId;
-    const clId = inst.actionItems?.clusterItemId;
-    const glId = inst.actionItems?.globalAgentItemId;
-
-    if (aiId && aiId === item.id) { instanceId = id; buttonType = "ai"; break; }
-    if (clId && clId === item.id) { instanceId = id; buttonType = "cluster"; break; }
-    if (glId && glId === item.id) { instanceId = id; buttonType = "global"; break; }
-  }
+  state.instancesById.forEach((inst, id) => {
+    const a = inst.actionItems;
+    if (!a) return;
+    if (a.aiItemId === item.id) {
+      instanceId = id;
+      buttonType = "ai";
+    } else if (a.clusterItemId === item.id) {
+      instanceId = id;
+      buttonType = "cluster";
+    } else if (a.globalAgentItemId === item.id) {
+      instanceId = id;
+      buttonType = "global";
+    }
+  });
 
   if (!instanceId || !buttonType) return;
 
   state.handlingSelection = true;
   try {
     if (buttonType === "ai") {
-      log("Agent-Button (Shape, Modus B) für Instanz " + instanceId + " ausgelöst.");
+      log("AI-Button (Instanz " + instanceId + ")");
       await runAgentForInstance(instanceId);
     } else if (buttonType === "cluster") {
       if (!state.lastStickySelectionIds?.length) {
-        log("Cluster-Button: Keine vorherige Sticky-Auswahl gefunden. Bitte zuerst Stickies auswählen.");
-        return;
+        log("Cluster: Bitte zuerst Sticky Notes auswählen.");
+      } else {
+        log("Cluster-Button (Instanz " + instanceId + ")");
+        await clusterSelectionWithIds(state.lastStickySelectionIds, instanceId);
       }
-      log("Cluster-Button (Shape) für Instanz " + instanceId + " ausgelöst.");
-      await clusterSelectionWithIds(state.lastStickySelectionIds, instanceId);
     } else if (buttonType === "global") {
       const inst = state.instancesById.get(instanceId);
       const inputId = inst?.actionItems?.globalAgentInputItemId;
-
       let userText = "";
       if (inputId) {
-        const textItem = await Board.getItemById(inputId, log);
-        if (textItem?.content) userText = stripHtml(textItem.content).trim();
+        const txt = await Board.getItemById(inputId, log);
+        userText = (typeof txt?.content === "string") ? txt.content.trim() : "";
       }
       if (!userText) {
         userText = "Bitte gib einen globalen Überblick über alle relevanten Canvas-Instanzen und schlage sinnvolle nächste Schritte vor.";
       }
-
-      log("Global-Agent-Button (Shape, Modus A) für Instanz " + instanceId + " ausgelöst.");
+      log("Global-Agent (ausgelöst von Instanz " + instanceId + ")");
       await runGlobalAgent(instanceId, userText);
     }
   } finally {
@@ -261,31 +508,12 @@ async function onSelectionUpdate(event) {
 }
 
 // --------------------------------------------------------------------
-// Board snapshot refresh: ctx + liveCatalog
-// --------------------------------------------------------------------
-async function refreshBoardState() {
-  await ensureInstancesScanned();
-
-  const ctx = await Board.getBoardBaseContext(log);
-  const { liveCatalog, stickyOwnerCache } = await Catalog.rebuildLiveCatalog({
-    ctx,
-    instancesById: state.instancesById,
-    clusterAssignments: state.clusterAssignments,
-    log
-  });
-
-  state.liveCatalog = liveCatalog;
-  state.stickyOwnerCache = stickyOwnerCache;
-
-  return { ctx, liveCatalog, stickyOwnerCache };
-}
-
-// --------------------------------------------------------------------
-// Insert Template Image
+// Insert template image
 // --------------------------------------------------------------------
 async function insertTemplateImage() {
-  log("Button: Template-Bild einfügen.");
-  await Board.ensureMiroReady(log);
+  await initIfNeeded();
+
+  log("Template-Bild einfügen ...");
 
   try {
     const image = await Board.createImage({
@@ -295,134 +523,97 @@ async function insertTemplateImage() {
       width: 2000
     }, log);
 
-    await Board.registerInstanceFromImage(image, {
-      templateCatalog: DT_TEMPLATE_CATALOG,
-      defaultTemplateId: TEMPLATE_ID,
-      instancesByImageId: state.instancesByImageId,
-      instancesById: state.instancesById,
-      nextInstanceId: nextInstanceId,
-      hasGlobalBaseline: state.hasGlobalBaseline,
-      createActionShapes: true,
-      log
-    });
+    await registerInstanceFromImage(image, { createActionShapes: true });
 
-    log(
-      "Template eingefügt: Bild-ID " + image.id +
-      "\nUnterhalb des Canvas findest du Buttons im Frame:\n" +
-      "- Send to OpenAI (Modus B)\n" +
-      "- Cluster (nutzt vorherige Sticky-Auswahl)\n" +
-      "- Global Agent (Modus A, nutzt Text-Input im Frame)"
-    );
-
+    log("Template eingefügt: " + image.id);
     await Board.zoomTo(image, log);
   } catch (e) {
-    log("Fehler beim Einfügen des Templates: " + e.message);
+    log("Fehler insertTemplateImage: " + e.message);
   }
 }
 
 // --------------------------------------------------------------------
-// Cluster Selection (Panel + Board Button)
+// Cluster selection (Panel button + board button)
 // --------------------------------------------------------------------
-async function clusterSelectionFromPanel() {
-  log("Button: Auswahl clustern (Side-Panel).");
-  await clusterSelectionWithIds(null, null);
-}
-
 async function clusterSelectionWithIds(stickyIds, expectedInstanceId) {
-  await Board.ensureMiroReady(log);
-  await ensureInstancesScanned();
+  await initIfNeeded();
+  await scanTemplateInstances({ throttleMs: 0 });
 
   let stickyNotes = [];
-  try {
-    if (Array.isArray(stickyIds) && stickyIds.length > 0) {
-      const items = await Board.getItemsById(stickyIds, log);
-      stickyNotes = items.filter((it) => it.type === "sticky_note");
-    } else {
-      const selection = await Board.getSelection(log);
-      stickyNotes = (selection || []).filter((it) => it.type === "sticky_note");
-    }
-  } catch (e) {
-    log("Fehler beim Lesen der Sticky-Auswahl: " + e.message);
-    return;
+
+  if (Array.isArray(stickyIds) && stickyIds.length > 0) {
+    const arr = await Board.getItems({ id: stickyIds }, log);
+    stickyNotes = arr.filter((it) => it.type === "sticky_note");
+  } else {
+    const selection = await Board.getSelection(log);
+    stickyNotes = selection.filter((item) => item.type === "sticky_note");
   }
 
   if (!stickyNotes.length) {
-    log("Keine Sticky Notes in der Auswahl. Bitte Stickies auswählen.");
+    log("Cluster: Bitte nur Sticky Notes auswählen.");
     return;
   }
 
-  const geomEntries = await Board.buildInstanceGeometryIndex(state.instancesById, log);
+  // Determine instance of each sticky
+  const byInstance = {};
+  const outside = [];
 
   const expectedInstance = expectedInstanceId ? state.instancesById.get(expectedInstanceId) : null;
   const expectedFrameId = expectedInstance?.actionItems?.frameId || null;
 
-  const byInstance = Object.create(null);
-  const outside = [];
-
-  const parentGeomCache = new Map();
-
   for (const s of stickyNotes) {
-    let inst = null;
+    let instance = null;
 
-    // Fast path: gleicher Frame wie Button
+    // If same frame, quick accept
     if (expectedInstance && expectedFrameId && s.parentId === expectedFrameId) {
-      inst = expectedInstance;
+      instance = expectedInstance;
     } else {
-      const pos = await Board.resolveBoardCoords(s, parentGeomCache, log);
-      if (!pos) {
-        outside.push(s);
-        continue;
-      }
-      inst = Board.findInstanceByPoint(pos.x, pos.y, geomEntries);
+      instance = Catalog.findInstanceForPoint(s.x, s.y, state.instancesById);
     }
 
-    if (!inst) {
+    if (!instance) {
       outside.push(s);
       continue;
     }
 
-    if (!byInstance[inst.instanceId]) byInstance[inst.instanceId] = [];
-    byInstance[inst.instanceId].push(s);
+    const id = instance.instanceId;
+    if (!byInstance[id]) byInstance[id] = [];
+    byInstance[id].push(s);
   }
 
   const instanceIds = Object.keys(byInstance);
   if (instanceIds.length === 0) {
-    log("Keine der ausgewählten Stickies liegt über einem Canvas.");
+    log("Cluster: Keine der Sticky Notes liegt auf einem bekannten Canvas.");
     return;
   }
   if (instanceIds.length > 1) {
-    log("Auswahl enthält Stickies aus mehreren Instanzen. Bitte nur eine Instanz gleichzeitig clustern.");
+    log("Cluster: Auswahl enthält mehrere Canvas-Instanzen. Bitte nur eine Instanz clustern.");
     return;
   }
 
   const instanceId = instanceIds[0];
   if (expectedInstanceId && instanceId !== expectedInstanceId) {
-    log("Cluster-Button gehört zu einer anderen Instanz als die Sticky-Auswahl.");
+    log("Cluster: Auswahl gehört zu anderem Canvas als der Button.");
     return;
   }
 
   const notesInInstance = byInstance[instanceId];
 
-  if (outside.length > 0) {
-    log("Hinweis: Es gibt Stickies außerhalb des Canvas – sie werden dennoch dem Cluster zugeordnet.");
-  }
-
-  // Clustername: unterstrichener Sticky bevorzugt
+  // Cluster name: underlined sticky -> text, else auto
   let headerSticky = null;
   for (const s of notesInInstance) {
-    const html = s.content || "";
-    if (html.includes("<u>") || html.includes("text-decoration:underline")) {
+    if (extractUnderlinedText(s.content)) {
       headerSticky = s;
       break;
     }
   }
 
   let clusterName = null;
+
   if (headerSticky) {
-    const underlined = extractUnderlinedText(headerSticky.content);
-    const candidate = (underlined || stripHtml(headerSticky.content)).trim();
+    const candidate = stripHtml(headerSticky.content).trim();
     if (!candidate) {
-      log("Unterstrichener Sticky-Text ist leer. Bitte einen Namen unterstreichen oder ohne Unterstreichung arbeiten.");
+      log("Cluster: Unterstrichener Sticky-Text ist leer.");
       return;
     }
     clusterName = candidate;
@@ -436,80 +627,49 @@ async function clusterSelectionWithIds(stickyIds, expectedInstanceId) {
   for (const s of notesInInstance) state.clusterAssignments.set(s.id, clusterName);
   for (const s of outside) state.clusterAssignments.set(s.id, clusterName);
 
-  log("Cluster '" + clusterName + "' gesetzt für " + (notesInInstance.length + outside.length) + " Stickies (nur Panel-Session).");
+  log("Cluster '" + clusterName + "' gesetzt für " + (notesInInstance.length + outside.length) + " Stickies (Session).");
+}
+
+async function clusterSelectionPanel() {
+  log("Panel: Auswahl clustern.");
+  await clusterSelectionWithIds(null, null);
 }
 
 // --------------------------------------------------------------------
-// Classification Debug
+// Board state rebuild
 // --------------------------------------------------------------------
-async function classifyStickies({ silent = false } = {}) {
-  if (!silent) log("Button: Stickies klassifizieren (Debug).");
-  await Board.ensureMiroReady(log);
+async function refreshBoardState() {
+  await initIfNeeded();
+  await scanTemplateInstances({ throttleMs: 0 });
 
-  const { liveCatalog } = await refreshBoardState();
-  const classification = Catalog.buildClassificationForAllInstances(state.instancesById, liveCatalog);
+  const ctx = await Board.getBoardBaseContext(log);
 
-  if (!classification) {
-    if (!silent) log("Keine Canvas-Instanzen mit Stickies gefunden.");
-    return null;
-  }
+  const { liveCatalog, stickyOwnerCache } = await Catalog.rebuildLiveCatalog({
+    ctx,
+    instancesById: state.instancesById,
+    clusterAssignments: state.clusterAssignments,
+    computeTemplateGeometry: (inst) => Board.computeTemplateGeometry(inst, log),
+    log
+  });
 
-  if (!silent) {
-    log("Klassifikation:");
-    log(classification);
-  }
-  return classification;
+  state.liveCatalog = liveCatalog;
+  state.stickyOwnerCache = stickyOwnerCache;
+
+  // Update instance sticky counts + store liveInst pointer
+  state.instancesById.forEach((inst) => {
+    const liveInst = liveCatalog.instances[inst.instanceId];
+    if (liveInst) {
+      inst.lastStickyCount = liveInst.meta?.stickyCount || 0;
+      inst.liveCatalog = liveInst;
+    } else {
+      inst.lastStickyCount = 0;
+      inst.liveCatalog = null;
+    }
+  });
 }
 
 // --------------------------------------------------------------------
-// Classic OpenAI Call (Panel)
-// --------------------------------------------------------------------
-async function callOpenAIClassic() {
-  await Board.ensureMiroReady(log);
-
-  const apiKey = getApiKey();
-  const model = getModel();
-  const userText = getPanelUserText();
-
-  if (!apiKey) { log("Bitte OpenAI API Key eingeben."); return; }
-  if (!userText) { log("Bitte eine Frage / Aufgabe im Textfeld eingeben."); return; }
-
-  const classification = await classifyStickies({ silent: true });
-
-  const promptPayload = classification
-    ? Catalog.buildPromptPayloadFromClassification(classification, { useAliases: false })
-    : null;
-
-  const classificationPart = promptPayload
-    ? "\n\nAktuelle Sticky-Notiz-Klassifikation (reduziertes JSON):\n" + JSON.stringify(promptPayload, null, 2)
-    : "\n\nHinweis: Keine Klassifikation vorhanden (kein Template oder keine Stickies im Template).";
-
-  const fullUserText = userText + classificationPart;
-
-  const systemPrompt =
-    "Du bist ein Assistent, der Miro-Boards analysiert. " +
-    "Du bekommst Sticky-Notes als JSON und eine Nutzerfrage und sollst exakte Antworten liefern. " +
-    "Antworte standardmäßig auf Deutsch.";
-
-  try {
-    log("Sende Anfrage an OpenAI (klassischer Call) ...");
-    const answer = await OpenAI.callOpenAIResponses({
-      apiKey,
-      model,
-      systemPrompt,
-      userText: fullUserText,
-      maxOutputTokens: 10000
-    });
-
-    log("Antwort von OpenAI:");
-    log(answer || "(keine Antwort gefunden)");
-  } catch (e) {
-    log("Fehler bei OpenAI-Anfrage: " + e.message);
-  }
-}
-
-// --------------------------------------------------------------------
-// Apply Agent Actions (Modus B)
+// Apply agent actions to instance (Modus B)
 // --------------------------------------------------------------------
 async function applyAgentActionsToInstance(instanceId, actions) {
   if (!Array.isArray(actions) || actions.length === 0) {
@@ -535,6 +695,39 @@ async function applyAgentActionsToInstance(instanceId, actions) {
   }
 
   const liveInst = state.liveCatalog?.instances?.[instanceId] || null;
+
+  // ---- NEU: "ref" -> echte Sticky-ID (nur für dieses Action-Batch) ----
+  // Ermöglicht: create_sticky {ref:"p1_name"} + spätere Actions (connect/move/delete) mit "p1_name"
+  const createdRefToId = new Map();
+
+  function resolveStickyIdAny(idOrAliasOrRef) {
+    if (!idOrAliasOrRef) return null;
+    const key = String(idOrAliasOrRef);
+    if (createdRefToId.has(key)) {
+      return createdRefToId.get(key);
+    }
+    return Catalog.resolveStickyId(idOrAliasOrRef, state.aliasState);
+  }
+
+  function rememberCreatedRef(ref, sticky) {
+    if (!ref || typeof ref !== "string") return;
+    const clean = ref.trim();
+    if (!clean) return;
+    const stickyId = sticky?.id;
+    if (!stickyId) return;
+
+    if (createdRefToId.has(clean) && createdRefToId.get(clean) !== stickyId) {
+      log("WARNUNG: create_sticky.ref '" + clean + "' wurde überschrieben.");
+    }
+    createdRefToId.set(clean, stickyId);
+  }
+
+  function rememberStickyOwner(stickyId) {
+    if (!stickyId) return;
+    if (state.stickyOwnerCache && typeof state.stickyOwnerCache.set === "function") {
+      state.stickyOwnerCache.set(stickyId, instanceId);
+    }
+  }
 
   function rectFromLiveSticky(st) {
     if (!st || typeof st.x !== "number" || typeof st.y !== "number") return null;
@@ -595,10 +788,135 @@ async function applyAgentActionsToInstance(instanceId, actions) {
     return null;
   }
 
+  // ---- NEU: Connector-Index (für ensure/delete by pair) ----
+  const connectorIdsByKey = new Map(); // key -> [connectorId, ...]
+  function connectorKey(a, b) {
+    if (!a || !b) return null;
+    const sa = String(a);
+    const sb = String(b);
+    // undirected key (A|B == B|A)
+    return sa < sb ? (sa + "|" + sb) : (sb + "|" + sa);
+  }
+  function addConnectorId(key, connectorId) {
+    if (!key || !connectorId) return;
+    let arr = connectorIdsByKey.get(key);
+    if (!arr) {
+      arr = [];
+      connectorIdsByKey.set(key, arr);
+    }
+    if (!arr.includes(connectorId)) {
+      arr.push(connectorId);
+    }
+  }
+  function hasAnyConnector(key) {
+    const arr = key ? connectorIdsByKey.get(key) : null;
+    return Array.isArray(arr) && arr.length > 0;
+  }
+  function removeConnectorIdFromIndex(key, connectorId) {
+    if (!key || !connectorId) return;
+    const arr = connectorIdsByKey.get(key);
+    if (!Array.isArray(arr) || arr.length === 0) return;
+    connectorIdsByKey.set(key, arr.filter((id) => id !== connectorId));
+  }
+
+  for (const c of liveInst?.connections || []) {
+    const key = connectorKey(c.fromStickyId, c.toStickyId);
+    addConnectorId(key, c.connectorId);
+  }
+
+  async function createConnectorBetween(fromId, toId, action, { ensure = false } = {}) {
+    if (!fromId || !toId) {
+      log("create_connector: from/to fehlt.");
+      return;
+    }
+    if (fromId === toId) {
+      log("create_connector: fromStickyId == toStickyId (ignoriere).");
+      return;
+    }
+
+    // Guard: Standardmäßig nur innerhalb derselben Instanz verbinden (falls Owner bekannt)
+    const ownerA = state.stickyOwnerCache?.get?.(fromId) || null;
+    const ownerB = state.stickyOwnerCache?.get?.(toId) || null;
+    if ((ownerA && ownerA !== instanceId) || (ownerB && ownerB !== instanceId)) {
+      log(
+        "create_connector: Cross-Instance Verbindung abgelehnt (Instanz " +
+        instanceId +
+        "). fromOwner=" + (ownerA || "unknown") +
+        ", toOwner=" + (ownerB || "unknown")
+      );
+      return;
+    }
+
+    const key = connectorKey(fromId, toId);
+
+    if (ensure && key && hasAnyConnector(key)) {
+      // Schon verbunden -> nichts tun
+      return;
+    }
+
+    try {
+      const connector = await Board.createConnectorBetweenItems({
+        startItemId: fromId,
+        endItemId: toId,
+        caption: action?.caption || null,
+        shape: action?.shape || null,
+        style: action?.style || null,
+        startSnapTo: action?.startSnapTo || "auto",
+        endSnapTo: action?.endSnapTo || "auto"
+      }, log);
+
+      if (connector?.id && key) {
+        addConnectorId(key, connector.id);
+      }
+    } catch (e) {
+      log("Fehler bei create_connector: " + e.message);
+    }
+  }
+
+  async function deleteConnectorAction(action) {
+    const connectorId = action?.connectorId ? String(action.connectorId) : null;
+
+    if (connectorId) {
+      try {
+        await Board.removeItemById(connectorId, log);
+      } catch (e) {
+        log("Fehler bei delete_connector (" + connectorId + "): " + e.message);
+      }
+      return;
+    }
+
+    const fromId = resolveStickyIdAny(action?.fromStickyId);
+    const toId   = resolveStickyIdAny(action?.toStickyId);
+    if (!fromId || !toId) {
+      log("delete_connector: Bitte connectorId ODER fromStickyId/toStickyId angeben.");
+      return;
+    }
+
+    const key = connectorKey(fromId, toId);
+    const ids = key ? (connectorIdsByKey.get(key) || []) : [];
+
+    if (!ids.length) {
+      log("delete_connector: Kein Connector zwischen den angegebenen Stickies gefunden.");
+      return;
+    }
+
+    const removeAll = action?.all === true || action?.removeAll === true;
+    const toDelete = removeAll ? ids.slice() : [ids[0]];
+
+    for (const id of toDelete) {
+      try {
+        await Board.removeItemById(id, log);
+        removeConnectorIdFromIndex(key, id);
+      } catch (e) {
+        log("Fehler bei delete_connector (" + id + "): " + e.message);
+      }
+    }
+  }
+
   const handlers = {
     // MOVE: wenn targetPx/targetPy fehlen, dann "snap to next free slot" in targetArea
     "move_sticky": async (action) => {
-      const stickyId = Catalog.resolveStickyId(action.stickyId, state.aliasState);
+      const stickyId = resolveStickyIdAny(action.stickyId);
       if (!stickyId) return;
 
       const canvasTypeId = instance.canvasTypeId || TEMPLATE_ID;
@@ -697,17 +1015,32 @@ async function applyAgentActionsToInstance(instanceId, actions) {
       const region = Catalog.areaNameToRegion(areaName);
       const regionId = region?.id || null;
 
+      const ref = (typeof action.ref === "string") ? action.ref.trim() : null;
+
+      const frameId = instance.actionItems?.frameId || null;
+
       // Fallback: unbekannte Area → altes Verhalten (Center)
       if (!regionId || !occupiedByRegion[regionId]) {
         const center = Catalog.areaCenterNormalized(null, canvasTypeId);
         const coords = Catalog.normalizedToBoardCoords(geom, center.px, center.py);
 
-        await Board.createStickyNoteAtBoardCoords({
+        const sticky = await Board.createStickyNoteAtBoardCoords({
           content: text,
           x: coords.x,
           y: coords.y,
-          frameId: instance.actionItems?.frameId || null
+          frameId
         }, log);
+
+        rememberCreatedRef(ref, sticky);
+        rememberStickyOwner(sticky?.id);
+
+        // Optional: Region nachträglich erkennen und "occupied" updaten
+        const destRegionId = detectBodyRegionIdFromBoardCoords(canvasTypeId, coords.x, coords.y);
+        if (destRegionId && occupiedByRegion[destRegionId] && sticky) {
+          const w = isFiniteNumber(sticky.width) ? sticky.width : STICKY_LAYOUT.defaultWidthPx;
+          const h = isFiniteNumber(sticky.height) ? sticky.height : STICKY_LAYOUT.defaultHeightPx;
+          occupiedByRegion[destRegionId].push({ id: sticky.id, x: coords.x, y: coords.y, width: w, height: h });
+        }
         return;
       }
 
@@ -729,12 +1062,22 @@ async function applyAgentActionsToInstance(instanceId, actions) {
         const center = Catalog.areaCenterNormalized(regionId, canvasTypeId);
         const coords = Catalog.normalizedToBoardCoords(geom, center.px, center.py);
 
-        await Board.createStickyNoteAtBoardCoords({
+        const sticky = await Board.createStickyNoteAtBoardCoords({
           content: text,
           x: coords.x,
           y: coords.y,
-          frameId: instance.actionItems?.frameId || null
+          frameId
         }, log);
+
+        rememberCreatedRef(ref, sticky);
+        rememberStickyOwner(sticky?.id);
+
+        // occupied updaten (best effort)
+        if (sticky) {
+          const w = isFiniteNumber(sticky.width) ? sticky.width : size.width;
+          const h = isFiniteNumber(sticky.height) ? sticky.height : size.height;
+          occupiedByRegion[regionId].push({ id: sticky.id, x: coords.x, y: coords.y, width: w, height: h });
+        }
         return;
       }
 
@@ -750,8 +1093,11 @@ async function applyAgentActionsToInstance(instanceId, actions) {
         content: text,
         x: pos.x,
         y: pos.y,
-        frameId: instance.actionItems?.frameId || null
+        frameId
       }, log);
+
+      rememberCreatedRef(ref, sticky);
+      rememberStickyOwner(sticky?.id);
 
       // Belegte Fläche updaten (damit mehrere create_sticky Actions sauber fortlaufend platzieren)
       const actualW = (sticky && isFiniteNumber(sticky.width)) ? sticky.width : size.width;
@@ -767,13 +1113,51 @@ async function applyAgentActionsToInstance(instanceId, actions) {
     },
 
     "delete_sticky": async (action) => {
-      const stickyId = Catalog.resolveStickyId(action.stickyId, state.aliasState);
+      const stickyId = resolveStickyIdAny(action.stickyId);
       if (!stickyId) return;
 
       // occupied vorher entfernen (damit nachfolgende creates wieder Slots nutzen können)
       removeFromAllOccupied(stickyId);
 
       await Board.removeItemById(stickyId, log);
+    },
+
+    // ---- NEU: Connector Actions ----
+    "create_connector": async (action) => {
+      const fromId = resolveStickyIdAny(action.fromStickyId);
+      const toId   = resolveStickyIdAny(action.toStickyId);
+      await createConnectorBetween(fromId, toId, action, { ensure: false });
+    },
+
+    "ensure_connector": async (action) => {
+      const fromId = resolveStickyIdAny(action.fromStickyId);
+      const toId   = resolveStickyIdAny(action.toStickyId);
+      await createConnectorBetween(fromId, toId, action, { ensure: true });
+    },
+
+    "delete_connector": async (action) => {
+      await deleteConnectorAction(action);
+    },
+
+    "connect_chain": async (action) => {
+      const ids = Array.isArray(action.stickyIds) ? action.stickyIds : null;
+      if (!ids || ids.length < 2) {
+        log("connect_chain: stickyIds muss ein Array mit mind. 2 Einträgen sein.");
+        return;
+      }
+
+      // Resolve + connect sequentially (ensure semantics)
+      const resolved = ids.map(resolveStickyIdAny);
+
+      for (let i = 0; i < resolved.length - 1; i++) {
+        const a = resolved[i];
+        const b = resolved[i + 1];
+        if (!a || !b) {
+          log("connect_chain: Konnte stickyIds[" + i + "] oder [" + (i + 1) + "] nicht auflösen.");
+          continue;
+        }
+        await createConnectorBetween(a, b, action, { ensure: true });
+      }
     }
   };
 
@@ -785,47 +1169,66 @@ async function applyAgentActionsToInstance(instanceId, actions) {
 // Agent Modus B
 // --------------------------------------------------------------------
 async function runAgentForInstance(instanceId, options = {}) {
-  await Board.ensureMiroReady(log);
-  await ensureInstancesScanned();
+  await initIfNeeded();
+  await scanTemplateInstances({ throttleMs: 0 });
 
   const apiKey = getApiKey();
   const model = getModel();
-  const userText = options.userText || getCurrentUserQuestion();
+  const userText = options.userText || getUserTextFromPanel();
 
-  if (!apiKey) { log("Bitte OpenAI API Key eingeben (Agent)."); return; }
+  if (!apiKey) {
+    log("Bitte OpenAI API Key eingeben.");
+    return;
+  }
 
   const instance = state.instancesById.get(instanceId);
-  if (!instance) { log("Unbekannte Instanz: " + instanceId); return; }
+  if (!instance) {
+    log("Unbekannte Instanz: " + instanceId);
+    return;
+  }
 
   const promptCfg = DT_PROMPT_CATALOG[instance.canvasTypeId] || DT_PROMPT_CATALOG[TEMPLATE_ID];
   const systemPrompt = promptCfg.system;
 
-  log("Starte Agent (Modus B) für Instanz " + instanceId + " ...");
+  log("Agent-Run (Modus B) für Instanz " + instanceId + " ...");
 
-  const { liveCatalog } = await refreshBoardState();
+  await refreshBoardState();
 
-  const instState = await Catalog.computeInstanceState(instance, {
-    liveCatalog,
-    hasGlobalBaseline: state.hasGlobalBaseline,
-    loadBaselineSignatureForImageId: Board.loadBaselineSignatureForImageId,
+  const ctx = await Board.getBoardBaseContext(log);
+  await Catalog.rebuildLiveCatalog({
+    ctx,
+    instancesById: state.instancesById,
+    clusterAssignments: state.clusterAssignments,
+    computeTemplateGeometry: (inst) => Board.computeTemplateGeometry(inst, log),
     log
   });
 
-  if (!instState?.classification) {
+  const st = await Catalog.computeInstanceState(instance, {
+    ctx,
+    liveCatalog: state.liveCatalog,
+    stickyOwnerCache: state.stickyOwnerCache,
+    clusterAssignments: state.clusterAssignments,
+    aliasState: state.aliasState,
+    hasGlobalBaseline: state.hasGlobalBaseline,
+    loadBaselineSignatureForImageId: (imageId) => Board.loadBaselineSignatureForImageId(imageId, log),
+    log
+  });
+
+  if (!st?.classification) {
     log("Konnte Instanzzustand nicht ermitteln.");
     return;
   }
+
+  const activeCanvasState = Catalog.buildPromptPayloadFromClassification(st.classification, {
+    useAliases: true,
+    aliasState: state.aliasState,
+    log
+  });
 
   const boardCatalog = Catalog.buildBoardCatalogSummary(state.instancesById, {
     mode: "instance",
     activeInstanceId: instanceId,
     hasGlobalBaseline: state.hasGlobalBaseline
-  });
-
-  const activeCanvasState = Catalog.buildPromptPayloadFromClassification(instState.classification, {
-    useAliases: true,
-    aliasState: state.aliasState,
-    log
   });
 
   const userPayload = {
@@ -836,21 +1239,23 @@ async function runAgentForInstance(instanceId, options = {}) {
     activeCanvasState,
     activeCanvasStates: { [instanceId]: activeCanvasState },
     activeInstanceChangesSinceLastAgent: null,
-    hint: "boardCatalog = Kurzüberblick, activeCanvasState = Detaildaten für diese Instanz."
+    hint: "boardCatalog = Kurzüberblick über alle Instanzen. activeCanvasState enthält detaillierte Stickies/Areas/Verbindungen nur für diese Instanz."
   };
 
+  const body = OpenAI.buildResponsesBody({
+    model,
+    systemPrompt,
+    userText: JSON.stringify(userPayload, null, 2),
+    maxOutputTokens: 4000
+  });
+
   try {
-    log("Sende Agent-Request an OpenAI (Modus B) ...");
-    const answer = await OpenAI.callOpenAIResponses({
-      apiKey,
-      model,
-      systemPrompt,
-      userText: JSON.stringify(userPayload, null, 2),
-      maxOutputTokens: 4000
-    });
+    log("Sende Agent-Request an OpenAI ...");
+    const data = await OpenAI.callResponsesApi(apiKey, body);
+    const answer = OpenAI.extractFirstOutputText(data);
 
     if (!answer) {
-      log("Agent: Keine Antwort (output_text) gefunden.");
+      log("Agent: Keine output_text-Antwort gefunden.");
       return;
     }
 
@@ -867,60 +1272,59 @@ async function runAgentForInstance(instanceId, options = {}) {
     if (Array.isArray(agentObj.actions) && agentObj.actions.length) {
       await applyAgentActionsToInstance(instanceId, agentObj.actions);
     } else {
-      log("Agent lieferte keine Actions.");
+      log("Agent lieferte keine Actions (leer).");
     }
 
-    // Refresh + cache update (kein Baseline Update im Modus B)
+    // Refresh state after actions
     await refreshBoardState();
-    await Catalog.computeInstanceState(instance, {
-      liveCatalog: state.liveCatalog,
-      hasGlobalBaseline: state.hasGlobalBaseline,
-      loadBaselineSignatureForImageId: Board.loadBaselineSignatureForImageId,
-      log
-    });
-
     const nowIso = new Date().toISOString();
     instance.lastAgentRunAt = nowIso;
     instance.lastChangedAt = nowIso;
   } catch (e) {
-    log("Exception beim Agent-Run: " + e.message);
+    log("Agent-Run Fehler: " + e.message);
   }
 }
 
 // --------------------------------------------------------------------
-// Agent Modus A (Global)
+// Global Agent Modus A
 // --------------------------------------------------------------------
 async function runGlobalAgent(triggerInstanceId, userText) {
-  await Board.ensureMiroReady(log);
-  await ensureInstancesScanned();
+  await initIfNeeded();
+  await scanTemplateInstances({ throttleMs: 0 });
 
   const apiKey = getApiKey();
   const model = getModel();
-
   const finalUserText = (userText || "").trim()
     ? userText.trim()
     : "Bitte gib mir einen globalen Überblick über alle relevanten Canvas-Instanzen und schlage sinnvolle nächste Schritte vor.";
 
   if (!apiKey) {
-    log("Bitte OpenAI API Key eingeben (Global Agent).");
+    log("Bitte OpenAI API Key eingeben (global).");
     return;
   }
 
-  log("Starte globalen Agenten-Run (Modus A), ausgelöst von Instanz " + (triggerInstanceId || "(keine)") + ".");
+  log("Global Agent Run (Modus A) ...");
 
-  const { liveCatalog } = await refreshBoardState();
+  await refreshBoardState();
 
-  const stateById = Object.create(null);
+  const ctx = await Board.getBoardBaseContext(log);
 
-  // Compute state for all instances (populates lastDiff used by boardCatalog)
-  for (const inst of state.instancesById.values()) {
+  const stateById = {};
+  const allInstances = [];
+  state.instancesById.forEach((inst) => allInstances.push(inst));
+
+  for (const inst of allInstances) {
     const st = await Catalog.computeInstanceState(inst, {
-      liveCatalog,
+      ctx,
+      liveCatalog: state.liveCatalog,
+      stickyOwnerCache: state.stickyOwnerCache,
+      clusterAssignments: state.clusterAssignments,
+      aliasState: state.aliasState,
       hasGlobalBaseline: state.hasGlobalBaseline,
-      loadBaselineSignatureForImageId: Board.loadBaselineSignatureForImageId,
+      loadBaselineSignatureForImageId: (imageId) => Board.loadBaselineSignatureForImageId(imageId, log),
       log
     });
-    if (st) stateById[inst.instanceId] = st;
+    stateById[inst.instanceId] = st;
   }
 
   const boardCatalog = Catalog.buildBoardCatalogSummary(state.instancesById, {
@@ -929,20 +1333,22 @@ async function runGlobalAgent(triggerInstanceId, userText) {
   });
 
   const activeInstanceIds = boardCatalog.instances
-    .filter((e) => e.isActive)
-    .map((e) => e.instanceId);
+    .filter((entry) => entry.isActive)
+    .map((entry) => entry.instanceId);
 
-  const activeCanvasStates = Object.create(null);
-  const activeInstanceChangesSinceLastAgent = Object.create(null);
+  const activeCanvasStates = {};
+  const activeInstanceChangesSinceLastAgent = {};
 
   for (const id of activeInstanceIds) {
     const st = stateById[id];
     if (!st?.classification) continue;
-    activeCanvasStates[id] = Catalog.buildPromptPayloadFromClassification(st.classification, {
+
+    const payload = Catalog.buildPromptPayloadFromClassification(st.classification, {
       useAliases: true,
       aliasState: state.aliasState,
       log
     });
+    if (payload) activeCanvasStates[id] = payload;
   }
 
   for (const id of activeInstanceIds) {
@@ -950,9 +1356,8 @@ async function runGlobalAgent(triggerInstanceId, userText) {
     if (!state.hasGlobalBaseline) {
       activeInstanceChangesSinceLastAgent[id] = null;
     } else {
-      activeInstanceChangesSinceLastAgent[id] = st?.diff
-        ? Catalog.aliasDiffForActiveInstance(st.diff, state.aliasState)
-        : null;
+      const aliasDiff = Catalog.aliasDiffForActiveInstance(st?.diff, state.aliasState);
+      activeInstanceChangesSinceLastAgent[id] = aliasDiff || null;
     }
   }
 
@@ -964,27 +1369,29 @@ async function runGlobalAgent(triggerInstanceId, userText) {
     activeInstanceIds,
     activeCanvasStates,
     activeInstanceChangesSinceLastAgent,
-    hint: "boardCatalog = Übersicht, activeCanvasStates = Detaildaten nur für aktive Instanzen."
+    hint: "boardCatalog enthält eine Übersicht über alle Instanzen. activeCanvasStates enthält Detaildaten nur für aktive Instanzen."
   };
 
+  const body = OpenAI.buildResponsesBody({
+    model,
+    systemPrompt: DT_GLOBAL_SYSTEM_PROMPT,
+    userText: JSON.stringify(userPayload, null, 2),
+    maxOutputTokens: 4000
+  });
+
   try {
-    log("Sende globalen Agent-Request an OpenAI (Modus A) ...");
-    const answer = await OpenAI.callOpenAIResponses({
-      apiKey,
-      model,
-      systemPrompt: DT_GLOBAL_SYSTEM_PROMPT,
-      userText: JSON.stringify(userPayload, null, 2),
-      maxOutputTokens: 4000
-    });
+    log("Sende Global-Agent-Request an OpenAI ...");
+    const data = await OpenAI.callResponsesApi(apiKey, body);
+    const answer = OpenAI.extractFirstOutputText(data);
 
     if (!answer) {
-      log("Global Agent: Keine Antwort (output_text) gefunden.");
+      log("Global Agent: Keine output_text-Antwort gefunden.");
       return;
     }
 
     const agentObj = OpenAI.parseJsonFromModelOutput(answer);
     if (!agentObj) {
-      log("Global Agent: Antwort ist kein valides JSON. Rohantwort:");
+      log("Global-Agent-Antwort ist kein valides JSON. Rohantwort:");
       log(answer);
       return;
     }
@@ -993,17 +1400,17 @@ async function runGlobalAgent(triggerInstanceId, userText) {
     log(agentObj.analysis || "(keine analysis)");
 
     if (Array.isArray(agentObj.actions) && agentObj.actions.length) {
-      log("Globale Agent-Actions (werden nur geloggt, nicht automatisch angewendet):");
+      log("Globale Agent-Actions (werden aktuell nur geloggt, nicht angewendet):");
       log(agentObj.actions);
     } else {
-      log("Global Agent lieferte keine Actions.");
+      log("Global Agent: actions leer.");
     }
 
-    // Baseline persistieren (Snapshot über alle Instanzen)
+    // Update baseline (persisted)
     const nowIso = new Date().toISOString();
     const savePromises = [];
 
-    for (const inst of state.instancesById.values()) {
+    state.instancesById.forEach((inst) => {
       const st = stateById[inst.instanceId];
       if (st?.signature && inst.imageId) {
         inst.baselineSignature = st.signature;
@@ -1011,23 +1418,105 @@ async function runGlobalAgent(triggerInstanceId, userText) {
         inst.lastDiff = null;
         inst.lastAgentRunAt = nowIso;
         inst.lastChangedAt = nowIso;
-
         savePromises.push(Board.saveBaselineSignatureForImageId(inst.imageId, st.signature, log));
       } else {
         inst.lastDiff = null;
         inst.lastAgentRunAt = nowIso;
         inst.lastChangedAt = nowIso;
       }
-    }
+    });
 
     state.hasGlobalBaseline = true;
     state.globalBaselineAt = nowIso;
 
     await Promise.all(savePromises);
-    await Board.savePersistedBaselineMeta({ hasGlobalBaseline: true, baselineAt: nowIso }, log);
+    await Board.savePersistedBaselineMeta({
+      version: 1,
+      hasGlobalBaseline: state.hasGlobalBaseline,
+      baselineAt: state.globalBaselineAt
+    }, log);
 
-    log("Global Baseline aktualisiert: " + nowIso);
   } catch (e) {
-    log("Exception beim globalen Agent-Run: " + e.message);
+    log("Global Agent Fehler: " + e.message);
   }
 }
+
+// --------------------------------------------------------------------
+// Classic OpenAI call (debug button)
+// --------------------------------------------------------------------
+async function callClassicOpenAI() {
+  await initIfNeeded();
+
+  const apiKey = getApiKey();
+  const model = getModel();
+  const userText = (document.getElementById("user-text")?.value || "").trim();
+
+  if (!apiKey) {
+    log("Bitte OpenAI API Key eingeben.");
+    return;
+  }
+  if (!userText) {
+    log("Bitte eine Frage / Aufgabe eingeben.");
+    return;
+  }
+
+  await refreshBoardState();
+
+  const classifications = [];
+  state.instancesById.forEach((inst) => {
+    const liveInst = state.liveCatalog?.instances?.[inst.instanceId];
+    if (!liveInst) return;
+    const classification = Catalog.buildClassificationFromLiveInstance(inst, liveInst);
+    classifications.push(classification);
+  });
+
+  const classification =
+    classifications.length === 1 ? classifications[0] :
+    classifications.length > 1 ? { templates: classifications } :
+    null;
+
+  const promptPayload = classification
+    ? Catalog.buildPromptPayloadFromClassification(classification, { useAliases: false, aliasState: state.aliasState, log })
+    : null;
+
+  const fullUserText = userText + (
+    promptPayload
+      ? ("\n\nAktuelle Klassifikation (reduziertes JSON):\n" + JSON.stringify(promptPayload, null, 2))
+      : "\n\nHinweis: Keine Klassifikation verfügbar."
+  );
+
+  const body = OpenAI.buildResponsesBody({
+    model,
+    systemPrompt:
+      "Du bist ein Assistent, der Miro-Boards analysiert. " +
+      "Du bekommst Sticky-Notes als JSON und eine Nutzerfrage und sollst exakte Antworten liefern. " +
+      "Antworte standardmäßig auf Deutsch.",
+    userText: fullUserText,
+    maxOutputTokens: 6000
+  });
+
+  try {
+    log("Classic OpenAI Call ...");
+    const data = await OpenAI.callResponsesApi(apiKey, body);
+    const answer = OpenAI.extractFirstOutputText(data) || "(keine Antwort)";
+    log("Antwort:");
+    log(answer);
+  } catch (e) {
+    log("Classic OpenAI Fehler: " + e.message);
+  }
+}
+
+// --------------------------------------------------------------------
+// Wire buttons (Panel)
+// --------------------------------------------------------------------
+window.dtInsertTemplateImage = insertTemplateImage;
+window.dtClusterSelection = clusterSelectionPanel;
+window.dtRunAgentForInstance = runAgentForInstance;
+window.dtRunGlobalAgent = runGlobalAgent;
+window.dtCallOpenAI = callClassicOpenAI;
+
+// Auto-init (so board buttons work after panel open)
+initIfNeeded().catch((e) => {
+  console.error("[DT] initIfNeeded failed:", e);
+  log("Init Fehler: " + (e?.message || String(e)));
+});
