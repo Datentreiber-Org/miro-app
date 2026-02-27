@@ -8,61 +8,36 @@ import {
   STICKY_LAYOUT
 } from "./config.js";
 
-import { createLogger, stripHtml, extractUnderlinedText, isFiniteNumber } from "./utils.js";
+import {
+  stripHtml
+} from "./utils.js";
 
 import * as Board from "./miro/board.js";
 import * as Catalog from "./domain/catalog.js";
 import * as OpenAI from "./ai/openai.js";
 
 // --------------------------------------------------------------------
-// State (Controller-Level)
+// Panel log helper
 // --------------------------------------------------------------------
-const state = {
-  initialized: false,
+function log(msg) {
+  const el = document.getElementById("log");
+  if (!el) return;
 
-  // Baseline (global)
-  hasGlobalBaseline: false,
-  globalBaselineAt: null,
+  const text =
+    typeof msg === "string"
+      ? msg
+      : JSON.stringify(msg, null, 2);
 
-  // Instances
-  nextInstanceCounter: 1,
-  instancesByImageId: new Map(),
-  instancesById: new Map(),
-
-  // Cluster (Panel Session)
-  clusterAssignments: new Map(),       // stickyId -> clusterName
-  clusterCounterByInstanceId: new Map(),
-
-  // Aliases (für Agent actions)
-  aliasState: Catalog.createAliasState(),
-
-  // Selection caches
-  lastStickySelectionIds: [],
-  lastCanvasSelectionInstanceIds: [],
-
-  // Live Catalog cache
-  liveCatalog: null,
-  stickyOwnerCache: null,
-
-  // Re-entrancy guard
-  handlingSelection: false,
-
-  // Scan throttling
-  scanPromise: null,
-  lastScanAt: 0
-};
-
-// --------------------------------------------------------------------
-// Logger + initial log
-// --------------------------------------------------------------------
-const logEl = document.getElementById("log");
-const log = createLogger(logEl);
+  el.textContent = (el.textContent ? el.textContent + "\n\n" : "") + text;
+  el.scrollTop = el.scrollHeight;
+}
 
 (function initialLog() {
-  if (logEl) {
-    logEl.textContent =
+  const el = document.getElementById("log");
+  if (el) {
+    el.textContent =
       "Panel-JS geladen: " + new Date().toLocaleTimeString() +
-      "\nWarte auf Miro SDK (Board.ensureMiroReady) ...";
+      "\nWarte auf Miro SDK ...";
   }
   console.log("[DT] main.js geladen");
 })();
@@ -72,27 +47,46 @@ window.onerror = function (msg, src, line, col) {
 };
 
 // --------------------------------------------------------------------
-// UI helpers
+// State (runtime only)
 // --------------------------------------------------------------------
-function getApiKey() {
-  const el = document.getElementById("api-key");
-  return (el?.value || "").trim();
-}
-function getModel() {
-  const el = document.getElementById("model");
-  return (el?.value || "").trim();
-}
-function getUserQuestionFallback() {
-  return "Bitte analysiere diese Canvas-Instanz und führe sinnvolle nächste Schritte im Workshop-Workflow aus.";
-}
-function getUserTextFromPanel() {
-  const el = document.getElementById("user-text");
-  const t = (el?.value || "").trim();
-  return t || getUserQuestionFallback();
-}
+const state = {
+  initialized: false,
+
+  // Instance registry
+  nextInstanceCounter: 1,
+  instancesByImageId: new Map(), // imageId -> instance
+  instancesById: new Map(),      // instanceId -> instance
+
+  // Cluster (session)
+  clusterAssignments: new Map(), // stickyId -> clusterName
+  clusterCounterByInstanceId: new Map(), // instanceId -> number
+
+  // Last selections
+  lastStickySelectionIds: [],
+  lastCanvasSelectionInstanceIds: [],
+
+  // Prevent recursion on selection:update
+  handlingSelection: false,
+
+  // Alias state for LLM actions
+  aliasState: {
+    nextStickyAliasIndex: 1,
+    sticky: {},        // alias -> real stickyId
+    stickyReverse: {}  // real stickyId -> alias
+  },
+
+  // Live catalog snapshot (rebuild on demand)
+  liveCatalog: null,
+  stickyOwnerCache: new Map(), // stickyId -> instanceId
+
+  // Global baseline meta
+  hasLoadedPersistedBaselineMeta: false,
+  hasGlobalBaseline: false,
+  globalBaselineAt: null
+};
 
 // --------------------------------------------------------------------
-// Miro init + Scan
+// Init
 // --------------------------------------------------------------------
 async function initIfNeeded() {
   if (state.initialized) return;
@@ -100,82 +94,75 @@ async function initIfNeeded() {
 
   await Board.ensureMiroReady(log);
 
-  // Load persisted baseline meta
-  const meta = await Board.loadPersistedBaselineMeta(log);
-  if (meta && typeof meta === "object" && meta.version === 1 && meta.hasGlobalBaseline === true) {
-    state.hasGlobalBaseline = true;
-    state.globalBaselineAt = typeof meta.baselineAt === "string" ? meta.baselineAt : null;
-  } else {
-    state.hasGlobalBaseline = false;
-    state.globalBaselineAt = null;
+  // Load baseline meta
+  try {
+    const meta = await Board.loadPersistedBaselineMeta(log);
+    if (meta && typeof meta === "object" && meta.version === 1 && meta.hasGlobalBaseline === true) {
+      state.hasGlobalBaseline = true;
+      state.globalBaselineAt = typeof meta.baselineAt === "string" ? meta.baselineAt : null;
+    }
+  } catch (e) {
+    log("Baseline Meta load Fehler: " + e.message);
   }
 
+  // Initial scan
   await scanTemplateInstances({ throttleMs: 0 });
 
-  // Selection events
+  // Selection handler for board "buttons"
   Board.onSelectionUpdate(onSelectionUpdate, log);
 }
 
-async function scanTemplateInstances(options = {}) {
-  const now = Date.now();
-  const throttleMs = typeof options.throttleMs === "number" ? options.throttleMs : 1500;
+// --------------------------------------------------------------------
+// UI helpers
+// --------------------------------------------------------------------
+function getApiKey() {
+  return (document.getElementById("api-key")?.value || "").trim();
+}
 
-  // throttle
-  if (state.scanPromise) return state.scanPromise;
-  if (now - state.lastScanAt < throttleMs) return;
-  state.lastScanAt = now;
+function getModel() {
+  return document.getElementById("model")?.value || "gpt-4.1-mini";
+}
 
-  state.scanPromise = (async () => {
-    const images = await Board.getItems({ type: "image" }, log);
-
-    const templateImageIdsOnBoard = new Set();
-
-    for (const img of images) {
-      const canvasTypeId = Catalog.detectCanvasTypeIdFromImage(img, DT_TEMPLATE_CATALOG);
-      if (canvasTypeId) {
-        templateImageIdsOnBoard.add(img.id);
-        await registerInstanceFromImage(img, { createActionShapes: false, canvasTypeId });
-      }
-    }
-
-    // Remove instances whose images vanished
-    for (const imageId of Array.from(state.instancesByImageId.keys())) {
-      if (!templateImageIdsOnBoard.has(imageId)) {
-        const inst = state.instancesByImageId.get(imageId);
-        state.instancesByImageId.delete(imageId);
-        if (inst) {
-          state.instancesById.delete(inst.instanceId);
-          log("Instanz entfernt: " + inst.instanceId + " (Bild gelöscht)");
-        }
-        await Board.removeBaselineSignatureForImageId(imageId, log);
-      }
-    }
-
-    // Rebind action shapes (after panel restart)
-    await rebindActionShapesAfterScan(images);
-
-    state.scanPromise = null;
-  })();
-
-  return state.scanPromise;
+function getUserTextFromPanel() {
+  const t = (document.getElementById("user-text")?.value || "").trim();
+  return t || "Bitte analysiere diese Canvas-Instanz und führe sinnvolle nächste Schritte innerhalb des Workshop-Workflows aus.";
 }
 
 // --------------------------------------------------------------------
-// Instance mgmt: frames + buttons
+// Template detection
+// --------------------------------------------------------------------
+function detectCanvasTypeIdFromImage(image) {
+  if (!image || image.type !== "image") return null;
+  const url = typeof image.url === "string" ? image.url : "";
+  if (!url) return null;
+
+  const ids = Object.keys(DT_TEMPLATE_CATALOG);
+  for (const id of ids) {
+    const cfg = DT_TEMPLATE_CATALOG[id];
+    if (cfg && typeof cfg.imageUrl === "string" && cfg.imageUrl && url.indexOf(cfg.imageUrl) !== -1) {
+      return id;
+    }
+  }
+  return null;
+}
+
+// --------------------------------------------------------------------
+// Instance actions: create buttons inside frame
 // --------------------------------------------------------------------
 async function createInstanceActionShapes(instance, image) {
   const board = Board.getBoard();
   if (!board) return;
 
-  const canCreateFrame = typeof board.createFrame === "function";
-  const canCreateShape = typeof board.createShape === "function";
-  const canCreateText  = typeof board.createText === "function";
+  const hasCreateShape = typeof board.createShape === "function";
+  const hasCreateText  = typeof board.createText  === "function";
+  const hasCreateFrame = typeof board.createFrame === "function";
 
-  if (!canCreateFrame || !canCreateShape) return;
+  if (!hasCreateShape || !hasCreateFrame) return;
 
-  const frameWidth = image.width + 200;
+  // Frame to keep image + buttons together
+  const frameWidth  = image.width + 200;
   const frameHeight = image.height + 260;
-  const frameY = image.y + 80;
+  const frameY      = image.y + 80;
 
   const frame = await Board.createFrame({
     title: image.title || "Datentreiber 3-Boxes",
@@ -188,9 +175,10 @@ async function createInstanceActionShapes(instance, image) {
   const baseY = image.y + image.height / 2 + 80;
   const baseX = image.x;
   const dx = 260;
-  const buttonWidth = 260;
+  const buttonWidth  = 260;
   const buttonHeight = 60;
 
+  // AI button
   const aiShape = await Board.createShape({
     content: "Send to OpenAI",
     shape: "round_rectangle",
@@ -200,6 +188,7 @@ async function createInstanceActionShapes(instance, image) {
     height: buttonHeight
   }, log);
 
+  // Cluster button
   const clusterShape = await Board.createShape({
     content: "Cluster",
     shape: "round_rectangle",
@@ -209,6 +198,7 @@ async function createInstanceActionShapes(instance, image) {
     height: buttonHeight
   }, log);
 
+  // Global agent button
   const globalAgentShape = await Board.createShape({
     content: "Global Agent",
     shape: "round_rectangle",
@@ -218,8 +208,9 @@ async function createInstanceActionShapes(instance, image) {
     height: buttonHeight
   }, log);
 
+  // Global input text
   let globalInput = null;
-  if (canCreateText) {
+  if (hasCreateText) {
     globalInput = await Board.createText({
       content: "",
       x: baseX + dx,
@@ -235,18 +226,19 @@ async function createInstanceActionShapes(instance, image) {
     if (globalInput) await frame.add(globalInput);
     await frame.sync();
   } catch (e) {
-    log("Fehler beim Hinzufügen zum Frame: " + e.message);
+    log("Frame.add Fehler: " + e.message);
   }
 
   instance.actionItems = {
-    frameId: frame.id,
     aiItemId: aiShape.id,
     clusterItemId: clusterShape.id,
     globalAgentItemId: globalAgentShape.id,
-    globalAgentInputItemId: globalInput ? globalInput.id : null
+    globalAgentInputItemId: globalInput ? globalInput.id : null,
+    frameId: frame.id
   };
 }
 
+// Rebind existing action shapes after scan (panel restart)
 async function rebindActionShapesAfterScan(images) {
   const board = Board.getBoard();
   if (!board) return;
@@ -279,7 +271,7 @@ async function rebindActionShapesAfterScan(images) {
   }
 
   const imageById = new Map();
-  for (const img of images || []) imageById.set(img.id, img);
+  for (const img of images) imageById.set(img.id, img);
 
   const frameIdByImageId = new Map();
   imageById.forEach((img, imgId) => {
@@ -294,11 +286,12 @@ async function rebindActionShapesAfterScan(images) {
     if (!frameId) return;
 
     const frameShapes = shapesByParent.get(frameId) || [];
-    const frameTexts = textsByParent.get(frameId) || [];
+    const frameTexts  = textsByParent.get(frameId) || [];
 
     let aiShape = null;
     let clusterShape = null;
     let globalShape = null;
+    let globalInput = null;
 
     for (const s of frameShapes) {
       const raw = (s.content || "").toLowerCase();
@@ -307,53 +300,47 @@ async function rebindActionShapesAfterScan(images) {
       else if (!globalShape && raw.includes("global agent")) globalShape = s;
     }
 
-    const globalInput = frameTexts.length > 0 ? frameTexts[0] : null;
+    if (frameTexts.length > 0) globalInput = frameTexts[0];
 
     if (aiShape || clusterShape || globalShape || globalInput) {
       instance.actionItems = {
-        frameId,
         aiItemId: aiShape ? aiShape.id : null,
         clusterItemId: clusterShape ? clusterShape.id : null,
         globalAgentItemId: globalShape ? globalShape.id : null,
-        globalAgentInputItemId: globalInput ? globalInput.id : null
+        globalAgentInputItemId: globalInput ? globalInput.id : null,
+        frameId
       };
+      log("Action-Shapes re-gebunden für Instanz " + instance.instanceId);
     }
   });
 }
 
+// --------------------------------------------------------------------
+// Instance registry: register from template image
+// --------------------------------------------------------------------
 async function registerInstanceFromImage(image, options = {}) {
-  if (!image?.id) return null;
+  if (!image || !image.id) return null;
 
-  const createActionShapesFlag = options.createActionShapes !== false;
-
-  const detectedCanvasTypeId =
-    options.canvasTypeId ||
-    Catalog.detectCanvasTypeIdFromImage(image, DT_TEMPLATE_CATALOG) ||
-    TEMPLATE_ID;
+  const createActionShapes = options.createActionShapes !== false;
+  const detectedCanvasTypeId = options.canvasTypeId || detectCanvasTypeIdFromImage(image) || TEMPLATE_ID;
 
   let instance = state.instancesByImageId.get(image.id);
   if (instance) {
     instance.title = image.title || instance.title || "Datentreiber 3-Boxes";
     instance.canvasTypeId = detectedCanvasTypeId || instance.canvasTypeId || TEMPLATE_ID;
-    instance.imageId = image.id;
 
-    instance.lastGeometry = {
-      x: image.x,
-      y: image.y,
-      width: image.width,
-      height: image.height
-    };
+    instance.lastGeometry = { x: image.x, y: image.y, width: image.width, height: image.height };
 
-    // FrameId nachziehen wenn Bild in Frame liegt
-    if (!createActionShapesFlag && image.parentId) {
+    // If image already inside frame, keep frameId (copy/paste)
+    if (!createActionShapes && image.parentId) {
       if (!instance.actionItems) instance.actionItems = {};
       if (!instance.actionItems.frameId) {
         const parent = await Board.getItemById(image.parentId, log);
-        if (parent?.type === "frame") instance.actionItems.frameId = parent.id;
+        if (parent && parent.type === "frame") instance.actionItems.frameId = parent.id;
       }
     }
 
-    // Baseline signature lazy load
+    // Load persisted baseline signature if needed
     if (state.hasGlobalBaseline && !instance.baselineSignatureLoaded) {
       instance.baselineSignature = await Board.loadBaselineSignatureForImageId(image.id, log);
       instance.baselineSignatureLoaded = true;
@@ -368,109 +355,137 @@ async function registerInstanceFromImage(image, options = {}) {
     canvasTypeId: detectedCanvasTypeId || TEMPLATE_ID,
     imageId: image.id,
     title: image.title || "Datentreiber 3-Boxes",
-    lastGeometry: {
-      x: image.x,
-      y: image.y,
-      width: image.width,
-      height: image.height
-    },
+    lastGeometry: { x: image.x, y: image.y, width: image.width, height: image.height },
 
-    // signatures
     baselineSignature: null,
     baselineSignatureLoaded: false,
+
     lastSignature: null,
     lastStateHash: null,
-    lastClassification: null,
-    lastStateJson: null,
-    lastStickyCount: 0,
     lastDiff: null,
 
-    lastAgentRunAt: null,
-    lastChangedAt: null,
+    lastStickyCount: 0,
+    lastClassification: null,
+    lastStateJson: null,
 
-    actionItems: {},
-    liveCatalog: null
+    lastChangedAt: null,
+    lastAgentRunAt: null,
+
+    actionItems: {}
   };
 
-  // FrameId merken wenn Bild in Frame liegt (z.B. copy/paste)
-  if (!createActionShapesFlag && image.parentId) {
+  // If image already inside frame, keep frameId
+  if (!createActionShapes && image.parentId) {
     const parent = await Board.getItemById(image.parentId, log);
-    if (parent?.type === "frame") instance.actionItems.frameId = parent.id;
+    if (parent && parent.type === "frame") {
+      instance.actionItems.frameId = parent.id;
+    }
   }
 
   state.instancesByImageId.set(image.id, instance);
   state.instancesById.set(instanceId, instance);
-
-  log("Neue Instanz registriert: " + instanceId + " (Bild " + image.id + ")");
+  log("Neue Canvas-Instanz registriert: " + instanceId + " (Bild-ID " + image.id + ")");
 
   if (state.hasGlobalBaseline && !instance.baselineSignatureLoaded) {
     instance.baselineSignature = await Board.loadBaselineSignatureForImageId(image.id, log);
     instance.baselineSignatureLoaded = true;
   }
 
-  if (createActionShapesFlag) {
-    try {
-      await createInstanceActionShapes(instance, image);
-    } catch (e) {
-      log("Fehler createInstanceActionShapes: " + e.message);
-    }
+  if (createActionShapes) {
+    await createInstanceActionShapes(instance, image);
   }
 
   return instance;
 }
 
 // --------------------------------------------------------------------
-// Selection update: detect button shapes + trigger actions
+// Scan all template instances on board
+// --------------------------------------------------------------------
+let lastScanAt = 0;
+
+async function scanTemplateInstances({ throttleMs = 500 } = {}) {
+  await Board.ensureMiroReady(log);
+  const now = Date.now();
+  if (throttleMs > 0 && (now - lastScanAt) < throttleMs) return;
+  lastScanAt = now;
+
+  const images = await Board.getItems({ type: "image" }, log);
+  const templateImageIdsOnBoard = new Set();
+
+  for (const img of images) {
+    const canvasTypeId = detectCanvasTypeIdFromImage(img);
+    if (canvasTypeId) {
+      templateImageIdsOnBoard.add(img.id);
+      await registerInstanceFromImage(img, { createActionShapes: false, canvasTypeId });
+    }
+  }
+
+  // Remove instances whose image is gone
+  const knownImageIds = Array.from(state.instancesByImageId.keys());
+  for (const imageId of knownImageIds) {
+    if (!templateImageIdsOnBoard.has(imageId)) {
+      const inst = state.instancesByImageId.get(imageId);
+      state.instancesByImageId.delete(imageId);
+      if (inst) {
+        state.instancesById.delete(inst.instanceId);
+        log("Canvas-Instanz entfernt (Template gelöscht): " + inst.instanceId);
+      }
+      await Board.removeBaselineSignatureForImageId(imageId, log);
+    }
+  }
+
+  // Rebind action shapes
+  await rebindActionShapesAfterScan(images);
+}
+
+// --------------------------------------------------------------------
+// Selection update: detect board buttons + remember last selections
 // --------------------------------------------------------------------
 async function onSelectionUpdate(event) {
   if (state.handlingSelection) return;
 
   const items = event?.items || [];
 
+  // Remember last sticky selection
   const stickyIds = items.filter((it) => it.type === "sticky_note").map((it) => it.id);
-  if (stickyIds.length > 0) {
-    state.lastStickySelectionIds = stickyIds.slice();
-  }
+  if (stickyIds.length) state.lastStickySelectionIds = stickyIds.slice();
 
-  const canvasInstanceIdSet = new Set();
-
+  // Remember last selected instance(s)
+  const instSet = new Set();
   for (const it of items) {
     if (it.type === "image") {
       const inst = state.instancesByImageId.get(it.id);
-      if (inst) canvasInstanceIdSet.add(inst.instanceId);
-    } else if (it.type === "frame") {
+      if (inst) instSet.add(inst.instanceId);
+    }
+    if (it.type === "frame") {
       state.instancesById.forEach((inst) => {
-        if (inst.actionItems?.frameId === it.id) canvasInstanceIdSet.add(inst.instanceId);
+        if (inst.actionItems?.frameId === it.id) instSet.add(inst.instanceId);
       });
     }
   }
-
-  if (canvasInstanceIdSet.size > 0) {
-    state.lastCanvasSelectionInstanceIds = Array.from(canvasInstanceIdSet);
-  }
+  if (instSet.size) state.lastCanvasSelectionInstanceIds = Array.from(instSet);
 
   if (items.length !== 1) return;
   const item = items[0];
   if (item.type !== "shape") return;
 
-  // ensure instances + action shapes exist after panel restart
+  // Ensure instances are bound
   await scanTemplateInstances({ throttleMs: 0 });
 
   let instanceId = null;
   let buttonType = null;
 
   state.instancesById.forEach((inst, id) => {
-    const a = inst.actionItems;
-    if (!a) return;
-    if (a.aiItemId === item.id) {
-      instanceId = id;
-      buttonType = "ai";
-    } else if (a.clusterItemId === item.id) {
-      instanceId = id;
-      buttonType = "cluster";
-    } else if (a.globalAgentItemId === item.id) {
-      instanceId = id;
-      buttonType = "global";
+    const aiId = inst.actionItems?.aiItemId;
+    const clId = inst.actionItems?.clusterItemId;
+    const glId = inst.actionItems?.globalAgentItemId;
+
+    if (aiId === item.id) {
+      instanceId = id; buttonType = "ai";
+    } else if (clId === item.id) {
+      instanceId = id; buttonType = "cluster";
+    } else if (glId === item.id) {
+      instanceId = id; buttonType = "global";
     }
   });
 
@@ -479,28 +494,30 @@ async function onSelectionUpdate(event) {
   state.handlingSelection = true;
   try {
     if (buttonType === "ai") {
-      log("AI-Button (Instanz " + instanceId + ")");
+      log("Agent-Button (Board Shape) für Instanz " + instanceId);
       await runAgentForInstance(instanceId);
     } else if (buttonType === "cluster") {
-      if (!state.lastStickySelectionIds?.length) {
-        log("Cluster: Bitte zuerst Sticky Notes auswählen.");
-      } else {
-        log("Cluster-Button (Instanz " + instanceId + ")");
-        await clusterSelectionWithIds(state.lastStickySelectionIds, instanceId);
+      if (!state.lastStickySelectionIds.length) {
+        log("Cluster-Button: Bitte zuerst Sticky Notes auswählen.");
+        return;
       }
+      log("Cluster-Button (Board Shape) für Instanz " + instanceId);
+      await clusterSelectionWithIds(state.lastStickySelectionIds, instanceId);
     } else if (buttonType === "global") {
       const inst = state.instancesById.get(instanceId);
       const inputId = inst?.actionItems?.globalAgentInputItemId;
-      let userText = "";
+
+      let txt = "";
       if (inputId) {
-        const txt = await Board.getItemById(inputId, log);
-        userText = (typeof txt?.content === "string") ? txt.content.trim() : "";
+        const tItem = await Board.getItemById(inputId, log);
+        if (tItem && typeof tItem.content === "string") txt = tItem.content.trim();
       }
-      if (!userText) {
-        userText = "Bitte gib einen globalen Überblick über alle relevanten Canvas-Instanzen und schlage sinnvolle nächste Schritte vor.";
+      if (!txt) {
+        txt = "Bitte gib einen globalen Überblick über alle relevanten Canvas-Instanzen und schlage sinnvolle nächste Schritte vor.";
       }
-      log("Global-Agent (ausgelöst von Instanz " + instanceId + ")");
-      await runGlobalAgent(instanceId, userText);
+
+      log("Global-Agent-Button (Board Shape) ausgelöst (Instanz " + instanceId + ")");
+      await runGlobalAgent(instanceId, txt);
     }
   } finally {
     state.handlingSelection = false;
@@ -513,8 +530,6 @@ async function onSelectionUpdate(event) {
 async function insertTemplateImage() {
   await initIfNeeded();
 
-  log("Template-Bild einfügen ...");
-
   try {
     const image = await Board.createImage({
       url: TEMPLATE_IMAGE_URL,
@@ -525,36 +540,47 @@ async function insertTemplateImage() {
 
     await registerInstanceFromImage(image, { createActionShapes: true });
 
-    log("Template eingefügt: " + image.id);
+    log(
+      "Template eingefügt: " + image.id + "\n" +
+      "Unterhalb des Canvas findest du die Buttons im Frame:\n" +
+      "- Send to OpenAI\n" +
+      "- Cluster\n" +
+      "- Global Agent"
+    );
+
     await Board.zoomTo(image, log);
   } catch (e) {
-    log("Fehler insertTemplateImage: " + e.message);
+    log("Fehler beim Einfügen des Template-Bildes: " + e.message);
   }
 }
 
 // --------------------------------------------------------------------
-// Cluster selection (Panel button + board button)
+// Cluster selection (panel + board button)
 // --------------------------------------------------------------------
+async function clusterSelectionPanel() {
+  log("Button: Auswahl clustern (Panel).");
+  await clusterSelectionWithIds(null, null);
+}
+
 async function clusterSelectionWithIds(stickyIds, expectedInstanceId) {
   await initIfNeeded();
   await scanTemplateInstances({ throttleMs: 0 });
 
   let stickyNotes = [];
 
-  if (Array.isArray(stickyIds) && stickyIds.length > 0) {
+  if (Array.isArray(stickyIds) && stickyIds.length) {
     const arr = await Board.getItems({ id: stickyIds }, log);
     stickyNotes = arr.filter((it) => it.type === "sticky_note");
   } else {
     const selection = await Board.getSelection(log);
-    stickyNotes = selection.filter((item) => item.type === "sticky_note");
+    stickyNotes = selection.filter((it) => it.type === "sticky_note");
   }
 
   if (!stickyNotes.length) {
-    log("Cluster: Bitte nur Sticky Notes auswählen.");
+    log("Keine Sticky Notes ausgewählt.");
     return;
   }
 
-  // Determine instance of each sticky
   const byInstance = {};
   const outside = [];
 
@@ -564,11 +590,12 @@ async function clusterSelectionWithIds(stickyIds, expectedInstanceId) {
   for (const s of stickyNotes) {
     let instance = null;
 
-    // If same frame, quick accept
+    // Prefer frame match if cluster button belongs to instance frame
     if (expectedInstance && expectedFrameId && s.parentId === expectedFrameId) {
       instance = expectedInstance;
     } else {
-      instance = Catalog.findInstanceForPoint(s.x, s.y, state.instancesById);
+      // fallback: find instance by geometry (rough)
+      instance = findInstanceForPoint(s.x, s.y);
     }
 
     if (!instance) {
@@ -576,67 +603,82 @@ async function clusterSelectionWithIds(stickyIds, expectedInstanceId) {
       continue;
     }
 
-    const id = instance.instanceId;
-    if (!byInstance[id]) byInstance[id] = [];
-    byInstance[id].push(s);
+    if (!byInstance[instance.instanceId]) byInstance[instance.instanceId] = [];
+    byInstance[instance.instanceId].push(s);
   }
 
   const instanceIds = Object.keys(byInstance);
-  if (instanceIds.length === 0) {
-    log("Cluster: Keine der Sticky Notes liegt auf einem bekannten Canvas.");
+  if (!instanceIds.length) {
+    log("Keine ausgewählten Stickies auf einem Canvas gefunden.");
     return;
   }
+
   if (instanceIds.length > 1) {
-    log("Cluster: Auswahl enthält mehrere Canvas-Instanzen. Bitte nur eine Instanz clustern.");
+    log("Auswahl enthält Stickies aus mehreren Canvas-Instanzen. Bitte nur eine Instanz clustern.");
     return;
   }
 
   const instanceId = instanceIds[0];
   if (expectedInstanceId && instanceId !== expectedInstanceId) {
-    log("Cluster: Auswahl gehört zu anderem Canvas als der Button.");
+    log("Cluster-Button gehört zu anderer Instanz als Sticky-Auswahl.");
     return;
   }
 
   const notesInInstance = byInstance[instanceId];
 
-  // Cluster name: underlined sticky -> text, else auto
+  // Detect underlined header sticky -> cluster name
   let headerSticky = null;
   for (const s of notesInInstance) {
-    if (extractUnderlinedText(s.content)) {
+    const html = s.content || "";
+    if (html.includes("<u>") || html.includes("text-decoration:underline")) {
       headerSticky = s;
       break;
     }
   }
 
   let clusterName = null;
-
   if (headerSticky) {
     const candidate = stripHtml(headerSticky.content).trim();
     if (!candidate) {
-      log("Cluster: Unterstrichener Sticky-Text ist leer.");
+      log("Unterstrichener Sticky ist leer → bitte Cluster-Namen eintragen.");
       return;
     }
     clusterName = candidate;
   } else {
-    let count = state.clusterCounterByInstanceId.get(instanceId) || 0;
-    count += 1;
+    const count = (state.clusterCounterByInstanceId.get(instanceId) || 0) + 1;
     state.clusterCounterByInstanceId.set(instanceId, count);
     clusterName = "Cluster " + count;
   }
 
-  for (const s of notesInInstance) state.clusterAssignments.set(s.id, clusterName);
-  for (const s of outside) state.clusterAssignments.set(s.id, clusterName);
+  for (const s of notesInInstance) {
+    state.clusterAssignments.set(s.id, clusterName);
+  }
+  for (const s of outside) {
+    state.clusterAssignments.set(s.id, clusterName);
+  }
 
-  log("Cluster '" + clusterName + "' gesetzt für " + (notesInInstance.length + outside.length) + " Stickies (Session).");
+  log("Cluster '" + clusterName + "' gesetzt für " + (notesInInstance.length + outside.length) + " Sticky Notes (Session-State).");
 }
 
-async function clusterSelectionPanel() {
-  log("Panel: Auswahl clustern.");
-  await clusterSelectionWithIds(null, null);
+// Fallback: point -> instance by lastGeometry
+function findInstanceForPoint(x, y) {
+  let found = null;
+  state.instancesById.forEach((inst) => {
+    const g = inst.lastGeometry;
+    if (!g) return;
+    const left = g.x - g.width / 2;
+    const right = g.x + g.width / 2;
+    const top = g.y - g.height / 2;
+    const bottom = g.y + g.height / 2;
+    if (x >= left && x <= right && y >= top && y <= bottom) {
+      if (!found) found = inst;
+    }
+  });
+  return found;
 }
 
 // --------------------------------------------------------------------
-// Board state rebuild
+// Rebuild live catalog snapshot
 // --------------------------------------------------------------------
 async function refreshBoardState() {
   await initIfNeeded();
@@ -644,7 +686,7 @@ async function refreshBoardState() {
 
   const ctx = await Board.getBoardBaseContext(log);
 
-  const { liveCatalog, stickyOwnerCache } = await Catalog.rebuildLiveCatalog({
+  const liveCatalog = await Catalog.rebuildLiveCatalog({
     ctx,
     instancesById: state.instancesById,
     clusterAssignments: state.clusterAssignments,
@@ -653,46 +695,38 @@ async function refreshBoardState() {
   });
 
   state.liveCatalog = liveCatalog;
-  state.stickyOwnerCache = stickyOwnerCache;
+  state.stickyOwnerCache = liveCatalog.stickyOwnerCache || new Map();
 
-  // Update instance sticky counts + store liveInst pointer
+  // Update instance sticky counts
   state.instancesById.forEach((inst) => {
-    const liveInst = liveCatalog.instances[inst.instanceId];
-    if (liveInst) {
-      inst.lastStickyCount = liveInst.meta?.stickyCount || 0;
-      inst.liveCatalog = liveInst;
-    } else {
-      inst.lastStickyCount = 0;
-      inst.liveCatalog = null;
-    }
+    const liveInst = liveCatalog.instances?.[inst.instanceId];
+    inst.lastStickyCount = liveInst?.meta?.stickyCount || 0;
   });
 }
 
 // --------------------------------------------------------------------
-// Apply agent actions to instance (Modus B)
+// Agent action dispatcher (apply actions to instance)
 // --------------------------------------------------------------------
 async function applyAgentActionsToInstance(instanceId, actions) {
-  if (!Array.isArray(actions) || actions.length === 0) {
+  if (!Array.isArray(actions) || !actions.length) {
     log("Keine Actions vom Agenten (leer).");
     return;
   }
 
   const instance = state.instancesById.get(instanceId);
   if (!instance) {
-    log("applyAgentActions: Unbekannte Instanz " + instanceId);
+    log("Unbekannte Instanz: " + instanceId);
     return;
   }
 
   const geom = await Board.computeTemplateGeometry(instance, log);
   if (!geom) {
-    log("applyAgentActions: Keine Geometrie für Instanz " + instanceId);
+    log("Keine Geometrie für Instanz: " + instanceId);
     return;
   }
 
-  // ---- Layout State für create_sticky/move_sticky: pro Region belegte Rects ----
-  if (!state.liveCatalog || !state.liveCatalog.instances?.[instanceId]) {
-    await refreshBoardState();
-  }
+  // Preload catalog snapshot (for region occupancy + existing connectors)
+  await refreshBoardState();
 
   const liveInst = state.liveCatalog?.instances?.[instanceId] || null;
 
@@ -700,299 +734,263 @@ async function applyAgentActionsToInstance(instanceId, actions) {
   // Ermöglicht: create_sticky {ref:"p1_name"} + spätere Actions (connect/move/delete) mit "p1_name"
   const createdRefToId = new Map();
 
-  function resolveStickyIdAny(idOrAliasOrRef) {
-    if (!idOrAliasOrRef) return null;
-    const key = String(idOrAliasOrRef);
-    if (createdRefToId.has(key)) {
-      return createdRefToId.get(key);
-    }
-    return Catalog.resolveStickyId(idOrAliasOrRef, state.aliasState);
-  }
+  // Falls Connector-Actions vor den create_sticky Actions kommen,
+  // können refs noch nicht aufgelöst werden. Wir deferen diese Actions
+  // und versuchen nach dem ersten Pass erneut.
+  const deferredConnectorActions = [];
 
   function rememberCreatedRef(ref, sticky) {
-    if (!ref || typeof ref !== "string") return;
-    const clean = ref.trim();
-    if (!clean) return;
-    const stickyId = sticky?.id;
-    if (!stickyId) return;
-
-    if (createdRefToId.has(clean) && createdRefToId.get(clean) !== stickyId) {
-      log("WARNUNG: create_sticky.ref '" + clean + "' wurde überschrieben.");
-    }
-    createdRefToId.set(clean, stickyId);
+    if (!ref) return;
+    if (!sticky?.id) return;
+    createdRefToId.set(ref, sticky.id);
   }
 
+  // Keep owner cache for newly created stickies
   function rememberStickyOwner(stickyId) {
     if (!stickyId) return;
-    if (state.stickyOwnerCache && typeof state.stickyOwnerCache.set === "function") {
-      state.stickyOwnerCache.set(stickyId, instanceId);
-    }
+    state.stickyOwnerCache.set(stickyId, instanceId);
   }
 
-  function rectFromLiveSticky(st) {
-    if (!st || typeof st.x !== "number" || typeof st.y !== "number") return null;
-    return {
-      id: st.id,
-      x: st.x,
-      y: st.y,
-      width: isFiniteNumber(st.width) ? st.width : STICKY_LAYOUT.defaultWidthPx,
-      height: isFiniteNumber(st.height) ? st.height : STICKY_LAYOUT.defaultHeightPx
-    };
+  // Resolve either alias ("S0001") or ref ("p1_name") or raw stickyId
+  function resolveStickyIdAny(idOrRefOrAlias) {
+    if (!idOrRefOrAlias) return null;
+
+    // 1) ref created in this batch
+    if (createdRefToId.has(idOrRefOrAlias)) return createdRefToId.get(idOrRefOrAlias);
+
+    // 2) alias mapping
+    const aliasMap = state.aliasState?.sticky;
+    if (aliasMap && aliasMap[idOrRefOrAlias]) return aliasMap[idOrRefOrAlias];
+
+    // 3) raw
+    return idOrRefOrAlias;
   }
 
-  function buildOccupied(list) {
-    const out = [];
-    for (const st of list || []) {
-      const r = rectFromLiveSticky(st);
-      if (r) out.push(r);
-    }
-    return out;
-  }
-
+  // Region occupancy index (body regions)
+  // We build simple rect-occupied lists per regionId for collision-aware placement.
   const occupiedByRegion = {
-    left:   buildOccupied(liveInst?.regions?.body?.left?.stickies),
-    middle: buildOccupied(liveInst?.regions?.body?.middle?.stickies),
-    right:  buildOccupied(liveInst?.regions?.body?.right?.stickies)
+    left: [],
+    middle: [],
+    right: []
   };
 
-  function deriveStickySize(regionId) {
-    const occ = occupiedByRegion[regionId] || [];
-    if (occ.length === 0) {
-      return { width: STICKY_LAYOUT.defaultWidthPx, height: STICKY_LAYOUT.defaultHeightPx };
+  // Populate from current live catalog stickies in body regions (existing items)
+  function addOccupiedFromLive(liveStickies) {
+    for (const s of liveStickies) {
+      const id = s?.id;
+      if (!id) continue;
+
+      // Approx sizes: try to load actual sticky to get width/height (expensive),
+      // so we keep lightweight defaults and update after creation.
+      occupiedByRegion[s.regionId]?.push({
+        id,
+        x: s.boardX,
+        y: s.boardY,
+        width: STICKY_LAYOUT.defaultWidthPx,
+        height: STICKY_LAYOUT.defaultHeightPx
+      });
     }
-    // Nimm als "typische" Größe die erste (stabil genug für Layout)
-    return {
-      width: occ[0].width || STICKY_LAYOUT.defaultWidthPx,
-      height: occ[0].height || STICKY_LAYOUT.defaultHeightPx
-    };
   }
 
+  // Helpers: convert liveInst stickies to board coords occupancy
+  if (liveInst) {
+    // Body regions left/middle/right
+    const b = liveInst.regions?.body || null;
+    if (b?.left?.stickies?.length) {
+      addOccupiedFromLive(b.left.stickies.map((st) => ({
+        id: st.id,
+        regionId: "left",
+        boardX: st.boardX,
+        boardY: st.boardY
+      })));
+    }
+    if (b?.middle?.stickies?.length) {
+      addOccupiedFromLive(b.middle.stickies.map((st) => ({
+        id: st.id,
+        regionId: "middle",
+        boardX: st.boardX,
+        boardY: st.boardY
+      })));
+    }
+    if (b?.right?.stickies?.length) {
+      addOccupiedFromLive(b.right.stickies.map((st) => ({
+        id: st.id,
+        regionId: "right",
+        boardX: st.boardX,
+        boardY: st.boardY
+      })));
+    }
+  }
+
+  // Remove from occupied lists (when deleting)
   function removeFromAllOccupied(stickyId) {
-    if (!stickyId) return;
-    for (const rid of Object.keys(occupiedByRegion)) {
-      occupiedByRegion[rid] = (occupiedByRegion[rid] || []).filter((r) => r && r.id !== stickyId);
+    for (const key of Object.keys(occupiedByRegion)) {
+      occupiedByRegion[key] = occupiedByRegion[key].filter((r) => r.id !== stickyId);
     }
   }
 
-  function detectBodyRegionIdFromBoardCoords(canvasTypeId, x, y) {
-    if (!geom || !isFiniteNumber(x) || !isFiniteNumber(y)) return null;
-    const left0 = geom.x - geom.width / 2;
-    const top0  = geom.y - geom.height / 2;
-    const px = (x - left0) / geom.width;
-    const py = (y - top0) / geom.height;
+  // Try to infer regionId from a target area name
+  function areaNameToRegionId(areaName) {
+    const region = Catalog.areaNameToRegion(areaName);
+    return region?.id || null;
+  }
+
+  // Quick detection: where does a given board point land (body only)
+  function detectBodyRegionIdFromBoardCoords(canvasTypeId, boardX, boardY) {
+    const left = geom.x - geom.width / 2;
+    const top = geom.y - geom.height / 2;
+    const px = (boardX - left) / geom.width;
+    const py = (boardY - top) / geom.height;
     if (px < 0 || px > 1 || py < 0 || py > 1) return null;
 
     const loc = Catalog.classifyNormalizedLocation(canvasTypeId, px, py);
-    const rid = loc?.role === "body" ? loc.regionId : null;
+    if (loc?.role !== "body") return null;
+    const rid = loc.regionId;
     if (rid === "left" || rid === "middle" || rid === "right") return rid;
     return null;
   }
 
-  // ---- NEU: Connector-Index (für ensure/delete by pair) ----
-  const connectorIdsByKey = new Map(); // key -> [connectorId, ...]
-  function connectorKey(a, b) {
-    if (!a || !b) return null;
-    const sa = String(a);
-    const sb = String(b);
-    // undirected key (A|B == B|A)
-    return sa < sb ? (sa + "|" + sb) : (sb + "|" + sa);
-  }
-  function addConnectorId(key, connectorId) {
-    if (!key || !connectorId) return;
-    let arr = connectorIdsByKey.get(key);
-    if (!arr) {
-      arr = [];
-      connectorIdsByKey.set(key, arr);
-    }
-    if (!arr.includes(connectorId)) {
-      arr.push(connectorId);
-    }
-  }
-  function hasAnyConnector(key) {
-    const arr = key ? connectorIdsByKey.get(key) : null;
-    return Array.isArray(arr) && arr.length > 0;
-  }
-  function removeConnectorIdFromIndex(key, connectorId) {
-    if (!key || !connectorId) return;
-    const arr = connectorIdsByKey.get(key);
-    if (!Array.isArray(arr) || arr.length === 0) return;
-    connectorIdsByKey.set(key, arr.filter((id) => id !== connectorId));
+  // Decide sticky size (optional: can vary by region)
+  function deriveStickySize(regionId) {
+    // Right now: fixed defaults
+    return { width: STICKY_LAYOUT.defaultWidthPx, height: STICKY_LAYOUT.defaultHeightPx };
   }
 
-  for (const c of liveInst?.connections || []) {
-    const key = connectorKey(c.fromStickyId, c.toStickyId);
-    addConnectorId(key, c.connectorId);
+  // ------------------------------------------------------------------
+  // Connector helpers (intra-instance)
+  // ------------------------------------------------------------------
+  // Build a quick lookup of existing connectors in this instance (undirected pair key)
+  const connectorIndex = new Map(); // key "A|B" -> [connectorId,...]
+  const existingConnections = Array.isArray(liveInst?.connections) ? liveInst.connections : [];
+
+  function pairKey(a, b) {
+    const A = String(a);
+    const B = String(b);
+    return (A < B) ? (A + "|" + B) : (B + "|" + A);
   }
 
-  async function createConnectorBetween(fromId, toId, action, { ensure = false } = {}) {
-    if (!fromId || !toId) {
-      log("create_connector: from/to fehlt.");
-      return;
-    }
-    if (fromId === toId) {
-      log("create_connector: fromStickyId == toStickyId (ignoriere).");
+  for (const c of existingConnections) {
+    const fromId = c?.fromStickyId;
+    const toId = c?.toStickyId;
+    const cid = c?.connectorId;
+    if (!fromId || !toId || !cid) continue;
+    const k = pairKey(fromId, toId);
+    if (!connectorIndex.has(k)) connectorIndex.set(k, []);
+    connectorIndex.get(k).push(cid);
+  }
+
+  function isSameInstanceSticky(stickyId) {
+    const owner = state.stickyOwnerCache.get(stickyId);
+    return owner === instanceId;
+  }
+
+  async function createConnectorBetween(fromStickyId, toStickyId, action, { ensure }) {
+    if (!fromStickyId || !toStickyId) return;
+
+    if (!isSameInstanceSticky(fromStickyId) || !isSameInstanceSticky(toStickyId)) {
+      log("Connector: Cross-Instance Verbindung wird ignoriert (from=" + fromStickyId + ", to=" + toStickyId + ").");
       return;
     }
 
-    // Guard: Standardmäßig nur innerhalb derselben Instanz verbinden (falls Owner bekannt)
-    const ownerA = state.stickyOwnerCache?.get?.(fromId) || null;
-    const ownerB = state.stickyOwnerCache?.get?.(toId) || null;
-    if ((ownerA && ownerA !== instanceId) || (ownerB && ownerB !== instanceId)) {
-      log(
-        "create_connector: Cross-Instance Verbindung abgelehnt (Instanz " +
-        instanceId +
-        "). fromOwner=" + (ownerA || "unknown") +
-        ", toOwner=" + (ownerB || "unknown")
-      );
+    const k = pairKey(fromStickyId, toStickyId);
+    const existing = connectorIndex.get(k) || [];
+
+    if (ensure && existing.length > 0) {
+      log("ensure_connector: Verbindung existiert bereits (" + existing[0] + ").");
       return;
     }
 
-    const key = connectorKey(fromId, toId);
+    const caption = (typeof action.caption === "string") ? action.caption : null;
+    const shape = (typeof action.shape === "string") ? action.shape : null;
+    const style = (action.style && typeof action.style === "object") ? action.style : null;
 
-    if (ensure && key && hasAnyConnector(key)) {
-      // Schon verbunden -> nichts tun
-      return;
-    }
+    const conn = await Board.createConnectorBetweenItems({
+      startItemId: fromStickyId,
+      endItemId: toStickyId,
+      caption,
+      shape,
+      style
+    }, log);
 
-    try {
-      const connector = await Board.createConnectorBetweenItems({
-        startItemId: fromId,
-        endItemId: toId,
-        caption: action?.caption || null,
-        shape: action?.shape || null,
-        style: action?.style || null,
-        startSnapTo: action?.startSnapTo || "auto",
-        endSnapTo: action?.endSnapTo || "auto"
-      }, log);
-
-      if (connector?.id && key) {
-        addConnectorId(key, connector.id);
-      }
-    } catch (e) {
-      log("Fehler bei create_connector: " + e.message);
+    if (conn?.id) {
+      if (!connectorIndex.has(k)) connectorIndex.set(k, []);
+      connectorIndex.get(k).push(conn.id);
+      log("Connector erstellt: " + conn.id + " (" + fromStickyId + " -> " + toStickyId + ")");
     }
   }
 
   async function deleteConnectorAction(action) {
     const connectorId = action?.connectorId ? String(action.connectorId) : null;
-
     if (connectorId) {
-      try {
-        await Board.removeItemById(connectorId, log);
-      } catch (e) {
-        log("Fehler bei delete_connector (" + connectorId + "): " + e.message);
+      await Board.removeItemById(connectorId, log);
+      // best-effort: remove from index
+      for (const [k, list] of connectorIndex.entries()) {
+        connectorIndex.set(k, list.filter((id) => id !== connectorId));
       }
       return;
     }
 
+    // delete by pair
     const fromId = resolveStickyIdAny(action?.fromStickyId);
-    const toId   = resolveStickyIdAny(action?.toStickyId);
+    const toId = resolveStickyIdAny(action?.toStickyId);
     if (!fromId || !toId) {
-      log("delete_connector: Bitte connectorId ODER fromStickyId/toStickyId angeben.");
+      log("delete_connector: from/to fehlt (oder konnte nicht aufgelöst werden).");
+      return;
+    }
+    const k = pairKey(fromId, toId);
+    const list = connectorIndex.get(k) || [];
+    if (!list.length) {
+      log("delete_connector: Keine Verbindung gefunden (" + fromId + " <-> " + toId + ").");
       return;
     }
 
-    const key = connectorKey(fromId, toId);
-    const ids = key ? (connectorIdsByKey.get(key) || []) : [];
+    const all = action?.all === true;
+    const toDelete = all ? list.slice() : [list[0]];
 
-    if (!ids.length) {
-      log("delete_connector: Kein Connector zwischen den angegebenen Stickies gefunden.");
-      return;
+    for (const cid of toDelete) {
+      await Board.removeItemById(cid, log);
     }
 
-    const removeAll = action?.all === true || action?.removeAll === true;
-    const toDelete = removeAll ? ids.slice() : [ids[0]];
-
-    for (const id of toDelete) {
-      try {
-        await Board.removeItemById(id, log);
-        removeConnectorIdFromIndex(key, id);
-      } catch (e) {
-        log("Fehler bei delete_connector (" + id + "): " + e.message);
-      }
-    }
+    // update index
+    if (all) connectorIndex.delete(k);
+    else connectorIndex.set(k, list.filter((id) => id !== toDelete[0]));
   }
 
+  // ------------------------------------------------------------------
+  // Action handlers
+  // ------------------------------------------------------------------
   const handlers = {
-    // MOVE: wenn targetPx/targetPy fehlen, dann "snap to next free slot" in targetArea
     "move_sticky": async (action) => {
       const stickyId = resolveStickyIdAny(action.stickyId);
       if (!stickyId) return;
 
-      const canvasTypeId = instance.canvasTypeId || TEMPLATE_ID;
-
-      // Sticky-Item laden (für echte width/height)
-      let stickyItem = null;
-      try {
-        stickyItem = await Board.getItemById(stickyId, log);
-      } catch (_) {}
-
-      const stickyW = isFiniteNumber(stickyItem?.width) ? stickyItem.width : STICKY_LAYOUT.defaultWidthPx;
-      const stickyH = isFiniteNumber(stickyItem?.height) ? stickyItem.height : STICKY_LAYOUT.defaultHeightPx;
-
-      // Vorab entfernen (damit wir uns nicht selbst blockieren)
+      // occupied vorher entfernen (wir platzieren neu)
       removeFromAllOccupied(stickyId);
+
+      const canvasTypeId = instance.canvasTypeId || TEMPLATE_ID;
 
       let targetX = null;
       let targetY = null;
 
-      const hasExplicitTarget =
-        (typeof action.targetPx === "number" && typeof action.targetPy === "number");
-
-      if (hasExplicitTarget) {
+      if (typeof action.targetPx === "number" && typeof action.targetPy === "number") {
         const coords = Catalog.normalizedToBoardCoords(geom, action.targetPx, action.targetPy);
         targetX = coords.x;
         targetY = coords.y;
       } else {
         const region = Catalog.areaNameToRegion(action.targetArea);
-        const regionId = region?.id || null;
-
-        if (regionId && occupiedByRegion[regionId]) {
-          const pos = Catalog.computeNextFreeStickyPositionInBodyRegion({
-            templateGeometry: geom,
-            canvasTypeId,
-            regionId,
-            stickyWidthPx: stickyW,
-            stickyHeightPx: stickyH,
-            marginPx: STICKY_LAYOUT.marginPx,
-            gapPx: STICKY_LAYOUT.gapPx,
-            occupiedRects: occupiedByRegion[regionId]
-          });
-
-          if (pos) {
-            if (pos.isFull) {
-              log(
-                "WARNUNG: Region '" + regionId + "' wirkt voll (Grid " +
-                pos.cols + "x" + pos.rows +
-                "). move_sticky setzt auf letzte Zelle."
-              );
-            }
-            targetX = pos.x;
-            targetY = pos.y;
-          } else {
-            // Fallback: Center
-            const center = Catalog.areaCenterNormalized(regionId, canvasTypeId);
-            const coords = Catalog.normalizedToBoardCoords(geom, center.px, center.py);
-            targetX = coords.x;
-            targetY = coords.y;
-          }
-        } else {
-          // Unbekannte Area -> Center (altes Verhalten)
-          const center = Catalog.areaCenterNormalized(null, canvasTypeId);
-          const coords = Catalog.normalizedToBoardCoords(geom, center.px, center.py);
-          targetX = coords.x;
-          targetY = coords.y;
-        }
-      }
-
-      if (!isFiniteNumber(targetX) || !isFiniteNumber(targetY)) {
-        log("move_sticky: Zielkoordinaten ungültig für Sticky " + stickyId);
-        return;
+        const center = Catalog.areaCenterNormalized(region?.id || null, canvasTypeId);
+        const coords = Catalog.normalizedToBoardCoords(geom, center.px, center.py);
+        targetX = coords.x;
+        targetY = coords.y;
       }
 
       await Board.moveItemByIdToBoardCoords(stickyId, targetX, targetY, log);
 
-      // Occupied updaten (damit nachfolgende create/move nicht kollidieren)
+      // occupied best-effort aktualisieren (nur body regions)
+      const sticky = await Board.getItemById(stickyId, log);
+      const stickyW = Board.isFiniteNumber(sticky?.width) ? sticky.width : STICKY_LAYOUT.defaultWidthPx;
+      const stickyH = Board.isFiniteNumber(sticky?.height) ? sticky.height : STICKY_LAYOUT.defaultHeightPx;
+
       const destRegionId = detectBodyRegionIdFromBoardCoords(canvasTypeId, targetX, targetY);
       if (destRegionId && occupiedByRegion[destRegionId]) {
         occupiedByRegion[destRegionId].push({
@@ -1126,16 +1124,35 @@ async function applyAgentActionsToInstance(instanceId, actions) {
     "create_connector": async (action) => {
       const fromId = resolveStickyIdAny(action.fromStickyId);
       const toId   = resolveStickyIdAny(action.toStickyId);
+      if (!fromId || !toId) {
+        deferredConnectorActions.push(action);
+        return;
+      }
       await createConnectorBetween(fromId, toId, action, { ensure: false });
     },
 
     "ensure_connector": async (action) => {
       const fromId = resolveStickyIdAny(action.fromStickyId);
       const toId   = resolveStickyIdAny(action.toStickyId);
+      if (!fromId || !toId) {
+        deferredConnectorActions.push(action);
+        return;
+      }
       await createConnectorBetween(fromId, toId, action, { ensure: true });
     },
 
     "delete_connector": async (action) => {
+      // delete by connectorId kann sofort; delete by pair evtl. defer
+      if (action?.connectorId) {
+        await deleteConnectorAction(action);
+        return;
+      }
+      const fromId = resolveStickyIdAny(action?.fromStickyId);
+      const toId   = resolveStickyIdAny(action?.toStickyId);
+      if (!fromId || !toId) {
+        deferredConnectorActions.push(action);
+        return;
+      }
       await deleteConnectorAction(action);
     },
 
@@ -1148,6 +1165,12 @@ async function applyAgentActionsToInstance(instanceId, actions) {
 
       // Resolve + connect sequentially (ensure semantics)
       const resolved = ids.map(resolveStickyIdAny);
+
+      // Wenn mind. ein Element nicht auflösbar ist, defer (z.B. wegen refs)
+      if (resolved.some((x) => !x)) {
+        deferredConnectorActions.push(action);
+        return;
+      }
 
       for (let i = 0; i < resolved.length - 1; i++) {
         const a = resolved[i];
@@ -1163,6 +1186,69 @@ async function applyAgentActionsToInstance(instanceId, actions) {
 
   log("Wende " + actions.length + " Action(s) an (Instanz " + instanceId + ").");
   await OpenAI.dispatchActions(actions, handlers, log);
+
+  // Second pass: deferred connector actions (refs should now exist)
+  if (deferredConnectorActions.length) {
+    log("Hinweis: Verarbeite " + deferredConnectorActions.length + " deferred Connector-Action(s) ...");
+
+    for (const action of deferredConnectorActions) {
+      const t = action?.type;
+
+      if (t === "create_connector") {
+        const fromId = resolveStickyIdAny(action.fromStickyId);
+        const toId   = resolveStickyIdAny(action.toStickyId);
+        if (!fromId || !toId) {
+          log("create_connector (deferred): Konnte from/to nicht auflösen.");
+          continue;
+        }
+        await createConnectorBetween(fromId, toId, action, { ensure: false });
+        continue;
+      }
+
+      if (t === "ensure_connector") {
+        const fromId = resolveStickyIdAny(action.fromStickyId);
+        const toId   = resolveStickyIdAny(action.toStickyId);
+        if (!fromId || !toId) {
+          log("ensure_connector (deferred): Konnte from/to nicht auflösen.");
+          continue;
+        }
+        await createConnectorBetween(fromId, toId, action, { ensure: true });
+        continue;
+      }
+
+      if (t === "delete_connector") {
+        // connectorId wurde im first pass bereits behandelt; hier nur pair delete
+        if (action?.connectorId) continue;
+        const fromId = resolveStickyIdAny(action?.fromStickyId);
+        const toId   = resolveStickyIdAny(action?.toStickyId);
+        if (!fromId || !toId) {
+          log("delete_connector (deferred): Konnte from/to nicht auflösen.");
+          continue;
+        }
+        await deleteConnectorAction(action);
+        continue;
+      }
+
+      if (t === "connect_chain") {
+        const ids = Array.isArray(action.stickyIds) ? action.stickyIds : null;
+        if (!ids || ids.length < 2) continue;
+
+        const resolved = ids.map(resolveStickyIdAny);
+        if (resolved.some((x) => !x)) {
+          log("connect_chain (deferred): Konnte nicht alle stickyIds auflösen.");
+          continue;
+        }
+
+        for (let i = 0; i < resolved.length - 1; i++) {
+          const a = resolved[i];
+          const b = resolved[i + 1];
+          if (!a || !b) continue;
+          await createConnectorBetween(a, b, action, { ensure: true });
+        }
+        continue;
+      }
+    }
+  }
 }
 
 // --------------------------------------------------------------------
@@ -1514,6 +1600,69 @@ window.dtClusterSelection = clusterSelectionPanel;
 window.dtRunAgentForInstance = runAgentForInstance;
 window.dtRunGlobalAgent = runGlobalAgent;
 window.dtCallOpenAI = callClassicOpenAI;
+
+// --------------------------------------------------------------------
+// Panel UI wiring (Side-Panel Buttons)
+// - vorher fehlte hier die Event-Bindung, daher reagierte der Button
+//   "Template-Bild einfügen" nicht.
+// --------------------------------------------------------------------
+function debugClassifyPanel() {
+  // Minimaler Debug-Helfer: rebuild + log Klassifikation (ohne Agent)
+  refreshBoardState()
+    .then(() => {
+      const results = [];
+      state.instancesById.forEach((inst) => {
+        const liveInst = state.liveCatalog?.instances?.[inst.instanceId];
+        if (!liveInst) return;
+        const classification = Catalog.buildClassificationFromLiveInstance(inst, liveInst);
+        results.push(classification);
+      });
+
+      if (!results.length) {
+        log("Debug: Keine Canvas-Instanzen mit Stickies gefunden.");
+        return;
+      }
+
+      const out = results.length === 1 ? results[0] : { templates: results };
+      log("Debug-Klassifikation:");
+      log(out);
+    })
+    .catch((e) => {
+      log("Debug classify Fehler: " + (e?.message || String(e)));
+    });
+}
+
+function initPanelButtons() {
+  const btnInsert = document.getElementById("btn-insert-template");
+  if (btnInsert) {
+    btnInsert.addEventListener("click", function () {
+      insertTemplateImage();
+    });
+  }
+
+  const btnCluster = document.getElementById("btn-cluster-panel");
+  if (btnCluster) {
+    btnCluster.addEventListener("click", function () {
+      clusterSelectionPanel();
+    });
+  }
+
+  const btnClassic = document.getElementById("btn-openai-classic");
+  if (btnClassic) {
+    btnClassic.addEventListener("click", function () {
+      callClassicOpenAI();
+    });
+  }
+
+  const btnDebug = document.getElementById("btn-classify-debug");
+  if (btnDebug) {
+    btnDebug.addEventListener("click", function () {
+      debugClassifyPanel();
+    });
+  }
+}
+
+initPanelButtons();
 
 // Auto-init (so board buttons work after panel open)
 initIfNeeded().catch((e) => {
