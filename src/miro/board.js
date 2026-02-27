@@ -200,10 +200,14 @@ export async function createStickyNoteAtBoardCoords({ content, x, y, frameId = n
   const board = getBoard();
   if (!board?.createStickyNote) throw new Error("miro.board.createStickyNote nicht verfügbar");
 
+  // Wichtig: x/y sind Board-Koordinaten (center-basiert)
+  const targetBoardX = x;
+  const targetBoardY = y;
+
   const sticky = await board.createStickyNote({
     content: content || "(leer)",
-    x,
-    y
+    x: targetBoardX,
+    y: targetBoardY
   });
 
   if (frameId) {
@@ -216,6 +220,16 @@ export async function createStickyNoteAtBoardCoords({ content, x, y, frameId = n
     } catch (e) {
       if (typeof log === "function") log("Konnte Sticky nicht dem Frame hinzufügen: " + e.message);
     }
+  }
+
+  // Praxis-Fix: Einige Miro-Setups/SDK-Versionen können beim frame.add die Position verändern.
+  // Deshalb: Zielposition nach dem (optional) Re-Parenting erneut explizit setzen.
+  try {
+    if (sticky?.id && isFiniteNumber(targetBoardX) && isFiniteNumber(targetBoardY)) {
+      await moveItemByIdToBoardCoords(sticky.id, targetBoardX, targetBoardY, log);
+    }
+  } catch (e) {
+    if (typeof log === "function") log("WARNUNG: Konnte Sticky nach create/frame.add nicht repositionieren: " + e.message);
   }
 
   return sticky;
