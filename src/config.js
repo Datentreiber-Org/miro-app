@@ -115,6 +115,11 @@ export const DT_PROMPT_CATALOG = {
       "- delete_connector: { type, connectorId } ODER { type, fromStickyId, toStickyId, all? }\n" +
       "- connect_chain: { type, stickyIds: [ ... ] } // verbindet jeweils Nachbarn (A-B, B-C, ...)\n" +
       "\n" +
+      "Verbindungen (wichtig):\n" +
+      "- Wenn du in mehreren Boxen zusammengehörige Informationen erzeugst (z.B. Personas/Beispiele/Einträge mit Name + Tätigkeit + Erwartung), dann verbinde die jeweils zusammengehörigen Stickies pro Einheit mit Connectoren.\n" +
+      "- Nutze dafür bevorzugt connect_chain (z.B. Name → Tätigkeit → Erwartung).\n" +
+      "- Der Nutzer muss das Wort \"verbinden\" nicht explizit sagen – wenn Inhalte erkennbar zusammengehören, stelle die Beziehungen her.\n" +
+      "\n" +
       "WICHTIG: Antworte ausschließlich mit einem JSON-Objekt im folgenden Format (kein Markdown, keine Code-Fences):\n" +
       "{\n" +
       "  \"analysis\": \"kurze Erklärung in natürlicher Sprache\",\n" +
@@ -148,6 +153,8 @@ export const DT_GLOBAL_SYSTEM_PROMPT = (
   "\n" +
   "Du darfst zusätzlich zu Sticky-Actions auch Connector-Actions vorschlagen:\n" +
   "- create_connector / ensure_connector / delete_connector / connect_chain.\n" +
+  "\n" +
+  "Verbindungen (wichtig): Wenn du zusammengehörige Inhalte über mehrere Areas/Boxen hinweg identifizierst oder neu anlegst (z.B. Personas/Einträge mit Name + Tätigkeit + Erwartung), dann stelle die Beziehungen über Connectoren her (z.B. per connect_chain).\n" +
   "\n" +
   "Antworte ausschließlich mit einem JSON-Objekt mit den Feldern \"analysis\" und \"actions\" (kein Markdown, keine Code-Fences)."
 );
