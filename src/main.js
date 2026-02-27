@@ -752,8 +752,9 @@ async function applyAgentActionsToInstance(instanceId, actions) {
       }, log);
 
       // Belegte Fläche updaten (damit mehrere create_sticky Actions sauber fortlaufend platzieren)
-      const actualW = (sticky && isFiniteNumber(sticky.width)) ? sticky.width : size.width;
-      const actualH = (sticky && isFiniteNumber(sticky.height)) ? sticky.height : size.height;
+      // Robust: Agenten-Outputs variieren manchmal (area vs targetArea)
+      const areaName = action.area || action.targetArea || null;
+      const region = Catalog.areaNameToRegion(areaName);
 
       occupiedByRegion[regionId].push({
         id: sticky?.id || null,
