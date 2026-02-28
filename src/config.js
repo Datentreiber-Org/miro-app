@@ -12,7 +12,10 @@ export const TEMPLATE_IMAGE_URL =
 export const DT_TEMPLATE_CATALOG = {
   [TEMPLATE_ID]: {
     canvasTypeId: TEMPLATE_ID,
-    imageUrl: TEMPLATE_IMAGE_URL
+    displayName: "Datentreiber 3-Boxes",
+    thumbnailUrl: TEMPLATE_IMAGE_URL,
+    imageUrl: TEMPLATE_IMAGE_URL,
+    insertWidthPx: 2000
   }
 };
 
