@@ -16,10 +16,12 @@ export const DT_TEMPLATE_CATALOG = {
   }
 };
 
-// Persistenz (Global-Baseline)
+// Persistenz (Global-Baseline + Action-Bindings)
 export const DT_STORAGE_COLLECTION_NAME = "datentreiber-mirobot";
 export const DT_STORAGE_KEY_META = "dt-global-meta-v1";
 export const DT_STORAGE_KEY_BASELINE_PREFIX = "dt-baseline-v1:";
+export const DT_STORAGE_KEY_ACTION_BINDING_PREFIX = "dt-action-binding-v1:";
+export const DT_STORAGE_KEY_ACTION_BINDING_INDEX = "dt-action-binding-index-v1";
 
 // Canvas-Definitions (Polygon-basiert, normalisiert 0..1)
 export const DT_CANVAS_DEFS = {
