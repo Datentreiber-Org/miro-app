@@ -535,45 +535,12 @@ async function callOpenAIClassic() {
 // Instance state for agent (signature + diff + prompt payload)
 // --------------------------------------------------------------------
 async function getInstanceStateForAgent(instance, { liveCatalog, hasGlobalBaseline }) {
-  const li = liveCatalog.instances?.[instance.instanceId];
-  if (!li) return null;
-
-  const classification = Catalog.buildClassificationFromLiveInstance(instance, li);
-  const signature = Catalog.buildInstanceSignatureFromClassification(instance, classification);
-
-  instance.lastSignature = signature;
-  instance.lastStateHash = signature?.stateHash || null;
-
-  // Baseline signature on demand
-  if (hasGlobalBaseline && instance.imageId && !instance.baselineSignatureLoaded) {
-    instance.baselineSignature = await Board.loadBaselineSignatureForImageId(instance.imageId, log);
-    instance.baselineSignatureLoaded = true;
-  }
-
-  const diff = hasGlobalBaseline
-    ? Catalog.computeInstanceDiffFromSignatures(instance.baselineSignature || null, signature || null)
-    : null;
-
-  const promptPayload = Catalog.buildPromptPayloadFromClassification(classification, {
-    useAliases: false,
-    aliasState: state.aliasState,
+  return await Catalog.computeInstanceState(instance, {
+    liveCatalog,
+    hasGlobalBaseline,
+    loadBaselineSignatureForImageId: Board.loadBaselineSignatureForImageId,
     log
   });
-
-  const stateJson = JSON.stringify(promptPayload, null, 2);
-
-  instance.lastClassification = classification;
-  instance.lastStateJson = stateJson;
-  instance.lastDiff = diff;
-  instance.lastStickyCount = li.meta?.stickyCount || 0;
-
-  return {
-    classification,
-    promptPayload,
-    stateJson,
-    signature,
-    diff
-  };
 }
 
 // --------------------------------------------------------------------
