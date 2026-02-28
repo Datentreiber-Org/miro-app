@@ -345,6 +345,13 @@ export async function createImage(payload, log) {
   return await board.createImage(payload);
 }
 
+export async function getViewport(log) {
+  await ensureMiroReady(log);
+  const board = getBoard();
+  if (!board?.viewport?.get) return null;
+  return await board.viewport.get();
+}
+
 export async function zoomTo(item, log) {
   await ensureMiroReady(log);
   const board = getBoard();
