@@ -1,18 +1,17 @@
 import {
   TEMPLATE_ID,
-  TEMPLATE_IMAGE_URL,
   DT_TEMPLATE_CATALOG,
   DT_CANVAS_DEFS,
   DT_PROMPT_CATALOG,
   DT_GLOBAL_SYSTEM_PROMPT,
   STICKY_LAYOUT
-} from "./config.js";
+} from "./config.js?v=20260228-step4";
 
-import { createLogger, stripHtml, extractUnderlinedText, isFiniteNumber } from "./utils.js";
+import { createLogger, stripHtml, extractUnderlinedText, isFiniteNumber } from "./utils.js?v=20260228-step4";
 
-import * as Board from "./miro/board.js";
-import * as Catalog from "./domain/catalog.js";
-import * as OpenAI from "./ai/openai.js";
+import * as Board from "./miro/board.js?v=20260228-step4";
+import * as Catalog from "./domain/catalog.js?v=20260228-step4";
+import * as OpenAI from "./ai/openai.js?v=20260228-step4";
 
 // --------------------------------------------------------------------
 // State (Controller-Level)
@@ -44,6 +43,9 @@ const state = {
   liveCatalog: null,
   stickyOwnerCache: null,
 
+  // UI state
+  selectedCanvasTypeId: TEMPLATE_ID,
+
   // Re-entrancy guard
   handlingSelection: false,
 
@@ -57,6 +59,7 @@ const state = {
 // --------------------------------------------------------------------
 const logEl = document.getElementById("log");
 const selectionStatusEl = document.getElementById("selection-status");
+const canvasTypePickerEl = document.getElementById("canvas-type-picker");
 const log = createLogger(logEl);
 
 (function initialLog() {
@@ -92,10 +95,100 @@ function getCurrentUserQuestion() {
   return t || "Bitte analysiere die relevanten Canvas-Instanzen und führe sinnvolle nächste Schritte innerhalb des Workshop-Workflows aus.";
 }
 
+function getCanvasTypeCatalogEntries() {
+  return Object.entries(DT_TEMPLATE_CATALOG || {}).map(([canvasTypeId, cfg]) => ({
+    canvasTypeId,
+    displayName: (typeof cfg?.displayName === "string" && cfg.displayName.trim()) ? cfg.displayName.trim() : canvasTypeId,
+    thumbnailUrl: (typeof cfg?.thumbnailUrl === "string" && cfg.thumbnailUrl.trim()) ? cfg.thumbnailUrl.trim() : (cfg?.imageUrl || ""),
+    imageUrl: (typeof cfg?.imageUrl === "string" && cfg.imageUrl.trim()) ? cfg.imageUrl.trim() : "",
+    insertWidthPx: Number(cfg?.insertWidthPx) > 0 ? Number(cfg.insertWidthPx) : null
+  }));
+}
+
+function normalizeCanvasTypeId(canvasTypeId) {
+  if (typeof canvasTypeId === "string" && canvasTypeId && DT_TEMPLATE_CATALOG[canvasTypeId]) {
+    return canvasTypeId;
+  }
+  const first = getCanvasTypeCatalogEntries()[0];
+  return first?.canvasTypeId || TEMPLATE_ID;
+}
+
+function getCanvasTypeEntry(canvasTypeId) {
+  const normalizedId = normalizeCanvasTypeId(canvasTypeId);
+  return getCanvasTypeCatalogEntries().find((entry) => entry.canvasTypeId === normalizedId) || null;
+}
+
+function getSelectedCanvasTypeId() {
+  return normalizeCanvasTypeId(state.selectedCanvasTypeId);
+}
+
+function setSelectedCanvasTypeId(canvasTypeId) {
+  state.selectedCanvasTypeId = normalizeCanvasTypeId(canvasTypeId);
+}
+
+function renderCanvasTypePicker() {
+  if (!canvasTypePickerEl) return;
+
+  const entries = getCanvasTypeCatalogEntries();
+  const selectedCanvasTypeId = getSelectedCanvasTypeId();
+
+  canvasTypePickerEl.textContent = "";
+
+  if (entries.length === 0) {
+    canvasTypePickerEl.textContent = "Keine Canvas-Typen konfiguriert.";
+    return;
+  }
+
+  for (const entry of entries) {
+    const label = document.createElement("label");
+    label.className = "canvas-option";
+
+    const input = document.createElement("input");
+    input.type = "radio";
+    input.name = "dt-canvas-type";
+    input.value = entry.canvasTypeId;
+    input.checked = entry.canvasTypeId === selectedCanvasTypeId;
+    input.addEventListener("change", () => {
+      if (!input.checked) return;
+      setSelectedCanvasTypeId(entry.canvasTypeId);
+      renderCanvasTypePicker();
+    });
+
+    const card = document.createElement("span");
+    card.className = "canvas-option-card";
+
+    const thumb = document.createElement("img");
+    thumb.className = "canvas-thumb";
+    thumb.alt = entry.displayName;
+    thumb.src = entry.thumbnailUrl || entry.imageUrl || "";
+    thumb.loading = "lazy";
+
+    const textWrap = document.createElement("span");
+
+    const title = document.createElement("div");
+    title.className = "canvas-option-title";
+    title.textContent = entry.displayName;
+
+    const meta = document.createElement("div");
+    meta.className = "canvas-option-meta";
+    meta.textContent = entry.canvasTypeId;
+
+    textWrap.appendChild(title);
+    textWrap.appendChild(meta);
+    card.appendChild(thumb);
+    card.appendChild(textWrap);
+    label.appendChild(input);
+    label.appendChild(card);
+    canvasTypePickerEl.appendChild(label);
+  }
+}
+
 // --------------------------------------------------------------------
 // Init Panel Buttons
 // --------------------------------------------------------------------
 function initPanelButtons() {
+  renderCanvasTypePicker();
+
   document.getElementById("btn-insert-template")?.addEventListener("click", insertTemplateImage);
   document.getElementById("btn-agent-selection")?.addEventListener("click", runAgentForCurrentSelection);
   document.getElementById("btn-global-agent")?.addEventListener("click", () => runGlobalAgent(null, getPanelUserText()));
@@ -318,7 +411,7 @@ async function onSelectionUpdate(event) {
 }
 
 // --------------------------------------------------------------------
-// Insert Template Image (viewport-centered, collision-aware)
+// Insert Canvas Instance (viewport-centered, collision-aware)
 // --------------------------------------------------------------------
 const TEMPLATE_INSERTION = {
   defaultWidthPx: 2000,
@@ -342,6 +435,30 @@ function estimateTemplateSize(canvasTypeId, widthPx) {
     width: widthPx,
     height: widthPx
   };
+}
+
+function getInsertWidthPxForCanvasType(canvasTypeId) {
+  const entry = getCanvasTypeEntry(canvasTypeId);
+  const configuredWidth = Number(entry?.insertWidthPx) || 0;
+  return configuredWidth > 0 ? configuredWidth : TEMPLATE_INSERTION.defaultWidthPx;
+}
+
+async function getViewportSafe() {
+  if (typeof Board.getViewport === "function") {
+    try {
+      const viewport = await Board.getViewport(log);
+      if (viewport) return viewport;
+    } catch (_) {}
+  }
+
+  const sdkViewport = window.miro?.board?.viewport;
+  if (sdkViewport && typeof sdkViewport.get === "function") {
+    try {
+      return await sdkViewport.get();
+    } catch (_) {}
+  }
+
+  return null;
 }
 
 function rectsOverlapByCenter(a, b, padding = 0) {
@@ -403,10 +520,10 @@ async function getOccupiedTemplateFootprints() {
   return occupied;
 }
 
-async function computeTemplateInsertPosition(canvasTypeId) {
+async function computeTemplateInsertPosition(canvasTypeId, insertWidthPx) {
   await ensureInstancesScanned(true);
 
-  const viewport = await Board.getViewport(log).catch(() => null);
+  const viewport = await getViewportSafe();
   const viewportCenterX = viewport && isFiniteNumber(viewport.x) && isFiniteNumber(viewport.width)
     ? viewport.x + viewport.width / 2
     : 0;
@@ -414,7 +531,7 @@ async function computeTemplateInsertPosition(canvasTypeId) {
     ? viewport.y + viewport.height / 2
     : 0;
 
-  const estimatedImage = estimateTemplateSize(canvasTypeId, TEMPLATE_INSERTION.defaultWidthPx);
+  const estimatedImage = estimateTemplateSize(canvasTypeId, insertWidthPx);
   const footprint = {
     width: estimatedImage.width,
     height: estimatedImage.height
@@ -452,21 +569,30 @@ async function computeTemplateInsertPosition(canvasTypeId) {
     }
   }
 
-  throw new Error("Kein kollisionsfreier Einfügepunkt für das Template gefunden.");
+  throw new Error("Kein kollisionsfreier Einfügepunkt für den Canvas gefunden.");
 }
 
 async function insertTemplateImage() {
-  log("Button: Template-Bild einfügen.");
+  const selectedCanvasTypeId = getSelectedCanvasTypeId();
+  const selectedCanvasType = getCanvasTypeEntry(selectedCanvasTypeId);
+  const insertWidthPx = getInsertWidthPxForCanvasType(selectedCanvasTypeId);
+
+  if (!selectedCanvasType?.imageUrl) {
+    log("Fehler beim Einfügen des Canvas: Kein gültiger Canvas-Typ ausgewählt.");
+    return;
+  }
+
+  log("Button: Canvas einfügen (" + selectedCanvasTypeId + ").");
   await Board.ensureMiroReady(log);
 
   try {
-    const placement = await computeTemplateInsertPosition(TEMPLATE_ID);
+    const placement = await computeTemplateInsertPosition(selectedCanvasTypeId, insertWidthPx);
 
     const image = await Board.createImage({
-      url: TEMPLATE_IMAGE_URL,
+      url: selectedCanvasType.imageUrl,
       x: placement.x,
       y: placement.y,
-      width: TEMPLATE_INSERTION.defaultWidthPx
+      width: insertWidthPx
     }, log);
 
     await Board.registerInstanceFromImage(image, {
@@ -477,7 +603,7 @@ async function insertTemplateImage() {
       nextInstanceId: nextInstanceId,
       hasGlobalBaseline: state.hasGlobalBaseline,
       createActionShapes: false,
-      canvasTypeId: TEMPLATE_ID,
+      canvasTypeId: selectedCanvasTypeId,
       log
     });
 
@@ -485,14 +611,14 @@ async function insertTemplateImage() {
       ? "Neue Instanz wurde mittig in der aktuellen View platziert."
       : "Neue Instanz wurde nahe der aktuellen View platziert, mit Überlappungsschutz.";
 
-    log(`Template eingefügt: Bild-ID ${image.id}
+    log(`Canvas eingefügt: ${selectedCanvasType.displayName} (${selectedCanvasTypeId}), Bild-ID ${image.id}
 ${placementInfo}
 Die Steuerung erfolgt jetzt über das Side Panel.`);
 
     await Board.zoomTo(image, log);
     await refreshSelectionStatusFromBoard();
   } catch (e) {
-    log("Fehler beim Einfügen des Template-Bildes: " + e.message);
+    log("Fehler beim Einfügen des Canvas: " + e.message);
   }
 }
 
