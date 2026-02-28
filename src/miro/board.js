@@ -1,7 +1,9 @@
 import {
   DT_STORAGE_COLLECTION_NAME,
   DT_STORAGE_KEY_META,
-  DT_STORAGE_KEY_BASELINE_PREFIX
+  DT_STORAGE_KEY_BASELINE_PREFIX,
+  DT_STORAGE_KEY_ACTION_BINDING_PREFIX,
+  DT_STORAGE_KEY_ACTION_BINDING_INDEX
 } from "../config.js";
 
 import { isFiniteNumber } from "../utils.js";
@@ -61,6 +63,53 @@ function getStorageCollection() {
 
 function baselineKeyForImageId(imageId) {
   return DT_STORAGE_KEY_BASELINE_PREFIX + String(imageId);
+}
+
+function actionBindingKeyForImageId(imageId) {
+  return DT_STORAGE_KEY_ACTION_BINDING_PREFIX + String(imageId);
+}
+
+function normalizeActionItems(actionItems) {
+  const src = (actionItems && typeof actionItems === "object") ? actionItems : {};
+
+  function idOrNull(key) {
+    const value = src[key];
+    return (value === undefined || value === null || value === "") ? null : value;
+  }
+
+  return {
+    aiItemId: idOrNull("aiItemId"),
+    clusterItemId: idOrNull("clusterItemId"),
+    globalAgentItemId: idOrNull("globalAgentItemId"),
+    globalAgentInputItemId: idOrNull("globalAgentInputItemId"),
+    frameId: idOrNull("frameId")
+  };
+}
+
+function hasAnyActionItems(actionItems) {
+  const norm = normalizeActionItems(actionItems);
+  return !!(norm.aiItemId || norm.clusterItemId || norm.globalAgentItemId || norm.globalAgentInputItemId || norm.frameId);
+}
+
+function hasCompleteActionBinding(actionItems) {
+  const norm = normalizeActionItems(actionItems);
+  return !!(norm.frameId && norm.aiItemId && norm.clusterItemId && norm.globalAgentItemId);
+}
+
+function mergeActionItems(primary, secondary) {
+  const a = normalizeActionItems(primary);
+  const b = normalizeActionItems(secondary);
+  return {
+    aiItemId: a.aiItemId || b.aiItemId || null,
+    clusterItemId: a.clusterItemId || b.clusterItemId || null,
+    globalAgentItemId: a.globalAgentItemId || b.globalAgentItemId || null,
+    globalAgentInputItemId: a.globalAgentInputItemId || b.globalAgentInputItemId || null,
+    frameId: a.frameId || b.frameId || null
+  };
+}
+
+function uniqueIds(ids) {
+  return Array.from(new Set((ids || []).filter(Boolean)));
 }
 
 export async function loadPersistedBaselineMeta(log) {
@@ -146,6 +195,116 @@ export async function removeBaselineSignatureForImageId(imageId, log) {
   } catch (e) {
     if (typeof log === "function") log("Fehler beim Entfernen der Baseline-Signatur (" + imageId + "): " + e.message);
   }
+}
+
+async function loadActionBindingIndex(log) {
+  await ensureMiroReady(log);
+
+  const col = getStorageCollection();
+  if (!col) return [];
+
+  try {
+    const rec = await col.get(DT_STORAGE_KEY_ACTION_BINDING_INDEX);
+    if (rec && typeof rec === "object" && rec.version === 1 && Array.isArray(rec.imageIds)) {
+      return Array.from(new Set(rec.imageIds.map((id) => String(id)).filter(Boolean))).sort();
+    }
+  } catch (e) {
+    if (typeof log === "function") log("Fehler beim Laden des Action-Binding-Index: " + e.message);
+  }
+
+  return [];
+}
+
+async function saveActionBindingIndex(imageIds, log) {
+  await ensureMiroReady(log);
+
+  const col = getStorageCollection();
+  if (!col) return;
+
+  const normalizedImageIds = Array.from(new Set((imageIds || []).map((id) => String(id)).filter(Boolean))).sort();
+
+  try {
+    await col.set(DT_STORAGE_KEY_ACTION_BINDING_INDEX, {
+      version: 1,
+      imageIds: normalizedImageIds
+    });
+  } catch (e) {
+    if (typeof log === "function") log("Fehler beim Speichern des Action-Binding-Index: " + e.message);
+  }
+}
+
+async function addImageIdToActionBindingIndex(imageId, log) {
+  if (!imageId) return;
+
+  const ids = await loadActionBindingIndex(log);
+  const key = String(imageId);
+  if (!ids.includes(key)) {
+    ids.push(key);
+    await saveActionBindingIndex(ids, log);
+  }
+}
+
+async function removeImageIdFromActionBindingIndex(imageId, log) {
+  if (!imageId) return;
+
+  const key = String(imageId);
+  const ids = await loadActionBindingIndex(log);
+  const nextIds = ids.filter((id) => id !== key);
+  if (nextIds.length !== ids.length) {
+    await saveActionBindingIndex(nextIds, log);
+  }
+}
+
+async function loadActionBindingForImageId(imageId, log) {
+  await ensureMiroReady(log);
+
+  const col = getStorageCollection();
+  if (!col || !imageId) return null;
+
+  try {
+    const rec = await col.get(actionBindingKeyForImageId(imageId));
+    if (rec && typeof rec === "object" && rec.version === 1) {
+      return normalizeActionItems(rec);
+    }
+  } catch (e) {
+    if (typeof log === "function") log("Fehler beim Laden des Action-Bindings (" + imageId + "): " + e.message);
+  }
+
+  return null;
+}
+
+async function saveActionBindingForImageId(imageId, actionItems, log) {
+  await ensureMiroReady(log);
+
+  const col = getStorageCollection();
+  const normalized = normalizeActionItems(actionItems);
+  if (!col || !imageId || !hasCompleteActionBinding(normalized)) return;
+
+  try {
+    await col.set(actionBindingKeyForImageId(imageId), {
+      version: 1,
+      imageId: String(imageId),
+      ...normalized
+    });
+    await addImageIdToActionBindingIndex(imageId, log);
+  } catch (e) {
+    if (typeof log === "function") log("Fehler beim Speichern des Action-Bindings (" + imageId + "): " + e.message);
+  }
+}
+
+async function removeActionBindingForImageId(imageId, log) {
+  await ensureMiroReady(log);
+
+  const col = getStorageCollection();
+  if (!col || !imageId) return;
+
+  try {
+    await col.remove(actionBindingKeyForImageId(imageId));
+  } catch (e) {
+    if (typeof log === "function") log("Fehler beim Entfernen des Action-Bindings (" + imageId + "): " + e.message);
+  }
+
+  await removeImageIdFromActionBindingIndex(imageId, log);
 }
 
 // --------------------------------------------------------------------
@@ -469,6 +628,213 @@ const ACTION_LABELS = {
   global: "Global Agent"
 };
 
+const ACTION_LAYOUT = {
+  frameWidthPaddingPx: 200,
+  frameHeightPaddingPx: 260,
+  frameCenterYOffsetPx: 80,
+  buttonOffsetXPx: 260,
+  buttonWidthPx: 260,
+  buttonHeightPx: 60,
+  buttonRowOffsetFromImageBottomPx: 80,
+  inputOffsetFromButtonTopPx: 100
+};
+
+const ACTION_REBIND_GEO = {
+  maxButtonRowSpreadPx: 140,
+  minButtonGapPx: 120,
+  maxButtonGapPx: 480,
+  maxInputDxPx: 220,
+  minInputDyPx: 20,
+  maxInputDyPx: 240
+};
+
+function compareByX(a, b) {
+  return a.x - b.x;
+}
+
+async function removeKnownItemsById(itemIds, log) {
+  await ensureMiroReady(log);
+
+  const board = getBoard();
+  if (!board?.remove) return;
+
+  const ids = uniqueIds(itemIds);
+  if (ids.length === 0) return;
+
+  const items = await getItemsById(ids, log);
+  for (const item of items) {
+    try {
+      await board.remove(item);
+    } catch (e) {
+      if (typeof log === "function") log("Fehler beim Entfernen von Item " + item.id + ": " + e.message);
+    }
+  }
+}
+
+async function cleanupOrphanedActionArtifacts(imageId, actionItems, log) {
+  const normalized = normalizeActionItems(actionItems);
+  if (!hasAnyActionItems(normalized)) return;
+
+  await removeKnownItemsById([
+    normalized.aiItemId,
+    normalized.clusterItemId,
+    normalized.globalAgentItemId,
+    normalized.globalAgentInputItemId
+  ], log);
+
+  await removeKnownItemsById([normalized.frameId], log);
+
+  if (typeof log === "function") {
+    log("Verwaiste Action-Artefakte entfernt für Bild-ID " + imageId);
+  }
+}
+
+async function validateActionBindingForImage(image, actionItems, log) {
+  const normalized = normalizeActionItems(actionItems);
+  if (!image || !hasAnyActionItems(normalized)) return null;
+
+  const idsToLoad = uniqueIds([
+    normalized.frameId,
+    normalized.aiItemId,
+    normalized.clusterItemId,
+    normalized.globalAgentItemId,
+    normalized.globalAgentInputItemId
+  ]);
+  if (idsToLoad.length === 0) return null;
+
+  const items = await getItemsById(idsToLoad, log);
+  const itemsById = new Map();
+  for (const item of items) itemsById.set(item.id, item);
+
+  let frameId = normalized.frameId;
+  if (image.parentId) {
+    frameId = image.parentId;
+  }
+  if (frameId && !itemsById.has(frameId)) {
+    const frame = await getItemById(frameId, log);
+    if (frame) itemsById.set(frame.id, frame);
+  }
+  if (frameId && !itemsById.has(frameId)) {
+    frameId = null;
+  }
+
+  function validateChildId(itemId) {
+    if (!itemId) return null;
+    const item = itemsById.get(itemId);
+    if (!item) return null;
+    if (frameId && item.parentId !== frameId) return null;
+    return itemId;
+  }
+
+  const validated = {
+    aiItemId: validateChildId(normalized.aiItemId),
+    clusterItemId: validateChildId(normalized.clusterItemId),
+    globalAgentItemId: validateChildId(normalized.globalAgentItemId),
+    globalAgentInputItemId: validateChildId(normalized.globalAgentInputItemId),
+    frameId
+  };
+
+  return hasAnyActionItems(validated) ? validated : null;
+}
+
+function chooseBestButtonShapeTriplet(shapeEntries) {
+  if (!Array.isArray(shapeEntries) || shapeEntries.length < 3) return null;
+
+  let best = null;
+  let bestScore = Infinity;
+
+  for (let i = 0; i < shapeEntries.length - 2; i++) {
+    for (let j = i + 1; j < shapeEntries.length - 1; j++) {
+      for (let k = j + 1; k < shapeEntries.length; k++) {
+        const trio = [shapeEntries[i], shapeEntries[j], shapeEntries[k]].slice().sort(compareByX);
+        const [left, middle, right] = trio;
+
+        const rowSpread = Math.max(left.y, middle.y, right.y) - Math.min(left.y, middle.y, right.y);
+        if (rowSpread > ACTION_REBIND_GEO.maxButtonRowSpreadPx) continue;
+
+        const gap1 = middle.x - left.x;
+        const gap2 = right.x - middle.x;
+        if (gap1 < ACTION_REBIND_GEO.minButtonGapPx || gap2 < ACTION_REBIND_GEO.minButtonGapPx) continue;
+        if (gap1 > ACTION_REBIND_GEO.maxButtonGapPx || gap2 > ACTION_REBIND_GEO.maxButtonGapPx) continue;
+
+        const widthPenalty =
+          Math.abs((left.item.width || 0) - (middle.item.width || 0)) +
+          Math.abs((middle.item.width || 0) - (right.item.width || 0));
+        const heightPenalty =
+          Math.abs((left.item.height || 0) - (middle.item.height || 0)) +
+          Math.abs((middle.item.height || 0) - (right.item.height || 0));
+
+        const score =
+          Math.abs(gap1 - gap2) * Math.abs(gap1 - gap2) +
+          rowSpread * rowSpread +
+          widthPenalty +
+          heightPenalty;
+
+        if (score < bestScore) {
+          bestScore = score;
+          best = { left, middle, right };
+        }
+      }
+    }
+  }
+
+  return best;
+}
+
+function chooseGlobalInputText(textEntries, rightButtonEntry) {
+  if (!Array.isArray(textEntries) || textEntries.length === 0 || !rightButtonEntry) return null;
+
+  let best = null;
+  let bestScore = Infinity;
+
+  for (const entry of textEntries) {
+    const dx = Math.abs(entry.x - rightButtonEntry.x);
+    const dy = entry.y - rightButtonEntry.y;
+    if (dx > ACTION_REBIND_GEO.maxInputDxPx) continue;
+    if (dy < ACTION_REBIND_GEO.minInputDyPx || dy > ACTION_REBIND_GEO.maxInputDyPx) continue;
+
+    const score = (dx * dx) + Math.pow(dy - ACTION_LAYOUT.inputOffsetFromButtonTopPx, 2);
+    if (score < bestScore) {
+      bestScore = score;
+      best = entry;
+    }
+  }
+
+  return best;
+}
+
+async function inferActionItemsFromFrameGeometry(image, frameId, frameShapes, frameTexts, log) {
+  if (!image || !frameId) return null;
+
+  const parentGeomCache = new Map();
+  const shapeEntries = [];
+  for (const shape of frameShapes || []) {
+    const pos = await resolveBoardCoords(shape, parentGeomCache, log);
+    if (!pos) continue;
+    shapeEntries.push({ item: shape, x: pos.x, y: pos.y });
+  }
+
+  const textEntries = [];
+  for (const text of frameTexts || []) {
+    const pos = await resolveBoardCoords(text, parentGeomCache, log);
+    if (!pos) continue;
+    textEntries.push({ item: text, x: pos.x, y: pos.y });
+  }
+
+  const buttons = chooseBestButtonShapeTriplet(shapeEntries);
+  if (!buttons) return null;
+
+  const globalInput = chooseGlobalInputText(textEntries, buttons.right);
+
+  return {
+    aiItemId: buttons.left.item.id,
+    clusterItemId: buttons.middle.item.id,
+    globalAgentItemId: buttons.right.item.id,
+    globalAgentInputItemId: globalInput ? globalInput.item.id : null,
+    frameId
+  };
+}
+
 async function createInstanceActionShapes(instance, image, log) {
   await ensureMiroReady(log);
 
@@ -479,9 +845,9 @@ async function createInstanceActionShapes(instance, image, log) {
 
   if (!hasCreateShape || !hasCreateFrame) return;
 
-  const frameWidth  = image.width + 200;
-  const frameHeight = image.height + 260;
-  const frameY = image.y + 80;
+  const frameWidth  = image.width + ACTION_LAYOUT.frameWidthPaddingPx;
+  const frameHeight = image.height + ACTION_LAYOUT.frameHeightPaddingPx;
+  const frameY = image.y + ACTION_LAYOUT.frameCenterYOffsetPx;
 
   const frame = await board.createFrame({
     title: image.title || "Datentreiber 3-Boxes",
@@ -491,11 +857,11 @@ async function createInstanceActionShapes(instance, image, log) {
     height: frameHeight
   });
 
-  const baseY = image.y + image.height / 2 + 80;
+  const baseY = image.y + image.height / 2 + ACTION_LAYOUT.buttonRowOffsetFromImageBottomPx;
   const baseX = image.x;
-  const dx = 260;
-  const buttonWidth = 260;
-  const buttonHeight = 60;
+  const dx = ACTION_LAYOUT.buttonOffsetXPx;
+  const buttonWidth = ACTION_LAYOUT.buttonWidthPx;
+  const buttonHeight = ACTION_LAYOUT.buttonHeightPx;
 
   const aiShape = await board.createShape({
     content: ACTION_LABELS.ai,
@@ -529,7 +895,7 @@ async function createInstanceActionShapes(instance, image, log) {
     globalInput = await board.createText({
       content: "",
       x: baseX + dx,
-      y: baseY + buttonHeight + 40
+      y: baseY + ACTION_LAYOUT.inputOffsetFromButtonTopPx
     });
   }
 
@@ -544,13 +910,15 @@ async function createInstanceActionShapes(instance, image, log) {
     console.error("[DT] Fehler beim Hinzufügen der Items zum Frame:", e);
   }
 
-  instance.actionItems = {
+  instance.actionItems = normalizeActionItems({
     aiItemId: aiShape.id,
     clusterItemId: clusterShape.id,
     globalAgentItemId: globalAgentShape.id,
     globalAgentInputItemId: globalInput ? globalInput.id : null,
     frameId: frame.id
-  };
+  });
+
+  await saveActionBindingForImageId(image.id, instance.actionItems, log);
 }
 
 async function maybeSetFrameIdFromParent(instance, itemWithParent, log) {
@@ -594,6 +962,7 @@ export async function registerInstanceFromImage(image, {
     instance.title = image.title || instance.title || "Canvas";
     instance.canvasTypeId = detectedCanvasTypeId || instance.canvasTypeId || defaultTemplateId;
     instance.lastGeometry = { x: image.x, y: image.y, width: image.width, height: image.height };
+    instance.actionItems = normalizeActionItems(instance.actionItems);
 
     if (!createActionShapes) {
       await maybeSetFrameIdFromParent(instance, image, log);
@@ -627,7 +996,7 @@ export async function registerInstanceFromImage(image, {
     lastDiff: null,
 
     lastAgentRunAt: null,
-    actionItems: {},
+    actionItems: normalizeActionItems(null),
     liveCatalog: null
   };
 
@@ -694,43 +1063,37 @@ async function rebindActionShapesAfterScan(images, instancesByImageId, instances
   const imageById = new Map();
   for (const img of images || []) imageById.set(img.id, img);
 
-  const frameIdByImageId = new Map();
-  for (const [imgId, img] of imageById.entries()) {
-    if (img.parentId) frameIdByImageId.set(imgId, img.parentId);
-  }
-
   for (const [imageId, inst] of instancesByImageId.entries()) {
     const img = imageById.get(imageId);
     if (!img) continue;
 
-    const frameId = frameIdByImageId.get(imageId);
-    if (!frameId) continue;
+    const frameId = img.parentId || inst?.actionItems?.frameId || null;
+    if (!frameId) {
+      inst.actionItems = normalizeActionItems(inst.actionItems);
+      continue;
+    }
 
     const frameShapes = shapesByParent.get(frameId) || [];
     const frameTexts  = textsByParent.get(frameId) || [];
 
-    let aiShape = null;
-    let clusterShape = null;
-    let globalShape = null;
+    let rebound = await validateActionBindingForImage(img, inst.actionItems, log);
 
-    for (const s of frameShapes) {
-      const raw = (s.content || "").toLowerCase();
-      if (!aiShape && raw.includes("send to openai")) aiShape = s;
-      else if (!clusterShape && raw.includes("cluster")) clusterShape = s;
-      else if (!globalShape && raw.includes("global agent")) globalShape = s;
+    if (!hasCompleteActionBinding(rebound)) {
+      const persisted = await loadActionBindingForImageId(imageId, log);
+      const validatedPersisted = await validateActionBindingForImage(img, persisted, log);
+      rebound = mergeActionItems(rebound, validatedPersisted);
     }
 
-    const globalInput = frameTexts.length > 0 ? frameTexts[0] : null;
+    if (!hasCompleteActionBinding(rebound)) {
+      const inferred = await inferActionItemsFromFrameGeometry(img, frameId, frameShapes, frameTexts, log);
+      rebound = mergeActionItems(rebound, inferred);
+    }
 
-    if (aiShape || clusterShape || globalShape || globalInput) {
-      inst.actionItems = {
-        aiItemId: aiShape ? aiShape.id : null,
-        clusterItemId: clusterShape ? clusterShape.id : null,
-        globalAgentItemId: globalShape ? globalShape.id : null,
-        globalAgentInputItemId: globalInput ? globalInput.id : null,
-        frameId: frameId
-      };
+    inst.actionItems = normalizeActionItems(rebound);
+
+    if (hasCompleteActionBinding(inst.actionItems)) {
       if (typeof log === "function") log("Action-Shapes re-gebunden für Instanz " + inst.instanceId);
+      await saveActionBindingForImageId(imageId, inst.actionItems, log);
     }
   }
 
@@ -780,19 +1143,40 @@ export async function scanTemplateInstances({
     }
   }
 
-  // Instanzen entfernen, deren Template-Bild nicht mehr existiert
+  const orphanImageIds = new Set();
+
+  for (const imageId of await loadActionBindingIndex(log)) {
+    if (!templateImageIdsOnBoard.has(imageId)) {
+      orphanImageIds.add(imageId);
+    }
+  }
+
   for (const imageId of Array.from(instancesByImageId.keys())) {
     if (!templateImageIdsOnBoard.has(imageId)) {
-      const inst = instancesByImageId.get(imageId);
-      instancesByImageId.delete(imageId);
-      if (inst) instancesById.delete(inst.instanceId);
-
-      if (typeof log === "function") {
-        log("Canvas-Instanz entfernt (Template-Bild gelöscht): " + (inst?.instanceId || "?") + " (Bild-ID " + imageId + ")");
-      }
-
-      await removeBaselineSignatureForImageId(imageId, log).catch(() => {});
+      orphanImageIds.add(imageId);
     }
+  }
+
+  for (const imageId of orphanImageIds) {
+    const inst = instancesByImageId.get(imageId) || null;
+    const actionItems = hasAnyActionItems(inst?.actionItems)
+      ? normalizeActionItems(inst.actionItems)
+      : (await loadActionBindingForImageId(imageId, log));
+
+    instancesByImageId.delete(imageId);
+    if (inst) {
+      instancesById.delete(inst.instanceId);
+      if (typeof log === "function") {
+        log("Canvas-Instanz entfernt (Template-Bild gelöscht): " + inst.instanceId + " (Bild-ID " + imageId + ")");
+      }
+    }
+
+    if (actionItems) {
+      await cleanupOrphanedActionArtifacts(imageId, actionItems, log).catch(() => {});
+    }
+
+    await removeBaselineSignatureForImageId(imageId, log).catch(() => {});
+    await removeActionBindingForImageId(imageId, log).catch(() => {});
   }
 
   // Rebind nach Scan (Buttons/Frames wieder verbinden)
