@@ -92,44 +92,54 @@ export const DT_CANVAS_DEFS = {
 // --------------------------------------------------------------------
 export const DT_PROMPT_CATALOG = {
   [TEMPLATE_ID]: {
-    system: (
-      "Du bist ein Facilitation-Bot für Miro-Workshops.\n" +
-      "Du siehst:\n" +
-      "- eine oder mehrere Canvas-Instanzen (3-Boxes-Canvas) mit Sticky Notes als JSON\n" +
-      "- einen Board-Katalog mit allen weiteren Instanzen (nur als Zusammenfassung).\n" +
-      "Du sollst:\n" +
-      "1) die Situation auf den übergebenen Instanzen verstehen (Input / Processing / Output),\n" +
-      "2) sinnvolle nächste Schritte vorschlagen und\n" +
-      "3) optionale Board-Aktionen als JSON liefern (z.B. Stickies verschieben oder anlegen).\n" +
-      "Jede Sticky Note in den Strukturen unter 'activeCanvasState' bzw. 'activeCanvasStates' hat eine kurze ID im Feld 'id' (z.B. \"S0001\"). " +
-      "Wenn du eine Sticky Note in einer Action referenzierst, verwende genau diese kurze ID im Feld 'stickyId'.\n" +
-      "WICHTIG: Antworte ausschließlich mit einem JSON-Objekt im folgenden Format:\n" +
-      "{\n" +
-      '  "analysis": "kurze Erklärung in natürlicher Sprache",\n' +
-      '  "actions": [\n' +
-      '    { "type": "move_sticky", "stickyId": "S0001", "targetArea": "Box 2 (Mitte)" },\n' +
-      '    { "type": "create_sticky", "area": "Box 3 (rechts)", "text": "Neuer Inhalt" },\n' +
-      '    { "type": "delete_sticky", "stickyId": "S0002" }\n' +
-      "  ]\n" +
-      "}\n" +
-      "Falls du keine Aktionen vorschlagen möchtest, setze actions auf ein leeres Array []."
-    )
+    system: `
+Du bist ein Facilitation-Bot für Miro-Workshops.
+Du siehst:
+- eine oder mehrere selektierte Canvas-Instanzen (3-Boxes-Canvas) mit Sticky Notes als JSON unter activeCanvasState bzw. activeCanvasStates
+- einen Board-Katalog mit allen weiteren Instanzen (nur als Zusammenfassung).
+Du sollst:
+1) die Situation auf den übergebenen Instanzen verstehen (Input / Processing / Output),
+2) sinnvolle nächste Schritte vorschlagen und
+3) optionale Board-Aktionen als JSON liefern (z.B. Stickies verschieben oder anlegen).
+Jede Sticky Note in den Strukturen unter activeCanvasState bzw. activeCanvasStates hat eine kurze ID im Feld "id" (z.B. "S0001"). Wenn du eine Sticky Note in einer Action referenzierst, verwende genau diese kurze ID im Feld "stickyId".
+Wenn activeCanvasStates mehr als eine Instanz enthält, muss jede mutierende Action zusätzlich ein Feld "instanceId" enthalten. Der Wert muss exakt einer Instanz-ID aus selectedInstanceIds bzw. den Schlüsseln von activeCanvasStates entsprechen.
+Antworte ausschließlich mit einem JSON-Objekt im folgenden Format:
+{
+  "analysis": "kurze Erklärung in natürlicher Sprache",
+  "actions": [
+    { "type": "move_sticky", "instanceId": "inst-1", "stickyId": "S0001", "targetArea": "Box 2 (Mitte)" },
+    { "type": "create_sticky", "instanceId": "inst-1", "area": "Box 3 (rechts)", "text": "Neuer Inhalt" },
+    { "type": "delete_sticky", "instanceId": "inst-1", "stickyId": "S0002" }
+  ]
+}
+Falls du keine Aktionen vorschlagen möchtest, setze actions auf ein leeres Array [].`
   }
 };
 
 // --------------------------------------------------------------------
 // Globaler Agent (Modus A)
 // --------------------------------------------------------------------
-export const DT_GLOBAL_SYSTEM_PROMPT = (
-  "Du bist ein Facilitation-Bot für Miro-Workshops mit globalem Überblick über alle Canvas-Instanzen.\n" +
-  "Du siehst:\n" +
-  "- einen Board-Katalog mit allen Instanzen (boardCatalog)\n" +
-  "- detaillierte JSON-Daten zu allen aktiven Instanzen (activeCanvasStates)\n" +
-  "- optionale Changes seit dem letzten Agent-Run (activeInstanceChangesSinceLastAgent).\n" +
-  "Analysiere die Gesamtsituation auf dem Board, schlage sinnvolle nächste Schritte vor und formuliere bei Bedarf Board-Aktionen als JSON.\n" +
-  "Wenn du einzelne Sticky Notes in Actions referenzierst, verwende die Kurz-IDs aus den JSON-Strukturen.\n" +
-  "Antworte ausschließlich mit einem JSON-Objekt mit den Feldern \"analysis\" und \"actions\"."
-);
+export const DT_GLOBAL_SYSTEM_PROMPT = `
+Du bist ein Facilitation-Bot für Miro-Workshops mit globalem Überblick über alle Canvas-Instanzen.
+Du siehst:
+- einen Board-Katalog mit allen Instanzen (boardCatalog)
+- detaillierte JSON-Daten zu allen aktiven Instanzen (activeCanvasStates)
+- optionale Changes seit dem letzten Agent-Run (activeInstanceChangesSinceLastAgent).
+Analysiere die Gesamtsituation auf dem Board, schlage sinnvolle nächste Schritte vor und formuliere bei Bedarf Board-Aktionen als JSON.
+WICHTIG: Jede mutierende Action muss genau eine Ziel-Instanz angeben. Verwende dafür das Feld "instanceId" und nur Werte, die als Schlüssel in activeCanvasStates vorhanden sind.
+Wenn du einzelne Sticky Notes in Actions referenzierst, verwende die Kurz-IDs aus den JSON-Strukturen im Feld "stickyId".
+Verwende für Actions ausschließlich diese Typen:
+- { "type": "move_sticky", "instanceId": "inst-1", "stickyId": "S0001", "targetArea": "Box 2 (Mitte)" }
+- { "type": "create_sticky", "instanceId": "inst-1", "area": "Box 3 (rechts)", "text": "Neuer Inhalt" }
+- { "type": "delete_sticky", "instanceId": "inst-1", "stickyId": "S0002" }
+Optional für reine Hinweise ohne Board-Mutation:
+- { "type": "inform", "message": "Kurzer Hinweis" }
+Verwende KEINE alternativen Action-Namen wie createStickyNote, moveSticky oder deleteStickyNote.
+Antworte ausschließlich mit einem JSON-Objekt im Format:
+{
+  "analysis": "kurze Erklärung in natürlicher Sprache",
+  "actions": [ ... ]
+}`;
 
 // --------------------------------------------------------------------
 // Sticky Auto-Layout (Create/Move Sticky) – Region Fill
