@@ -50,6 +50,17 @@
     }
     .row { margin-bottom: 6px; }
     .btn-row { margin-top: 4px; margin-bottom: 6px; }
+    #selection-status {
+      margin-top: 6px;
+      margin-bottom: 8px;
+      padding: 8px;
+      border-radius: 6px;
+      border: 1px solid #d1d5db;
+      background: #f9fafb;
+      font-size: 12px;
+      line-height: 1.4;
+      white-space: pre-wrap;
+    }
   </style>
 </head>
 <body>
@@ -71,12 +82,19 @@
   </div>
 
   <div class="row">
-    <label for="user-text">Frage / Aufgabe für den Agenten (Modus B)</label>
-    <textarea id="user-text" placeholder="Was soll der Agent mit der ausgewählten Canvas-Instanz tun?"></textarea>
+    <label for="user-text">Frage / Aufgabe für den Agenten</label>
+    <textarea id="user-text" placeholder="Was soll der Agent mit den selektierten Canvas-Instanzen oder im globalen Lauf tun?"></textarea>
   </div>
 
   <div class="btn-row">
     <button id="btn-insert-template">Template-Bild einfügen</button>
+  </div>
+
+  <div id="selection-status">Selektion wird geladen ...</div>
+
+  <div class="btn-row">
+    <button id="btn-agent-selection">Instanz-Agent (Selektion)</button>
+    <button id="btn-global-agent">Global Agent</button>
   </div>
 
   <div class="btn-row">
