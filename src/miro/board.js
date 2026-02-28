@@ -4,9 +4,9 @@ import {
   DT_STORAGE_KEY_BASELINE_PREFIX,
   DT_STORAGE_KEY_ACTION_BINDING_PREFIX,
   DT_STORAGE_KEY_ACTION_BINDING_INDEX
-} from "../config.js";
+} from "../config.js?v=20260228-step4";
 
-import { isFiniteNumber } from "../utils.js";
+import { isFiniteNumber } from "../utils.js?v=20260228-step4";
 
 // --------------------------------------------------------------------
 // Miro Ready
