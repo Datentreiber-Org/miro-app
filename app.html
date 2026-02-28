@@ -2,7 +2,7 @@
 <html lang="de">
 <head>
   <meta charset="utf-8" />
-  <title>Datentreiber 3-Boxes – Miro Panel</title>
+  <title>Datentreiber Canvas – Miro Panel</title>
   <script src="https://miro.com/app/static/sdk/v2/miro.js"></script>
   <style>
     body {
@@ -50,6 +50,53 @@
     }
     .row { margin-bottom: 6px; }
     .btn-row { margin-top: 4px; margin-bottom: 6px; }
+    .canvas-picker {
+      display: grid;
+      gap: 8px;
+      max-height: 180px;
+      overflow: auto;
+    }
+    .canvas-option {
+      display: block;
+      cursor: pointer;
+    }
+    .canvas-option input {
+      position: absolute;
+      opacity: 0;
+      pointer-events: none;
+    }
+    .canvas-option-card {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      padding: 8px;
+      border-radius: 8px;
+      border: 1px solid #d1d5db;
+      background: #ffffff;
+    }
+    .canvas-option input:checked + .canvas-option-card {
+      border-color: #2563eb;
+      background: #eff6ff;
+      box-shadow: inset 0 0 0 1px #2563eb;
+    }
+    .canvas-thumb {
+      width: 84px;
+      height: 56px;
+      object-fit: contain;
+      flex: 0 0 auto;
+      border-radius: 4px;
+      border: 1px solid #e5e7eb;
+      background: #ffffff;
+    }
+    .canvas-option-title {
+      font-weight: 600;
+      margin-bottom: 2px;
+    }
+    .canvas-option-meta {
+      font-size: 11px;
+      color: #4b5563;
+      line-height: 1.35;
+    }
     #selection-status {
       margin-top: 6px;
       margin-bottom: 8px;
@@ -64,7 +111,7 @@
   </style>
 </head>
 <body>
-  <h1>Datentreiber 3-Boxes – Panel</h1>
+  <h1>Datentreiber Canvas – Panel</h1>
 
   <div class="row">
     <label for="api-key">OpenAI API Key</label>
@@ -86,8 +133,13 @@
     <textarea id="user-text" placeholder="Was soll der Agent mit den selektierten Canvas-Instanzen oder im globalen Lauf tun?"></textarea>
   </div>
 
+  <div class="row">
+    <label for="canvas-type-picker">Canvas-Typ auswählen</label>
+    <div id="canvas-type-picker" class="canvas-picker">Canvas-Typen werden geladen ...</div>
+  </div>
+
   <div class="btn-row">
-    <button id="btn-insert-template">Template-Bild einfügen</button>
+    <button id="btn-insert-template">Canvas einfügen</button>
   </div>
 
   <div id="selection-status">Selektion wird geladen ...</div>
@@ -105,6 +157,6 @@
 
   <pre id="log"></pre>
 
-  <script type="module" src="./src/main.js"></script>
+  <script type="module" src="./src/main.js?v=20260228-step4"></script>
 </body>
 </html>
