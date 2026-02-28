@@ -2,6 +2,7 @@ import {
   TEMPLATE_ID,
   TEMPLATE_IMAGE_URL,
   DT_TEMPLATE_CATALOG,
+  DT_CANVAS_DEFS,
   DT_PROMPT_CATALOG,
   DT_GLOBAL_SYSTEM_PROMPT,
   STICKY_LAYOUT
@@ -55,6 +56,7 @@ const state = {
 // Logger + initial log
 // --------------------------------------------------------------------
 const logEl = document.getElementById("log");
+const selectionStatusEl = document.getElementById("selection-status");
 const log = createLogger(logEl);
 
 (function initialLog() {
@@ -87,7 +89,7 @@ function getPanelUserText() {
 }
 function getCurrentUserQuestion() {
   const t = getPanelUserText();
-  return t || "Bitte analysiere diese Canvas-Instanz und führe sinnvolle nächste Schritte innerhalb des Workshop-Workflows aus.";
+  return t || "Bitte analysiere die relevanten Canvas-Instanzen und führe sinnvolle nächste Schritte innerhalb des Workshop-Workflows aus.";
 }
 
 // --------------------------------------------------------------------
@@ -95,6 +97,8 @@ function getCurrentUserQuestion() {
 // --------------------------------------------------------------------
 function initPanelButtons() {
   document.getElementById("btn-insert-template")?.addEventListener("click", insertTemplateImage);
+  document.getElementById("btn-agent-selection")?.addEventListener("click", runAgentForCurrentSelection);
+  document.getElementById("btn-global-agent")?.addEventListener("click", () => runGlobalAgent(null, getPanelUserText()));
   document.getElementById("btn-cluster-panel")?.addEventListener("click", clusterSelectionFromPanel);
   document.getElementById("btn-classify-debug")?.addEventListener("click", () => classifyStickies({ silent: false }));
   document.getElementById("btn-openai-classic")?.addEventListener("click", callOpenAIClassic);
@@ -104,6 +108,7 @@ function initPanelButtons() {
   window.dtClassifyStickies = (opts) => classifyStickies(opts || {});
   window.dtCallOpenAI = callOpenAIClassic;
   window.dtClusterSelection = clusterSelectionFromPanel;
+  window.dtRunAgentForCurrentSelection = runAgentForCurrentSelection;
   window.dtRunAgentForInstance = runAgentForInstance;
   window.dtRunGlobalAgent = runGlobalAgent;
 }
@@ -134,6 +139,7 @@ async function afterMiroReady() {
 
   // UI selection events
   await Board.registerSelectionUpdateHandler(onSelectionUpdate, log);
+  await refreshSelectionStatusFromBoard();
 
   log("Init abgeschlossen. Global baseline: " + (state.hasGlobalBaseline ? ("JA (" + (state.globalBaselineAt || "unknown") + ")") : "NEIN"));
 }
@@ -178,108 +184,289 @@ async function ensureInstancesScanned(force = false) {
 }
 
 // --------------------------------------------------------------------
-// Selection update (Board Buttons)
+// Selection update (Panel-targeting via board selection)
 // --------------------------------------------------------------------
-async function onSelectionUpdate(event) {
-  if (state.handlingSelection) return;
+function setSelectionStatus(text) {
+  if (!selectionStatusEl) return;
+  selectionStatusEl.textContent = text || "Keine Canvas selektiert.";
+}
 
-  const items = event?.items || [];
-
-  // Sticky selection cache
-  const stickyIds = items.filter((it) => it.type === "sticky_note").map((it) => it.id);
-  if (stickyIds.length > 0) state.lastStickySelectionIds = stickyIds.slice();
-
-  // Canvas selection cache
-  const canvasInstanceIdSet = new Set();
-  for (const it of items) {
-    if (it.type === "image") {
-      const inst = state.instancesByImageId.get(it.id);
-      if (inst) canvasInstanceIdSet.add(inst.instanceId);
-    }
-    if (it.type === "frame") {
-      for (const inst of state.instancesById.values()) {
-        if (inst?.actionItems?.frameId === it.id) {
-          canvasInstanceIdSet.add(inst.instanceId);
-        }
-      }
-    }
+function getActionFrameInstanceId(frameId) {
+  if (!frameId) return null;
+  for (const inst of state.instancesById.values()) {
+    if (inst?.actionItems?.frameId === frameId) return inst.instanceId;
   }
-  if (canvasInstanceIdSet.size > 0) state.lastCanvasSelectionInstanceIds = Array.from(canvasInstanceIdSet);
+  return null;
+}
 
-  // Nur single shape selection für Buttons
-  if (items.length !== 1) return;
-  const item = items[0];
-  if (item.type !== "shape") return;
-
-  // Ensure scan (rebind on restart)
+async function resolveSelectionToInstanceIds(items) {
   await ensureInstancesScanned();
 
-  let instanceId = null;
-  let buttonType = null;
+  const list = Array.isArray(items) ? items : [];
+  if (list.length === 0) return [];
 
-  for (const [id, inst] of state.instancesById.entries()) {
-    const aiId = inst?.actionItems?.aiItemId;
-    const clId = inst?.actionItems?.clusterItemId;
-    const glId = inst?.actionItems?.globalAgentItemId;
+  const geomEntries = await Board.buildInstanceGeometryIndex(state.instancesById, log);
+  const parentGeomCache = new Map();
+  const resolved = [];
+  const seen = new Set();
 
-    if (aiId && aiId === item.id) { instanceId = id; buttonType = "ai"; break; }
-    if (clId && clId === item.id) { instanceId = id; buttonType = "cluster"; break; }
-    if (glId && glId === item.id) { instanceId = id; buttonType = "global"; break; }
+  function addInstanceId(instanceId) {
+    if (!instanceId || seen.has(instanceId) || !state.instancesById.has(instanceId)) return;
+    seen.add(instanceId);
+    resolved.push(instanceId);
   }
 
-  if (!instanceId || !buttonType) return;
+  for (const item of list) {
+    if (!item) continue;
 
-  state.handlingSelection = true;
-  try {
-    if (buttonType === "ai") {
-      log("Agent-Button (Shape, Modus B) für Instanz " + instanceId + " ausgelöst.");
-      await runAgentForInstance(instanceId);
-    } else if (buttonType === "cluster") {
-      if (!state.lastStickySelectionIds?.length) {
-        log("Cluster-Button: Keine vorherige Sticky-Auswahl. Bitte zuerst Stickies auswählen.");
-        return;
-      }
-      log("Cluster-Button (Shape) für Instanz " + instanceId + " ausgelöst.");
-      await clusterSelectionWithIds(state.lastStickySelectionIds, instanceId);
-    } else if (buttonType === "global") {
-      const inst = state.instancesById.get(instanceId);
-      const inputId = inst?.actionItems?.globalAgentInputItemId;
-      if (!inputId) {
-        log("Global-Button: Kein Eingabefeld gefunden.");
-        return;
-      }
-
-      let userText = "";
-      try {
-        const txt = await Board.getItemById(inputId, log);
-        userText = (txt?.content || "").trim();
-      } catch (_) {}
-
-      if (!userText) {
-        userText = "Bitte gib einen globalen Überblick über alle relevanten Canvas-Instanzen und schlage sinnvolle nächste Schritte vor.";
-      }
-
-      log("Global-Agent-Button (Shape, Modus A) für Instanz " + instanceId + " ausgelöst.");
-      await runGlobalAgent(instanceId, userText);
+    if (item.type === "image") {
+      addInstanceId(state.instancesByImageId.get(item.id)?.instanceId || null);
+      continue;
     }
-  } finally {
-    state.handlingSelection = false;
+
+    if (item.type === "frame") {
+      addInstanceId(getActionFrameInstanceId(item.id));
+      continue;
+    }
+
+    if (item.type === "connector") {
+      const fromOwner = item.start?.item ? (state.stickyOwnerCache?.get(item.start.item) || null) : null;
+      const toOwner = item.end?.item ? (state.stickyOwnerCache?.get(item.end.item) || null) : null;
+      if (fromOwner && toOwner && fromOwner === toOwner) {
+        addInstanceId(fromOwner);
+        continue;
+      }
+      if (fromOwner) {
+        addInstanceId(fromOwner);
+        continue;
+      }
+      if (toOwner) {
+        addInstanceId(toOwner);
+        continue;
+      }
+    }
+
+    if (item.type === "sticky_note") {
+      const owner = state.stickyOwnerCache?.get(item.id) || null;
+      if (owner) {
+        addInstanceId(owner);
+        continue;
+      }
+    }
+
+    try {
+      const pos = await Board.resolveBoardCoords(item, parentGeomCache, log);
+      if (!pos) continue;
+      const instance = Board.findInstanceByPoint(pos.x, pos.y, geomEntries);
+      if (instance?.instanceId) addInstanceId(instance.instanceId);
+    } catch (_) {}
   }
+
+  return resolved;
+}
+
+function buildSelectionStatusText({ itemCount, instanceIds }) {
+  const ids = Array.isArray(instanceIds) ? instanceIds : [];
+
+  if (itemCount === 0) {
+    return [
+      "Keine Canvas selektiert.",
+      "Instanz-Agent erwartet mindestens eine selektierte Canvas-Instanz auf dem Board."
+    ].join("\n");
+  }
+
+  if (ids.length === 0) {
+    return [
+      "Aktuelle Selektion enthält keine auflösbare Canvas.",
+      "Selektierte Board-Items: " + itemCount,
+      "Wähle mindestens eine Canvas oder ein Item innerhalb einer Canvas aus."
+    ].join("\n");
+  }
+
+  return [
+    "Selektierte Canvas: " + ids.length,
+    "Instanzen: " + ids.join(", "),
+    "Selektierte Board-Items: " + itemCount
+  ].join("\n");
+}
+
+async function refreshSelectionStatusFromItems(items) {
+  const list = Array.isArray(items) ? items : [];
+  const stickyIds = list.filter((it) => it.type === "sticky_note").map((it) => it.id);
+
+  state.lastStickySelectionIds = stickyIds.slice();
+  const instanceIds = await resolveSelectionToInstanceIds(list);
+  state.lastCanvasSelectionInstanceIds = instanceIds.slice();
+
+  setSelectionStatus(buildSelectionStatusText({
+    itemCount: list.length,
+    instanceIds
+  }));
+
+  return instanceIds;
+}
+
+async function refreshSelectionStatusFromBoard() {
+  const selection = await Board.getSelection(log).catch(() => []);
+  return await refreshSelectionStatusFromItems(selection || []);
+}
+
+async function onSelectionUpdate(event) {
+  if (state.handlingSelection) return;
+  const items = event?.items || [];
+  await refreshSelectionStatusFromItems(items);
 }
 
 // --------------------------------------------------------------------
-// Insert Template Image (with Action Frame)
+// Insert Template Image (viewport-centered, collision-aware)
 // --------------------------------------------------------------------
+const TEMPLATE_INSERTION = {
+  defaultWidthPx: 2000,
+  footprintGapPx: 240,
+  maxSearchRings: 60
+};
+
+function estimateTemplateSize(canvasTypeId, widthPx) {
+  const def = DT_CANVAS_DEFS[canvasTypeId] || DT_CANVAS_DEFS[TEMPLATE_ID] || null;
+  const originalWidth = Number(def?.originalWidth) || 0;
+  const originalHeight = Number(def?.originalHeight) || 0;
+
+  if (originalWidth > 0 && originalHeight > 0) {
+    return {
+      width: widthPx,
+      height: widthPx * (originalHeight / originalWidth)
+    };
+  }
+
+  return {
+    width: widthPx,
+    height: widthPx
+  };
+}
+
+function rectsOverlapByCenter(a, b, padding = 0) {
+  if (!a || !b) return false;
+
+  const dx = Math.abs((a.x || 0) - (b.x || 0));
+  const dy = Math.abs((a.y || 0) - (b.y || 0));
+  const limitX = ((a.width || 0) + (b.width || 0)) / 2 + padding;
+  const limitY = ((a.height || 0) + (b.height || 0)) / 2 + padding;
+
+  return dx < limitX && dy < limitY;
+}
+
+function buildInsertionCandidates(centerX, centerY, stepX, stepY, maxRings) {
+  const candidates = [];
+  const seen = new Set();
+
+  function pushCandidate(gridX, gridY) {
+    const x = centerX + (gridX * stepX);
+    const y = centerY + (gridY * stepY);
+    const key = String(gridX) + ":" + String(gridY);
+    if (seen.has(key)) return;
+    seen.add(key);
+    candidates.push({ x, y, gridX, gridY });
+  }
+
+  pushCandidate(0, 0);
+
+  for (let ring = 1; ring <= maxRings; ring++) {
+    for (let gx = -ring; gx <= ring; gx++) {
+      pushCandidate(gx, -ring);
+      pushCandidate(gx, ring);
+    }
+    for (let gy = -ring + 1; gy <= ring - 1; gy++) {
+      pushCandidate(-ring, gy);
+      pushCandidate(ring, gy);
+    }
+  }
+
+  return candidates;
+}
+
+async function getOccupiedTemplateFootprints() {
+  const occupied = [];
+
+  for (const inst of state.instancesById.values()) {
+    const geom = await Board.computeTemplateGeometry(inst, log);
+    if (!geom) continue;
+
+    occupied.push({
+      instanceId: inst.instanceId,
+      x: geom.x,
+      y: geom.y,
+      width: geom.width,
+      height: geom.height
+    });
+  }
+
+  return occupied;
+}
+
+async function computeTemplateInsertPosition(canvasTypeId) {
+  await ensureInstancesScanned(true);
+
+  const viewport = await Board.getViewport(log).catch(() => null);
+  const viewportCenterX = viewport && isFiniteNumber(viewport.x) && isFiniteNumber(viewport.width)
+    ? viewport.x + viewport.width / 2
+    : 0;
+  const viewportCenterY = viewport && isFiniteNumber(viewport.y) && isFiniteNumber(viewport.height)
+    ? viewport.y + viewport.height / 2
+    : 0;
+
+  const estimatedImage = estimateTemplateSize(canvasTypeId, TEMPLATE_INSERTION.defaultWidthPx);
+  const footprint = {
+    width: estimatedImage.width,
+    height: estimatedImage.height
+  };
+  const occupied = await getOccupiedTemplateFootprints();
+
+  const stepX = footprint.width + TEMPLATE_INSERTION.footprintGapPx;
+  const stepY = footprint.height + TEMPLATE_INSERTION.footprintGapPx;
+
+  const candidates = buildInsertionCandidates(
+    viewportCenterX,
+    viewportCenterY,
+    stepX,
+    stepY,
+    TEMPLATE_INSERTION.maxSearchRings
+  );
+
+  for (const candidate of candidates) {
+    const candidateRect = {
+      x: candidate.x,
+      y: candidate.y,
+      width: footprint.width,
+      height: footprint.height
+    };
+
+    const overlaps = occupied.some((rect) => rectsOverlapByCenter(candidateRect, rect, 0));
+    if (!overlaps) {
+      return {
+        x: candidate.x,
+        y: candidate.y,
+        viewportCenterX,
+        viewportCenterY,
+        usedViewportCenter: candidate.gridX === 0 && candidate.gridY === 0
+      };
+    }
+  }
+
+  throw new Error("Kein kollisionsfreier Einfügepunkt für das Template gefunden.");
+}
+
 async function insertTemplateImage() {
   log("Button: Template-Bild einfügen.");
   await Board.ensureMiroReady(log);
 
   try {
+    const placement = await computeTemplateInsertPosition(TEMPLATE_ID);
+
     const image = await Board.createImage({
       url: TEMPLATE_IMAGE_URL,
-      x: 0,
-      y: 0,
-      width: 2000
+      x: placement.x,
+      y: placement.y,
+      width: TEMPLATE_INSERTION.defaultWidthPx
     }, log);
 
     await Board.registerInstanceFromImage(image, {
@@ -289,20 +476,21 @@ async function insertTemplateImage() {
       instancesById: state.instancesById,
       nextInstanceId: nextInstanceId,
       hasGlobalBaseline: state.hasGlobalBaseline,
-      createActionShapes: true,
+      createActionShapes: false,
       canvasTypeId: TEMPLATE_ID,
       log
     });
 
-    log(
-      "Template eingefügt: Bild-ID " + image.id +
-      "\nUnterhalb des Canvas findest du die Buttons im Frame:\n" +
-      "- Send to OpenAI (Modus B)\n" +
-      "- Cluster\n" +
-      "- Global Agent (Modus A + Textfeld)\n"
-    );
+    const placementInfo = placement.usedViewportCenter
+      ? "Neue Instanz wurde mittig in der aktuellen View platziert."
+      : "Neue Instanz wurde nahe der aktuellen View platziert, mit Überlappungsschutz.";
+
+    log(`Template eingefügt: Bild-ID ${image.id}
+${placementInfo}
+Die Steuerung erfolgt jetzt über das Side Panel.`);
 
     await Board.zoomTo(image, log);
+    await refreshSelectionStatusFromBoard();
   } catch (e) {
     log("Fehler beim Einfügen des Template-Bildes: " + e.message);
   }
@@ -541,6 +729,20 @@ async function getInstanceStateForAgent(instance, { liveCatalog, hasGlobalBaseli
     loadBaselineSignatureForImageId: Board.loadBaselineSignatureForImageId,
     log
   });
+}
+
+async function computeInstanceStatesById(liveCatalog) {
+  const stateById = Object.create(null);
+
+  for (const inst of state.instancesById.values()) {
+    const st = await getInstanceStateForAgent(inst, {
+      liveCatalog,
+      hasGlobalBaseline: state.hasGlobalBaseline
+    });
+    if (st) stateById[inst.instanceId] = st;
+  }
+
+  return stateById;
 }
 
 // --------------------------------------------------------------------
@@ -817,11 +1019,60 @@ async function applyAgentActionsToInstance(instanceId, actions) {
 }
 
 // --------------------------------------------------------------------
-// Agent Modus B
+// Agent Modus B (selektierte Canvas-Instanzen)
 // --------------------------------------------------------------------
-async function runAgentForInstance(instanceId, options = {}) {
+function buildBoardCatalogForSelectedInstances(selectedInstanceIds) {
+  const selectedSet = new Set((selectedInstanceIds || []).filter((id) => state.instancesById.has(id)));
+  const baseCatalog = Catalog.buildBoardCatalogSummary(state.instancesById, {
+    mode: "generic",
+    hasGlobalBaseline: state.hasGlobalBaseline
+  });
+
+  return {
+    instances: (baseCatalog.instances || []).map((entry) => ({
+      ...entry,
+      isActive: selectedSet.has(entry.instanceId)
+    }))
+  };
+}
+
+function getPromptConfigForSelectedInstances(selectedInstanceIds) {
+  const firstId = Array.isArray(selectedInstanceIds) && selectedInstanceIds.length ? selectedInstanceIds[0] : null;
+  const firstInst = firstId ? state.instancesById.get(firstId) : null;
+  return DT_PROMPT_CATALOG[firstInst?.canvasTypeId] || DT_PROMPT_CATALOG[TEMPLATE_ID];
+}
+
+async function runAgentForCurrentSelection() {
   await Board.ensureMiroReady(log);
   await ensureInstancesScanned();
+  await refreshBoardState();
+
+  const selection = await Board.getSelection(log);
+  const selectedInstanceIds = await refreshSelectionStatusFromItems(selection || []);
+
+  if (!selectedInstanceIds.length) {
+    log("Instanz-Agent: Keine Canvas selektiert. Bitte wähle mindestens eine Canvas oder ein Item innerhalb einer Canvas aus.");
+    return;
+  }
+
+  await runAgentForSelectedInstances(selectedInstanceIds, {
+    userText: getCurrentUserQuestion()
+  });
+}
+
+async function runAgentForInstance(instanceId, options = {}) {
+  return await runAgentForSelectedInstances([instanceId], options);
+}
+
+async function runAgentForSelectedInstances(selectedInstanceIds, options = {}) {
+  await Board.ensureMiroReady(log);
+  await ensureInstancesScanned();
+
+  const normalizedSelectedIds = Array.from(new Set((selectedInstanceIds || []).filter((id) => state.instancesById.has(id))));
+  if (!normalizedSelectedIds.length) {
+    log("Instanz-Agent: Keine gültigen Ziel-Instanzen übergeben.");
+    return;
+  }
 
   const apiKey = getApiKey();
   const model = getModel();
@@ -829,49 +1080,57 @@ async function runAgentForInstance(instanceId, options = {}) {
 
   if (!apiKey) { log("Bitte OpenAI API Key eingeben (Agent)."); return; }
 
-  const instance = state.instancesById.get(instanceId);
-  if (!instance) { log("Unbekannte Instanz: " + instanceId); return; }
-
-  const promptCfg = DT_PROMPT_CATALOG[instance.canvasTypeId] || DT_PROMPT_CATALOG[TEMPLATE_ID];
+  const promptCfg = getPromptConfigForSelectedInstances(normalizedSelectedIds);
   const systemPrompt = promptCfg.system;
 
-  log("Starte Agent (Modus B) für Instanz " + instanceId + " ...");
+  log(
+    "Starte Agent (Modus B) für selektierte Instanzen: " +
+    normalizedSelectedIds.join(", ") +
+    " ..."
+  );
 
   const { liveCatalog } = await refreshBoardState();
+  const stateById = await computeInstanceStatesById(liveCatalog);
 
-  const instState = await Catalog.computeInstanceState(instance, {
-    liveCatalog,
-    hasGlobalBaseline: state.hasGlobalBaseline,
-    loadBaselineSignatureForImageId: Board.loadBaselineSignatureForImageId,
-    log
-  });
+  const activeCanvasStates = Object.create(null);
+  const activeInstanceChangesSinceLastAgent = Object.create(null);
 
-  if (!instState?.classification) {
-    log("Konnte Instanzzustand nicht ermitteln.");
+  for (const id of normalizedSelectedIds) {
+    const st = stateById[id];
+    if (!st?.classification) continue;
+
+    const payload = Catalog.buildPromptPayloadFromClassification(st.classification, {
+      useAliases: true,
+      aliasState: state.aliasState,
+      log
+    });
+    if (payload) activeCanvasStates[id] = payload;
+
+    if (!state.hasGlobalBaseline || !st?.diff) {
+      activeInstanceChangesSinceLastAgent[id] = null;
+    } else {
+      activeInstanceChangesSinceLastAgent[id] = Catalog.aliasDiffForActiveInstance(st.diff, state.aliasState);
+    }
+  }
+
+  const resolvedActiveIds = Object.keys(activeCanvasStates);
+  if (!resolvedActiveIds.length) {
+    log("Instanz-Agent: Konnte für die selektierten Canvas keine Zustandsdaten aufbauen.");
     return;
   }
 
-  const boardCatalog = Catalog.buildBoardCatalogSummary(state.instancesById, {
-    mode: "instance",
-    activeInstanceId: instanceId,
-    hasGlobalBaseline: state.hasGlobalBaseline
-  });
-
-  const activeCanvasState = Catalog.buildPromptPayloadFromClassification(instState.classification, {
-    useAliases: true,
-    aliasState: state.aliasState,
-    log
-  });
+  const singleId = resolvedActiveIds.length === 1 ? resolvedActiveIds[0] : null;
+  const boardCatalog = buildBoardCatalogForSelectedInstances(resolvedActiveIds);
 
   const userPayload = {
     userQuestion: userText,
-    activeInstanceId: instanceId,
-    selectedInstanceIds: [instanceId],
+    activeInstanceId: singleId,
+    selectedInstanceIds: resolvedActiveIds,
     boardCatalog,
-    activeCanvasState,
-    activeCanvasStates: { [instanceId]: activeCanvasState },
-    activeInstanceChangesSinceLastAgent: null,
-    hint: "boardCatalog = Kurzüberblick, activeCanvasState = Detaildaten für diese Instanz."
+    activeCanvasState: singleId ? activeCanvasStates[singleId] : null,
+    activeCanvasStates,
+    activeInstanceChangesSinceLastAgent,
+    hint: "boardCatalog = Kurzüberblick über alle Canvas, activeCanvasStates = Detaildaten nur für die selektierten Instanzen. Wenn mehrere Instanzen selektiert sind, muss jede mutierende Action eine instanceId enthalten."
   };
 
   try {
@@ -899,28 +1158,257 @@ async function runAgentForInstance(instanceId, options = {}) {
     log("Agent-Analyse (analysis):");
     log(agentObj.analysis || "(keine analysis)");
 
+    const actionResult = Array.isArray(agentObj.actions) && agentObj.actions.length
+      ? await applyResolvedAgentActions(agentObj.actions, {
+          candidateInstanceIds: resolvedActiveIds,
+          triggerInstanceId: singleId,
+          sourceLabel: "Instanz-Agent"
+        })
+      : { appliedCount: 0, skippedCount: 0, infoCount: 0, targetedInstanceCount: 0 };
+
     if (Array.isArray(agentObj.actions) && agentObj.actions.length) {
-      await applyAgentActionsToInstance(instanceId, agentObj.actions);
+      log(
+        "Instanz-Agent: Action-Run abgeschlossen. " +
+        "Mutationen=" + actionResult.appliedCount +
+        ", Hinweise=" + actionResult.infoCount +
+        ", übersprungen=" + actionResult.skippedCount +
+        ", Ziel-Instanzen=" + actionResult.targetedInstanceCount + "."
+      );
     } else {
       log("Agent lieferte keine Actions.");
     }
 
-    // Refresh + cache update (kein Baseline Update im Modus B)
     await refreshBoardState();
-    await Catalog.computeInstanceState(instance, {
-      liveCatalog: state.liveCatalog,
-      hasGlobalBaseline: state.hasGlobalBaseline,
-      loadBaselineSignatureForImageId: Board.loadBaselineSignatureForImageId,
-      log
-    });
 
     const nowIso = new Date().toISOString();
-    instance.lastAgentRunAt = nowIso;
-    instance.lastChangedAt = nowIso;
+    for (const id of resolvedActiveIds) {
+      const inst = state.instancesById.get(id);
+      if (!inst) continue;
+      inst.lastAgentRunAt = nowIso;
+      inst.lastChangedAt = nowIso;
+    }
 
   } catch (e) {
     log("Exception beim Agent-Run: " + e.message);
   }
+}
+
+function pickFirstNonEmptyString(...values) {
+  for (const value of values) {
+    if (typeof value !== "string") continue;
+    const trimmed = value.trim();
+    if (trimmed) return trimmed;
+  }
+  return null;
+}
+
+function canonicalizeAgentActionType(rawType) {
+  if (typeof rawType !== "string") return null;
+
+  const snake = rawType
+    .trim()
+    .replace(/([a-z0-9])([A-Z])/g, "$1_$2")
+    .replace(/[\s-]+/g, "_")
+    .replace(/__+/g, "_")
+    .toLowerCase();
+
+  const compact = snake.replace(/_/g, "");
+
+  const typeMap = {
+    movesticky: "move_sticky",
+    movestickynote: "move_sticky",
+    movenote: "move_sticky",
+    createsticky: "create_sticky",
+    createstickynote: "create_sticky",
+    createnote: "create_sticky",
+    addsticky: "create_sticky",
+    addstickynote: "create_sticky",
+    addnote: "create_sticky",
+    deletesticky: "delete_sticky",
+    deletestickynote: "delete_sticky",
+    deletenote: "delete_sticky",
+    removesticky: "delete_sticky",
+    removestickynote: "delete_sticky",
+    removenote: "delete_sticky",
+    inform: "inform",
+    message: "inform",
+    note: "inform",
+    log: "inform"
+  };
+
+  return typeMap[compact] || null;
+}
+
+function normalizeAgentAction(rawAction) {
+  if (!rawAction || typeof rawAction !== "object") return null;
+
+  const type = canonicalizeAgentActionType(
+    rawAction.type || rawAction.action || rawAction.kind || rawAction.operation
+  );
+  if (!type) return null;
+
+  const normalized = {
+    type,
+    instanceId: pickFirstNonEmptyString(
+      rawAction.instanceId,
+      rawAction.targetInstanceId,
+      rawAction.canvasInstanceId,
+      rawAction.instance,
+      rawAction.targetCanvasInstanceId
+    ),
+    stickyId: pickFirstNonEmptyString(
+      rawAction.stickyId,
+      rawAction.noteId,
+      rawAction.stickyAlias,
+      rawAction.sticky?.id
+    ),
+    area: pickFirstNonEmptyString(
+      rawAction.area,
+      rawAction.targetArea,
+      rawAction.target_area,
+      rawAction.destinationArea
+    ),
+    targetArea: pickFirstNonEmptyString(
+      rawAction.targetArea,
+      rawAction.target_area,
+      rawAction.area,
+      rawAction.destinationArea
+    ),
+    text: pickFirstNonEmptyString(
+      rawAction.text,
+      rawAction.content,
+      rawAction.note,
+      rawAction.stickyText
+    ),
+    message: pickFirstNonEmptyString(
+      rawAction.message,
+      rawAction.text,
+      rawAction.content,
+      rawAction.note
+    )
+  };
+
+  if (isFiniteNumber(rawAction.targetPx)) normalized.targetPx = rawAction.targetPx;
+  if (isFiniteNumber(rawAction.targetPy)) normalized.targetPy = rawAction.targetPy;
+
+  return normalized;
+}
+
+function resolveActionInstanceId(action, { candidateInstanceIds = null, triggerInstanceId = null, sourceLabel = "Agent" } = {}) {
+  const candidateIds = Array.from(new Set((candidateInstanceIds || []).filter((id) => state.instancesById.has(id))));
+
+  const explicitInstanceId =
+    (action?.instanceId && state.instancesById.has(action.instanceId))
+      ? action.instanceId
+      : null;
+
+  const resolvedStickyId = action?.stickyId
+    ? Catalog.resolveStickyId(action.stickyId, state.aliasState)
+    : null;
+
+  const ownerInstanceId = resolvedStickyId
+    ? (state.stickyOwnerCache?.get(resolvedStickyId) || null)
+    : null;
+
+  if (ownerInstanceId && explicitInstanceId && explicitInstanceId !== ownerInstanceId) {
+    log(
+      "WARNUNG: " + sourceLabel + "-Action referenziert Sticky " + action.stickyId +
+      " mit Instanz " + explicitInstanceId +
+      ", gehört aber zu " + ownerInstanceId + ". Verwende Eigentümer-Instanz."
+    );
+  }
+
+  const preferredInstanceId = ownerInstanceId || explicitInstanceId || null;
+  if (preferredInstanceId) {
+    if (candidateIds.length > 0 && !candidateIds.includes(preferredInstanceId)) {
+      log(sourceLabel + ": Abgeleitete Ziel-Instanz " + preferredInstanceId + " liegt außerhalb des erlaubten Zielsets – Action übersprungen.");
+      return null;
+    }
+    return preferredInstanceId;
+  }
+
+  if (candidateIds.length === 1) {
+    return candidateIds[0];
+  }
+
+  if (triggerInstanceId && candidateIds.includes(triggerInstanceId)) {
+    return triggerInstanceId;
+  }
+
+  return null;
+}
+
+async function applyResolvedAgentActions(actions, { candidateInstanceIds, triggerInstanceId = null, sourceLabel = "Agent" }) {
+  if (!Array.isArray(actions) || actions.length === 0) {
+    log(sourceLabel + ": Keine Actions geliefert.");
+    return { appliedCount: 0, skippedCount: 0, infoCount: 0, targetedInstanceCount: 0 };
+  }
+
+  const grouped = new Map();
+  let appliedCount = 0;
+  let skippedCount = 0;
+  let infoCount = 0;
+
+  for (const rawAction of actions) {
+    const action = normalizeAgentAction(rawAction);
+
+    if (!action) {
+      skippedCount++;
+      log(sourceLabel + ": Unbekanntes oder nicht unterstütztes Action-Schema – übersprungen.");
+      log(rawAction);
+      continue;
+    }
+
+    if (action.type === "inform") {
+      infoCount++;
+      log(sourceLabel + " info:");
+      log(action.message || "(keine Nachricht)");
+      continue;
+    }
+
+    if ((action.type === "move_sticky" || action.type === "delete_sticky") && !action.stickyId) {
+      skippedCount++;
+      log(sourceLabel + ": Action ohne stickyId – übersprungen.");
+      log(rawAction);
+      continue;
+    }
+
+    if (action.type === "create_sticky" && !action.text) {
+      skippedCount++;
+      log(sourceLabel + ": create_sticky ohne text – übersprungen.");
+      log(rawAction);
+      continue;
+    }
+
+    const targetInstanceId = resolveActionInstanceId(action, {
+      candidateInstanceIds,
+      triggerInstanceId,
+      sourceLabel
+    });
+
+    if (!targetInstanceId) {
+      skippedCount++;
+      log(sourceLabel + ": Keine Ziel-Instanz für Action ableitbar – übersprungen.");
+      log(rawAction);
+      continue;
+    }
+
+    if (!grouped.has(targetInstanceId)) grouped.set(targetInstanceId, []);
+    grouped.get(targetInstanceId).push({ ...action, instanceId: targetInstanceId });
+    appliedCount++;
+  }
+
+  for (const [instanceId, instanceActions] of grouped.entries()) {
+    log(sourceLabel + ": Wende " + instanceActions.length + " Action(s) auf Instanz " + instanceId + " an.");
+    await applyAgentActionsToInstance(instanceId, instanceActions);
+  }
+
+  return {
+    appliedCount,
+    skippedCount,
+    infoCount,
+    targetedInstanceCount: grouped.size
+  };
 }
 
 // --------------------------------------------------------------------
@@ -942,15 +1430,7 @@ async function runGlobalAgent(triggerInstanceId, userText) {
   log("Starte globalen Agenten-Run (Modus A), Trigger: " + (triggerInstanceId || "(keine)"));
 
   const { liveCatalog } = await refreshBoardState();
-
-  const stateById = Object.create(null);
-  for (const inst of state.instancesById.values()) {
-    const st = await getInstanceStateForAgent(inst, {
-      liveCatalog,
-      hasGlobalBaseline: state.hasGlobalBaseline
-    });
-    if (st) stateById[inst.instanceId] = st;
-  }
+  const stateById = await computeInstanceStatesById(liveCatalog);
 
   const boardCatalog = Catalog.buildBoardCatalogSummary(state.instancesById, {
     mode: "global",
@@ -993,7 +1473,7 @@ async function runGlobalAgent(triggerInstanceId, userText) {
     activeInstanceIds,
     activeCanvasStates,
     activeInstanceChangesSinceLastAgent,
-    hint: "boardCatalog = Übersicht, activeCanvasStates = Detaildaten nur für aktive Instanzen."
+    hint: "boardCatalog = Übersicht, activeCanvasStates = Detaildaten nur für aktive Instanzen. Jede mutierende Action muss genau eine instanceId enthalten. area/targetArea muss exakt einem vorhandenen Area-Namen der Ziel-Instanz entsprechen."
   };
 
   try {
@@ -1021,33 +1501,44 @@ async function runGlobalAgent(triggerInstanceId, userText) {
     log("Global Agent analysis:");
     log(agentObj.analysis || "(keine analysis)");
 
+    const actionResult = Array.isArray(agentObj.actions) && agentObj.actions.length
+      ? await applyResolvedAgentActions(agentObj.actions, {
+          candidateInstanceIds: activeInstanceIds,
+          triggerInstanceId,
+          sourceLabel: "Global Agent"
+        })
+      : { appliedCount: 0, skippedCount: 0, infoCount: 0, targetedInstanceCount: 0 };
+
     if (Array.isArray(agentObj.actions) && agentObj.actions.length) {
-      log("Global Agent actions (nur Logging, nicht auto-apply):");
-      log(agentObj.actions);
+      log(
+        "Global Agent: Action-Run abgeschlossen. " +
+        "Mutationen=" + actionResult.appliedCount +
+        ", Hinweise=" + actionResult.infoCount +
+        ", übersprungen=" + actionResult.skippedCount +
+        ", Ziel-Instanzen=" + actionResult.targetedInstanceCount + "."
+      );
     } else {
       log("Global Agent lieferte keine Actions.");
     }
 
-    // Baseline snapshot aktualisieren + persistieren
+    // Nach dem Action-Run den aktuellen Ist-Zustand erneut lesen und genau diesen Stand als neue Baseline persistieren.
+    const { liveCatalog: refreshedLiveCatalog } = await refreshBoardState();
+    const postActionStateById = await computeInstanceStatesById(refreshedLiveCatalog);
+
     const nowIso = new Date().toISOString();
     const savePromises = [];
 
     for (const inst of state.instancesById.values()) {
-      const st = stateById[inst.instanceId];
+      const st = postActionStateById[inst.instanceId];
       if (st?.signature && inst.imageId) {
         inst.baselineSignature = st.signature;
         inst.baselineSignatureLoaded = true;
-
-        inst.lastDiff = null;
-        inst.lastAgentRunAt = nowIso;
-        inst.lastChangedAt = nowIso;
-
         savePromises.push(Board.saveBaselineSignatureForImageId(inst.imageId, st.signature, log));
-      } else {
-        inst.lastDiff = null;
-        inst.lastAgentRunAt = nowIso;
-        inst.lastChangedAt = nowIso;
       }
+
+      inst.lastDiff = null;
+      inst.lastAgentRunAt = nowIso;
+      inst.lastChangedAt = nowIso;
     }
 
     state.hasGlobalBaseline = true;
@@ -1055,6 +1546,7 @@ async function runGlobalAgent(triggerInstanceId, userText) {
 
     await Promise.all(savePromises);
     await Board.savePersistedBaselineMeta({ hasGlobalBaseline: true, baselineAt: nowIso }, log);
+    log("Global Agent: Baseline aktualisiert (" + nowIso + ").");
 
   } catch (e) {
     log("Exception beim globalen Agent-Run: " + e.message);
