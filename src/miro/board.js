@@ -10,9 +10,9 @@ import {
   DT_IMAGE_META_KEY_INSTANCE,
   DT_ANCHOR_META_KEY_BOARD,
   DT_STORAGE_KEY_EXERCISE_RUNTIME
-} from "../config.js?v=20260301-step8";
+} from "../config.js?v=20260301-step9";
 
-import { isFiniteNumber } from "../utils.js?v=20260301-step8";
+import { isFiniteNumber } from "../utils.js?v=20260301-step9";
 
 // --------------------------------------------------------------------
 // Miro Ready
