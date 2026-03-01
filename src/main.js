@@ -6,14 +6,16 @@ import {
   DT_GLOBAL_SYSTEM_PROMPT,
   DT_MEMORY_RECENT_LOG_LIMIT,
   STICKY_LAYOUT
-} from "./config.js?v=20260301-step7";
+} from "./config.js?v=20260301-step8";
 
-import { createLogger, stripHtml, extractUnderlinedText, isFiniteNumber } from "./utils.js?v=20260301-step7";
+import { createLogger, stripHtml, extractUnderlinedText, isFiniteNumber } from "./utils.js?v=20260301-step8";
 
-import * as Board from "./miro/board.js?v=20260301-step7";
-import * as Catalog from "./domain/catalog.js?v=20260301-step7";
-import * as OpenAI from "./ai/openai.js?v=20260301-step7";
-import * as Memory from "./runtime/memory.js?v=20260301-step7";
+import * as Board from "./miro/board.js?v=20260301-step8";
+import * as Catalog from "./domain/catalog.js?v=20260301-step8";
+import * as OpenAI from "./ai/openai.js?v=20260301-step8";
+import * as Memory from "./runtime/memory.js?v=20260301-step8";
+import * as Exercises from "./exercises/registry.js?v=20260301-step8";
+import * as PromptComposer from "./prompt/composer.js?v=20260301-step8";
 
 // --------------------------------------------------------------------
 // State (Controller-Level)
@@ -49,6 +51,10 @@ const state = {
   memoryState: Memory.createEmptyMemoryState(),
   memoryLog: [],
 
+  // Exercise / Board context
+  boardConfig: Board.normalizeBoardConfig(null, { defaultCanvasTypeId: TEMPLATE_ID }),
+  exerciseRuntime: Board.normalizeExerciseRuntime(null),
+
   // UI state
   selectedCanvasTypeId: TEMPLATE_ID,
 
@@ -66,6 +72,10 @@ const state = {
 const logEl = document.getElementById("log");
 const selectionStatusEl = document.getElementById("selection-status");
 const canvasTypePickerEl = document.getElementById("canvas-type-picker");
+const exercisePackEl = document.getElementById("exercise-pack");
+const exerciseStepEl = document.getElementById("exercise-step");
+const exerciseContextStatusEl = document.getElementById("exercise-context-status");
+const exerciseStepInstructionEl = document.getElementById("exercise-step-instruction");
 const log = createLogger(logEl);
 
 (function initialLog() {
@@ -96,9 +106,49 @@ function getPanelUserText() {
   const el = document.getElementById("user-text");
   return (el?.value || "").trim();
 }
+
+function getSelectedExercisePackId() {
+  return Exercises.normalizeExercisePackId(state.boardConfig?.exercisePackId);
+}
+
+function getSelectedExercisePack() {
+  return Exercises.getExercisePackById(getSelectedExercisePackId());
+}
+
+function getCurrentBoardMode() {
+  return state.boardConfig?.boardMode === "exercise" ? "exercise" : "generic";
+}
+
+function getAllowedCanvasTypeIdsForCurrentPack() {
+  return Exercises.getAllowedCanvasTypesForPack(getSelectedExercisePack());
+}
+
+function getCurrentExerciseStepId(pack = getSelectedExercisePack()) {
+  if (!pack) return null;
+
+  const runtimeStepId = state.exerciseRuntime?.currentStepId || null;
+  if (runtimeStepId && Exercises.getExerciseStep(pack, runtimeStepId)) {
+    return runtimeStepId;
+  }
+
+  return Exercises.getDefaultStepId(pack);
+}
+
+function getCurrentExerciseStep(pack = getSelectedExercisePack()) {
+  const stepId = getCurrentExerciseStepId(pack);
+  return pack && stepId ? Exercises.getExerciseStep(pack, stepId) : null;
+}
+
 function getCurrentUserQuestion() {
-  const t = getPanelUserText();
-  return t || "Bitte analysiere die relevanten Canvas-Instanzen und führe sinnvolle nächste Schritte innerhalb des Workshop-Workflows aus.";
+  const text = getPanelUserText();
+  if (text) return text;
+
+  const currentStep = getCurrentExerciseStep();
+  const visibleInstruction = (typeof currentStep?.visibleInstruction === "string")
+    ? currentStep.visibleInstruction.trim()
+    : "";
+
+  return visibleInstruction || "Bitte analysiere die relevanten Canvas-Instanzen und führe sinnvolle nächste Schritte innerhalb des Workshop-Workflows aus.";
 }
 
 function getCanvasTypeCatalogEntries() {
@@ -112,9 +162,19 @@ function getCanvasTypeCatalogEntries() {
 }
 
 function normalizeCanvasTypeId(canvasTypeId) {
+  const allowedCanvasTypeIds = getAllowedCanvasTypeIdsForCurrentPack();
+
   if (typeof canvasTypeId === "string" && canvasTypeId && DT_TEMPLATE_CATALOG[canvasTypeId]) {
-    return canvasTypeId;
+    if (!allowedCanvasTypeIds.length || allowedCanvasTypeIds.includes(canvasTypeId)) {
+      return canvasTypeId;
+    }
   }
+
+  if (allowedCanvasTypeIds.length) {
+    const firstAllowed = allowedCanvasTypeIds.find((id) => !!DT_TEMPLATE_CATALOG[id]);
+    if (firstAllowed) return firstAllowed;
+  }
+
   const first = getCanvasTypeCatalogEntries()[0];
   return first?.canvasTypeId || TEMPLATE_ID;
 }
@@ -132,11 +192,232 @@ function setSelectedCanvasTypeId(canvasTypeId) {
   state.selectedCanvasTypeId = normalizeCanvasTypeId(canvasTypeId);
 }
 
+async function persistBoardConfig(partialConfig = {}) {
+  const fallbackCanvasTypeId = normalizeCanvasTypeId(partialConfig.defaultCanvasTypeId || state.boardConfig?.defaultCanvasTypeId || state.selectedCanvasTypeId || TEMPLATE_ID);
+  const merged = Board.normalizeBoardConfig({
+    ...(state.boardConfig || {}),
+    ...(partialConfig || {}),
+    defaultCanvasTypeId: fallbackCanvasTypeId
+  }, { defaultCanvasTypeId: fallbackCanvasTypeId });
+
+  state.boardConfig = await Board.saveBoardConfigToAnchor(merged, {
+    defaultCanvasTypeId: fallbackCanvasTypeId,
+    log
+  });
+
+  setSelectedCanvasTypeId(state.boardConfig.defaultCanvasTypeId || fallbackCanvasTypeId);
+  return state.boardConfig;
+}
+
+async function persistExerciseRuntime(partialRuntime = {}) {
+  const merged = Board.normalizeExerciseRuntime({
+    ...(state.exerciseRuntime || {}),
+    ...(partialRuntime || {})
+  });
+
+  state.exerciseRuntime = await Board.saveExerciseRuntime(merged, log);
+  return state.exerciseRuntime;
+}
+
+function renderExercisePackPicker() {
+  if (!exercisePackEl) return;
+
+  const selectedPackId = getSelectedExercisePackId() || "";
+  const packs = Exercises.listExercisePacks();
+
+  exercisePackEl.textContent = "";
+
+  const emptyOption = document.createElement("option");
+  emptyOption.value = "";
+  emptyOption.textContent = "Kein Exercise Pack (generischer Modus)";
+  emptyOption.selected = !selectedPackId;
+  exercisePackEl.appendChild(emptyOption);
+
+  for (const pack of packs) {
+    const option = document.createElement("option");
+    option.value = pack.id;
+    option.textContent = pack.label;
+    option.selected = pack.id === selectedPackId;
+    exercisePackEl.appendChild(option);
+  }
+}
+
+function renderExerciseStepPicker() {
+  if (!exerciseStepEl) return;
+
+  const pack = getSelectedExercisePack();
+  const currentStepId = getCurrentExerciseStepId(pack);
+
+  exerciseStepEl.textContent = "";
+
+  if (!pack) {
+    const option = document.createElement("option");
+    option.value = "";
+    option.textContent = "Kein Exercise Pack aktiv";
+    option.selected = true;
+    exerciseStepEl.appendChild(option);
+    exerciseStepEl.disabled = true;
+    return;
+  }
+
+  const steps = Exercises.listExerciseSteps(pack);
+  for (const step of steps) {
+    const option = document.createElement("option");
+    option.value = step.id;
+    option.textContent = step.label;
+    option.selected = step.id === currentStepId;
+    exerciseStepEl.appendChild(option);
+  }
+
+  exerciseStepEl.disabled = steps.length === 0;
+}
+
+function renderExerciseContextStatus() {
+  const pack = getSelectedExercisePack();
+  const currentStep = getCurrentExerciseStep(pack);
+  const selectedCanvasType = getCanvasTypeEntry(getSelectedCanvasTypeId());
+
+  if (exerciseContextStatusEl) {
+    const lines = [
+      "Board-Modus: " + getCurrentBoardMode(),
+      "Exercise Pack: " + (pack ? pack.label : "keins (generischer Agentenmodus)"),
+      "Aktueller Schritt: " + (currentStep?.label || "kein Schritt aktiv"),
+      "Standard-Canvas-Typ: " + (selectedCanvasType?.displayName || getSelectedCanvasTypeId())
+    ];
+    exerciseContextStatusEl.textContent = lines.join("\n");
+  }
+
+  if (exerciseStepInstructionEl) {
+    exerciseStepInstructionEl.textContent = currentStep?.visibleInstruction || "Kein sichtbarer Übungsschritt aktiv. Der Agent läuft im generischen Modus.";
+  }
+}
+
+function renderExerciseControls() {
+  renderExercisePackPicker();
+  renderExerciseStepPicker();
+  renderExerciseContextStatus();
+}
+
+async function syncDefaultCanvasTypeToBoardConfig(canvasTypeId) {
+  const normalizedCanvasTypeId = normalizeCanvasTypeId(canvasTypeId);
+  setSelectedCanvasTypeId(normalizedCanvasTypeId);
+  await persistBoardConfig({ defaultCanvasTypeId: normalizedCanvasTypeId });
+  renderCanvasTypePicker();
+  renderExerciseControls();
+}
+
+async function loadBoardExerciseState() {
+  const fallbackCanvasTypeId = normalizeCanvasTypeId(state.selectedCanvasTypeId || TEMPLATE_ID);
+  let loadedBoardConfig = await Board.loadBoardConfigFromAnchor({
+    defaultCanvasTypeId: fallbackCanvasTypeId,
+    log
+  });
+
+  let normalizedBoardConfig = Board.normalizeBoardConfig(loadedBoardConfig, {
+    defaultCanvasTypeId: fallbackCanvasTypeId
+  });
+
+  const normalizedPackId = Exercises.normalizeExercisePackId(normalizedBoardConfig.exercisePackId);
+  normalizedBoardConfig = {
+    ...normalizedBoardConfig,
+    boardMode: normalizedPackId ? "exercise" : "generic",
+    exercisePackId: normalizedPackId || null
+  };
+
+  const pack = normalizedPackId ? Exercises.getExercisePackById(normalizedPackId) : null;
+  const allowedCanvasTypeIds = Exercises.getAllowedCanvasTypesForPack(pack);
+  let defaultCanvasTypeId = normalizeCanvasTypeId(normalizedBoardConfig.defaultCanvasTypeId || fallbackCanvasTypeId);
+
+  if (allowedCanvasTypeIds.length && !allowedCanvasTypeIds.includes(defaultCanvasTypeId)) {
+    defaultCanvasTypeId = normalizeCanvasTypeId(
+      Exercises.getDefaultCanvasTypeIdForPack(pack) || allowedCanvasTypeIds[0]
+    );
+  }
+
+  normalizedBoardConfig.defaultCanvasTypeId = defaultCanvasTypeId;
+  state.boardConfig = await Board.saveBoardConfigToAnchor(normalizedBoardConfig, {
+    defaultCanvasTypeId,
+    log
+  });
+  setSelectedCanvasTypeId(defaultCanvasTypeId);
+
+  state.exerciseRuntime = Board.normalizeExerciseRuntime(await Board.loadExerciseRuntime(log));
+
+  const currentPack = getSelectedExercisePack();
+  const nextStepId = currentPack ? getCurrentExerciseStepId(currentPack) : null;
+  if (state.exerciseRuntime.currentStepId !== nextStepId) {
+    state.exerciseRuntime = await Board.saveExerciseRuntime({
+      ...state.exerciseRuntime,
+      currentStepId: nextStepId
+    }, log);
+  }
+
+  renderCanvasTypePicker();
+  renderExerciseControls();
+}
+
+async function onExercisePackChange() {
+  const selectedPackId = Exercises.normalizeExercisePackId(exercisePackEl?.value);
+  const selectedPack = Exercises.getExercisePackById(selectedPackId);
+  const allowedCanvasTypeIds = Exercises.getAllowedCanvasTypesForPack(selectedPack);
+
+  let defaultCanvasTypeId = getSelectedCanvasTypeId();
+  if (selectedPack) {
+    defaultCanvasTypeId = normalizeCanvasTypeId(
+      Exercises.getDefaultCanvasTypeIdForPack(selectedPack) || defaultCanvasTypeId
+    );
+  }
+  if (allowedCanvasTypeIds.length && !allowedCanvasTypeIds.includes(defaultCanvasTypeId)) {
+    defaultCanvasTypeId = normalizeCanvasTypeId(allowedCanvasTypeIds[0]);
+  }
+
+  setSelectedCanvasTypeId(defaultCanvasTypeId);
+
+  await persistBoardConfig({
+    boardMode: selectedPack ? "exercise" : "generic",
+    exercisePackId: selectedPack?.id || null,
+    defaultCanvasTypeId
+  });
+
+  const nextStepId = selectedPack
+    ? (Exercises.getExerciseStep(selectedPack, state.exerciseRuntime?.currentStepId)?.id || Exercises.getDefaultStepId(selectedPack))
+    : null;
+
+  await persistExerciseRuntime({
+    currentStepId: nextStepId
+  });
+
+  renderCanvasTypePicker();
+  renderExerciseControls();
+
+  log("Exercise Pack gesetzt: " + (selectedPack ? selectedPack.label : "keins (generischer Modus)"));
+}
+
+async function onExerciseStepChange() {
+  const pack = getSelectedExercisePack();
+  if (!pack) {
+    await persistExerciseRuntime({ currentStepId: null });
+    renderExerciseControls();
+    return;
+  }
+
+  const requestedStepId = exerciseStepEl?.value || null;
+  const validStepId = Exercises.getExerciseStep(pack, requestedStepId)?.id || Exercises.getDefaultStepId(pack);
+
+  await persistExerciseRuntime({ currentStepId: validStepId });
+  renderExerciseControls();
+
+  const step = Exercises.getExerciseStep(pack, validStepId);
+  log("Exercise-Schritt gesetzt: " + (step?.label || validStepId || "(leer)"));
+}
+
 function renderCanvasTypePicker() {
   if (!canvasTypePickerEl) return;
 
   const entries = getCanvasTypeCatalogEntries();
   const selectedCanvasTypeId = getSelectedCanvasTypeId();
+  const allowedCanvasTypeIds = new Set(getAllowedCanvasTypeIdsForCurrentPack());
+  const hasRestriction = allowedCanvasTypeIds.size > 0;
 
   canvasTypePickerEl.textContent = "";
 
@@ -146,6 +427,8 @@ function renderCanvasTypePicker() {
   }
 
   for (const entry of entries) {
+    const isAllowed = !hasRestriction || allowedCanvasTypeIds.has(entry.canvasTypeId);
+
     const label = document.createElement("label");
     label.className = "canvas-option";
 
@@ -154,14 +437,18 @@ function renderCanvasTypePicker() {
     input.name = "dt-canvas-type";
     input.value = entry.canvasTypeId;
     input.checked = entry.canvasTypeId === selectedCanvasTypeId;
-    input.addEventListener("change", () => {
-      if (!input.checked) return;
-      setSelectedCanvasTypeId(entry.canvasTypeId);
-      renderCanvasTypePicker();
+    input.disabled = !isAllowed;
+    input.addEventListener("change", async () => {
+      if (!input.checked || input.disabled) return;
+      await syncDefaultCanvasTypeToBoardConfig(entry.canvasTypeId);
     });
 
     const card = document.createElement("span");
     card.className = "canvas-option-card";
+    if (!isAllowed) {
+      card.style.opacity = "0.45";
+      card.style.cursor = "not-allowed";
+    }
 
     const thumb = document.createElement("img");
     thumb.className = "canvas-thumb";
@@ -177,7 +464,9 @@ function renderCanvasTypePicker() {
 
     const meta = document.createElement("div");
     meta.className = "canvas-option-meta";
-    meta.textContent = entry.canvasTypeId;
+    meta.textContent = isAllowed
+      ? entry.canvasTypeId
+      : (entry.canvasTypeId + " · im aktuellen Exercise Pack nicht freigegeben");
 
     textWrap.appendChild(title);
     textWrap.appendChild(meta);
@@ -194,6 +483,10 @@ function renderCanvasTypePicker() {
 // --------------------------------------------------------------------
 function initPanelButtons() {
   renderCanvasTypePicker();
+  renderExerciseControls();
+
+  exercisePackEl?.addEventListener("change", onExercisePackChange);
+  exerciseStepEl?.addEventListener("change", onExerciseStepChange);
 
   document.getElementById("btn-insert-template")?.addEventListener("click", insertTemplateImage);
   document.getElementById("btn-agent-selection")?.addEventListener("click", runAgentForCurrentSelection);
@@ -236,15 +529,21 @@ async function afterMiroReady() {
   // Initial scan
   await ensureInstancesScanned(true);
   await loadMemoryRuntimeState();
+  await loadBoardExerciseState();
 
   // UI selection events
   await Board.registerSelectionUpdateHandler(onSelectionUpdate, log);
   await refreshSelectionStatusFromBoard();
 
+  const selectedPack = getSelectedExercisePack();
+  const selectedStep = getCurrentExerciseStep(selectedPack);
+
   log(
     "Init abgeschlossen. Global baseline: " +
     (state.hasGlobalBaseline ? ("JA (" + (state.globalBaselineAt || "unknown") + ")") : "NEIN") +
-    ", Memory-Log: " + state.memoryLog.length + " Einträge."
+    ", Memory-Log: " + state.memoryLog.length + " Einträge." +
+    " Exercise Pack: " + (selectedPack?.label || "keins") +
+    ", Schritt: " + (selectedStep?.label || "kein aktiver Schritt") + "."
   );
 }
 
@@ -295,6 +594,43 @@ function buildMemoryInjectionPayload() {
     memoryState: Memory.normalizeMemoryState(state.memoryState || Memory.createEmptyMemoryState()),
     recentMemoryLogEntries: Memory.getRecentMemoryEntries(state.memoryLog, DT_MEMORY_RECENT_LOG_LIMIT)
   };
+}
+
+function getInvolvedCanvasTypeIdsFromInstanceIds(instanceIds) {
+  const ids = [];
+  const seen = new Set();
+
+  for (const instanceId of instanceIds || []) {
+    const canvasTypeId = state.instancesById.get(instanceId)?.canvasTypeId || null;
+    if (!canvasTypeId || seen.has(canvasTypeId)) continue;
+    seen.add(canvasTypeId);
+    ids.push(canvasTypeId);
+  }
+
+  return ids;
+}
+
+function composePromptForRun({
+  runMode,
+  trigger = "generic",
+  baseSystemPrompt,
+  involvedCanvasTypeIds = [],
+  baseUserPayload,
+  userQuestion
+}) {
+  return PromptComposer.composePrompt({
+    baseSystemPrompt,
+    runMode,
+    trigger,
+    userQuestion,
+    baseUserPayload,
+    involvedCanvasTypeIds,
+    templateCatalog: DT_TEMPLATE_CATALOG,
+    boardConfig: state.boardConfig,
+    exercisePack: getSelectedExercisePack(),
+    currentStep: getCurrentExerciseStep(),
+    adminOverrideText: state.exerciseRuntime?.adminOverrideText || null
+  });
 }
 
 function createEmptyActionExecutionStats() {
@@ -437,6 +773,10 @@ async function resolveSelectionToInstanceIds(items) {
 
   for (const item of list) {
     if (!item) continue;
+
+    if (await Board.isBoardAnchorItem(item, log)) {
+      continue;
+    }
 
     if (item.type === "image") {
       addInstanceId(state.instancesByImageId.get(item.id)?.instanceId || null);
@@ -1449,13 +1789,6 @@ async function runAgentForSelectedInstances(selectedInstanceIds, options = {}) {
   if (!apiKey) { log("Bitte OpenAI API Key eingeben (Agent)."); return; }
 
   const promptCfg = getPromptConfigForSelectedInstances(normalizedSelectedIds);
-  const systemPrompt = promptCfg.system;
-
-  log(
-    "Starte Agent (Modus B) für selektierte Instanzen: " +
-    selectedInstanceLabels.join(", ") +
-    " ..."
-  );
 
   const { liveCatalog } = await refreshBoardState();
   const stateById = await computeInstanceStatesById(liveCatalog);
@@ -1497,8 +1830,7 @@ async function runAgentForSelectedInstances(selectedInstanceIds, options = {}) {
   const boardCatalog = buildBoardCatalogForSelectedInstances(resolvedActiveIds);
   const memoryPayload = buildMemoryInjectionPayload();
 
-  const userPayload = {
-    userQuestion: userText,
+  const baseUserPayload = {
     activeInstanceLabel: singleLabel,
     selectedInstanceLabels: resolvedActiveLabels,
     boardCatalog,
@@ -1510,13 +1842,33 @@ async function runAgentForSelectedInstances(selectedInstanceIds, options = {}) {
     hint: "boardCatalog = Kurzüberblick über alle Canvas, activeCanvasStates = Detaildaten nur für die selektierten Instanzen. Wenn mehrere Instanzen selektiert sind, muss jede mutierende Action eine instanceLabel enthalten. Verwende exakt die menschenlesbaren Canvas-Labels aus selectedInstanceLabels bzw. den Schlüsseln von activeCanvasStates. Verwende create_connector für Beziehungen zwischen Stickies. fromStickyId/toStickyId dürfen bestehende Alias-IDs oder refId-Werte aus create_sticky-Actions derselben Antwort sein. memoryState/recentMemoryLogEntries bilden das semantische Arbeitsgedächtnis; referenziere dort Canvas ebenfalls nur über instanceLabel."
   };
 
+  const composedPrompt = composePromptForRun({
+    runMode: "selection",
+    trigger: "generic",
+    baseSystemPrompt: promptCfg.system,
+    involvedCanvasTypeIds: getInvolvedCanvasTypeIdsFromInstanceIds(resolvedActiveIds),
+    baseUserPayload,
+    userQuestion: userText
+  });
+
+  const exerciseInfo = composedPrompt.exerciseContext?.exercisePackLabel
+    ? (" | Exercise: " + composedPrompt.exerciseContext.exercisePackLabel + " / " + (composedPrompt.exerciseContext.currentStepLabel || "kein Schritt"))
+    : "";
+
+  log(
+    "Starte Agent (Modus B) für selektierte Instanzen: " +
+    resolvedActiveLabels.join(", ") +
+    exerciseInfo +
+    " ..."
+  );
+
   try {
     log("Sende Agent-Request an OpenAI (Modus B) ...");
     const answer = await OpenAI.callOpenAIResponses({
       apiKey,
       model,
-      systemPrompt,
-      userText: JSON.stringify(userPayload, null, 2),
+      systemPrompt: composedPrompt.systemPrompt,
+      userText: JSON.stringify(composedPrompt.userPayload, null, 2),
       maxOutputTokens: 4000
     });
 
@@ -1575,7 +1927,7 @@ async function runAgentForSelectedInstances(selectedInstanceIds, options = {}) {
 
     await persistMemoryAfterAgentRun(agentObj, {
       runMode: "selection",
-      trigger: null,
+      trigger: composedPrompt.exerciseContext?.trigger || "generic",
       targetInstanceLabels: resolvedActiveLabels,
       userRequest: userText
     }, actionResult);
@@ -1984,7 +2336,7 @@ async function runGlobalAgent(triggerInstanceId, userText) {
 
   const finalUserText = (userText || "").trim()
     ? userText.trim()
-    : "Bitte gib mir einen globalen Überblick über alle relevanten Canvas-Instanzen und schlage sinnvolle nächste Schritte vor.";
+    : getCurrentUserQuestion();
 
   if (!apiKey) { log("Bitte OpenAI API Key eingeben (Global Agent)."); return; }
 
@@ -2038,8 +2390,7 @@ async function runGlobalAgent(triggerInstanceId, userText) {
 
   const memoryPayload = buildMemoryInjectionPayload();
 
-  const userPayload = {
-    userQuestion: finalUserText,
+  const baseUserPayload = {
     triggerInstanceLabel: getInstanceLabelByInternalId(triggerInstanceId) || null,
     hasBaseline: state.hasGlobalBaseline,
     boardCatalog,
@@ -2051,13 +2402,28 @@ async function runGlobalAgent(triggerInstanceId, userText) {
     hint: "boardCatalog = Übersicht, activeCanvasStates = Detaildaten nur für aktive Instanzen. Jede mutierende Action muss genau eine instanceLabel enthalten und dieses Label muss exakt einem Wert aus activeInstanceLabels bzw. einem Schlüssel von activeCanvasStates entsprechen. area/targetArea muss exakt einem vorhandenen Area-Namen der Ziel-Instanz entsprechen. Verwende create_connector für Beziehungen zwischen Stickies. fromStickyId/toStickyId dürfen bestehende Alias-IDs oder refId-Werte aus create_sticky-Actions derselben Antwort sein. memoryState/recentMemoryLogEntries bilden das semantische Arbeitsgedächtnis; referenziere dort Canvas ebenfalls nur über instanceLabel."
   };
 
+  const composedPrompt = composePromptForRun({
+    runMode: "global",
+    trigger: "generic",
+    baseSystemPrompt: DT_GLOBAL_SYSTEM_PROMPT,
+    involvedCanvasTypeIds: getInvolvedCanvasTypeIdsFromInstanceIds(activeInstanceIds),
+    baseUserPayload,
+    userQuestion: finalUserText
+  });
+
+  const exerciseInfo = composedPrompt.exerciseContext?.exercisePackLabel
+    ? (" | Exercise: " + composedPrompt.exerciseContext.exercisePackLabel + " / " + (composedPrompt.exerciseContext.currentStepLabel || "kein Schritt"))
+    : "";
+
+  log("Global-Agent-Kontext" + exerciseInfo + ". Aktive Canvas: " + (activeInstanceLabels.join(", ") || "(keine)"));
+
   try {
     log("Sende globalen Agent-Request an OpenAI (Modus A) ...");
     const answer = await OpenAI.callOpenAIResponses({
       apiKey,
       model,
-      systemPrompt: DT_GLOBAL_SYSTEM_PROMPT,
-      userText: JSON.stringify(userPayload, null, 2),
+      systemPrompt: composedPrompt.systemPrompt,
+      userText: JSON.stringify(composedPrompt.userPayload, null, 2),
       maxOutputTokens: 4000
     });
 
@@ -2132,7 +2498,7 @@ async function runGlobalAgent(triggerInstanceId, userText) {
 
     await persistMemoryAfterAgentRun(agentObj, {
       runMode: "global",
-      trigger: null,
+      trigger: composedPrompt.exerciseContext?.trigger || "generic",
       targetInstanceLabels: activeInstanceLabels,
       userRequest: finalUserText
     }, actionResult);
