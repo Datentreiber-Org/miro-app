@@ -5,13 +5,13 @@ import {
   DT_PROMPT_CATALOG,
   DT_GLOBAL_SYSTEM_PROMPT,
   STICKY_LAYOUT
-} from "./config.js?v=20260228-step5";
+} from "./config.js?v=20260301-step6";
 
-import { createLogger, stripHtml, extractUnderlinedText, isFiniteNumber } from "./utils.js?v=20260228-step5";
+import { createLogger, stripHtml, extractUnderlinedText, isFiniteNumber } from "./utils.js?v=20260301-step6";
 
-import * as Board from "./miro/board.js?v=20260228-step5";
-import * as Catalog from "./domain/catalog.js?v=20260228-step5";
-import * as OpenAI from "./ai/openai.js?v=20260228-step5";
+import * as Board from "./miro/board.js?v=20260301-step6";
+import * as Catalog from "./domain/catalog.js?v=20260301-step6";
+import * as OpenAI from "./ai/openai.js?v=20260301-step6";
 
 // --------------------------------------------------------------------
 // State (Controller-Level)
@@ -24,9 +24,9 @@ const state = {
   globalBaselineAt: null,
 
   // Instances
-  nextInstanceCounter: 1,
   instancesByImageId: new Map(),
   instancesById: new Map(),
+  instancesByLabel: new Map(),
 
   // Cluster (Panel Session)
   clusterAssignments: new Map(),       // stickyId -> clusterName
@@ -240,8 +240,38 @@ async function afterMiroReady() {
 // --------------------------------------------------------------------
 // Scan throttling + Instance scan
 // --------------------------------------------------------------------
-function nextInstanceId() {
-  return "inst-" + (state.nextInstanceCounter++);
+function rebuildInstancesByLabelIndex() {
+  state.instancesByLabel = new Map();
+
+  for (const inst of state.instancesById.values()) {
+    if (!inst?.instanceLabel) continue;
+    state.instancesByLabel.set(inst.instanceLabel, inst.instanceId);
+  }
+}
+
+function getInstanceLabelByInternalId(instanceId) {
+  if (!instanceId) return null;
+  const inst = state.instancesById.get(instanceId);
+  return inst?.instanceLabel || null;
+}
+
+function getInternalInstanceIdByLabel(instanceLabel) {
+  if (!instanceLabel) return null;
+  return state.instancesByLabel.get(instanceLabel) || null;
+}
+
+function getInstanceLabelsFromIds(instanceIds) {
+  const labels = [];
+  const seen = new Set();
+
+  for (const instanceId of instanceIds || []) {
+    const label = getInstanceLabelByInternalId(instanceId);
+    if (!label || seen.has(label)) continue;
+    seen.add(label);
+    labels.push(label);
+  }
+
+  return labels;
 }
 
 async function ensureInstancesScanned(force = false) {
@@ -262,10 +292,10 @@ async function ensureInstancesScanned(force = false) {
       defaultTemplateId: TEMPLATE_ID,
       instancesByImageId: state.instancesByImageId,
       instancesById: state.instancesById,
-      nextInstanceId: nextInstanceId,
       hasGlobalBaseline: state.hasGlobalBaseline,
       log
     });
+    rebuildInstancesByLabelIndex();
     state.lastScanAt = Date.now();
   })();
 
@@ -360,6 +390,7 @@ async function resolveSelectionToInstanceIds(items) {
 
 function buildSelectionStatusText({ itemCount, instanceIds }) {
   const ids = Array.isArray(instanceIds) ? instanceIds : [];
+  const labels = getInstanceLabelsFromIds(ids);
 
   if (itemCount === 0) {
     return [
@@ -368,7 +399,7 @@ function buildSelectionStatusText({ itemCount, instanceIds }) {
     ].join("\n");
   }
 
-  if (ids.length === 0) {
+  if (labels.length === 0) {
     return [
       "Aktuelle Selektion enthält keine auflösbare Canvas.",
       "Selektierte Board-Items: " + itemCount,
@@ -377,8 +408,8 @@ function buildSelectionStatusText({ itemCount, instanceIds }) {
   }
 
   return [
-    "Selektierte Canvas: " + ids.length,
-    "Instanzen: " + ids.join(", "),
+    "Selektierte Canvas: " + labels.length,
+    "Instanzen: " + labels.join(", "),
     "Selektierte Board-Items: " + itemCount
   ].join("\n");
 }
@@ -595,23 +626,23 @@ async function insertTemplateImage() {
       width: insertWidthPx
     }, log);
 
-    await Board.registerInstanceFromImage(image, {
+    const instance = await Board.registerInstanceFromImage(image, {
       templateCatalog: DT_TEMPLATE_CATALOG,
       defaultTemplateId: TEMPLATE_ID,
       instancesByImageId: state.instancesByImageId,
       instancesById: state.instancesById,
-      nextInstanceId: nextInstanceId,
       hasGlobalBaseline: state.hasGlobalBaseline,
       createActionShapes: false,
       canvasTypeId: selectedCanvasTypeId,
       log
     });
+    rebuildInstancesByLabelIndex();
 
     const placementInfo = placement.usedViewportCenter
       ? "Neue Instanz wurde mittig in der aktuellen View platziert."
       : "Neue Instanz wurde nahe der aktuellen View platziert, mit Überlappungsschutz.";
 
-    log(`Canvas eingefügt: ${selectedCanvasType.displayName} (${selectedCanvasTypeId}), Bild-ID ${image.id}
+    log(`Canvas eingefügt: ${instance?.instanceLabel || selectedCanvasType.displayName} (${selectedCanvasTypeId}), Bild-ID ${image.id}
 ${placementInfo}
 Die Steuerung erfolgt jetzt über das Side Panel.`);
 
@@ -886,9 +917,11 @@ async function applyAgentActionsToInstance(instanceId, actions) {
     return;
   }
 
+  const instanceLabel = instance.instanceLabel || instanceId;
+
   const geom = await Board.computeTemplateGeometry(instance, log);
   if (!geom) {
-    log("applyAgentActions: Keine Geometrie für Instanz " + instanceId);
+    log("applyAgentActions: Keine Geometrie für Instanz " + instanceLabel);
     return;
   }
 
@@ -1219,7 +1252,7 @@ async function applyAgentActionsToInstance(instanceId, actions) {
   const regularActions = actions.filter((action) => action?.type !== "create_connector");
   const connectorActions = actions.filter((action) => action?.type === "create_connector");
 
-  log("Wende " + actions.length + " Action(s) an (Instanz " + instanceId + ").");
+  log("Wende " + actions.length + " Action(s) an (Instanz " + instanceLabel + ").");
   if (regularActions.length) {
     await OpenAI.dispatchActions(regularActions, handlers, log);
   }
@@ -1232,7 +1265,7 @@ async function applyAgentActionsToInstance(instanceId, actions) {
 // Agent Modus B (selektierte Canvas-Instanzen)
 // --------------------------------------------------------------------
 function buildBoardCatalogForSelectedInstances(selectedInstanceIds) {
-  const selectedSet = new Set((selectedInstanceIds || []).filter((id) => state.instancesById.has(id)));
+  const selectedLabels = new Set(getInstanceLabelsFromIds(selectedInstanceIds));
   const baseCatalog = Catalog.buildBoardCatalogSummary(state.instancesById, {
     mode: "generic",
     hasGlobalBaseline: state.hasGlobalBaseline
@@ -1241,7 +1274,7 @@ function buildBoardCatalogForSelectedInstances(selectedInstanceIds) {
   return {
     instances: (baseCatalog.instances || []).map((entry) => ({
       ...entry,
-      isActive: selectedSet.has(entry.instanceId)
+      isActive: selectedLabels.has(entry.instanceLabel)
     }))
   };
 }
@@ -1279,6 +1312,7 @@ async function runAgentForSelectedInstances(selectedInstanceIds, options = {}) {
   await ensureInstancesScanned();
 
   const normalizedSelectedIds = Array.from(new Set((selectedInstanceIds || []).filter((id) => state.instancesById.has(id))));
+  const selectedInstanceLabels = getInstanceLabelsFromIds(normalizedSelectedIds);
   if (!normalizedSelectedIds.length) {
     log("Instanz-Agent: Keine gültigen Ziel-Instanzen übergeben.");
     return;
@@ -1295,7 +1329,7 @@ async function runAgentForSelectedInstances(selectedInstanceIds, options = {}) {
 
   log(
     "Starte Agent (Modus B) für selektierte Instanzen: " +
-    normalizedSelectedIds.join(", ") +
+    selectedInstanceLabels.join(", ") +
     " ..."
   );
 
@@ -1307,40 +1341,46 @@ async function runAgentForSelectedInstances(selectedInstanceIds, options = {}) {
 
   for (const id of normalizedSelectedIds) {
     const st = stateById[id];
+    const instance = state.instancesById.get(id) || null;
+    const instanceLabel = instance?.instanceLabel || null;
     if (!st?.classification) continue;
+    if (!instanceLabel) continue;
 
     const payload = Catalog.buildPromptPayloadFromClassification(st.classification, {
       useAliases: true,
       aliasState: state.aliasState,
       log
     });
-    if (payload) activeCanvasStates[id] = payload;
+    if (payload) activeCanvasStates[instanceLabel] = payload;
 
     if (!state.hasGlobalBaseline || !st?.diff) {
-      activeInstanceChangesSinceLastAgent[id] = null;
+      activeInstanceChangesSinceLastAgent[instanceLabel] = null;
     } else {
-      activeInstanceChangesSinceLastAgent[id] = Catalog.aliasDiffForActiveInstance(st.diff, state.aliasState);
+      activeInstanceChangesSinceLastAgent[instanceLabel] = Catalog.aliasDiffForActiveInstance(st.diff, state.aliasState);
     }
   }
 
-  const resolvedActiveIds = Object.keys(activeCanvasStates);
-  if (!resolvedActiveIds.length) {
+  const resolvedActiveLabels = Object.keys(activeCanvasStates);
+  if (!resolvedActiveLabels.length) {
     log("Instanz-Agent: Konnte für die selektierten Canvas keine Zustandsdaten aufbauen.");
     return;
   }
 
-  const singleId = resolvedActiveIds.length === 1 ? resolvedActiveIds[0] : null;
+  const resolvedActiveIds = resolvedActiveLabels
+    .map((label) => getInternalInstanceIdByLabel(label))
+    .filter((id) => state.instancesById.has(id));
+  const singleLabel = resolvedActiveLabels.length === 1 ? resolvedActiveLabels[0] : null;
   const boardCatalog = buildBoardCatalogForSelectedInstances(resolvedActiveIds);
 
   const userPayload = {
     userQuestion: userText,
-    activeInstanceId: singleId,
-    selectedInstanceIds: resolvedActiveIds,
+    activeInstanceLabel: singleLabel,
+    selectedInstanceLabels: resolvedActiveLabels,
     boardCatalog,
-    activeCanvasState: singleId ? activeCanvasStates[singleId] : null,
+    activeCanvasState: singleLabel ? activeCanvasStates[singleLabel] : null,
     activeCanvasStates,
     activeInstanceChangesSinceLastAgent,
-    hint: "boardCatalog = Kurzüberblick über alle Canvas, activeCanvasStates = Detaildaten nur für die selektierten Instanzen. Wenn mehrere Instanzen selektiert sind, muss jede mutierende Action eine instanceId enthalten. Verwende create_connector für Beziehungen zwischen Stickies. fromStickyId/toStickyId dürfen bestehende Alias-IDs oder refId-Werte aus create_sticky-Actions derselben Antwort sein."
+    hint: "boardCatalog = Kurzüberblick über alle Canvas, activeCanvasStates = Detaildaten nur für die selektierten Instanzen. Wenn mehrere Instanzen selektiert sind, muss jede mutierende Action eine instanceLabel enthalten. Verwende exakt die menschenlesbaren Canvas-Labels aus selectedInstanceLabels bzw. den Schlüsseln von activeCanvasStates. Verwende create_connector für Beziehungen zwischen Stickies. fromStickyId/toStickyId dürfen bestehende Alias-IDs oder refId-Werte aus create_sticky-Actions derselben Antwort sein."
   };
 
   try {
@@ -1371,7 +1411,7 @@ async function runAgentForSelectedInstances(selectedInstanceIds, options = {}) {
     const actionResult = Array.isArray(agentObj.actions) && agentObj.actions.length
       ? await applyResolvedAgentActions(agentObj.actions, {
           candidateInstanceIds: resolvedActiveIds,
-          triggerInstanceId: singleId,
+          triggerInstanceId: singleLabel ? getInternalInstanceIdByLabel(singleLabel) : null,
           sourceLabel: "Instanz-Agent"
         })
       : { appliedCount: 0, skippedCount: 0, infoCount: 0, targetedInstanceCount: 0 };
@@ -1525,6 +1565,14 @@ function normalizeAgentAction(rawAction) {
 
   const normalized = {
     type,
+    instanceLabel: pickFirstNonEmptyString(
+      rawAction.instanceLabel,
+      rawAction.targetInstanceLabel,
+      rawAction.canvasLabel,
+      rawAction.instanceName,
+      typeof rawAction.instance === "string" ? rawAction.instance : null,
+      typeof rawAction.targetInstance === "string" ? rawAction.targetInstance : null
+    ),
     instanceId: pickFirstNonEmptyString(
       rawAction.instanceId,
       rawAction.targetInstanceId,
@@ -1615,10 +1663,20 @@ function resolveOwnerInstanceIdForStickyReference(stickyRef) {
 function resolveActionInstanceId(action, { candidateInstanceIds = null, triggerInstanceId = null, sourceLabel = "Agent" } = {}) {
   const candidateIds = Array.from(new Set((candidateInstanceIds || []).filter((id) => state.instancesById.has(id))));
 
+  const explicitInstanceIdByLabel = action?.instanceLabel
+    ? getInternalInstanceIdByLabel(action.instanceLabel)
+    : null;
+
   const explicitInstanceId =
-    (action?.instanceId && state.instancesById.has(action.instanceId))
-      ? action.instanceId
-      : null;
+    explicitInstanceIdByLabel || (
+      (action?.instanceId && state.instancesById.has(action.instanceId))
+        ? action.instanceId
+        : null
+    );
+
+  if (action?.instanceLabel && !explicitInstanceIdByLabel && typeof log === "function") {
+    log(sourceLabel + ": Unbekanntes instanceLabel '" + action.instanceLabel + "' in Action-Output.");
+  }
 
   const ownerInstanceIds = Array.from(new Set([
     resolveOwnerInstanceIdForStickyReference(action?.stickyId),
@@ -1632,18 +1690,24 @@ function resolveActionInstanceId(action, { candidateInstanceIds = null, triggerI
   }
 
   const ownerInstanceId = ownerInstanceIds[0] || null;
+  const ownerInstanceLabel = ownerInstanceId ? getInstanceLabelByInternalId(ownerInstanceId) : null;
 
   if (ownerInstanceId && explicitInstanceId && explicitInstanceId !== ownerInstanceId) {
     log(
-      "WARNUNG: " + sourceLabel + "-Action referenziert Sticky(s) mit Instanz " + explicitInstanceId +
-      ", gehört aber zu " + ownerInstanceId + ". Verwende Eigentümer-Instanz."
+      "WARNUNG: " + sourceLabel + "-Action referenziert Sticky(s) mit Instanz " +
+      (action.instanceLabel || getInstanceLabelByInternalId(explicitInstanceId) || explicitInstanceId) +
+      ", gehört aber zu " + (ownerInstanceLabel || ownerInstanceId) + ". Verwende Eigentümer-Instanz."
     );
   }
 
   const preferredInstanceId = ownerInstanceId || explicitInstanceId || null;
   if (preferredInstanceId) {
     if (candidateIds.length > 0 && !candidateIds.includes(preferredInstanceId)) {
-      log(sourceLabel + ": Abgeleitete Ziel-Instanz " + preferredInstanceId + " liegt außerhalb des erlaubten Zielsets – Action übersprungen.");
+      log(
+        sourceLabel + ": Abgeleitete Ziel-Instanz " +
+        (getInstanceLabelByInternalId(preferredInstanceId) || preferredInstanceId) +
+        " liegt außerhalb des erlaubten Zielsets – Action übersprungen."
+      );
       return null;
     }
     return preferredInstanceId;
@@ -1732,12 +1796,19 @@ async function applyResolvedAgentActions(actions, { candidateInstanceIds, trigge
     }
 
     if (!grouped.has(targetInstanceId)) grouped.set(targetInstanceId, []);
-    grouped.get(targetInstanceId).push({ ...action, instanceId: targetInstanceId });
+    grouped.get(targetInstanceId).push({
+      ...action,
+      instanceId: targetInstanceId,
+      instanceLabel: getInstanceLabelByInternalId(targetInstanceId) || action.instanceLabel || null
+    });
     appliedCount++;
   }
 
   for (const [instanceId, instanceActions] of grouped.entries()) {
-    log(sourceLabel + ": Wende " + instanceActions.length + " Action(s) auf Instanz " + instanceId + " an.");
+    log(
+      sourceLabel + ": Wende " + instanceActions.length + " Action(s) auf Instanz " +
+      (getInstanceLabelByInternalId(instanceId) || instanceId) + " an."
+    );
     await applyAgentActionsToInstance(instanceId, instanceActions);
   }
 
@@ -1765,7 +1836,7 @@ async function runGlobalAgent(triggerInstanceId, userText) {
 
   if (!apiKey) { log("Bitte OpenAI API Key eingeben (Global Agent)."); return; }
 
-  log("Starte globalen Agenten-Run (Modus A), Trigger: " + (triggerInstanceId || "(keine)"));
+  log("Starte globalen Agenten-Run (Modus A), Trigger: " + (getInstanceLabelByInternalId(triggerInstanceId) || triggerInstanceId || "(keine)"));
 
   const { liveCatalog } = await refreshBoardState();
   const stateById = await computeInstanceStatesById(liveCatalog);
@@ -1775,43 +1846,53 @@ async function runGlobalAgent(triggerInstanceId, userText) {
     hasGlobalBaseline: state.hasGlobalBaseline
   });
 
-  const activeInstanceIds = boardCatalog.instances
+  const activeInstanceLabels = boardCatalog.instances
     .filter((e) => e.isActive)
-    .map((e) => e.instanceId);
+    .map((e) => e.instanceLabel)
+    .filter(Boolean);
+
+  const activeInstanceIds = activeInstanceLabels
+    .map((label) => getInternalInstanceIdByLabel(label))
+    .filter((id) => state.instancesById.has(id));
 
   const activeCanvasStates = Object.create(null);
   const activeInstanceChangesSinceLastAgent = Object.create(null);
 
   for (const id of activeInstanceIds) {
     const st = stateById[id];
+    const instance = state.instancesById.get(id) || null;
+    const instanceLabel = instance?.instanceLabel || null;
     if (!st?.classification) continue;
+    if (!instanceLabel) continue;
 
     const payload = Catalog.buildPromptPayloadFromClassification(st.classification, {
       useAliases: true,
       aliasState: state.aliasState,
       log
     });
-    if (payload) activeCanvasStates[id] = payload;
+    if (payload) activeCanvasStates[instanceLabel] = payload;
   }
 
   for (const id of activeInstanceIds) {
     const st = stateById[id];
+    const instanceLabel = getInstanceLabelByInternalId(id);
+    if (!instanceLabel) continue;
     if (!st?.diff || !state.hasGlobalBaseline) {
-      activeInstanceChangesSinceLastAgent[id] = null;
+      activeInstanceChangesSinceLastAgent[instanceLabel] = null;
       continue;
     }
-    activeInstanceChangesSinceLastAgent[id] = Catalog.aliasDiffForActiveInstance(st.diff, state.aliasState);
+    activeInstanceChangesSinceLastAgent[instanceLabel] = Catalog.aliasDiffForActiveInstance(st.diff, state.aliasState);
   }
 
   const userPayload = {
     userQuestion: finalUserText,
-    triggerInstanceId: triggerInstanceId || null,
+    triggerInstanceLabel: getInstanceLabelByInternalId(triggerInstanceId) || null,
     hasBaseline: state.hasGlobalBaseline,
     boardCatalog,
-    activeInstanceIds,
+    activeInstanceLabels,
     activeCanvasStates,
     activeInstanceChangesSinceLastAgent,
-    hint: "boardCatalog = Übersicht, activeCanvasStates = Detaildaten nur für aktive Instanzen. Jede mutierende Action muss genau eine instanceId enthalten. area/targetArea muss exakt einem vorhandenen Area-Namen der Ziel-Instanz entsprechen. Verwende create_connector für Beziehungen zwischen Stickies. fromStickyId/toStickyId dürfen bestehende Alias-IDs oder refId-Werte aus create_sticky-Actions derselben Antwort sein."
+    hint: "boardCatalog = Übersicht, activeCanvasStates = Detaildaten nur für aktive Instanzen. Jede mutierende Action muss genau eine instanceLabel enthalten und dieses Label muss exakt einem Wert aus activeInstanceLabels bzw. einem Schlüssel von activeCanvasStates entsprechen. area/targetArea muss exakt einem vorhandenen Area-Namen der Ziel-Instanz entsprechen. Verwende create_connector für Beziehungen zwischen Stickies. fromStickyId/toStickyId dürfen bestehende Alias-IDs oder refId-Werte aus create_sticky-Actions derselben Antwort sein."
   };
 
   try {
