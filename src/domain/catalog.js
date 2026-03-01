@@ -1,17 +1,17 @@
-import { TEMPLATE_ID, DT_CANVAS_DEFS } from "../config.js?v=20260301-step6";
+import { TEMPLATE_ID, DT_CANVAS_DEFS } from "../config.js?v=20260301-step7";
 import {
   stripHtml,
   isFiniteNumber,
   buildInstanceSignatureFromClassification,
   computeInstanceDiffFromSignatures,
   diffHasChanges
-} from "../utils.js?v=20260301-step6";
+} from "../utils.js?v=20260301-step7";
 import {
   computeTemplateGeometry,
   buildInstanceGeometryIndex,
   resolveBoardCoords,
   findInstanceByPoint
-} from "../miro/board.js?v=20260301-step6";
+} from "../miro/board.js?v=20260301-step7";
 
 // --------------------------------------------------------------------
 // Canvas Definitions / Region Mapping
