@@ -4,9 +4,9 @@ import {
   DT_STORAGE_KEY_BASELINE_PREFIX,
   DT_STORAGE_KEY_ACTION_BINDING_PREFIX,
   DT_STORAGE_KEY_ACTION_BINDING_INDEX
-} from "../config.js?v=20260228-step4";
+} from "../config.js?v=20260228-step5";
 
-import { isFiniteNumber } from "../utils.js?v=20260228-step4";
+import { isFiniteNumber } from "../utils.js?v=20260228-step5";
 
 // --------------------------------------------------------------------
 // Miro Ready
@@ -385,6 +385,44 @@ export async function createStickyNoteAtBoardCoords({ content, x, y, frameId = n
   }
 
   return sticky;
+}
+
+export async function createConnectorBetweenItems({ startItemId, endItemId, directed = true, frameId = null }, log) {
+  await ensureMiroReady(log);
+  const board = getBoard();
+  if (!board?.createConnector) throw new Error("miro.board.createConnector nicht verfügbar");
+  if (!startItemId || !endItemId) {
+    throw new Error("createConnectorBetweenItems benötigt startItemId und endItemId");
+  }
+
+  const connector = await board.createConnector({
+    start: {
+      item: startItemId,
+      snapTo: "auto"
+    },
+    end: {
+      item: endItemId,
+      snapTo: "auto"
+    },
+    style: {
+      startStrokeCap: "none",
+      endStrokeCap: directed === false ? "none" : "stealth"
+    }
+  });
+
+  if (frameId) {
+    try {
+      const frame = await getItemById(frameId, log);
+      if (frame?.type === "frame" && typeof frame.add === "function") {
+        await frame.add(connector);
+        await frame.sync();
+      }
+    } catch (e) {
+      if (typeof log === "function") log("Konnte Connector nicht dem Frame hinzufügen: " + e.message);
+    }
+  }
+
+  return connector;
 }
 
 export async function removeItemById(itemId, log) {
