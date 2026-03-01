@@ -7,10 +7,12 @@ import {
   DT_STORAGE_KEY_MEMORY_STATE,
   DT_STORAGE_KEY_MEMORY_LOG_INDEX,
   DT_STORAGE_KEY_MEMORY_LOG_ENTRY_PREFIX,
-  DT_IMAGE_META_KEY_INSTANCE
-} from "../config.js?v=20260301-step7";
+  DT_IMAGE_META_KEY_INSTANCE,
+  DT_ANCHOR_META_KEY_BOARD,
+  DT_STORAGE_KEY_EXERCISE_RUNTIME
+} from "../config.js?v=20260301-step8";
 
-import { isFiniteNumber } from "../utils.js?v=20260301-step7";
+import { isFiniteNumber } from "../utils.js?v=20260301-step8";
 
 // --------------------------------------------------------------------
 // Miro Ready
@@ -296,6 +298,197 @@ function uniqueIds(ids) {
   return Array.from(new Set((ids || []).filter(Boolean)));
 }
 
+function asTrimmedString(value) {
+  if (typeof value !== "string") return null;
+  const trimmed = value.trim();
+  return trimmed || null;
+}
+
+function normalizeBoardMode(value) {
+  return value === "exercise" ? "exercise" : "generic";
+}
+
+export function normalizeBoardConfig(rawConfig, { defaultCanvasTypeId = null } = {}) {
+  const src = (rawConfig && typeof rawConfig === "object") ? rawConfig : {};
+  const exercisePackId = asTrimmedString(src.exercisePackId);
+  const normalizedDefaultCanvasTypeId = asTrimmedString(src.defaultCanvasTypeId) || asTrimmedString(defaultCanvasTypeId);
+
+  let boardMode = normalizeBoardMode(src.boardMode);
+  if (exercisePackId) boardMode = "exercise";
+
+  return {
+    version: 1,
+    boardMode,
+    exercisePackId: exercisePackId || null,
+    defaultCanvasTypeId: normalizedDefaultCanvasTypeId || null
+  };
+}
+
+export function normalizeExerciseRuntime(rawRuntime) {
+  const src = (rawRuntime && typeof rawRuntime === "object") ? rawRuntime : {};
+  return {
+    version: 1,
+    currentStepId: asTrimmedString(src.currentStepId),
+    adminOverrideText: asTrimmedString(src.adminOverrideText),
+    lastUpdatedAt: asTrimmedString(src.lastUpdatedAt)
+  };
+}
+
+const BOARD_ANCHOR_LAYOUT = {
+  x: 0,
+  y: 0,
+  width: 8,
+  height: 8
+};
+
+export async function isBoardAnchorItem(item, log) {
+  await ensureMiroReady(log);
+
+  if (!item?.getMetadata) return false;
+
+  try {
+    const meta = await item.getMetadata(DT_ANCHOR_META_KEY_BOARD);
+    return !!(meta && typeof meta === "object" && meta.version === 1);
+  } catch (_) {
+    return false;
+  }
+}
+
+async function listBoardAnchorItems(log) {
+  await ensureMiroReady(log);
+
+  const board = getBoard();
+  if (!board?.get) return [];
+
+  let shapes = [];
+  try {
+    shapes = await board.get({ type: "shape" }) || [];
+  } catch (e) {
+    if (typeof log === "function") log("Fehler beim Laden der Board-Anchor-Kandidaten: " + e.message);
+    return [];
+  }
+
+  const anchors = [];
+  for (const shape of shapes) {
+    if (!shape?.getMetadata) continue;
+    try {
+      const meta = await shape.getMetadata(DT_ANCHOR_META_KEY_BOARD);
+      if (meta && typeof meta === "object" && meta.version === 1) {
+        anchors.push(shape);
+      }
+    } catch (_) {}
+  }
+
+  anchors.sort(compareItemIdsAsc);
+
+  if (anchors.length > 1 && typeof log === "function") {
+    log("WARNUNG: Mehrere Board-Anchors gefunden. Verwende Item " + anchors[0].id + ".");
+  }
+
+  return anchors;
+}
+
+async function createBoardAnchorItem(log) {
+  await ensureMiroReady(log);
+
+  const board = getBoard();
+  if (!board?.createShape) {
+    throw new Error("Board-Anchor kann nicht erstellt werden: miro.board.createShape nicht verfügbar");
+  }
+
+  const anchor = await board.createShape({
+    content: "",
+    shape: "rectangle",
+    x: BOARD_ANCHOR_LAYOUT.x,
+    y: BOARD_ANCHOR_LAYOUT.y,
+    width: BOARD_ANCHOR_LAYOUT.width,
+    height: BOARD_ANCHOR_LAYOUT.height,
+    style: {
+      fillColor: "#ffffff",
+      fillOpacity: 0,
+      borderOpacity: 0,
+      borderWidth: 0,
+      color: "#ffffff"
+    }
+  });
+
+  try {
+    if (typeof anchor?.sendToBack === "function") {
+      await anchor.sendToBack();
+    }
+  } catch (_) {}
+
+  if (typeof log === "function") {
+    log("Board-Anchor erstellt (Item " + anchor.id + ").");
+  }
+
+  return anchor;
+}
+
+export async function ensureBoardAnchor({ defaultCanvasTypeId = null, log } = {}) {
+  await ensureMiroReady(log);
+
+  const existingAnchors = await listBoardAnchorItems(log);
+  if (existingAnchors.length > 0) {
+    return existingAnchors[0];
+  }
+
+  const anchor = await createBoardAnchorItem(log);
+  const initialConfig = normalizeBoardConfig(null, { defaultCanvasTypeId });
+
+  try {
+    if (anchor?.setMetadata) {
+      await anchor.setMetadata(DT_ANCHOR_META_KEY_BOARD, initialConfig);
+    }
+  } catch (e) {
+    if (typeof log === "function") log("Fehler beim Initialisieren des Board-Anchors: " + e.message);
+  }
+
+  return anchor;
+}
+
+export async function loadBoardConfigFromAnchor({ defaultCanvasTypeId = null, log } = {}) {
+  await ensureMiroReady(log);
+
+  const anchor = await ensureBoardAnchor({ defaultCanvasTypeId, log });
+  let rawMeta = null;
+
+  try {
+    rawMeta = anchor?.getMetadata ? await anchor.getMetadata(DT_ANCHOR_META_KEY_BOARD) : null;
+  } catch (e) {
+    if (typeof log === "function") log("Fehler beim Laden der Board-Konfiguration aus dem Anchor: " + e.message);
+  }
+
+  const normalized = normalizeBoardConfig(rawMeta, { defaultCanvasTypeId });
+
+  try {
+    if (anchor?.setMetadata && JSON.stringify(rawMeta || null) !== JSON.stringify(normalized)) {
+      await anchor.setMetadata(DT_ANCHOR_META_KEY_BOARD, normalized);
+    }
+  } catch (e) {
+    if (typeof log === "function") log("Fehler beim Normalisieren der Board-Konfiguration im Anchor: " + e.message);
+  }
+
+  return normalized;
+}
+
+export async function saveBoardConfigToAnchor(config, { defaultCanvasTypeId = null, log } = {}) {
+  await ensureMiroReady(log);
+
+  const anchor = await ensureBoardAnchor({ defaultCanvasTypeId, log });
+  const normalized = normalizeBoardConfig(config, { defaultCanvasTypeId });
+
+  try {
+    if (anchor?.setMetadata) {
+      await anchor.setMetadata(DT_ANCHOR_META_KEY_BOARD, normalized);
+    }
+  } catch (e) {
+    if (typeof log === "function") log("Fehler beim Speichern der Board-Konfiguration im Anchor: " + e.message);
+  }
+
+  return normalized;
+}
+
 export async function loadPersistedBaselineMeta(log) {
   await ensureMiroReady(log);
 
@@ -561,6 +754,40 @@ export async function saveMemoryState(memoryState, log) {
   } catch (e) {
     if (typeof log === "function") log("Fehler beim Speichern des Memory-State: " + e.message);
   }
+}
+
+export async function loadExerciseRuntime(log) {
+  await ensureMiroReady(log);
+
+  const col = getStorageCollection();
+  if (!col) return normalizeExerciseRuntime(null);
+
+  try {
+    return normalizeExerciseRuntime(await col.get(DT_STORAGE_KEY_EXERCISE_RUNTIME));
+  } catch (e) {
+    if (typeof log === "function") log("Fehler beim Laden des Exercise-Runtime-State: " + e.message);
+    return normalizeExerciseRuntime(null);
+  }
+}
+
+export async function saveExerciseRuntime(runtime, log) {
+  await ensureMiroReady(log);
+
+  const col = getStorageCollection();
+  const normalized = normalizeExerciseRuntime({
+    ...(runtime && typeof runtime === "object" ? runtime : {}),
+    lastUpdatedAt: new Date().toISOString()
+  });
+
+  if (!col) return normalized;
+
+  try {
+    await col.set(DT_STORAGE_KEY_EXERCISE_RUNTIME, normalized);
+  } catch (e) {
+    if (typeof log === "function") log("Fehler beim Speichern des Exercise-Runtime-State: " + e.message);
+  }
+
+  return normalized;
 }
 
 export async function loadMemoryLog(log) {
