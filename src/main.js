@@ -5,13 +5,13 @@ import {
   DT_PROMPT_CATALOG,
   DT_GLOBAL_SYSTEM_PROMPT,
   STICKY_LAYOUT
-} from "./config.js?v=20260228-step4";
+} from "./config.js?v=20260228-step5";
 
-import { createLogger, stripHtml, extractUnderlinedText, isFiniteNumber } from "./utils.js?v=20260228-step4";
+import { createLogger, stripHtml, extractUnderlinedText, isFiniteNumber } from "./utils.js?v=20260228-step5";
 
-import * as Board from "./miro/board.js?v=20260228-step4";
-import * as Catalog from "./domain/catalog.js?v=20260228-step4";
-import * as OpenAI from "./ai/openai.js?v=20260228-step4";
+import * as Board from "./miro/board.js?v=20260228-step5";
+import * as Catalog from "./domain/catalog.js?v=20260228-step5";
+import * as OpenAI from "./ai/openai.js?v=20260228-step5";
 
 // --------------------------------------------------------------------
 // State (Controller-Level)
@@ -898,6 +898,13 @@ async function applyAgentActionsToInstance(instanceId, actions) {
   }
 
   const liveInst = state.liveCatalog?.instances?.[instanceId] || null;
+  const createdStickyIdsByRef = new Map();
+  const connectedPairSet = new Set();
+
+  for (const connection of liveInst?.connections || []) {
+    if (!connection?.fromStickyId || !connection?.toStickyId) continue;
+    connectedPairSet.add(makeCanonicalStickyPairKey(connection.fromStickyId, connection.toStickyId));
+  }
 
   function rectFromLiveSticky(st) {
     if (!st || typeof st.x !== "number" || typeof st.y !== "number") return null;
@@ -958,11 +965,68 @@ async function applyAgentActionsToInstance(instanceId, actions) {
     return null;
   }
 
+  function registerCreatedStickyRef(refId, stickyId) {
+    if (!refId || !stickyId) return;
+    createdStickyIdsByRef.set(refId, stickyId);
+  }
+
+  function resolveActionStickyReference(stickyRef) {
+    if (!stickyRef) return null;
+    if (createdStickyIdsByRef.has(stickyRef)) {
+      return createdStickyIdsByRef.get(stickyRef) || null;
+    }
+    return Catalog.resolveStickyId(stickyRef, state.aliasState);
+  }
+
+  function rememberConnectorPair(fromStickyId, toStickyId) {
+    if (!fromStickyId || !toStickyId) return;
+    connectedPairSet.add(makeCanonicalStickyPairKey(fromStickyId, toStickyId));
+  }
+
+  function hasKnownConnectorBetween(fromStickyId, toStickyId) {
+    if (!fromStickyId || !toStickyId) return false;
+    return connectedPairSet.has(makeCanonicalStickyPairKey(fromStickyId, toStickyId));
+  }
+
+  async function createStickyAtBoardPosition(action, x, y, sizeHint = null) {
+    const sticky = await Board.createStickyNoteAtBoardCoords({
+      content: action.text || "(leer)",
+      x,
+      y,
+      frameId: instance.actionItems?.frameId || null
+    }, log);
+
+    if (sticky?.id && action.refId) {
+      registerCreatedStickyRef(action.refId, sticky.id);
+    }
+    if (sticky?.id && state.stickyOwnerCache instanceof Map) {
+      state.stickyOwnerCache.set(sticky.id, instanceId);
+    }
+
+    if (sizeHint && sticky?.id) {
+      const regionId = detectBodyRegionIdFromBoardCoords(instance.canvasTypeId || TEMPLATE_ID, x, y);
+      if (regionId && occupiedByRegion[regionId]) {
+        occupiedByRegion[regionId].push({
+          id: sticky.id,
+          x,
+          y,
+          width: isFiniteNumber(sticky.width) ? sticky.width : sizeHint.width,
+          height: isFiniteNumber(sticky.height) ? sticky.height : sizeHint.height
+        });
+      }
+    }
+
+    return sticky;
+  }
+
   const handlers = {
     // MOVE: wenn targetPx/targetPy fehlen, dann "snap to next free slot" in targetArea
     "move_sticky": async (action) => {
-      const stickyId = Catalog.resolveStickyId(action.stickyId, state.aliasState);
-      if (!stickyId) return;
+      const stickyId = resolveActionStickyReference(action.stickyId);
+      if (!stickyId) {
+        log("move_sticky: Sticky-Referenz nicht auflösbar: " + String(action.stickyId || "(leer)"));
+        return;
+      }
 
       const canvasTypeId = instance.canvasTypeId || TEMPLATE_ID;
 
@@ -1065,12 +1129,7 @@ async function applyAgentActionsToInstance(instanceId, actions) {
         const center = Catalog.areaCenterNormalized(null, canvasTypeId);
         const coords = Catalog.normalizedToBoardCoords(geom, center.px, center.py);
 
-        await Board.createStickyNoteAtBoardCoords({
-          content: text,
-          x: coords.x,
-          y: coords.y,
-          frameId: instance.actionItems?.frameId || null
-        }, log);
+        await createStickyAtBoardPosition({ ...action, text }, coords.x, coords.y, null);
         return;
       }
 
@@ -1092,12 +1151,7 @@ async function applyAgentActionsToInstance(instanceId, actions) {
         const center = Catalog.areaCenterNormalized(regionId, canvasTypeId);
         const coords = Catalog.normalizedToBoardCoords(geom, center.px, center.py);
 
-        await Board.createStickyNoteAtBoardCoords({
-          content: text,
-          x: coords.x,
-          y: coords.y,
-          frameId: instance.actionItems?.frameId || null
-        }, log);
+        await createStickyAtBoardPosition({ ...action, text }, coords.x, coords.y, null);
         return;
       }
 
@@ -1109,39 +1163,69 @@ async function applyAgentActionsToInstance(instanceId, actions) {
         );
       }
 
-      const sticky = await Board.createStickyNoteAtBoardCoords({
-        content: text,
-        x: pos.x,
-        y: pos.y,
-        frameId: instance.actionItems?.frameId || null
-      }, log);
-
-      // Belegte Fläche updaten (damit mehrere create_sticky Actions sauber fortlaufend platzieren)
-      const actualW = (sticky && isFiniteNumber(sticky.width)) ? sticky.width : size.width;
-      const actualH = (sticky && isFiniteNumber(sticky.height)) ? sticky.height : size.height;
-
-      occupiedByRegion[regionId].push({
-        id: sticky?.id || null,
-        x: pos.x,
-        y: pos.y,
-        width: actualW,
-        height: actualH
-      });
+      await createStickyAtBoardPosition({ ...action, text }, pos.x, pos.y, size);
     },
 
     "delete_sticky": async (action) => {
-      const stickyId = Catalog.resolveStickyId(action.stickyId, state.aliasState);
-      if (!stickyId) return;
+      const stickyId = resolveActionStickyReference(action.stickyId);
+      if (!stickyId) {
+        log("delete_sticky: Sticky-Referenz nicht auflösbar: " + String(action.stickyId || "(leer)"));
+        return;
+      }
 
       // occupied vorher entfernen (damit nachfolgende creates wieder Slots nutzen können)
       removeFromAllOccupied(stickyId);
 
       await Board.removeItemById(stickyId, log);
+    },
+
+    "create_connector": async (action) => {
+      const fromStickyId = resolveActionStickyReference(action.fromStickyId);
+      const toStickyId = resolveActionStickyReference(action.toStickyId);
+
+      if (!fromStickyId || !toStickyId) {
+        log(
+          "create_connector: Sticky-Referenzen nicht auflösbar (from=" +
+          String(action.fromStickyId || "(leer)") +
+          ", to=" + String(action.toStickyId || "(leer)") + ")."
+        );
+        return;
+      }
+
+      if (fromStickyId === toStickyId) {
+        log("create_connector: Quelle und Ziel sind identisch – übersprungen (" + fromStickyId + ").");
+        return;
+      }
+
+      if (hasKnownConnectorBetween(fromStickyId, toStickyId)) {
+        log("create_connector: Verbindung zwischen " + fromStickyId + " und " + toStickyId + " existiert bereits – übersprungen.");
+        return;
+      }
+
+      try {
+        await Board.createConnectorBetweenItems({
+          startItemId: fromStickyId,
+          endItemId: toStickyId,
+          directed: action.directed !== false,
+          frameId: instance.actionItems?.frameId || null
+        }, log);
+        rememberConnectorPair(fromStickyId, toStickyId);
+      } catch (e) {
+        log("create_connector: Fehler beim Erzeugen des Connectors: " + e.message);
+      }
     }
   };
 
+  const regularActions = actions.filter((action) => action?.type !== "create_connector");
+  const connectorActions = actions.filter((action) => action?.type === "create_connector");
+
   log("Wende " + actions.length + " Action(s) an (Instanz " + instanceId + ").");
-  await OpenAI.dispatchActions(actions, handlers, log);
+  if (regularActions.length) {
+    await OpenAI.dispatchActions(regularActions, handlers, log);
+  }
+  if (connectorActions.length) {
+    await OpenAI.dispatchActions(connectorActions, handlers, log);
+  }
 }
 
 // --------------------------------------------------------------------
@@ -1256,7 +1340,7 @@ async function runAgentForSelectedInstances(selectedInstanceIds, options = {}) {
     activeCanvasState: singleId ? activeCanvasStates[singleId] : null,
     activeCanvasStates,
     activeInstanceChangesSinceLastAgent,
-    hint: "boardCatalog = Kurzüberblick über alle Canvas, activeCanvasStates = Detaildaten nur für die selektierten Instanzen. Wenn mehrere Instanzen selektiert sind, muss jede mutierende Action eine instanceId enthalten."
+    hint: "boardCatalog = Kurzüberblick über alle Canvas, activeCanvasStates = Detaildaten nur für die selektierten Instanzen. Wenn mehrere Instanzen selektiert sind, muss jede mutierende Action eine instanceId enthalten. Verwende create_connector für Beziehungen zwischen Stickies. fromStickyId/toStickyId dürfen bestehende Alias-IDs oder refId-Werte aus create_sticky-Actions derselben Antwort sein."
   };
 
   try {
@@ -1328,6 +1412,58 @@ function pickFirstNonEmptyString(...values) {
   return null;
 }
 
+function coerceBooleanLike(value) {
+  if (typeof value === "boolean") return value;
+  if (typeof value === "number") return value !== 0;
+  if (typeof value !== "string") return null;
+
+  const normalized = value.trim().toLowerCase();
+  if (!normalized) return null;
+
+  if (["true", "yes", "ja", "1", "directed", "with_arrow", "arrow"].includes(normalized)) return true;
+  if (["false", "no", "nein", "0", "none", "undirected", "without_arrow", "no_arrow"].includes(normalized)) return false;
+  return null;
+}
+
+function normalizeConnectorDirection(rawAction) {
+  const rawDirection = pickFirstNonEmptyString(
+    rawAction?.direction,
+    rawAction?.arrowDirection,
+    rawAction?.connectorDirection
+  );
+
+  if (rawDirection) {
+    const dir = rawDirection.trim().toLowerCase();
+    if (["none", "undirected", "without_arrow", "no_arrow"].includes(dir)) {
+      return { directed: false, reverseDirection: false };
+    }
+    if (["to_from", "reverse", "backward", "target_to_source", "end_to_start"].includes(dir)) {
+      return { directed: true, reverseDirection: true };
+    }
+    if (["from_to", "forward", "source_to_target", "start_to_end"].includes(dir)) {
+      return { directed: true, reverseDirection: false };
+    }
+  }
+
+  const coerced = coerceBooleanLike(
+    rawAction?.directed ??
+    rawAction?.isDirected ??
+    rawAction?.withArrow ??
+    rawAction?.hasArrow ??
+    rawAction?.arrow
+  );
+
+  return {
+    directed: coerced == null ? true : coerced,
+    reverseDirection: false
+  };
+}
+
+function makeCanonicalStickyPairKey(a, b) {
+  if (!a || !b) return null;
+  return [String(a), String(b)].sort().join("<->");
+}
+
 function canonicalizeAgentActionType(rawType) {
   if (typeof rawType !== "string") return null;
 
@@ -1356,6 +1492,18 @@ function canonicalizeAgentActionType(rawType) {
     removesticky: "delete_sticky",
     removestickynote: "delete_sticky",
     removenote: "delete_sticky",
+    createconnector: "create_connector",
+    addconnector: "create_connector",
+    connectsticky: "create_connector",
+    connectstickies: "create_connector",
+    connectnote: "create_connector",
+    connectnotes: "create_connector",
+    createconnection: "create_connector",
+    addconnection: "create_connector",
+    linksticky: "create_connector",
+    linkstickies: "create_connector",
+    linknote: "create_connector",
+    linknotes: "create_connector",
     inform: "inform",
     message: "inform",
     note: "inform",
@@ -1373,6 +1521,8 @@ function normalizeAgentAction(rawAction) {
   );
   if (!type) return null;
 
+  const normalizedDirection = normalizeConnectorDirection(rawAction);
+
   const normalized = {
     type,
     instanceId: pickFirstNonEmptyString(
@@ -1386,7 +1536,40 @@ function normalizeAgentAction(rawAction) {
       rawAction.stickyId,
       rawAction.noteId,
       rawAction.stickyAlias,
-      rawAction.sticky?.id
+      rawAction.sticky?.id,
+      typeof rawAction.sticky === "string" ? rawAction.sticky : null
+    ),
+    refId: pickFirstNonEmptyString(
+      rawAction.refId,
+      rawAction.tempId,
+      rawAction.localId,
+      rawAction.clientRefId,
+      rawAction.referenceId,
+      rawAction.newStickyRefId
+    ),
+    fromStickyId: pickFirstNonEmptyString(
+      rawAction.fromStickyId,
+      rawAction.fromId,
+      rawAction.sourceStickyId,
+      rawAction.sourceNoteId,
+      rawAction.startStickyId,
+      rawAction.startNoteId,
+      rawAction.from?.id,
+      rawAction.start?.id,
+      typeof rawAction.from === "string" ? rawAction.from : null,
+      typeof rawAction.start === "string" ? rawAction.start : null
+    ),
+    toStickyId: pickFirstNonEmptyString(
+      rawAction.toStickyId,
+      rawAction.toId,
+      rawAction.targetStickyId,
+      rawAction.targetNoteId,
+      rawAction.endStickyId,
+      rawAction.endNoteId,
+      rawAction.to?.id,
+      rawAction.end?.id,
+      typeof rawAction.to === "string" ? rawAction.to : null,
+      typeof rawAction.end === "string" ? rawAction.end : null
     ),
     area: pickFirstNonEmptyString(
       rawAction.area,
@@ -1411,13 +1594,22 @@ function normalizeAgentAction(rawAction) {
       rawAction.text,
       rawAction.content,
       rawAction.note
-    )
+    ),
+    directed: normalizedDirection.directed,
+    reverseDirection: normalizedDirection.reverseDirection
   };
 
   if (isFiniteNumber(rawAction.targetPx)) normalized.targetPx = rawAction.targetPx;
   if (isFiniteNumber(rawAction.targetPy)) normalized.targetPy = rawAction.targetPy;
 
   return normalized;
+}
+
+function resolveOwnerInstanceIdForStickyReference(stickyRef) {
+  if (!stickyRef) return null;
+  const resolvedStickyId = Catalog.resolveStickyId(stickyRef, state.aliasState);
+  if (!resolvedStickyId) return null;
+  return state.stickyOwnerCache?.get(resolvedStickyId) || null;
 }
 
 function resolveActionInstanceId(action, { candidateInstanceIds = null, triggerInstanceId = null, sourceLabel = "Agent" } = {}) {
@@ -1428,18 +1620,22 @@ function resolveActionInstanceId(action, { candidateInstanceIds = null, triggerI
       ? action.instanceId
       : null;
 
-  const resolvedStickyId = action?.stickyId
-    ? Catalog.resolveStickyId(action.stickyId, state.aliasState)
-    : null;
+  const ownerInstanceIds = Array.from(new Set([
+    resolveOwnerInstanceIdForStickyReference(action?.stickyId),
+    resolveOwnerInstanceIdForStickyReference(action?.fromStickyId),
+    resolveOwnerInstanceIdForStickyReference(action?.toStickyId)
+  ].filter(Boolean)));
 
-  const ownerInstanceId = resolvedStickyId
-    ? (state.stickyOwnerCache?.get(resolvedStickyId) || null)
-    : null;
+  if (ownerInstanceIds.length > 1) {
+    log(sourceLabel + ": Action referenziert Sticky Notes aus mehreren Instanzen – übersprungen.");
+    return null;
+  }
+
+  const ownerInstanceId = ownerInstanceIds[0] || null;
 
   if (ownerInstanceId && explicitInstanceId && explicitInstanceId !== ownerInstanceId) {
     log(
-      "WARNUNG: " + sourceLabel + "-Action referenziert Sticky " + action.stickyId +
-      " mit Instanz " + explicitInstanceId +
+      "WARNUNG: " + sourceLabel + "-Action referenziert Sticky(s) mit Instanz " + explicitInstanceId +
       ", gehört aber zu " + ownerInstanceId + ". Verwende Eigentümer-Instanz."
     );
   }
@@ -1476,13 +1672,22 @@ async function applyResolvedAgentActions(actions, { candidateInstanceIds, trigge
   let infoCount = 0;
 
   for (const rawAction of actions) {
-    const action = normalizeAgentAction(rawAction);
+    let action = normalizeAgentAction(rawAction);
 
     if (!action) {
       skippedCount++;
       log(sourceLabel + ": Unbekanntes oder nicht unterstütztes Action-Schema – übersprungen.");
       log(rawAction);
       continue;
+    }
+
+    if (action.type === "create_connector" && action.reverseDirection) {
+      action = {
+        ...action,
+        fromStickyId: action.toStickyId,
+        toStickyId: action.fromStickyId,
+        reverseDirection: false
+      };
     }
 
     if (action.type === "inform") {
@@ -1502,6 +1707,13 @@ async function applyResolvedAgentActions(actions, { candidateInstanceIds, trigge
     if (action.type === "create_sticky" && !action.text) {
       skippedCount++;
       log(sourceLabel + ": create_sticky ohne text – übersprungen.");
+      log(rawAction);
+      continue;
+    }
+
+    if (action.type === "create_connector" && (!action.fromStickyId || !action.toStickyId)) {
+      skippedCount++;
+      log(sourceLabel + ": create_connector ohne fromStickyId/toStickyId – übersprungen.");
       log(rawAction);
       continue;
     }
@@ -1599,7 +1811,7 @@ async function runGlobalAgent(triggerInstanceId, userText) {
     activeInstanceIds,
     activeCanvasStates,
     activeInstanceChangesSinceLastAgent,
-    hint: "boardCatalog = Übersicht, activeCanvasStates = Detaildaten nur für aktive Instanzen. Jede mutierende Action muss genau eine instanceId enthalten. area/targetArea muss exakt einem vorhandenen Area-Namen der Ziel-Instanz entsprechen."
+    hint: "boardCatalog = Übersicht, activeCanvasStates = Detaildaten nur für aktive Instanzen. Jede mutierende Action muss genau eine instanceId enthalten. area/targetArea muss exakt einem vorhandenen Area-Namen der Ziel-Instanz entsprechen. Verwende create_connector für Beziehungen zwischen Stickies. fromStickyId/toStickyId dürfen bestehende Alias-IDs oder refId-Werte aus create_sticky-Actions derselben Antwort sein."
   };
 
   try {
