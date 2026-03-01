@@ -6,16 +6,16 @@ import {
   DT_GLOBAL_SYSTEM_PROMPT,
   DT_MEMORY_RECENT_LOG_LIMIT,
   STICKY_LAYOUT
-} from "./config.js?v=20260301-step8";
+} from "./config.js?v=20260301-step9";
 
-import { createLogger, stripHtml, extractUnderlinedText, isFiniteNumber } from "./utils.js?v=20260301-step8";
+import { createLogger, stripHtml, extractUnderlinedText, isFiniteNumber } from "./utils.js?v=20260301-step9";
 
-import * as Board from "./miro/board.js?v=20260301-step8";
-import * as Catalog from "./domain/catalog.js?v=20260301-step8";
-import * as OpenAI from "./ai/openai.js?v=20260301-step8";
-import * as Memory from "./runtime/memory.js?v=20260301-step8";
-import * as Exercises from "./exercises/registry.js?v=20260301-step8";
-import * as PromptComposer from "./prompt/composer.js?v=20260301-step8";
+import * as Board from "./miro/board.js?v=20260301-step9";
+import * as Catalog from "./domain/catalog.js?v=20260301-step9";
+import * as OpenAI from "./ai/openai.js?v=20260301-step9";
+import * as Memory from "./runtime/memory.js?v=20260301-step9";
+import * as Exercises from "./exercises/registry.js?v=20260301-step9";
+import * as PromptComposer from "./prompt/composer.js?v=20260301-step9";
 
 // --------------------------------------------------------------------
 // State (Controller-Level)
@@ -57,6 +57,7 @@ const state = {
 
   // UI state
   selectedCanvasTypeId: TEMPLATE_ID,
+  panelMode: "admin",
 
   // Re-entrancy guard
   handlingSelection: false,
@@ -70,12 +71,22 @@ const state = {
 // Logger + initial log
 // --------------------------------------------------------------------
 const logEl = document.getElementById("log");
+const panelModeEl = document.getElementById("panel-mode");
+const panelModeStatusEl = document.getElementById("panel-mode-status");
 const selectionStatusEl = document.getElementById("selection-status");
 const canvasTypePickerEl = document.getElementById("canvas-type-picker");
 const exercisePackEl = document.getElementById("exercise-pack");
 const exerciseStepEl = document.getElementById("exercise-step");
 const exerciseContextStatusEl = document.getElementById("exercise-context-status");
 const exerciseStepInstructionEl = document.getElementById("exercise-step-instruction");
+const userActionsPanelEl = document.getElementById("user-actions-panel");
+const adminPanelEl = document.getElementById("admin-panel");
+const adminOverrideTextEl = document.getElementById("admin-override-text");
+const exerciseActionHelpEl = document.getElementById("exercise-action-help");
+const btnExerciseCheckEl = document.getElementById("btn-exercise-check");
+const btnExerciseHintEl = document.getElementById("btn-exercise-hint");
+const btnExerciseAutocorrectEl = document.getElementById("btn-exercise-autocorrect");
+const btnExerciseNextStepEl = document.getElementById("btn-exercise-next-step");
 const log = createLogger(logEl);
 
 (function initialLog() {
@@ -94,6 +105,54 @@ window.onerror = function (msg, src, line, col) {
 // --------------------------------------------------------------------
 // UI helpers
 // --------------------------------------------------------------------
+const PANEL_MODE_STORAGE_KEY = "dt-panel-mode-v1";
+
+function normalizePanelMode(value) {
+  return value === "user" ? "user" : "admin";
+}
+
+function loadPersistedPanelMode() {
+  try {
+    return normalizePanelMode(window.localStorage?.getItem(PANEL_MODE_STORAGE_KEY) || "admin");
+  } catch (_) {
+    return "admin";
+  }
+}
+
+function persistPanelMode(mode) {
+  try {
+    window.localStorage?.setItem(PANEL_MODE_STORAGE_KEY, normalizePanelMode(mode));
+  } catch (_) {}
+}
+
+function setPanelMode(mode, { persist = true } = {}) {
+  state.panelMode = normalizePanelMode(mode);
+  if (persist) persistPanelMode(state.panelMode);
+  renderPanelMode();
+}
+
+function setElementHidden(el, hidden) {
+  if (!el) return;
+  el.classList.toggle("hidden", !!hidden);
+}
+
+function renderPanelMode() {
+  const mode = normalizePanelMode(state.panelMode);
+
+  if (panelModeEl && panelModeEl.value !== mode) {
+    panelModeEl.value = mode;
+  }
+
+  setElementHidden(adminPanelEl, mode !== "admin");
+  setElementHidden(userActionsPanelEl, false);
+
+  if (panelModeStatusEl) {
+    panelModeStatusEl.textContent = mode === "admin"
+      ? "Admin-Modus aktiv. Alle Konfigurations- und Diagnosefunktionen sind sichtbar."
+      : "User-Modus aktiv. Die Übungsaktionen bleiben sichtbar, Admin-Steuerung ist ausgeblendet.";
+  }
+}
+
 function getApiKey() {
   const el = document.getElementById("api-key");
   return (el?.value || "").trim();
@@ -292,10 +351,45 @@ function renderExerciseContextStatus() {
   }
 }
 
+function renderAdminOverrideEditor() {
+  if (!adminOverrideTextEl) return;
+  const nextText = state.exerciseRuntime?.adminOverrideText || "";
+  if (document.activeElement !== adminOverrideTextEl) {
+    adminOverrideTextEl.value = nextText;
+  }
+}
+
+function renderExerciseActionButtons() {
+  const pack = getSelectedExercisePack();
+  const currentStep = getCurrentExerciseStep(pack);
+  const nextStep = Exercises.getNextExerciseStep(pack, currentStep?.id || null);
+  const hasExerciseContext = !!pack && !!currentStep;
+
+  if (btnExerciseCheckEl) btnExerciseCheckEl.disabled = !hasExerciseContext;
+  if (btnExerciseHintEl) btnExerciseHintEl.disabled = !hasExerciseContext;
+  if (btnExerciseAutocorrectEl) btnExerciseAutocorrectEl.disabled = !hasExerciseContext;
+  if (btnExerciseNextStepEl) btnExerciseNextStepEl.disabled = !nextStep;
+
+  if (exerciseActionHelpEl) {
+    if (!pack) {
+      exerciseActionHelpEl.textContent = "Kein Exercise Pack aktiv. Bitte im Admin-Modus zuerst ein Exercise Pack auswählen.";
+    } else if (!currentStep) {
+      exerciseActionHelpEl.textContent = "Kein aktiver Schritt gesetzt. Bitte im Admin-Modus einen gültigen Schritt auswählen.";
+    } else if (nextStep) {
+      exerciseActionHelpEl.textContent = "Die Übungsaktionen arbeiten auf den aktuell selektierten Canvas-Instanzen. Ohne Selektion erscheint ein Warnhinweis im Log. Der nächste Schritt wäre: " + (nextStep.label || nextStep.id) + ".";
+    } else {
+      exerciseActionHelpEl.textContent = "Die Übungsaktionen arbeiten auf den aktuell selektierten Canvas-Instanzen. Ohne Selektion erscheint ein Warnhinweis im Log. Der aktuelle Schritt ist bereits der letzte Schritt dieses Exercise Packs.";
+    }
+  }
+}
+
 function renderExerciseControls() {
   renderExercisePackPicker();
   renderExerciseStepPicker();
   renderExerciseContextStatus();
+  renderAdminOverrideEditor();
+  renderExerciseActionButtons();
+  renderPanelMode();
 }
 
 async function syncDefaultCanvasTypeToBoardConfig(canvasTypeId) {
@@ -411,6 +505,119 @@ async function onExerciseStepChange() {
   log("Exercise-Schritt gesetzt: " + (step?.label || validStepId || "(leer)"));
 }
 
+function getExerciseRunModeForTrigger(trigger) {
+  switch (trigger) {
+    case "check": return "exercise-check";
+    case "hint": return "exercise-hint";
+    case "autocorrect": return "exercise-autocorrect";
+    default: return "exercise";
+  }
+}
+
+function getExerciseSourceLabel(trigger) {
+  switch (trigger) {
+    case "check": return "Exercise-Check";
+    case "hint": return "Exercise-Hinweis";
+    case "autocorrect": return "Exercise-Autokorrektur";
+    default: return "Exercise-Agent";
+  }
+}
+
+async function onPanelModeChange() {
+  setPanelMode(panelModeEl?.value || "admin");
+}
+
+async function saveAdminOverrideFromUi() {
+  const text = (adminOverrideTextEl?.value || "").trim() || null;
+  await persistExerciseRuntime({ adminOverrideText: text });
+  renderExerciseControls();
+  log("Admin-Override gespeichert: " + (text ? ("" + text.length + " Zeichen") : "leer"));
+}
+
+async function clearAdminOverrideFromUi() {
+  if (adminOverrideTextEl) adminOverrideTextEl.value = "";
+  await persistExerciseRuntime({ adminOverrideText: null });
+  renderExerciseControls();
+  log("Admin-Override geleert.");
+}
+
+async function runExerciseTrigger(trigger) {
+  const pack = getSelectedExercisePack();
+  const currentStep = getCurrentExerciseStep(pack);
+
+  if (!pack) {
+    log("Exercise-Modus: Kein Exercise Pack aktiv. Bitte im Admin-Modus zuerst ein Exercise Pack auswählen.");
+    return;
+  }
+
+  if (!currentStep) {
+    log("Exercise-Modus: Kein aktiver Schritt vorhanden. Bitte im Admin-Modus einen gültigen Schritt setzen.");
+    return;
+  }
+
+  const selectedInstanceIds = await refreshSelectionStatusFromBoard();
+  if (!selectedInstanceIds.length) {
+    log(getExerciseSourceLabel(trigger) + ": Keine Canvas selektiert. Wähle mindestens eine Canvas oder ein Item innerhalb einer Canvas aus.");
+    return;
+  }
+
+  const allowedCanvasTypes = new Set(Exercises.getAllowedCanvasTypesForPack(pack));
+  const filteredInstanceIds = selectedInstanceIds.filter((instanceId) => {
+    const canvasTypeId = state.instancesById.get(instanceId)?.canvasTypeId || null;
+    return !allowedCanvasTypes.size || (canvasTypeId && allowedCanvasTypes.has(canvasTypeId));
+  });
+
+  if (!filteredInstanceIds.length) {
+    log(getExerciseSourceLabel(trigger) + ": Die aktuelle Selektion enthält keine Canvas, die für dieses Exercise Pack freigegeben sind.");
+    return;
+  }
+
+  await runAgentForSelectedInstances(filteredInstanceIds, {
+    userText: getCurrentUserQuestion(),
+    runMode: getExerciseRunModeForTrigger(trigger),
+    trigger,
+    sourceLabel: getExerciseSourceLabel(trigger)
+  });
+}
+
+async function runExerciseCheck() {
+  return await runExerciseTrigger("check");
+}
+
+async function runExerciseHint() {
+  return await runExerciseTrigger("hint");
+}
+
+async function runExerciseAutocorrect() {
+  return await runExerciseTrigger("autocorrect");
+}
+
+async function advanceExerciseStep() {
+  const pack = getSelectedExercisePack();
+  const currentStep = getCurrentExerciseStep(pack);
+
+  if (!pack) {
+    log("Nächster Schritt: Kein Exercise Pack aktiv.");
+    return;
+  }
+
+  const nextStep = Exercises.getNextExerciseStep(pack, currentStep?.id || null);
+  if (!nextStep) {
+    log("Nächster Schritt: Bereits letzter Schritt des Exercise Packs erreicht.");
+    return;
+  }
+
+  await persistExerciseRuntime({ currentStepId: nextStep.id });
+  renderExerciseControls();
+
+  log(
+    "Exercise-Schritt weitergeschaltet: " +
+    (currentStep?.label || "(kein Schritt)") +
+    " -> " +
+    (nextStep.label || nextStep.id)
+  );
+}
+
 function renderCanvasTypePicker() {
   if (!canvasTypePickerEl) return;
 
@@ -482,11 +689,21 @@ function renderCanvasTypePicker() {
 // Init Panel Buttons
 // --------------------------------------------------------------------
 function initPanelButtons() {
+  state.panelMode = loadPersistedPanelMode();
   renderCanvasTypePicker();
   renderExerciseControls();
 
+  panelModeEl?.addEventListener("change", onPanelModeChange);
   exercisePackEl?.addEventListener("change", onExercisePackChange);
   exerciseStepEl?.addEventListener("change", onExerciseStepChange);
+
+  document.getElementById("btn-save-admin-override")?.addEventListener("click", saveAdminOverrideFromUi);
+  document.getElementById("btn-clear-admin-override")?.addEventListener("click", clearAdminOverrideFromUi);
+
+  btnExerciseCheckEl?.addEventListener("click", runExerciseCheck);
+  btnExerciseHintEl?.addEventListener("click", runExerciseHint);
+  btnExerciseAutocorrectEl?.addEventListener("click", runExerciseAutocorrect);
+  btnExerciseNextStepEl?.addEventListener("click", advanceExerciseStep);
 
   document.getElementById("btn-insert-template")?.addEventListener("click", insertTemplateImage);
   document.getElementById("btn-agent-selection")?.addEventListener("click", runAgentForCurrentSelection);
@@ -503,6 +720,12 @@ function initPanelButtons() {
   window.dtRunAgentForCurrentSelection = runAgentForCurrentSelection;
   window.dtRunAgentForInstance = runAgentForInstance;
   window.dtRunGlobalAgent = runGlobalAgent;
+  window.dtRunExerciseCheck = runExerciseCheck;
+  window.dtRunExerciseHint = runExerciseHint;
+  window.dtRunExerciseAutocorrect = runExerciseAutocorrect;
+  window.dtAdvanceExerciseStep = advanceExerciseStep;
+
+  renderPanelMode();
 }
 initPanelButtons();
 
@@ -1776,7 +1999,6 @@ async function runAgentForSelectedInstances(selectedInstanceIds, options = {}) {
   await loadMemoryRuntimeState();
 
   const normalizedSelectedIds = Array.from(new Set((selectedInstanceIds || []).filter((id) => state.instancesById.has(id))));
-  const selectedInstanceLabels = getInstanceLabelsFromIds(normalizedSelectedIds);
   if (!normalizedSelectedIds.length) {
     log("Instanz-Agent: Keine gültigen Ziel-Instanzen übergeben.");
     return;
@@ -1785,8 +2007,14 @@ async function runAgentForSelectedInstances(selectedInstanceIds, options = {}) {
   const apiKey = getApiKey();
   const model = getModel();
   const userText = options.userText || getCurrentUserQuestion();
+  const runMode = pickFirstNonEmptyString(options.runMode, "selection");
+  const trigger = pickFirstNonEmptyString(options.trigger, "generic");
+  const sourceLabel = pickFirstNonEmptyString(options.sourceLabel, "Instanz-Agent");
 
-  if (!apiKey) { log("Bitte OpenAI API Key eingeben (Agent)."); return; }
+  if (!apiKey) {
+    log("Bitte OpenAI API Key eingeben (Agent).");
+    return;
+  }
 
   const promptCfg = getPromptConfigForSelectedInstances(normalizedSelectedIds);
 
@@ -1819,7 +2047,7 @@ async function runAgentForSelectedInstances(selectedInstanceIds, options = {}) {
 
   const resolvedActiveLabels = Object.keys(activeCanvasStates);
   if (!resolvedActiveLabels.length) {
-    log("Instanz-Agent: Konnte für die selektierten Canvas keine Zustandsdaten aufbauen.");
+    log(sourceLabel + ": Konnte für die selektierten Canvas keine Zustandsdaten aufbauen.");
     return;
   }
 
@@ -1843,8 +2071,8 @@ async function runAgentForSelectedInstances(selectedInstanceIds, options = {}) {
   };
 
   const composedPrompt = composePromptForRun({
-    runMode: "selection",
-    trigger: "generic",
+    runMode,
+    trigger,
     baseSystemPrompt: promptCfg.system,
     involvedCanvasTypeIds: getInvolvedCanvasTypeIdsFromInstanceIds(resolvedActiveIds),
     baseUserPayload,
@@ -1856,14 +2084,14 @@ async function runAgentForSelectedInstances(selectedInstanceIds, options = {}) {
     : "";
 
   log(
-    "Starte Agent (Modus B) für selektierte Instanzen: " +
+    "Starte " + sourceLabel + " für selektierte Instanzen: " +
     resolvedActiveLabels.join(", ") +
     exerciseInfo +
     " ..."
   );
 
   try {
-    log("Sende Agent-Request an OpenAI (Modus B) ...");
+    log("Sende " + sourceLabel + "-Request an OpenAI ...");
     const answer = await OpenAI.callOpenAIResponses({
       apiKey,
       model,
@@ -1873,25 +2101,25 @@ async function runAgentForSelectedInstances(selectedInstanceIds, options = {}) {
     });
 
     if (!answer) {
-      log("Agent: Keine Antwort (output_text) gefunden.");
+      log(sourceLabel + ": Keine Antwort (output_text) gefunden.");
       return;
     }
 
     const agentObj = OpenAI.parseJsonFromModelOutput(answer);
     if (!agentObj) {
-      log("Agent-Antwort ist kein valides JSON. Rohantwort:");
+      log(sourceLabel + ": Antwort ist kein valides JSON. Rohantwort:");
       log(answer);
       return;
     }
 
-    log("Agent-Analyse (analysis):");
+    log(sourceLabel + " analysis:");
     log(agentObj.analysis || "(keine analysis)");
 
     const actionResult = Array.isArray(agentObj.actions) && agentObj.actions.length
       ? await applyResolvedAgentActions(agentObj.actions, {
           candidateInstanceIds: resolvedActiveIds,
           triggerInstanceId: singleLabel ? getInternalInstanceIdByLabel(singleLabel) : null,
-          sourceLabel: "Instanz-Agent"
+          sourceLabel
         })
       : {
           appliedCount: 0,
@@ -1903,7 +2131,7 @@ async function runAgentForSelectedInstances(selectedInstanceIds, options = {}) {
 
     if (Array.isArray(agentObj.actions) && agentObj.actions.length) {
       log(
-        "Instanz-Agent: Action-Run abgeschlossen. " +
+        sourceLabel + ": Action-Run abgeschlossen. " +
         "Geplant=" + actionResult.appliedCount +
         ", ausgeführt=" + actionResult.executedMutationCount +
         ", Hinweise=" + actionResult.infoCount +
@@ -1912,7 +2140,7 @@ async function runAgentForSelectedInstances(selectedInstanceIds, options = {}) {
         ", Ziel-Instanzen=" + actionResult.targetedInstanceCount + "."
       );
     } else {
-      log("Agent lieferte keine Actions.");
+      log(sourceLabel + ": Keine Actions geliefert.");
     }
 
     await refreshBoardState();
@@ -1926,14 +2154,14 @@ async function runAgentForSelectedInstances(selectedInstanceIds, options = {}) {
     }
 
     await persistMemoryAfterAgentRun(agentObj, {
-      runMode: "selection",
-      trigger: composedPrompt.exerciseContext?.trigger || "generic",
+      runMode,
+      trigger: composedPrompt.exerciseContext?.trigger || trigger,
       targetInstanceLabels: resolvedActiveLabels,
       userRequest: userText
     }, actionResult);
 
   } catch (e) {
-    log("Exception beim Agent-Run: " + e.message);
+    log("Exception beim " + sourceLabel + "-Run: " + e.message);
   }
 }
 
