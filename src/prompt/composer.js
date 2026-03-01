@@ -1,7 +1,7 @@
 import {
   getAllowedCanvasTypesForPack,
   getDefaultCanvasTypeIdForPack
-} from "../exercises/registry.js?v=20260301-step8";
+} from "../exercises/registry.js?v=20260301-step9";
 
 function asNonEmptyString(value) {
   if (typeof value !== "string") return null;
