@@ -1,17 +1,17 @@
-import { TEMPLATE_ID, DT_CANVAS_DEFS } from "../config.js?v=20260228-step4";
+import { TEMPLATE_ID, DT_CANVAS_DEFS } from "../config.js?v=20260228-step5";
 import {
   stripHtml,
   isFiniteNumber,
   buildInstanceSignatureFromClassification,
   computeInstanceDiffFromSignatures,
   diffHasChanges
-} from "../utils.js?v=20260228-step4";
+} from "../utils.js?v=20260228-step5";
 import {
   computeTemplateGeometry,
   buildInstanceGeometryIndex,
   resolveBoardCoords,
   findInstanceByPoint
-} from "../miro/board.js?v=20260228-step4";
+} from "../miro/board.js?v=20260228-step5";
 
 // --------------------------------------------------------------------
 // Canvas Definitions / Region Mapping
@@ -702,6 +702,7 @@ export function buildPromptPayloadFromClassification(classification, { useAliase
         const target = co?.toStickyId ? idToItem[co.toStickyId] : null;
         result.push({
           connectorId: co.connectorId,
+          toId: target?.stickyId ? getOrCreateStickyAlias(target.stickyId) : null,
           toText: target ? target.text : null,
           toArea: target ? (target.regionTitle || (target.role === "header" ? "Header" : null)) : null
         });
@@ -716,6 +717,7 @@ export function buildPromptPayloadFromClassification(classification, { useAliase
         const source = ci?.fromStickyId ? idToItem[ci.fromStickyId] : null;
         result.push({
           connectorId: ci.connectorId,
+          fromId: source?.stickyId ? getOrCreateStickyAlias(source.stickyId) : null,
           fromText: source ? source.text : null,
           fromArea: source ? (source.regionTitle || (source.role === "header" ? "Header" : null)) : null
         });
@@ -782,8 +784,10 @@ export function buildPromptPayloadFromClassification(classification, { useAliase
 
           return {
             connectorId: c.connectorId,
+            fromId: fromItem?.stickyId ? getOrCreateStickyAlias(fromItem.stickyId) : null,
             fromText: fromItem ? fromItem.text : null,
             fromArea,
+            toId: toItem?.stickyId ? getOrCreateStickyAlias(toItem.stickyId) : null,
             toText: toItem ? toItem.text : null,
             toArea
           };
