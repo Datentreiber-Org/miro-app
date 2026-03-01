@@ -4,10 +4,13 @@ import {
   DT_STORAGE_KEY_BASELINE_PREFIX,
   DT_STORAGE_KEY_ACTION_BINDING_PREFIX,
   DT_STORAGE_KEY_ACTION_BINDING_INDEX,
+  DT_STORAGE_KEY_MEMORY_STATE,
+  DT_STORAGE_KEY_MEMORY_LOG_INDEX,
+  DT_STORAGE_KEY_MEMORY_LOG_ENTRY_PREFIX,
   DT_IMAGE_META_KEY_INSTANCE
-} from "../config.js?v=20260301-step6";
+} from "../config.js?v=20260301-step7";
 
-import { isFiniteNumber } from "../utils.js?v=20260301-step6";
+import { isFiniteNumber } from "../utils.js?v=20260301-step7";
 
 // --------------------------------------------------------------------
 // Miro Ready
@@ -486,6 +489,144 @@ async function removeActionBindingForImageId(imageId, log) {
   }
 
   await removeImageIdFromActionBindingIndex(imageId, log);
+}
+
+async function loadMemoryLogIndex(log) {
+  await ensureMiroReady(log);
+
+  const col = getStorageCollection();
+  if (!col) return [];
+
+  try {
+    const rec = await col.get(DT_STORAGE_KEY_MEMORY_LOG_INDEX);
+    if (rec && typeof rec === "object" && rec.version === 1 && Array.isArray(rec.entryIds)) {
+      return Array.from(new Set(rec.entryIds.map((id) => String(id)).filter(Boolean)));
+    }
+  } catch (e) {
+    if (typeof log === "function") log("Fehler beim Laden des Memory-Log-Index: " + e.message);
+  }
+
+  return [];
+}
+
+async function saveMemoryLogIndex(entryIds, log) {
+  await ensureMiroReady(log);
+
+  const col = getStorageCollection();
+  if (!col) return;
+
+  const normalizedEntryIds = Array.from(new Set((entryIds || []).map((id) => String(id)).filter(Boolean)));
+
+  try {
+    await col.set(DT_STORAGE_KEY_MEMORY_LOG_INDEX, {
+      version: 1,
+      entryIds: normalizedEntryIds
+    });
+  } catch (e) {
+    if (typeof log === "function") log("Fehler beim Speichern des Memory-Log-Index: " + e.message);
+  }
+}
+
+function memoryLogEntryKey(entryId) {
+  return DT_STORAGE_KEY_MEMORY_LOG_ENTRY_PREFIX + String(entryId);
+}
+
+function buildMemoryLogEntryId() {
+  return "m-" + Date.now().toString(36) + "-" + Math.floor(Math.random() * 1e9).toString(36);
+}
+
+export async function loadMemoryState(log) {
+  await ensureMiroReady(log);
+
+  const col = getStorageCollection();
+  if (!col) return null;
+
+  try {
+    const value = await col.get(DT_STORAGE_KEY_MEMORY_STATE);
+    return (value && typeof value === "object") ? value : null;
+  } catch (e) {
+    if (typeof log === "function") log("Fehler beim Laden des Memory-State: " + e.message);
+    return null;
+  }
+}
+
+export async function saveMemoryState(memoryState, log) {
+  await ensureMiroReady(log);
+
+  const col = getStorageCollection();
+  if (!col || !memoryState || typeof memoryState !== "object") return;
+
+  try {
+    await col.set(DT_STORAGE_KEY_MEMORY_STATE, memoryState);
+  } catch (e) {
+    if (typeof log === "function") log("Fehler beim Speichern des Memory-State: " + e.message);
+  }
+}
+
+export async function loadMemoryLog(log) {
+  await ensureMiroReady(log);
+
+  const col = getStorageCollection();
+  if (!col) return [];
+
+  const entryIds = await loadMemoryLogIndex(log);
+  if (!entryIds.length) return [];
+
+  try {
+    const values = await Promise.all(entryIds.map((entryId) => col.get(memoryLogEntryKey(entryId)).catch(() => undefined)));
+    const result = [];
+
+    for (let i = 0; i < entryIds.length; i++) {
+      const value = values[i];
+      if (!value || typeof value !== "object") continue;
+      result.push({
+        entryId: value.entryId || entryIds[i],
+        ...value
+      });
+    }
+
+    result.sort((a, b) => {
+      const aTs = typeof a?.ts === "string" ? a.ts : "";
+      const bTs = typeof b?.ts === "string" ? b.ts : "";
+      if (aTs !== bTs) return aTs.localeCompare(bTs);
+      return String(a?.entryId || "").localeCompare(String(b?.entryId || ""));
+    });
+
+    return result;
+  } catch (e) {
+    if (typeof log === "function") log("Fehler beim Laden des Memory-Logs: " + e.message);
+    return [];
+  }
+}
+
+export async function appendMemoryLogEntry(entry, log) {
+  await ensureMiroReady(log);
+
+  const col = getStorageCollection();
+  if (!entry || typeof entry !== "object") return null;
+
+  const entryId = (typeof entry.entryId === "string" && entry.entryId.trim()) ? entry.entryId.trim() : buildMemoryLogEntryId();
+  const storedEntry = {
+    version: 1,
+    ...entry,
+    entryId
+  };
+
+  if (!col) return storedEntry;
+
+  try {
+    await col.set(memoryLogEntryKey(entryId), storedEntry);
+
+    const entryIds = await loadMemoryLogIndex(log);
+    if (!entryIds.includes(entryId)) {
+      entryIds.push(entryId);
+      await saveMemoryLogIndex(entryIds, log);
+    }
+  } catch (e) {
+    if (typeof log === "function") log("Fehler beim Anhängen eines Memory-Log-Eintrags: " + e.message);
+  }
+
+  return storedEntry;
 }
 
 // --------------------------------------------------------------------
