@@ -3,10 +3,11 @@ import {
   DT_STORAGE_KEY_META,
   DT_STORAGE_KEY_BASELINE_PREFIX,
   DT_STORAGE_KEY_ACTION_BINDING_PREFIX,
-  DT_STORAGE_KEY_ACTION_BINDING_INDEX
-} from "../config.js?v=20260228-step5";
+  DT_STORAGE_KEY_ACTION_BINDING_INDEX,
+  DT_IMAGE_META_KEY_INSTANCE
+} from "../config.js?v=20260301-step6";
 
-import { isFiniteNumber } from "../utils.js?v=20260228-step5";
+import { isFiniteNumber } from "../utils.js?v=20260301-step6";
 
 // --------------------------------------------------------------------
 // Miro Ready
@@ -38,6 +39,186 @@ export function ensureMiroReady(log) {
 
 export function getBoard() {
   return window.miro?.board || null;
+}
+
+function compareItemIdsAsc(a, b) {
+  return String(a?.id ?? "").localeCompare(String(b?.id ?? ""), undefined, { numeric: true, sensitivity: "base" });
+}
+
+function normalizePositiveInt(value) {
+  const n = Number(value);
+  if (!Number.isInteger(n) || n <= 0) return null;
+  return n;
+}
+
+function getCanvasTypeConfig(templateCatalog, canvasTypeId, defaultTemplateId = null) {
+  if (canvasTypeId && templateCatalog?.[canvasTypeId]) return templateCatalog[canvasTypeId];
+  if (defaultTemplateId && templateCatalog?.[defaultTemplateId]) return templateCatalog[defaultTemplateId];
+  const first = Object.values(templateCatalog || {})[0];
+  return first || null;
+}
+
+function getCanvasTypeDisplayName(templateCatalog, canvasTypeId, defaultTemplateId = null) {
+  const cfg = getCanvasTypeConfig(templateCatalog, canvasTypeId, defaultTemplateId);
+  const raw = cfg?.agentLabelPrefix || cfg?.displayName || canvasTypeId || defaultTemplateId || "Canvas";
+  return String(raw || "Canvas").trim() || "Canvas";
+}
+
+function formatInstanceLabel(templateCatalog, canvasTypeId, serial, defaultTemplateId = null) {
+  return getCanvasTypeDisplayName(templateCatalog, canvasTypeId, defaultTemplateId) + " #" + String(serial);
+}
+
+function buildInternalInstanceIdFromImageId(imageId) {
+  return "img:" + String(imageId);
+}
+
+function normalizeCanvasInstanceMeta(rawMeta, templateCatalog, defaultTemplateId = null) {
+  const src = (rawMeta && typeof rawMeta === "object") ? rawMeta : {};
+  const canvasTypeId = typeof src.canvasTypeId === "string" && src.canvasTypeId.trim()
+    ? src.canvasTypeId.trim()
+    : (defaultTemplateId || null);
+  const instanceSerial = normalizePositiveInt(src.instanceSerial);
+  const expectedLabel = instanceSerial
+    ? formatInstanceLabel(templateCatalog, canvasTypeId, instanceSerial, defaultTemplateId)
+    : null;
+  const instanceLabel = expectedLabel || (typeof src.instanceLabel === "string" && src.instanceLabel.trim() ? src.instanceLabel.trim() : null);
+
+  return {
+    version: 1,
+    canvasTypeId,
+    instanceSerial,
+    instanceLabel
+  };
+}
+
+async function readCanvasInstanceMeta(image, templateCatalog, defaultTemplateId = null, log) {
+  if (!image?.getMetadata) {
+    return normalizeCanvasInstanceMeta(null, templateCatalog, defaultTemplateId);
+  }
+
+  try {
+    const rawMeta = await image.getMetadata(DT_IMAGE_META_KEY_INSTANCE);
+    return normalizeCanvasInstanceMeta(rawMeta, templateCatalog, defaultTemplateId);
+  } catch (e) {
+    if (typeof log === "function") {
+      log("WARNUNG: Konnte Canvas-Metadata für Bild " + image.id + " nicht lesen: " + e.message);
+    }
+    return normalizeCanvasInstanceMeta(null, templateCatalog, defaultTemplateId);
+  }
+}
+
+async function writeCanvasInstanceMeta(image, meta, templateCatalog, defaultTemplateId = null, log) {
+  const normalized = normalizeCanvasInstanceMeta(meta, templateCatalog, defaultTemplateId);
+  if (!image?.setMetadata) return normalized;
+
+  try {
+    await image.setMetadata(DT_IMAGE_META_KEY_INSTANCE, normalized);
+  } catch (e) {
+    if (typeof log === "function") {
+      log("WARNUNG: Konnte Canvas-Metadata für Bild " + image.id + " nicht speichern: " + e.message);
+    }
+  }
+
+  return normalized;
+}
+
+function computeNextInstanceSerial(instancesById, canvasTypeId) {
+  let maxSerial = 0;
+
+  for (const inst of instancesById?.values?.() || []) {
+    if (!inst || inst.canvasTypeId !== canvasTypeId) continue;
+    const serial = normalizePositiveInt(inst.instanceSerial);
+    if (serial && serial > maxSerial) maxSerial = serial;
+  }
+
+  return maxSerial + 1;
+}
+
+async function ensureReadableInstanceLabelsForImages(images, templateCatalog, defaultTemplateId, log) {
+  const templateImages = (images || []).filter((img) => detectCanvasTypeIdFromImage(img, templateCatalog));
+  if (!templateImages.length) return [];
+
+  const records = [];
+  for (const image of templateImages) {
+    const canvasTypeId = detectCanvasTypeIdFromImage(image, templateCatalog) || defaultTemplateId;
+    const meta = await readCanvasInstanceMeta(image, templateCatalog, defaultTemplateId, log);
+    records.push({
+      image,
+      originalCanvasTypeId: meta.canvasTypeId || null,
+      originalInstanceSerial: normalizePositiveInt(meta.instanceSerial),
+      originalInstanceLabel: typeof meta.instanceLabel === "string" && meta.instanceLabel.trim() ? meta.instanceLabel.trim() : null,
+      canvasTypeId,
+      instanceSerial: normalizePositiveInt(meta.instanceSerial),
+      instanceLabel: typeof meta.instanceLabel === "string" && meta.instanceLabel.trim() ? meta.instanceLabel.trim() : null
+    });
+  }
+
+  const byCanvasType = new Map();
+  for (const record of records) {
+    const key = record.canvasTypeId || defaultTemplateId || "default";
+    if (!byCanvasType.has(key)) byCanvasType.set(key, []);
+    byCanvasType.get(key).push(record);
+  }
+
+  for (const [canvasTypeId, list] of byCanvasType.entries()) {
+    list.sort((a, b) => compareItemIdsAsc(a.image, b.image));
+
+    let maxSerial = 0;
+    for (const record of list) {
+      if (record.instanceSerial && record.instanceSerial > maxSerial) {
+        maxSerial = record.instanceSerial;
+      }
+    }
+
+    const groups = new Map();
+    for (const record of list) {
+      const serialKey = record.instanceSerial || 0;
+      if (!groups.has(serialKey)) groups.set(serialKey, []);
+      groups.get(serialKey).push(record);
+    }
+
+    for (const [serialKey, group] of groups.entries()) {
+      if (!serialKey || group.length <= 1) continue;
+
+      group.sort((a, b) => compareItemIdsAsc(a.image, b.image));
+      const keep = group[0];
+      keep.instanceLabel = formatInstanceLabel(templateCatalog, canvasTypeId, keep.instanceSerial, defaultTemplateId);
+
+      for (let i = 1; i < group.length; i++) {
+        maxSerial += 1;
+        group[i].instanceSerial = maxSerial;
+        group[i].instanceLabel = formatInstanceLabel(templateCatalog, canvasTypeId, maxSerial, defaultTemplateId);
+      }
+    }
+
+    for (const record of list) {
+      if (!record.instanceSerial) {
+        maxSerial += 1;
+        record.instanceSerial = maxSerial;
+      }
+
+      const expectedLabel = formatInstanceLabel(templateCatalog, canvasTypeId, record.instanceSerial, defaultTemplateId);
+      if (record.instanceLabel !== expectedLabel) {
+        record.instanceLabel = expectedLabel;
+      }
+
+      const needsWrite =
+        record.originalCanvasTypeId !== canvasTypeId ||
+        record.originalInstanceSerial !== record.instanceSerial ||
+        record.originalInstanceLabel !== record.instanceLabel;
+
+      if (needsWrite) {
+        await writeCanvasInstanceMeta(record.image, {
+          version: 1,
+          canvasTypeId,
+          instanceSerial: record.instanceSerial,
+          instanceLabel: record.instanceLabel
+        }, templateCatalog, defaultTemplateId, log);
+      }
+    }
+  }
+
+  return records;
 }
 
 export async function registerSelectionUpdateHandler(handler, log) {
@@ -609,7 +790,7 @@ export async function computeTemplateGeometry(instance, log) {
   const dummy = { x: 0, y: 0, width: 2000, height: 1000 };
   instance.lastGeometry = dummy;
   if (typeof log === "function") {
-    log("WARNUNG: Keine echte Geometrie gefunden, verwende Dummy für Instanz " + instance.instanceId);
+    log("WARNUNG: Keine echte Geometrie gefunden, verwende Dummy für Instanz " + (instance.instanceLabel || instance.instanceId));
   }
   return dummy;
 }
@@ -987,7 +1168,6 @@ export async function registerInstanceFromImage(image, {
   defaultTemplateId,
   instancesByImageId,
   instancesById,
-  nextInstanceId,
   hasGlobalBaseline,
   createActionShapes = true,
   canvasTypeId = null,
@@ -1002,12 +1182,54 @@ export async function registerInstanceFromImage(image, {
     detectCanvasTypeIdFromImage(image, templateCatalog) ||
     defaultTemplateId;
 
+  const canvasTypeLabel = getCanvasTypeDisplayName(templateCatalog, detectedCanvasTypeId, defaultTemplateId);
+
+  let meta = await readCanvasInstanceMeta(image, templateCatalog, defaultTemplateId, log);
+  let instanceSerial = normalizePositiveInt(meta.instanceSerial);
+  let instanceLabel = instanceSerial
+    ? formatInstanceLabel(templateCatalog, detectedCanvasTypeId, instanceSerial, defaultTemplateId)
+    : null;
+
+  if (!instanceSerial) {
+    instanceSerial = computeNextInstanceSerial(instancesById, detectedCanvasTypeId);
+    instanceLabel = formatInstanceLabel(templateCatalog, detectedCanvasTypeId, instanceSerial, defaultTemplateId);
+    meta = await writeCanvasInstanceMeta(image, {
+      version: 1,
+      canvasTypeId: detectedCanvasTypeId,
+      instanceSerial,
+      instanceLabel
+    }, templateCatalog, defaultTemplateId, log);
+  } else if (meta.canvasTypeId !== detectedCanvasTypeId || meta.instanceLabel !== instanceLabel) {
+    meta = await writeCanvasInstanceMeta(image, {
+      version: 1,
+      canvasTypeId: detectedCanvasTypeId,
+      instanceSerial,
+      instanceLabel
+    }, templateCatalog, defaultTemplateId, log);
+  }
+
+  instanceSerial = normalizePositiveInt(meta.instanceSerial) || instanceSerial;
+  instanceLabel = meta.instanceLabel || instanceLabel;
+  const internalInstanceId = buildInternalInstanceIdFromImageId(image.id);
+
   let instance = instancesByImageId.get(image.id);
   if (instance) {
+    const previousInstanceId = instance.instanceId;
     instance.title = image.title || instance.title || "Canvas";
     instance.canvasTypeId = detectedCanvasTypeId || instance.canvasTypeId || defaultTemplateId;
+    instance.canvasTypeLabel = canvasTypeLabel;
+    instance.instanceSerial = instanceSerial;
+    instance.instanceLabel = instanceLabel;
+    instance.instanceId = internalInstanceId;
     instance.lastGeometry = { x: image.x, y: image.y, width: image.width, height: image.height };
     instance.actionItems = normalizeActionItems(instance.actionItems);
+
+    if (previousInstanceId && previousInstanceId !== internalInstanceId) {
+      instancesById.delete(previousInstanceId);
+      instancesById.set(internalInstanceId, instance);
+    } else if (!instancesById.has(internalInstanceId)) {
+      instancesById.set(internalInstanceId, instance);
+    }
 
     if (!createActionShapes) {
       await maybeSetFrameIdFromParent(instance, image, log);
@@ -1021,10 +1243,12 @@ export async function registerInstanceFromImage(image, {
     return instance;
   }
 
-  const id = nextInstanceId();
   instance = {
-    instanceId: id,
+    instanceId: internalInstanceId,
     canvasTypeId: detectedCanvasTypeId || defaultTemplateId,
+    canvasTypeLabel,
+    instanceSerial,
+    instanceLabel,
     imageId: image.id,
     title: image.title || "Canvas",
     lastGeometry: { x: image.x, y: image.y, width: image.width, height: image.height },
@@ -1050,10 +1274,10 @@ export async function registerInstanceFromImage(image, {
   }
 
   instancesByImageId.set(image.id, instance);
-  instancesById.set(id, instance);
+  instancesById.set(internalInstanceId, instance);
 
   if (typeof log === "function") {
-    log("Neue Canvas-Instanz registriert: " + id + " (Bild-ID " + image.id + ")");
+    log("Neue Canvas-Instanz registriert: " + instance.instanceLabel + " (Bild-ID " + image.id + ")");
   }
 
   if (hasGlobalBaseline && !instance.baselineSignatureLoaded) {
@@ -1137,7 +1361,7 @@ async function rebindActionShapesAfterScan(images, instancesByImageId, instances
     inst.actionItems = normalizeActionItems(rebound);
 
     if (hasCompleteActionBinding(inst.actionItems)) {
-      if (typeof log === "function") log("Action-Shapes re-gebunden für Instanz " + inst.instanceId);
+      if (typeof log === "function") log("Action-Shapes re-gebunden für Instanz " + (inst.instanceLabel || inst.instanceId));
       await saveActionBindingForImageId(imageId, inst.actionItems, log);
     }
   }
@@ -1150,7 +1374,6 @@ export async function scanTemplateInstances({
   defaultTemplateId,
   instancesByImageId,
   instancesById,
-  nextInstanceId,
   hasGlobalBaseline,
   log
 }) {
@@ -1168,6 +1391,8 @@ export async function scanTemplateInstances({
   }
   if (!Array.isArray(images)) return [];
 
+  await ensureReadableInstanceLabelsForImages(images, templateCatalog, defaultTemplateId, log);
+
   const templateImageIdsOnBoard = new Set();
 
   for (const img of images) {
@@ -1179,7 +1404,6 @@ export async function scanTemplateInstances({
         defaultTemplateId,
         instancesByImageId,
         instancesById,
-        nextInstanceId,
         hasGlobalBaseline,
         createActionShapes: false,
         canvasTypeId,
@@ -1212,7 +1436,7 @@ export async function scanTemplateInstances({
     if (inst) {
       instancesById.delete(inst.instanceId);
       if (typeof log === "function") {
-        log("Canvas-Instanz entfernt (Template-Bild gelöscht): " + inst.instanceId + " (Bild-ID " + imageId + ")");
+        log("Canvas-Instanz entfernt (Template-Bild gelöscht): " + (inst.instanceLabel || inst.instanceId) + " (Bild-ID " + imageId + ")");
       }
     }
 
