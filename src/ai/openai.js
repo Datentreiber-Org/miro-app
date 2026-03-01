@@ -1,4 +1,4 @@
-import { OPENAI_ENDPOINT } from "../config.js?v=20260228-step6";
+import { OPENAI_ENDPOINT } from "../config.js?v=20260228-step7";
 
 // ------------------------------------------------------------
 // Robust JSON aus Modell-Output parsen
