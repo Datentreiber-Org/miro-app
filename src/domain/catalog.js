@@ -1,17 +1,17 @@
-import { TEMPLATE_ID, DT_CANVAS_DEFS } from "../config.js?v=20260228-step5";
+import { TEMPLATE_ID, DT_CANVAS_DEFS } from "../config.js?v=20260301-step6";
 import {
   stripHtml,
   isFiniteNumber,
   buildInstanceSignatureFromClassification,
   computeInstanceDiffFromSignatures,
   diffHasChanges
-} from "../utils.js?v=20260228-step5";
+} from "../utils.js?v=20260301-step6";
 import {
   computeTemplateGeometry,
   buildInstanceGeometryIndex,
   resolveBoardCoords,
   findInstanceByPoint
-} from "../miro/board.js?v=20260228-step5";
+} from "../miro/board.js?v=20260301-step6";
 
 // --------------------------------------------------------------------
 // Canvas Definitions / Region Mapping
@@ -349,7 +349,9 @@ export async function rebuildLiveCatalog({ ctx, instancesById, clusterAssignment
     if (!live) {
       live = {
         instanceId: inst.instanceId,
+        instanceLabel: inst.instanceLabel || null,
         canvasTypeId: inst.canvasTypeId,
+        canvasTypeLabel: inst.canvasTypeLabel || inst.title || inst.canvasTypeId || TEMPLATE_ID,
         imageId: inst.imageId,
         geometry: instGeom.get(inst.instanceId) || null,
         regions: {
@@ -604,7 +606,10 @@ export function buildClassificationFromLiveInstance(instance, liveInst) {
   return {
     template: {
       id: instance.canvasTypeId,
-      name: instance.title || "Datentreiber 3-Boxes",
+      name: instance.canvasTypeLabel || instance.title || "Datentreiber 3-Boxes",
+      canvasTypeId: instance.canvasTypeId,
+      canvasTypeLabel: instance.canvasTypeLabel || instance.title || "Datentreiber 3-Boxes",
+      instanceLabel: instance.instanceLabel || null,
       imageId: instance.imageId,
       headerSummary
     },
@@ -795,7 +800,16 @@ export function buildPromptPayloadFromClassification(classification, { useAliase
       : [];
 
     return {
-      template: { name: one.template?.name, headerSummary: one.template?.headerSummary },
+      instanceLabel: one.template?.instanceLabel || null,
+      canvasTypeId: one.template?.canvasTypeId || one.template?.id || null,
+      canvasTypeLabel: one.template?.canvasTypeLabel || one.template?.name || null,
+      template: {
+        name: one.template?.name,
+        headerSummary: one.template?.headerSummary,
+        instanceLabel: one.template?.instanceLabel || null,
+        canvasTypeId: one.template?.canvasTypeId || one.template?.id || null,
+        canvasTypeLabel: one.template?.canvasTypeLabel || one.template?.name || null
+      },
       header,
       areas: Object.keys(areasByName).map((k) => areasByName[k]),
       connections: connectionsSummary
@@ -887,8 +901,9 @@ export function buildBoardCatalogSummary(instancesById, {
     }
 
     instances.push({
-      instanceId: id,
+      instanceLabel: inst.instanceLabel || null,
       canvasTypeId: inst.canvasTypeId,
+      canvasTypeLabel: inst.canvasTypeLabel || inst.title || inst.canvasTypeId || TEMPLATE_ID,
       lastStickyCount: inst.lastStickyCount || 0,
       headerSummary,
       isActive,
