@@ -1,4 +1,4 @@
-import { TEMPLATE_ID } from "../config.js?v=20260301-step8";
+import { TEMPLATE_ID } from "../config.js?v=20260301-step9";
 
 const PERSONA_BASICS_PACK = {
   id: "persona-basics-v1",
@@ -166,4 +166,16 @@ export function getDefaultStepId(packOrId) {
   if (explicit && getExerciseStep(pack, explicit)) return explicit;
   const firstStep = listExerciseSteps(pack)[0];
   return firstStep?.id || null;
+}
+
+export function getNextExerciseStep(packOrId, currentStepId) {
+  const steps = listExerciseSteps(packOrId);
+  if (!steps.length) return null;
+
+  const normalizedCurrentStepId = asNonEmptyString(currentStepId);
+  if (!normalizedCurrentStepId) return steps[0] || null;
+
+  const currentIndex = steps.findIndex((step) => step?.id === normalizedCurrentStepId);
+  if (currentIndex === -1) return steps[0] || null;
+  return steps[currentIndex + 1] || null;
 }
