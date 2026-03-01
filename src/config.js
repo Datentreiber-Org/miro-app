@@ -16,7 +16,14 @@ export const DT_TEMPLATE_CATALOG = {
     agentLabelPrefix: "Datentreiber 3-Boxes",
     thumbnailUrl: TEMPLATE_IMAGE_URL,
     imageUrl: TEMPLATE_IMAGE_URL,
-    insertWidthPx: 2000
+    insertWidthPx: 2000,
+    promptContext: `
+Dieser Canvas-Typ hat drei Body-Bereiche plus Header und Footer:
+- Box 1 (links)
+- Box 2 (Mitte)
+- Box 3 (rechts)
+Sticky Notes müssen inhaltlich sinnvoll diesen Bereichen zugeordnet werden.
+Wenn Beziehungen zwischen Stickies bestehen, sollen Connectoren so geplant werden, dass die inhaltliche Einheit lesbar bleibt.`.trim()
   }
 };
 
@@ -30,6 +37,8 @@ export const DT_STORAGE_KEY_MEMORY_STATE = "dt-memory-state-v1";
 export const DT_STORAGE_KEY_MEMORY_LOG_INDEX = "dt-memory-log-index-v1";
 export const DT_STORAGE_KEY_MEMORY_LOG_ENTRY_PREFIX = "dt-memory-log-entry-v1:";
 export const DT_IMAGE_META_KEY_INSTANCE = "dt-canvas-instance-v1";
+export const DT_ANCHOR_META_KEY_BOARD = "dt-board-config-v1";
+export const DT_STORAGE_KEY_EXERCISE_RUNTIME = "dt-exercise-runtime-v1";
 export const DT_MEMORY_RECENT_LOG_LIMIT = 12;
 
 // Canvas-Definitions (Polygon-basiert, normalisiert 0..1)
@@ -107,7 +116,8 @@ Du siehst:
 - eine oder mehrere selektierte Canvas-Instanzen (3-Boxes-Canvas) mit Sticky Notes als JSON unter activeCanvasState bzw. activeCanvasStates
 - einen Board-Katalog mit allen weiteren Instanzen (nur als Zusammenfassung)
 - ein aktuelles Gedächtnisobjekt unter memoryState
-- eine kleine Verlaufsliste jüngerer Gedächtniseinträge unter recentMemoryLogEntries.
+- eine kleine Verlaufsliste jüngerer Gedächtniseinträge unter recentMemoryLogEntries
+- optional einen Übungs-/Trainingskontext unter exerciseContext.
 
 Deine Aufgabe besteht aus drei gleichwertigen Teilen:
 1) sinnvolle Sticky Notes planen, verschieben, ergänzen oder löschen,
@@ -128,6 +138,7 @@ WICHTIG:
 - Connectoren sind kein optionales Nice-to-have, sondern ein fester Teil der Aufgabe, wenn Relationen erkennbar sind.
 - Bestehende Kernaufgaben bleiben vollständig bestehen: Inhalt, Area-Zuordnung, Cluster, Tags, Connectoren, Board-Kontext und Gedächtnis müssen zusammen konsistent behandelt werden.
 - memoryEntry ist Pflicht. Es beschreibt semantisch, was dieser Lauf bedeutet. Referenziere dort niemals Sticky-IDs, keine Rohkoordinaten und keine internen technischen IDs. Referenziere Canvas ausschließlich über instanceLabel.
+- Wenn exerciseContext vorhanden ist, behandle ihn als verbindlichen Zusatzkontext für Ziel, Schritt, erlaubte Aktionen und sichtbare Instruktion.
 
 Antworte ausschließlich mit einem JSON-Objekt in diesem Format:
 {
@@ -179,7 +190,8 @@ Du siehst:
 - detaillierte JSON-Daten zu allen aktiven Instanzen (activeCanvasStates)
 - optionale Changes seit dem letzten Agent-Run (activeInstanceChangesSinceLastAgent)
 - ein aktuelles Gedächtnisobjekt unter memoryState
-- eine kleine Verlaufsliste jüngerer Gedächtniseinträge unter recentMemoryLogEntries.
+- eine kleine Verlaufsliste jüngerer Gedächtniseinträge unter recentMemoryLogEntries
+- optional einen Übungs-/Trainingskontext unter exerciseContext.
 
 Analysiere die Gesamtsituation auf dem Board, schlage sinnvolle nächste Schritte vor und formuliere bei Bedarf Board-Aktionen als JSON.
 Dabei sind Sticky Notes, Connectoren und memoryEntry gleichwertige Bestandteile der Aufgabe.
@@ -194,6 +206,7 @@ WICHTIG:
 - Wenn du neue Stickies anlegst und diese später in derselben Antwort in weiteren Actions referenzieren willst, gib der create_sticky-Action zusätzlich ein Feld "refId". Diese refId darfst du danach in move_sticky, delete_sticky und create_connector wie eine Sticky-ID verwenden.
 - Connectoren sind ein fester Teil der Aufgabe, sobald Relationen erkennbar sind.
 - memoryEntry ist Pflicht. Es beschreibt semantisch, was dieser globale Lauf bedeutet. Referenziere dort niemals Sticky-IDs, keine Rohkoordinaten und keine internen technischen IDs. Referenziere Canvas ausschließlich über instanceLabel.
+- Wenn exerciseContext vorhanden ist, behandle ihn als verbindlichen Zusatzkontext für Ziel, Schritt, erlaubte Aktionen und sichtbare Instruktion.
 
 Verwende für Actions ausschließlich diese Typen:
 - { "type": "move_sticky", "instanceLabel": "Datentreiber 3-Boxes #1", "stickyId": "S0001", "targetArea": "Box 2 (Mitte)" }
