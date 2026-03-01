@@ -4,14 +4,16 @@ import {
   DT_CANVAS_DEFS,
   DT_PROMPT_CATALOG,
   DT_GLOBAL_SYSTEM_PROMPT,
+  DT_MEMORY_RECENT_LOG_LIMIT,
   STICKY_LAYOUT
-} from "./config.js?v=20260301-step6";
+} from "./config.js?v=20260301-step7";
 
-import { createLogger, stripHtml, extractUnderlinedText, isFiniteNumber } from "./utils.js?v=20260301-step6";
+import { createLogger, stripHtml, extractUnderlinedText, isFiniteNumber } from "./utils.js?v=20260301-step7";
 
-import * as Board from "./miro/board.js?v=20260301-step6";
-import * as Catalog from "./domain/catalog.js?v=20260301-step6";
-import * as OpenAI from "./ai/openai.js?v=20260301-step6";
+import * as Board from "./miro/board.js?v=20260301-step7";
+import * as Catalog from "./domain/catalog.js?v=20260301-step7";
+import * as OpenAI from "./ai/openai.js?v=20260301-step7";
+import * as Memory from "./runtime/memory.js?v=20260301-step7";
 
 // --------------------------------------------------------------------
 // State (Controller-Level)
@@ -42,6 +44,10 @@ const state = {
   // Live Catalog cache
   liveCatalog: null,
   stickyOwnerCache: null,
+
+  // Memory v1
+  memoryState: Memory.createEmptyMemoryState(),
+  memoryLog: [],
 
   // UI state
   selectedCanvasTypeId: TEMPLATE_ID,
@@ -229,12 +235,17 @@ async function afterMiroReady() {
 
   // Initial scan
   await ensureInstancesScanned(true);
+  await loadMemoryRuntimeState();
 
   // UI selection events
   await Board.registerSelectionUpdateHandler(onSelectionUpdate, log);
   await refreshSelectionStatusFromBoard();
 
-  log("Init abgeschlossen. Global baseline: " + (state.hasGlobalBaseline ? ("JA (" + (state.globalBaselineAt || "unknown") + ")") : "NEIN"));
+  log(
+    "Init abgeschlossen. Global baseline: " +
+    (state.hasGlobalBaseline ? ("JA (" + (state.globalBaselineAt || "unknown") + ")") : "NEIN") +
+    ", Memory-Log: " + state.memoryLog.length + " Einträge."
+  );
 }
 
 // --------------------------------------------------------------------
@@ -272,6 +283,91 @@ function getInstanceLabelsFromIds(instanceIds) {
   }
 
   return labels;
+}
+
+async function loadMemoryRuntimeState() {
+  state.memoryState = Memory.normalizeMemoryState(await Board.loadMemoryState(log));
+  state.memoryLog = Memory.normalizeMemoryLog(await Board.loadMemoryLog(log));
+}
+
+function buildMemoryInjectionPayload() {
+  return {
+    memoryState: Memory.normalizeMemoryState(state.memoryState || Memory.createEmptyMemoryState()),
+    recentMemoryLogEntries: Memory.getRecentMemoryEntries(state.memoryLog, DT_MEMORY_RECENT_LOG_LIMIT)
+  };
+}
+
+function createEmptyActionExecutionStats() {
+  return {
+    createdStickyCount: 0,
+    movedStickyCount: 0,
+    deletedStickyCount: 0,
+    createdConnectorCount: 0,
+    failedActionCount: 0,
+    executedMutationCount: 0
+  };
+}
+
+function mergeActionExecutionStats(target, addition) {
+  if (!target || !addition) return target;
+  target.createdStickyCount += Number(addition.createdStickyCount || 0);
+  target.movedStickyCount += Number(addition.movedStickyCount || 0);
+  target.deletedStickyCount += Number(addition.deletedStickyCount || 0);
+  target.createdConnectorCount += Number(addition.createdConnectorCount || 0);
+  target.failedActionCount += Number(addition.failedActionCount || 0);
+  target.executedMutationCount += Number(addition.executedMutationCount || 0);
+  return target;
+}
+
+function summarizeAppliedActions(actionResult) {
+  const src = (actionResult && typeof actionResult === "object") ? actionResult : {};
+
+  return {
+    createdStickyCount: Number(src.createdStickyCount || 0),
+    movedStickyCount: Number(src.movedStickyCount || 0),
+    deletedStickyCount: Number(src.deletedStickyCount || 0),
+    createdConnectorCount: Number(src.createdConnectorCount || 0),
+    failedActionCount: Number(src.failedActionCount || 0),
+    skippedActionCount: Number(src.skippedCount || 0),
+    infoCount: Number(src.infoCount || 0),
+    targetedInstanceCount: Number(src.targetedInstanceCount || 0),
+    executedMutationCount: Number(src.executedMutationCount || 0),
+    plannedMutationCount: Number(src.appliedCount || 0)
+  };
+}
+
+async function persistMemoryAfterAgentRun(agentObj, runContext, actionResult) {
+  const fallbackSummary = pickFirstNonEmptyString(agentObj?.analysis, "Agent-Run ohne Summary.");
+  const normalizedMemoryEntry = Memory.normalizeMemoryEntry(agentObj?.memoryEntry, { fallbackSummary });
+
+  if (!agentObj?.memoryEntry) {
+    log("WARNUNG: Agent lieferte kein memoryEntry. Verwende Fallback aus analysis.");
+  }
+
+  const timestampIso = new Date().toISOString();
+  const nextMemoryState = Memory.mergeMemoryEntryIntoState(state.memoryState, normalizedMemoryEntry, {
+    timestamp: timestampIso
+  });
+  const storedLogEntry = Memory.buildStoredMemoryLogEntry(
+    normalizedMemoryEntry,
+    runContext,
+    summarizeAppliedActions(actionResult),
+    { timestamp: timestampIso }
+  );
+
+  await Board.saveMemoryState(nextMemoryState, log);
+  const appendedLogEntry = await Board.appendMemoryLogEntry(storedLogEntry, log);
+
+  state.memoryState = nextMemoryState;
+  state.memoryLog = Memory.normalizeMemoryLog([
+    ...(Array.isArray(state.memoryLog) ? state.memoryLog : []),
+    appendedLogEntry || storedLogEntry
+  ]);
+
+  log(
+    "Memory aktualisiert: " + state.memoryLog.length +
+    " Einträge, stepStatus=" + (state.memoryState.stepStatus || "(leer)") + "."
+  );
 }
 
 async function ensureInstancesScanned(force = false) {
@@ -906,15 +1002,18 @@ async function computeInstanceStatesById(liveCatalog) {
 // Apply agent actions (dispatcher + board ops)
 // --------------------------------------------------------------------
 async function applyAgentActionsToInstance(instanceId, actions) {
+  const executionStats = createEmptyActionExecutionStats();
+
   if (!Array.isArray(actions) || actions.length === 0) {
     log("Keine Actions vom Agenten (leer).");
-    return;
+    return executionStats;
   }
 
   const instance = state.instancesById.get(instanceId);
   if (!instance) {
     log("applyAgentActions: Unbekannte Instanz " + instanceId);
-    return;
+    executionStats.failedActionCount += actions.length;
+    return executionStats;
   }
 
   const instanceLabel = instance.instanceLabel || instanceId;
@@ -922,10 +1021,10 @@ async function applyAgentActionsToInstance(instanceId, actions) {
   const geom = await Board.computeTemplateGeometry(instance, log);
   if (!geom) {
     log("applyAgentActions: Keine Geometrie für Instanz " + instanceLabel);
-    return;
+    executionStats.failedActionCount += actions.length;
+    return executionStats;
   }
 
-  // ---- Layout State für create_sticky/move_sticky: pro Region belegte Rects ----
   if (!state.liveCatalog || !state.liveCatalog.instances?.[instanceId]) {
     await refreshBoardState();
   }
@@ -937,6 +1036,20 @@ async function applyAgentActionsToInstance(instanceId, actions) {
   for (const connection of liveInst?.connections || []) {
     if (!connection?.fromStickyId || !connection?.toStickyId) continue;
     connectedPairSet.add(makeCanonicalStickyPairKey(connection.fromStickyId, connection.toStickyId));
+  }
+
+  function markSuccess(type) {
+    executionStats.executedMutationCount += 1;
+
+    if (type === "create_sticky") executionStats.createdStickyCount += 1;
+    if (type === "move_sticky") executionStats.movedStickyCount += 1;
+    if (type === "delete_sticky") executionStats.deletedStickyCount += 1;
+    if (type === "create_connector") executionStats.createdConnectorCount += 1;
+  }
+
+  function markFailure(message) {
+    executionStats.failedActionCount += 1;
+    if (message) log(message);
   }
 
   function rectFromLiveSticky(st) {
@@ -970,7 +1083,6 @@ async function applyAgentActionsToInstance(instanceId, actions) {
     if (occ.length === 0) {
       return { width: STICKY_LAYOUT.defaultWidthPx, height: STICKY_LAYOUT.defaultHeightPx };
     }
-    // Nimm als "typische" Größe die erste (stabil genug für Layout)
     return {
       width: occ[0].width || STICKY_LAYOUT.defaultWidthPx,
       height: occ[0].height || STICKY_LAYOUT.defaultHeightPx
@@ -1053,17 +1165,15 @@ async function applyAgentActionsToInstance(instanceId, actions) {
   }
 
   const handlers = {
-    // MOVE: wenn targetPx/targetPy fehlen, dann "snap to next free slot" in targetArea
     "move_sticky": async (action) => {
       const stickyId = resolveActionStickyReference(action.stickyId);
       if (!stickyId) {
-        log("move_sticky: Sticky-Referenz nicht auflösbar: " + String(action.stickyId || "(leer)"));
+        markFailure("move_sticky: Sticky-Referenz nicht auflösbar: " + String(action.stickyId || "(leer)"));
         return;
       }
 
       const canvasTypeId = instance.canvasTypeId || TEMPLATE_ID;
 
-      // Sticky-Item laden (für echte width/height)
       let stickyItem = null;
       try {
         stickyItem = await Board.getItemById(stickyId, log);
@@ -1072,7 +1182,6 @@ async function applyAgentActionsToInstance(instanceId, actions) {
       const stickyW = isFiniteNumber(stickyItem?.width) ? stickyItem.width : STICKY_LAYOUT.defaultWidthPx;
       const stickyH = isFiniteNumber(stickyItem?.height) ? stickyItem.height : STICKY_LAYOUT.defaultHeightPx;
 
-      // Vorab entfernen (damit wir uns nicht selbst blockieren)
       removeFromAllOccupied(stickyId);
 
       let targetX = null;
@@ -1112,14 +1221,12 @@ async function applyAgentActionsToInstance(instanceId, actions) {
             targetX = pos.x;
             targetY = pos.y;
           } else {
-            // Fallback: Center
             const center = Catalog.areaCenterNormalized(regionId, canvasTypeId);
             const coords = Catalog.normalizedToBoardCoords(geom, center.px, center.py);
             targetX = coords.x;
             targetY = coords.y;
           }
         } else {
-          // Unbekannte Area -> Center (altes Verhalten)
           const center = Catalog.areaCenterNormalized(null, canvasTypeId);
           const coords = Catalog.normalizedToBoardCoords(geom, center.px, center.py);
           targetX = coords.x;
@@ -1128,13 +1235,12 @@ async function applyAgentActionsToInstance(instanceId, actions) {
       }
 
       if (!isFiniteNumber(targetX) || !isFiniteNumber(targetY)) {
-        log("move_sticky: Zielkoordinaten ungültig für Sticky " + stickyId);
+        markFailure("move_sticky: Zielkoordinaten ungültig für Sticky " + stickyId);
         return;
       }
 
       await Board.moveItemByIdToBoardCoords(stickyId, targetX, targetY, log);
 
-      // Occupied updaten (damit nachfolgende create/move nicht kollidieren)
       const destRegionId = detectBodyRegionIdFromBoardCoords(canvasTypeId, targetX, targetY);
       if (destRegionId && occupiedByRegion[destRegionId]) {
         occupiedByRegion[destRegionId].push({
@@ -1145,24 +1251,24 @@ async function applyAgentActionsToInstance(instanceId, actions) {
           height: stickyH
         });
       }
+
+      markSuccess("move_sticky");
     },
 
-    // CREATE: Region-Fill-Layout (Grid + Wrap + collision-aware)
     "create_sticky": async (action) => {
       const text = action.text || "(leer)";
       const canvasTypeId = instance.canvasTypeId || TEMPLATE_ID;
 
-      // Robust: Agenten-Outputs variieren manchmal (area vs targetArea)
       const areaName = action.area || action.targetArea || null;
       const region = Catalog.areaNameToRegion(areaName);
       const regionId = region?.id || null;
 
-      // Fallback: unbekannte Area → altes Verhalten (Center)
       if (!regionId || !occupiedByRegion[regionId]) {
         const center = Catalog.areaCenterNormalized(null, canvasTypeId);
         const coords = Catalog.normalizedToBoardCoords(geom, center.px, center.py);
-
-        await createStickyAtBoardPosition({ ...action, text }, coords.x, coords.y, null);
+        const sticky = await createStickyAtBoardPosition({ ...action, text }, coords.x, coords.y, null);
+        if (sticky?.id) markSuccess("create_sticky");
+        else markFailure("create_sticky: Miro lieferte kein Sticky-Item zurück.");
         return;
       }
 
@@ -1183,8 +1289,9 @@ async function applyAgentActionsToInstance(instanceId, actions) {
         log("create_sticky: Konnte keine Platzierung berechnen (Region=" + regionId + "). Fallback Center.");
         const center = Catalog.areaCenterNormalized(regionId, canvasTypeId);
         const coords = Catalog.normalizedToBoardCoords(geom, center.px, center.py);
-
-        await createStickyAtBoardPosition({ ...action, text }, coords.x, coords.y, null);
+        const sticky = await createStickyAtBoardPosition({ ...action, text }, coords.x, coords.y, null);
+        if (sticky?.id) markSuccess("create_sticky");
+        else markFailure("create_sticky: Miro lieferte kein Sticky-Item zurück.");
         return;
       }
 
@@ -1196,20 +1303,21 @@ async function applyAgentActionsToInstance(instanceId, actions) {
         );
       }
 
-      await createStickyAtBoardPosition({ ...action, text }, pos.x, pos.y, size);
+      const sticky = await createStickyAtBoardPosition({ ...action, text }, pos.x, pos.y, size);
+      if (sticky?.id) markSuccess("create_sticky");
+      else markFailure("create_sticky: Miro lieferte kein Sticky-Item zurück.");
     },
 
     "delete_sticky": async (action) => {
       const stickyId = resolveActionStickyReference(action.stickyId);
       if (!stickyId) {
-        log("delete_sticky: Sticky-Referenz nicht auflösbar: " + String(action.stickyId || "(leer)"));
+        markFailure("delete_sticky: Sticky-Referenz nicht auflösbar: " + String(action.stickyId || "(leer)"));
         return;
       }
 
-      // occupied vorher entfernen (damit nachfolgende creates wieder Slots nutzen können)
       removeFromAllOccupied(stickyId);
-
       await Board.removeItemById(stickyId, log);
+      markSuccess("delete_sticky");
     },
 
     "create_connector": async (action) => {
@@ -1217,7 +1325,7 @@ async function applyAgentActionsToInstance(instanceId, actions) {
       const toStickyId = resolveActionStickyReference(action.toStickyId);
 
       if (!fromStickyId || !toStickyId) {
-        log(
+        markFailure(
           "create_connector: Sticky-Referenzen nicht auflösbar (from=" +
           String(action.fromStickyId || "(leer)") +
           ", to=" + String(action.toStickyId || "(leer)") + ")."
@@ -1226,39 +1334,54 @@ async function applyAgentActionsToInstance(instanceId, actions) {
       }
 
       if (fromStickyId === toStickyId) {
-        log("create_connector: Quelle und Ziel sind identisch – übersprungen (" + fromStickyId + ").");
+        markFailure("create_connector: Quelle und Ziel sind identisch – übersprungen (" + fromStickyId + ").");
         return;
       }
 
       if (hasKnownConnectorBetween(fromStickyId, toStickyId)) {
-        log("create_connector: Verbindung zwischen " + fromStickyId + " und " + toStickyId + " existiert bereits – übersprungen.");
+        markFailure("create_connector: Verbindung zwischen " + fromStickyId + " und " + toStickyId + " existiert bereits – übersprungen.");
         return;
       }
 
-      try {
-        await Board.createConnectorBetweenItems({
-          startItemId: fromStickyId,
-          endItemId: toStickyId,
-          directed: action.directed !== false,
-          frameId: instance.actionItems?.frameId || null
-        }, log);
-        rememberConnectorPair(fromStickyId, toStickyId);
-      } catch (e) {
-        log("create_connector: Fehler beim Erzeugen des Connectors: " + e.message);
-      }
+      await Board.createConnectorBetweenItems({
+        startItemId: fromStickyId,
+        endItemId: toStickyId,
+        directed: action.directed !== false,
+        frameId: instance.actionItems?.frameId || null
+      }, log);
+      rememberConnectorPair(fromStickyId, toStickyId);
+      markSuccess("create_connector");
     }
   };
+
+  async function runActionsSequentially(actionList) {
+    for (const action of actionList || []) {
+      const handler = handlers[action?.type];
+      if (typeof handler !== "function") {
+        markFailure("Unbekannter Action-Typ innerhalb applyAgentActionsToInstance: " + String(action?.type || "(leer)"));
+        continue;
+      }
+
+      try {
+        await handler(action);
+      } catch (e) {
+        markFailure("Action '" + action.type + "' fehlgeschlagen: " + e.message);
+      }
+    }
+  }
 
   const regularActions = actions.filter((action) => action?.type !== "create_connector");
   const connectorActions = actions.filter((action) => action?.type === "create_connector");
 
   log("Wende " + actions.length + " Action(s) an (Instanz " + instanceLabel + ").");
   if (regularActions.length) {
-    await OpenAI.dispatchActions(regularActions, handlers, log);
+    await runActionsSequentially(regularActions);
   }
   if (connectorActions.length) {
-    await OpenAI.dispatchActions(connectorActions, handlers, log);
+    await runActionsSequentially(connectorActions);
   }
+
+  return executionStats;
 }
 
 // --------------------------------------------------------------------
@@ -1310,6 +1433,7 @@ async function runAgentForInstance(instanceId, options = {}) {
 async function runAgentForSelectedInstances(selectedInstanceIds, options = {}) {
   await Board.ensureMiroReady(log);
   await ensureInstancesScanned();
+  await loadMemoryRuntimeState();
 
   const normalizedSelectedIds = Array.from(new Set((selectedInstanceIds || []).filter((id) => state.instancesById.has(id))));
   const selectedInstanceLabels = getInstanceLabelsFromIds(normalizedSelectedIds);
@@ -1371,6 +1495,7 @@ async function runAgentForSelectedInstances(selectedInstanceIds, options = {}) {
     .filter((id) => state.instancesById.has(id));
   const singleLabel = resolvedActiveLabels.length === 1 ? resolvedActiveLabels[0] : null;
   const boardCatalog = buildBoardCatalogForSelectedInstances(resolvedActiveIds);
+  const memoryPayload = buildMemoryInjectionPayload();
 
   const userPayload = {
     userQuestion: userText,
@@ -1380,7 +1505,9 @@ async function runAgentForSelectedInstances(selectedInstanceIds, options = {}) {
     activeCanvasState: singleLabel ? activeCanvasStates[singleLabel] : null,
     activeCanvasStates,
     activeInstanceChangesSinceLastAgent,
-    hint: "boardCatalog = Kurzüberblick über alle Canvas, activeCanvasStates = Detaildaten nur für die selektierten Instanzen. Wenn mehrere Instanzen selektiert sind, muss jede mutierende Action eine instanceLabel enthalten. Verwende exakt die menschenlesbaren Canvas-Labels aus selectedInstanceLabels bzw. den Schlüsseln von activeCanvasStates. Verwende create_connector für Beziehungen zwischen Stickies. fromStickyId/toStickyId dürfen bestehende Alias-IDs oder refId-Werte aus create_sticky-Actions derselben Antwort sein."
+    memoryState: memoryPayload.memoryState,
+    recentMemoryLogEntries: memoryPayload.recentMemoryLogEntries,
+    hint: "boardCatalog = Kurzüberblick über alle Canvas, activeCanvasStates = Detaildaten nur für die selektierten Instanzen. Wenn mehrere Instanzen selektiert sind, muss jede mutierende Action eine instanceLabel enthalten. Verwende exakt die menschenlesbaren Canvas-Labels aus selectedInstanceLabels bzw. den Schlüsseln von activeCanvasStates. Verwende create_connector für Beziehungen zwischen Stickies. fromStickyId/toStickyId dürfen bestehende Alias-IDs oder refId-Werte aus create_sticky-Actions derselben Antwort sein. memoryState/recentMemoryLogEntries bilden das semantische Arbeitsgedächtnis; referenziere dort Canvas ebenfalls nur über instanceLabel."
   };
 
   try {
@@ -1414,14 +1541,22 @@ async function runAgentForSelectedInstances(selectedInstanceIds, options = {}) {
           triggerInstanceId: singleLabel ? getInternalInstanceIdByLabel(singleLabel) : null,
           sourceLabel: "Instanz-Agent"
         })
-      : { appliedCount: 0, skippedCount: 0, infoCount: 0, targetedInstanceCount: 0 };
+      : {
+          appliedCount: 0,
+          skippedCount: 0,
+          infoCount: 0,
+          targetedInstanceCount: 0,
+          ...createEmptyActionExecutionStats()
+        };
 
     if (Array.isArray(agentObj.actions) && agentObj.actions.length) {
       log(
         "Instanz-Agent: Action-Run abgeschlossen. " +
-        "Mutationen=" + actionResult.appliedCount +
+        "Geplant=" + actionResult.appliedCount +
+        ", ausgeführt=" + actionResult.executedMutationCount +
         ", Hinweise=" + actionResult.infoCount +
         ", übersprungen=" + actionResult.skippedCount +
+        ", fehlgeschlagen=" + actionResult.failedActionCount +
         ", Ziel-Instanzen=" + actionResult.targetedInstanceCount + "."
       );
     } else {
@@ -1437,6 +1572,13 @@ async function runAgentForSelectedInstances(selectedInstanceIds, options = {}) {
       inst.lastAgentRunAt = nowIso;
       inst.lastChangedAt = nowIso;
     }
+
+    await persistMemoryAfterAgentRun(agentObj, {
+      runMode: "selection",
+      trigger: null,
+      targetInstanceLabels: resolvedActiveLabels,
+      userRequest: userText
+    }, actionResult);
 
   } catch (e) {
     log("Exception beim Agent-Run: " + e.message);
@@ -1727,10 +1869,17 @@ function resolveActionInstanceId(action, { candidateInstanceIds = null, triggerI
 async function applyResolvedAgentActions(actions, { candidateInstanceIds, triggerInstanceId = null, sourceLabel = "Agent" }) {
   if (!Array.isArray(actions) || actions.length === 0) {
     log(sourceLabel + ": Keine Actions geliefert.");
-    return { appliedCount: 0, skippedCount: 0, infoCount: 0, targetedInstanceCount: 0 };
+    return {
+      appliedCount: 0,
+      skippedCount: 0,
+      infoCount: 0,
+      targetedInstanceCount: 0,
+      ...createEmptyActionExecutionStats()
+    };
   }
 
   const grouped = new Map();
+  const aggregatedExecutionStats = createEmptyActionExecutionStats();
   let appliedCount = 0;
   let skippedCount = 0;
   let infoCount = 0;
@@ -1809,14 +1958,16 @@ async function applyResolvedAgentActions(actions, { candidateInstanceIds, trigge
       sourceLabel + ": Wende " + instanceActions.length + " Action(s) auf Instanz " +
       (getInstanceLabelByInternalId(instanceId) || instanceId) + " an."
     );
-    await applyAgentActionsToInstance(instanceId, instanceActions);
+    const executionStats = await applyAgentActionsToInstance(instanceId, instanceActions);
+    mergeActionExecutionStats(aggregatedExecutionStats, executionStats);
   }
 
   return {
     appliedCount,
     skippedCount,
     infoCount,
-    targetedInstanceCount: grouped.size
+    targetedInstanceCount: grouped.size,
+    ...aggregatedExecutionStats
   };
 }
 
@@ -1826,6 +1977,7 @@ async function applyResolvedAgentActions(actions, { candidateInstanceIds, trigge
 async function runGlobalAgent(triggerInstanceId, userText) {
   await Board.ensureMiroReady(log);
   await ensureInstancesScanned();
+  await loadMemoryRuntimeState();
 
   const apiKey = getApiKey();
   const model = getModel();
@@ -1884,6 +2036,8 @@ async function runGlobalAgent(triggerInstanceId, userText) {
     activeInstanceChangesSinceLastAgent[instanceLabel] = Catalog.aliasDiffForActiveInstance(st.diff, state.aliasState);
   }
 
+  const memoryPayload = buildMemoryInjectionPayload();
+
   const userPayload = {
     userQuestion: finalUserText,
     triggerInstanceLabel: getInstanceLabelByInternalId(triggerInstanceId) || null,
@@ -1892,7 +2046,9 @@ async function runGlobalAgent(triggerInstanceId, userText) {
     activeInstanceLabels,
     activeCanvasStates,
     activeInstanceChangesSinceLastAgent,
-    hint: "boardCatalog = Übersicht, activeCanvasStates = Detaildaten nur für aktive Instanzen. Jede mutierende Action muss genau eine instanceLabel enthalten und dieses Label muss exakt einem Wert aus activeInstanceLabels bzw. einem Schlüssel von activeCanvasStates entsprechen. area/targetArea muss exakt einem vorhandenen Area-Namen der Ziel-Instanz entsprechen. Verwende create_connector für Beziehungen zwischen Stickies. fromStickyId/toStickyId dürfen bestehende Alias-IDs oder refId-Werte aus create_sticky-Actions derselben Antwort sein."
+    memoryState: memoryPayload.memoryState,
+    recentMemoryLogEntries: memoryPayload.recentMemoryLogEntries,
+    hint: "boardCatalog = Übersicht, activeCanvasStates = Detaildaten nur für aktive Instanzen. Jede mutierende Action muss genau eine instanceLabel enthalten und dieses Label muss exakt einem Wert aus activeInstanceLabels bzw. einem Schlüssel von activeCanvasStates entsprechen. area/targetArea muss exakt einem vorhandenen Area-Namen der Ziel-Instanz entsprechen. Verwende create_connector für Beziehungen zwischen Stickies. fromStickyId/toStickyId dürfen bestehende Alias-IDs oder refId-Werte aus create_sticky-Actions derselben Antwort sein. memoryState/recentMemoryLogEntries bilden das semantische Arbeitsgedächtnis; referenziere dort Canvas ebenfalls nur über instanceLabel."
   };
 
   try {
@@ -1926,21 +2082,28 @@ async function runGlobalAgent(triggerInstanceId, userText) {
           triggerInstanceId,
           sourceLabel: "Global Agent"
         })
-      : { appliedCount: 0, skippedCount: 0, infoCount: 0, targetedInstanceCount: 0 };
+      : {
+          appliedCount: 0,
+          skippedCount: 0,
+          infoCount: 0,
+          targetedInstanceCount: 0,
+          ...createEmptyActionExecutionStats()
+        };
 
     if (Array.isArray(agentObj.actions) && agentObj.actions.length) {
       log(
         "Global Agent: Action-Run abgeschlossen. " +
-        "Mutationen=" + actionResult.appliedCount +
+        "Geplant=" + actionResult.appliedCount +
+        ", ausgeführt=" + actionResult.executedMutationCount +
         ", Hinweise=" + actionResult.infoCount +
         ", übersprungen=" + actionResult.skippedCount +
+        ", fehlgeschlagen=" + actionResult.failedActionCount +
         ", Ziel-Instanzen=" + actionResult.targetedInstanceCount + "."
       );
     } else {
       log("Global Agent lieferte keine Actions.");
     }
 
-    // Nach dem Action-Run den aktuellen Ist-Zustand erneut lesen und genau diesen Stand als neue Baseline persistieren.
     const { liveCatalog: refreshedLiveCatalog } = await refreshBoardState();
     const postActionStateById = await computeInstanceStatesById(refreshedLiveCatalog);
 
@@ -1966,6 +2129,13 @@ async function runGlobalAgent(triggerInstanceId, userText) {
     await Promise.all(savePromises);
     await Board.savePersistedBaselineMeta({ hasGlobalBaseline: true, baselineAt: nowIso }, log);
     log("Global Agent: Baseline aktualisiert (" + nowIso + ").");
+
+    await persistMemoryAfterAgentRun(agentObj, {
+      runMode: "global",
+      trigger: null,
+      targetInstanceLabels: activeInstanceLabels,
+      userRequest: finalUserText
+    }, actionResult);
 
   } catch (e) {
     log("Exception beim globalen Agent-Run: " + e.message);
