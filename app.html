@@ -97,7 +97,7 @@
       color: #4b5563;
       line-height: 1.35;
     }
-    #selection-status {
+    #selection-status, #exercise-context-status, #exercise-step-instruction {
       margin-top: 6px;
       margin-bottom: 8px;
       padding: 8px;
@@ -107,6 +107,9 @@
       font-size: 12px;
       line-height: 1.4;
       white-space: pre-wrap;
+    }
+    #exercise-step-instruction {
+      background: #ffffff;
     }
   </style>
 </head>
@@ -138,6 +141,24 @@
     <div id="canvas-type-picker" class="canvas-picker">Canvas-Typen werden geladen ...</div>
   </div>
 
+
+  <div class="row">
+    <label for="exercise-pack">Exercise Pack</label>
+    <select id="exercise-pack">
+      <option value="">Kein Exercise Pack (generischer Modus)</option>
+    </select>
+  </div>
+
+  <div class="row">
+    <label for="exercise-step">Aktueller Schritt</label>
+    <select id="exercise-step" disabled>
+      <option value="">Kein Exercise Pack aktiv</option>
+    </select>
+  </div>
+
+  <div id="exercise-context-status">Exercise-Kontext wird geladen ...</div>
+  <div id="exercise-step-instruction">Noch keine sichtbare Schrittanweisung geladen.</div>
+
   <div class="btn-row">
     <button id="btn-insert-template">Canvas einfügen</button>
   </div>
@@ -157,6 +178,6 @@
 
   <pre id="log"></pre>
 
-  <script type="module" src="./src/main.js?v=20260301-step7"></script>
+  <script type="module" src="./src/main.js?v=20260301-step8"></script>
 </body>
 </html>
