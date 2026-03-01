@@ -13,6 +13,7 @@ export const DT_TEMPLATE_CATALOG = {
   [TEMPLATE_ID]: {
     canvasTypeId: TEMPLATE_ID,
     displayName: "Datentreiber 3-Boxes",
+    agentLabelPrefix: "Datentreiber 3-Boxes",
     thumbnailUrl: TEMPLATE_IMAGE_URL,
     imageUrl: TEMPLATE_IMAGE_URL,
     insertWidthPx: 2000
@@ -25,6 +26,7 @@ export const DT_STORAGE_KEY_META = "dt-global-meta-v1";
 export const DT_STORAGE_KEY_BASELINE_PREFIX = "dt-baseline-v1:";
 export const DT_STORAGE_KEY_ACTION_BINDING_PREFIX = "dt-action-binding-v1:";
 export const DT_STORAGE_KEY_ACTION_BINDING_INDEX = "dt-action-binding-index-v1";
+export const DT_IMAGE_META_KEY_INSTANCE = "dt-canvas-instance-v1";
 
 // Canvas-Definitions (Polygon-basiert, normalisiert 0..1)
 export const DT_CANVAS_DEFS = {
@@ -114,7 +116,8 @@ Standardregel:
 WICHTIG:
 - Jede bestehende Sticky Note in activeCanvasState bzw. activeCanvasStates hat eine kurze ID im Feld "id" (z.B. "S0001"). Wenn du eine bestehende Sticky Note in einer Action referenzierst, verwende genau diese ID.
 - Wenn du neue Stickies anlegst und diese später in derselben Antwort in weiteren Actions referenzieren willst, gib der create_sticky-Action zusätzlich ein Feld "refId" (z.B. "P1_NAME"). Danach darfst du diese refId in move_sticky, delete_sticky und create_connector wie eine Sticky-ID verwenden.
-- Wenn activeCanvasStates mehr als eine Instanz enthält, muss jede mutierende Action zusätzlich ein Feld "instanceId" enthalten. Der Wert muss exakt einer Instanz-ID aus selectedInstanceIds bzw. den Schlüsseln von activeCanvasStates entsprechen.
+- Canvas-Instanzen werden immer über menschenlesbare Labels referenziert, z.B. "Datentreiber 3-Boxes #1".
+- Wenn activeCanvasStates mehr als eine Instanz enthält, muss jede mutierende Action zusätzlich ein Feld "instanceLabel" enthalten. Der Wert muss exakt einem Label aus selectedInstanceLabels bzw. den Schlüsseln von activeCanvasStates entsprechen.
 - Connectoren sind kein optionales Nice-to-have, sondern ein fester Teil der Aufgabe, wenn Relationen erkennbar sind.
 - Bestehende Kernaufgaben bleiben vollständig bestehen: Inhalt, Area-Zuordnung, Cluster, Tags, Connectoren und Board-Kontext müssen zusammen konsistent behandelt werden.
 
@@ -122,11 +125,11 @@ Verwende für Actions ausschließlich dieses Schema:
 {
   "analysis": "kurze Erklärung in natürlicher Sprache",
   "actions": [
-    { "type": "create_sticky", "instanceId": "inst-1", "refId": "P1_NAME", "area": "Box 1 (links)", "text": "Anna" },
-    { "type": "create_sticky", "instanceId": "inst-1", "refId": "P1_ROLE", "area": "Box 2 (Mitte)", "text": "Produktmanagerin" },
-    { "type": "move_sticky", "instanceId": "inst-1", "stickyId": "S0001", "targetArea": "Box 2 (Mitte)" },
-    { "type": "delete_sticky", "instanceId": "inst-1", "stickyId": "S0002" },
-    { "type": "create_connector", "instanceId": "inst-1", "fromStickyId": "P1_NAME", "toStickyId": "P1_ROLE", "directed": true }
+    { "type": "create_sticky", "instanceLabel": "Datentreiber 3-Boxes #1", "refId": "P1_NAME", "area": "Box 1 (links)", "text": "Anna" },
+    { "type": "create_sticky", "instanceLabel": "Datentreiber 3-Boxes #1", "refId": "P1_ROLE", "area": "Box 2 (Mitte)", "text": "Produktmanagerin" },
+    { "type": "move_sticky", "instanceLabel": "Datentreiber 3-Boxes #1", "stickyId": "S0001", "targetArea": "Box 2 (Mitte)" },
+    { "type": "delete_sticky", "instanceLabel": "Datentreiber 3-Boxes #1", "stickyId": "S0002" },
+    { "type": "create_connector", "instanceLabel": "Datentreiber 3-Boxes #1", "fromStickyId": "P1_NAME", "toStickyId": "P1_ROLE", "directed": true }
   ]
 }
 
@@ -158,16 +161,16 @@ Standardregel:
 - Verbinde nur die logisch zusammengehörigen Stickies. Erzeuge keine Verbindungen zwischen unabhängigen Gruppen oder Instanzen, außer die Anfrage verlangt es ausdrücklich.
 
 WICHTIG:
-- Jede mutierende Action muss genau eine Ziel-Instanz angeben. Verwende dafür das Feld "instanceId" und nur Werte, die als Schlüssel in activeCanvasStates vorhanden sind.
+- Jede mutierende Action muss genau eine Ziel-Instanz angeben. Verwende dafür das Feld "instanceLabel" und nur Werte, die als Labels in activeInstanceLabels bzw. als Schlüssel in activeCanvasStates vorhanden sind.
 - Wenn du bestehende Sticky Notes in Actions referenzierst, verwende die Kurz-IDs aus den JSON-Strukturen.
 - Wenn du neue Stickies anlegst und diese später in derselben Antwort in weiteren Actions referenzieren willst, gib der create_sticky-Action zusätzlich ein Feld "refId". Diese refId darfst du danach in move_sticky, delete_sticky und create_connector wie eine Sticky-ID verwenden.
 - Connectoren sind ein fester Teil der Aufgabe, sobald Relationen erkennbar sind.
 
 Verwende für Actions ausschließlich diese Typen:
-- { "type": "move_sticky", "instanceId": "inst-1", "stickyId": "S0001", "targetArea": "Box 2 (Mitte)" }
-- { "type": "create_sticky", "instanceId": "inst-1", "refId": "P1_NAME", "area": "Box 3 (rechts)", "text": "Neuer Inhalt" }
-- { "type": "delete_sticky", "instanceId": "inst-1", "stickyId": "S0002" }
-- { "type": "create_connector", "instanceId": "inst-1", "fromStickyId": "S0001", "toStickyId": "P1_NAME", "directed": true }
+- { "type": "move_sticky", "instanceLabel": "Datentreiber 3-Boxes #1", "stickyId": "S0001", "targetArea": "Box 2 (Mitte)" }
+- { "type": "create_sticky", "instanceLabel": "Datentreiber 3-Boxes #1", "refId": "P1_NAME", "area": "Box 3 (rechts)", "text": "Neuer Inhalt" }
+- { "type": "delete_sticky", "instanceLabel": "Datentreiber 3-Boxes #1", "stickyId": "S0002" }
+- { "type": "create_connector", "instanceLabel": "Datentreiber 3-Boxes #1", "fromStickyId": "S0001", "toStickyId": "P1_NAME", "directed": true }
 Optional für reine Hinweise ohne Board-Mutation:
 - { "type": "inform", "message": "Kurzer Hinweis" }
 
