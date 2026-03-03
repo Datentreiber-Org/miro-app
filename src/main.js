@@ -6,16 +6,17 @@ import {
   DT_GLOBAL_SYSTEM_PROMPT,
   DT_MEMORY_RECENT_LOG_LIMIT,
   STICKY_LAYOUT
-} from "./config.js?v=20260301-step9";
+} from "./config.js?v=20260301-step10";
 
-import { createLogger, stripHtml, extractUnderlinedText, isFiniteNumber } from "./utils.js?v=20260301-step9";
+import { createLogger, stripHtml, extractUnderlinedText, isFiniteNumber } from "./utils.js?v=20260301-step10";
 
-import * as Board from "./miro/board.js?v=20260301-step9";
-import * as Catalog from "./domain/catalog.js?v=20260301-step9";
-import * as OpenAI from "./ai/openai.js?v=20260301-step9";
-import * as Memory from "./runtime/memory.js?v=20260301-step9";
-import * as Exercises from "./exercises/registry.js?v=20260301-step9";
-import * as PromptComposer from "./prompt/composer.js?v=20260301-step9";
+import * as Board from "./miro/board.js?v=20260301-step10";
+import * as Catalog from "./domain/catalog.js?v=20260301-step10";
+import * as OpenAI from "./ai/openai.js?v=20260301-step10";
+import * as Memory from "./runtime/memory.js?v=20260301-step10";
+import * as Exercises from "./exercises/registry.js?v=20260301-step10";
+import * as PromptComposer from "./prompt/composer.js?v=20260301-step10";
+import * as ExerciseEngine from "./runtime/exercise-engine.js?v=20260301-step10";
 
 // --------------------------------------------------------------------
 // State (Controller-Level)
@@ -79,13 +80,19 @@ const exercisePackEl = document.getElementById("exercise-pack");
 const exerciseStepEl = document.getElementById("exercise-step");
 const exerciseContextStatusEl = document.getElementById("exercise-context-status");
 const exerciseStepInstructionEl = document.getElementById("exercise-step-instruction");
+const exerciseRecommendationStatusEl = document.getElementById("exercise-recommendation-status");
 const userActionsPanelEl = document.getElementById("user-actions-panel");
 const adminPanelEl = document.getElementById("admin-panel");
 const adminOverrideTextEl = document.getElementById("admin-override-text");
+const adminTriggerScopeEl = document.getElementById("admin-trigger-scope");
+const adminTriggerIntentEl = document.getElementById("admin-trigger-intent");
+const btnAdminRunTriggerEl = document.getElementById("btn-admin-run-trigger");
 const exerciseActionHelpEl = document.getElementById("exercise-action-help");
 const btnExerciseCheckEl = document.getElementById("btn-exercise-check");
 const btnExerciseHintEl = document.getElementById("btn-exercise-hint");
 const btnExerciseAutocorrectEl = document.getElementById("btn-exercise-autocorrect");
+const btnExerciseReviewEl = document.getElementById("btn-exercise-review");
+const btnExerciseCoachEl = document.getElementById("btn-exercise-coach");
 const btnExerciseNextStepEl = document.getElementById("btn-exercise-next-step");
 const log = createLogger(logEl);
 
@@ -210,6 +217,28 @@ function getCurrentUserQuestion() {
   return visibleInstruction || "Bitte analysiere die relevanten Canvas-Instanzen und führe sinnvolle nächste Schritte innerhalb des Workshop-Workflows aus.";
 }
 
+
+function getCurrentTriggerSource() {
+  return state.panelMode === "admin" ? "admin" : "user";
+}
+
+function buildBoardConfigPatchForPack(pack) {
+  const defaults = Exercises.getPackDefaults(pack);
+  return {
+    feedbackFrameName: defaults.feedbackFrameName,
+    feedbackChannelDefault: defaults.feedbackChannel,
+    userMayChangePack: defaults.userMayChangePack,
+    userMayChangeStep: defaults.userMayChangeStep,
+    appAdminPolicy: defaults.appAdminPolicy
+  };
+}
+
+function getCurrentMemoryStepStatus() {
+  return (typeof state.memoryState?.stepStatus === "string" && state.memoryState.stepStatus.trim())
+    ? state.memoryState.stepStatus.trim()
+    : null;
+}
+
 function getCanvasTypeCatalogEntries() {
   return Object.entries(DT_TEMPLATE_CATALOG || {}).map(([canvasTypeId, cfg]) => ({
     canvasTypeId,
@@ -299,6 +328,8 @@ function renderExercisePackPicker() {
     option.selected = pack.id === selectedPackId;
     exercisePackEl.appendChild(option);
   }
+
+  exercisePackEl.disabled = state.panelMode !== "admin";
 }
 
 function renderExerciseStepPicker() {
@@ -328,22 +359,25 @@ function renderExerciseStepPicker() {
     exerciseStepEl.appendChild(option);
   }
 
-  exerciseStepEl.disabled = steps.length === 0;
+  exerciseStepEl.disabled = steps.length === 0 || state.panelMode !== "admin";
 }
 
 function renderExerciseContextStatus() {
   const pack = getSelectedExercisePack();
   const currentStep = getCurrentExerciseStep(pack);
   const selectedCanvasType = getCanvasTypeEntry(getSelectedCanvasTypeId());
+  const feedbackFrameName = state.boardConfig?.feedbackFrameName || "AI Coach Output";
 
   if (exerciseContextStatusEl) {
     const lines = [
       "Board-Modus: " + getCurrentBoardMode(),
       "Exercise Pack: " + (pack ? pack.label : "keins (generischer Agentenmodus)"),
       "Aktueller Schritt: " + (currentStep?.label || "kein Schritt aktiv"),
-      "Standard-Canvas-Typ: " + (selectedCanvasType?.displayName || getSelectedCanvasTypeId())
+      "Standard-Canvas-Typ: " + (selectedCanvasType?.displayName || getSelectedCanvasTypeId()),
+      "Feedback-Frame: " + feedbackFrameName
     ];
-    exerciseContextStatusEl.textContent = lines.join("\n");
+    exerciseContextStatusEl.textContent = lines.join("
+");
   }
 
   if (exerciseStepInstructionEl) {
@@ -359,26 +393,90 @@ function renderAdminOverrideEditor() {
   }
 }
 
+
+function syncAdminTriggerControls() {
+  if (adminTriggerScopeEl && !adminTriggerScopeEl.value) {
+    adminTriggerScopeEl.value = "selection";
+  }
+  if (adminTriggerIntentEl && !adminTriggerIntentEl.value) {
+    adminTriggerIntentEl.value = "check";
+  }
+
+  const hasExerciseContext = !!getSelectedExercisePack() && !!getCurrentExerciseStep();
+  if (adminTriggerScopeEl) adminTriggerScopeEl.disabled = state.panelMode !== "admin" || !hasExerciseContext;
+  if (adminTriggerIntentEl) adminTriggerIntentEl.disabled = state.panelMode !== "admin" || !hasExerciseContext;
+  if (btnAdminRunTriggerEl) btnAdminRunTriggerEl.disabled = state.panelMode !== "admin" || !hasExerciseContext;
+}
+
+function packLabelWithStep(pack, stepId) {
+  const step = pack ? Exercises.getExerciseStep(pack, stepId) : null;
+  if (!pack) return "keins";
+  return step ? `${pack.label} / ${step.label}` : pack.label;
+}
+
+function renderRecommendationStatus() {
+  if (!exerciseRecommendationStatusEl) return;
+
+  const lines = [];
+  const lastTriggerKey = state.exerciseRuntime?.lastTriggerKey || null;
+  const lastTriggerSource = state.exerciseRuntime?.lastTriggerSource || null;
+  const lastTriggerAt = state.exerciseRuntime?.lastTriggerAt || null;
+  const recommendedNextTrigger = state.exerciseRuntime?.recommendedNextTrigger || null;
+  const recommendedNextStepId = state.exerciseRuntime?.recommendedNextStepId || null;
+  const recommendationReason = state.exerciseRuntime?.recommendationReason || null;
+  const feedbackCounter = Number(state.exerciseRuntime?.feedbackTextCounter || 0);
+  const lastFeedbackIds = Array.isArray(state.exerciseRuntime?.lastFeedbackTextIds)
+    ? state.exerciseRuntime.lastFeedbackTextIds.filter(Boolean)
+    : [];
+
+  lines.push("Letzter Trigger: " + (lastTriggerKey ? `${lastTriggerKey} (${lastTriggerSource || "system"})` : "noch keiner"));
+  if (lastTriggerAt) lines.push("Letzter Trigger-Zeitpunkt: " + lastTriggerAt);
+  lines.push("Empfohlener nächster Trigger: " + (recommendedNextTrigger || "keine Empfehlung"));
+  lines.push("Empfohlener nächster Schritt: " + (recommendedNextStepId || "keine Empfehlung"));
+  lines.push("Step-Wechsel empfohlen: " + (state.exerciseRuntime?.advanceStepSuggested ? "ja" : "nein"));
+  if (recommendationReason) lines.push("Begründung: " + recommendationReason);
+  lines.push("Feedback-Texte erzeugt: " + feedbackCounter);
+  if (lastFeedbackIds.length) lines.push("Letzte Feedback-Textitems: " + lastFeedbackIds.join(", "));
+
+  exerciseRecommendationStatusEl.textContent = lines.join("
+");
+}
+
 function renderExerciseActionButtons() {
   const pack = getSelectedExercisePack();
   const currentStep = getCurrentExerciseStep(pack);
-  const nextStep = Exercises.getNextExerciseStep(pack, currentStep?.id || null);
+  const source = getCurrentTriggerSource();
+  const nextTransition = pack && currentStep
+    ? ExerciseEngine.resolveNextTransition({
+        pack,
+        step: currentStep,
+        source,
+        lastTriggerKey: state.exerciseRuntime?.lastTriggerKey,
+        memoryStepStatus: getCurrentMemoryStepStatus(),
+        recommendedNextStepId: state.exerciseRuntime?.recommendedNextStepId
+      })
+    : null;
   const hasExerciseContext = !!pack && !!currentStep;
 
-  if (btnExerciseCheckEl) btnExerciseCheckEl.disabled = !hasExerciseContext;
-  if (btnExerciseHintEl) btnExerciseHintEl.disabled = !hasExerciseContext;
-  if (btnExerciseAutocorrectEl) btnExerciseAutocorrectEl.disabled = !hasExerciseContext;
-  if (btnExerciseNextStepEl) btnExerciseNextStepEl.disabled = !nextStep;
+  const triggerAvailability = (triggerKey) => hasExerciseContext && Exercises.isTriggerAllowedForStep(currentStep, triggerKey);
+
+  if (btnExerciseCheckEl) btnExerciseCheckEl.disabled = !triggerAvailability("selection.check");
+  if (btnExerciseHintEl) btnExerciseHintEl.disabled = !triggerAvailability("selection.hint");
+  if (btnExerciseAutocorrectEl) btnExerciseAutocorrectEl.disabled = !triggerAvailability("selection.autocorrect");
+  if (btnExerciseReviewEl) btnExerciseReviewEl.disabled = !triggerAvailability("selection.review");
+  if (btnExerciseCoachEl) btnExerciseCoachEl.disabled = !triggerAvailability("selection.coach");
+  if (btnExerciseNextStepEl) btnExerciseNextStepEl.disabled = !nextTransition;
 
   if (exerciseActionHelpEl) {
     if (!pack) {
       exerciseActionHelpEl.textContent = "Kein Exercise Pack aktiv. Bitte im Admin-Modus zuerst ein Exercise Pack auswählen.";
     } else if (!currentStep) {
       exerciseActionHelpEl.textContent = "Kein aktiver Schritt gesetzt. Bitte im Admin-Modus einen gültigen Schritt auswählen.";
-    } else if (nextStep) {
-      exerciseActionHelpEl.textContent = "Die Übungsaktionen arbeiten auf den aktuell selektierten Canvas-Instanzen. Ohne Selektion erscheint ein Warnhinweis im Log. Der nächste Schritt wäre: " + (nextStep.label || nextStep.id) + ".";
+    } else if (nextTransition) {
+      const nextStep = Exercises.getExerciseStep(pack, nextTransition.toStepId);
+      exerciseActionHelpEl.textContent = "Die Übungsaktionen arbeiten auf den aktuell selektierten Canvas-Instanzen. Ohne Selektion erscheint ein Warnhinweis im Log. Der nächste gültige Schritt wäre: " + (nextStep?.label || nextTransition.toStepId) + ".";
     } else {
-      exerciseActionHelpEl.textContent = "Die Übungsaktionen arbeiten auf den aktuell selektierten Canvas-Instanzen. Ohne Selektion erscheint ein Warnhinweis im Log. Der aktuelle Schritt ist bereits der letzte Schritt dieses Exercise Packs.";
+      exerciseActionHelpEl.textContent = "Die Übungsaktionen arbeiten auf den aktuell selektierten Canvas-Instanzen. Ohne Selektion erscheint ein Warnhinweis im Log. Für den aktuellen Schritt ist kein weiterer Transition-Pfad freigegeben.";
     }
   }
 }
@@ -387,7 +485,9 @@ function renderExerciseControls() {
   renderExercisePackPicker();
   renderExerciseStepPicker();
   renderExerciseContextStatus();
+  renderRecommendationStatus();
   renderAdminOverrideEditor();
+  syncAdminTriggerControls();
   renderExerciseActionButtons();
   renderPanelMode();
 }
@@ -412,13 +512,20 @@ async function loadBoardExerciseState() {
   });
 
   const normalizedPackId = Exercises.normalizeExercisePackId(normalizedBoardConfig.exercisePackId);
+  const pack = normalizedPackId ? Exercises.getExercisePackById(normalizedPackId) : null;
+  const packDefaults = Exercises.getPackDefaults(pack);
+
   normalizedBoardConfig = {
     ...normalizedBoardConfig,
     boardMode: normalizedPackId ? "exercise" : "generic",
-    exercisePackId: normalizedPackId || null
+    exercisePackId: normalizedPackId || null,
+    feedbackFrameName: normalizedBoardConfig.feedbackFrameName || packDefaults.feedbackFrameName,
+    feedbackChannelDefault: normalizedBoardConfig.feedbackChannelDefault || packDefaults.feedbackChannel,
+    userMayChangePack: normalizedBoardConfig.userMayChangePack === true ? true : packDefaults.userMayChangePack,
+    userMayChangeStep: normalizedBoardConfig.userMayChangeStep === true ? true : packDefaults.userMayChangeStep,
+    appAdminPolicy: normalizedBoardConfig.appAdminPolicy || packDefaults.appAdminPolicy
   };
 
-  const pack = normalizedPackId ? Exercises.getExercisePackById(normalizedPackId) : null;
   const allowedCanvasTypeIds = Exercises.getAllowedCanvasTypesForPack(pack);
   let defaultCanvasTypeId = normalizeCanvasTypeId(normalizedBoardConfig.defaultCanvasTypeId || fallbackCanvasTypeId);
 
@@ -470,7 +577,8 @@ async function onExercisePackChange() {
   await persistBoardConfig({
     boardMode: selectedPack ? "exercise" : "generic",
     exercisePackId: selectedPack?.id || null,
-    defaultCanvasTypeId
+    defaultCanvasTypeId,
+    ...buildBoardConfigPatchForPack(selectedPack)
   });
 
   const nextStepId = selectedPack
@@ -478,13 +586,20 @@ async function onExercisePackChange() {
     : null;
 
   await persistExerciseRuntime({
-    currentStepId: nextStepId
+    currentStepId: nextStepId,
+    lastTriggerKey: null,
+    lastTriggerSource: null,
+    lastTriggerAt: null,
+    recommendedNextTrigger: Exercises.getDefaultEnterTrigger(selectedPack, nextStepId) || null,
+    recommendedNextStepId: null,
+    advanceStepSuggested: false,
+    recommendationReason: null
   });
 
   renderCanvasTypePicker();
   renderExerciseControls();
 
-  log("Exercise Pack gesetzt: " + (selectedPack ? selectedPack.label : "keins (generischer Modus)"));
+  log("Exercise Pack gesetzt: " + (selectedPack ? packLabelWithStep(selectedPack, nextStepId) : "keins (generischer Modus)"));
 }
 
 async function onExerciseStepChange() {
@@ -497,30 +612,45 @@ async function onExerciseStepChange() {
 
   const requestedStepId = exerciseStepEl?.value || null;
   const validStepId = Exercises.getExerciseStep(pack, requestedStepId)?.id || Exercises.getDefaultStepId(pack);
+  const defaultEnterTrigger = Exercises.getDefaultEnterTrigger(pack, validStepId);
 
-  await persistExerciseRuntime({ currentStepId: validStepId });
+  await persistExerciseRuntime({
+    currentStepId: validStepId,
+    recommendedNextTrigger: defaultEnterTrigger || null,
+    recommendedNextStepId: null,
+    advanceStepSuggested: false,
+    recommendationReason: defaultEnterTrigger
+      ? "Dieser Schritt definiert einen Standard-Enter-Trigger."
+      : null
+  });
   renderExerciseControls();
 
   const step = Exercises.getExerciseStep(pack, validStepId);
   log("Exercise-Schritt gesetzt: " + (step?.label || validStepId || "(leer)"));
 }
 
-function getExerciseRunModeForTrigger(trigger) {
-  switch (trigger) {
-    case "check": return "exercise-check";
-    case "hint": return "exercise-hint";
-    case "autocorrect": return "exercise-autocorrect";
-    default: return "exercise";
-  }
+function buildRunModeFromTriggerKey(triggerKey) {
+  const parsed = ExerciseEngine.parseTriggerKey(triggerKey);
+  if (!parsed) return "exercise";
+  return `exercise-${parsed.scope}-${parsed.intent}`;
 }
 
-function getExerciseSourceLabel(trigger) {
-  switch (trigger) {
-    case "check": return "Exercise-Check";
-    case "hint": return "Exercise-Hinweis";
-    case "autocorrect": return "Exercise-Autokorrektur";
-    default: return "Exercise-Agent";
-  }
+function buildTriggerSourceLabel(triggerContext) {
+  const parsed = triggerContext ? ExerciseEngine.parseTriggerKey(triggerContext.triggerKey) : null;
+  if (!parsed) return "Exercise-Agent";
+
+  const scopeLabel = parsed.scope === "global" ? "Global" : "Selection";
+  const intentMap = {
+    check: "Check",
+    hint: "Hint",
+    autocorrect: "Autocorrect",
+    review: "Review",
+    synthesize: "Synthesize",
+    coach: "Coach",
+    grade: "Grade"
+  };
+  const intentLabel = intentMap[parsed.intent] || parsed.intent;
+  return `Exercise-${scopeLabel}-${intentLabel}`;
 }
 
 async function onPanelModeChange() {
@@ -541,7 +671,7 @@ async function clearAdminOverrideFromUi() {
   log("Admin-Override geleert.");
 }
 
-async function runExerciseTrigger(trigger) {
+async function runExerciseTriggerRequest(request) {
   const pack = getSelectedExercisePack();
   const currentStep = getCurrentExerciseStep(pack);
 
@@ -555,41 +685,84 @@ async function runExerciseTrigger(trigger) {
     return;
   }
 
-  const selectedInstanceIds = await refreshSelectionStatusFromBoard();
-  if (!selectedInstanceIds.length) {
-    log(getExerciseSourceLabel(trigger) + ": Keine Canvas selektiert. Wähle mindestens eine Canvas oder ein Item innerhalb einer Canvas aus.");
+  const source = ExerciseEngine.normalizeTriggerSource(request?.source || getCurrentTriggerSource());
+  const triggerRequest = ExerciseEngine.buildTriggerRequest(request || {});
+  if (!triggerRequest.triggerKey) {
+    log("Exercise-Modus: Konnte keinen gültigen Trigger aus der Anfrage ableiten.");
     return;
   }
 
-  const allowedCanvasTypes = new Set(Exercises.getAllowedCanvasTypesForPack(pack));
-  const filteredInstanceIds = selectedInstanceIds.filter((instanceId) => {
-    const canvasTypeId = state.instancesById.get(instanceId)?.canvasTypeId || null;
-    return !allowedCanvasTypes.size || (canvasTypeId && allowedCanvasTypes.has(canvasTypeId));
+  const parsed = ExerciseEngine.parseTriggerKey(triggerRequest.triggerKey);
+  if (!parsed) {
+    log("Exercise-Modus: Trigger-Key ist ungültig: " + String(triggerRequest.triggerKey));
+    return;
+  }
+
+  let targetInstanceIds = [];
+  if (parsed.scope === "selection") {
+    const selectedInstanceIds = await refreshSelectionStatusFromBoard();
+    const allowedCanvasTypes = new Set(Exercises.getAllowedCanvasTypesForPack(pack));
+    targetInstanceIds = selectedInstanceIds.filter((instanceId) => {
+      const canvasTypeId = state.instancesById.get(instanceId)?.canvasTypeId || null;
+      return !allowedCanvasTypes.size || (canvasTypeId && allowedCanvasTypes.has(canvasTypeId));
+    });
+  } else if (parsed.scope === "global") {
+    const allowedCanvasTypes = new Set(Exercises.getAllowedCanvasTypesForPack(pack));
+    targetInstanceIds = Array.from(state.instancesById.keys()).filter((instanceId) => {
+      const canvasTypeId = state.instancesById.get(instanceId)?.canvasTypeId || null;
+      return !allowedCanvasTypes.size || (canvasTypeId && allowedCanvasTypes.has(canvasTypeId));
+    });
+  }
+
+  const targetInstanceLabels = targetInstanceIds
+    .map((instanceId) => getInstanceLabelByInternalId(instanceId))
+    .filter(Boolean);
+
+  const triggerContext = ExerciseEngine.resolveTriggerContext({
+    triggerKey: triggerRequest.triggerKey,
+    source,
+    pack,
+    step: currentStep,
+    selectionCount: targetInstanceIds.length,
+    targetInstanceLabels,
+    boardConfig: state.boardConfig
   });
 
-  if (!filteredInstanceIds.length) {
-    log(getExerciseSourceLabel(trigger) + ": Die aktuelle Selektion enthält keine Canvas, die für dieses Exercise Pack freigegeben sind.");
+  if (!triggerContext.valid) {
+    log(buildTriggerSourceLabel(triggerContext) + ": " + (triggerContext.reason || "Trigger ist im aktuellen Kontext nicht ausführbar."));
     return;
   }
 
-  await runAgentForSelectedInstances(filteredInstanceIds, {
-    userText: getCurrentUserQuestion(),
-    runMode: getExerciseRunModeForTrigger(trigger),
-    trigger,
-    sourceLabel: getExerciseSourceLabel(trigger)
+  if (parsed.scope === "selection") {
+    await runAgentForSelectedInstances(targetInstanceIds, {
+      userText: getCurrentUserQuestion(),
+      runMode: buildRunModeFromTriggerKey(triggerContext.triggerKey),
+      triggerContext,
+      sourceLabel: buildTriggerSourceLabel(triggerContext)
+    });
+    return;
+  }
+
+  await runGlobalAgent(null, getCurrentUserQuestion(), {
+    runMode: buildRunModeFromTriggerKey(triggerContext.triggerKey),
+    triggerContext,
+    sourceLabel: buildTriggerSourceLabel(triggerContext),
+    forcedInstanceIds: targetInstanceIds,
+    updateGlobalBaseline: false,
+    forceTargetSet: true
   });
 }
 
 async function runExerciseCheck() {
-  return await runExerciseTrigger("check");
+  return await runExerciseTriggerRequest({ scope: "selection", intent: "check", source: getCurrentTriggerSource() });
 }
 
 async function runExerciseHint() {
-  return await runExerciseTrigger("hint");
+  return await runExerciseTriggerRequest({ scope: "selection", intent: "hint", source: getCurrentTriggerSource() });
 }
 
 async function runExerciseAutocorrect() {
-  return await runExerciseTrigger("autocorrect");
+  return await runExerciseTriggerRequest({ scope: "selection", intent: "autocorrect", source: getCurrentTriggerSource() });
 }
 
 async function advanceExerciseStep() {
@@ -600,14 +773,43 @@ async function advanceExerciseStep() {
     log("Nächster Schritt: Kein Exercise Pack aktiv.");
     return;
   }
-
-  const nextStep = Exercises.getNextExerciseStep(pack, currentStep?.id || null);
-  if (!nextStep) {
-    log("Nächster Schritt: Bereits letzter Schritt des Exercise Packs erreicht.");
+  if (!currentStep) {
+    log("Nächster Schritt: Kein aktiver Schritt gesetzt.");
     return;
   }
 
-  await persistExerciseRuntime({ currentStepId: nextStep.id });
+  const source = getCurrentTriggerSource();
+  const transition = ExerciseEngine.resolveNextTransition({
+    pack,
+    step: currentStep,
+    source,
+    lastTriggerKey: state.exerciseRuntime?.lastTriggerKey,
+    memoryStepStatus: getCurrentMemoryStepStatus(),
+    recommendedNextStepId: state.exerciseRuntime?.recommendedNextStepId
+  });
+
+  if (!transition) {
+    log("Nächster Schritt: Für den aktuellen Schritt ist kein gültiger Transition-Pfad freigegeben.");
+    return;
+  }
+
+  const nextStep = Exercises.getExerciseStep(pack, transition.toStepId);
+  if (!nextStep) {
+    log("Nächster Schritt: Zielschritt konnte nicht gefunden werden.");
+    return;
+  }
+
+  const defaultEnterTrigger = Exercises.getDefaultEnterTrigger(pack, nextStep.id);
+
+  await persistExerciseRuntime({
+    currentStepId: nextStep.id,
+    recommendedNextTrigger: defaultEnterTrigger || null,
+    recommendedNextStepId: null,
+    advanceStepSuggested: false,
+    recommendationReason: defaultEnterTrigger
+      ? "Dieser Schritt definiert einen Standard-Enter-Trigger."
+      : null
+  });
   renderExerciseControls();
 
   log(
@@ -703,7 +905,16 @@ function initPanelButtons() {
   btnExerciseCheckEl?.addEventListener("click", runExerciseCheck);
   btnExerciseHintEl?.addEventListener("click", runExerciseHint);
   btnExerciseAutocorrectEl?.addEventListener("click", runExerciseAutocorrect);
+  btnExerciseReviewEl?.addEventListener("click", () => runExerciseTriggerRequest({ scope: "selection", intent: "review", source: getCurrentTriggerSource() }));
+  btnExerciseCoachEl?.addEventListener("click", () => runExerciseTriggerRequest({ scope: "selection", intent: "coach", source: getCurrentTriggerSource() }));
   btnExerciseNextStepEl?.addEventListener("click", advanceExerciseStep);
+  btnAdminRunTriggerEl?.addEventListener("click", async () => {
+    await runExerciseTriggerRequest({
+      scope: adminTriggerScopeEl?.value || "selection",
+      intent: adminTriggerIntentEl?.value || "check",
+      source: "admin"
+    });
+  });
 
   document.getElementById("btn-insert-template")?.addEventListener("click", insertTemplateImage);
   document.getElementById("btn-agent-selection")?.addEventListener("click", runAgentForCurrentSelection);
@@ -723,6 +934,9 @@ function initPanelButtons() {
   window.dtRunExerciseCheck = runExerciseCheck;
   window.dtRunExerciseHint = runExerciseHint;
   window.dtRunExerciseAutocorrect = runExerciseAutocorrect;
+  window.dtRunExerciseReview = () => runExerciseTriggerRequest({ scope: "selection", intent: "review", source: getCurrentTriggerSource() });
+  window.dtRunExerciseCoach = () => runExerciseTriggerRequest({ scope: "selection", intent: "coach", source: getCurrentTriggerSource() });
+  window.dtRunExerciseTrigger = runExerciseTriggerRequest;
   window.dtAdvanceExerciseStep = advanceExerciseStep;
 
   renderPanelMode();
@@ -835,7 +1049,7 @@ function getInvolvedCanvasTypeIdsFromInstanceIds(instanceIds) {
 
 function composePromptForRun({
   runMode,
-  trigger = "generic",
+  triggerContext = null,
   baseSystemPrompt,
   involvedCanvasTypeIds = [],
   baseUserPayload,
@@ -844,7 +1058,7 @@ function composePromptForRun({
   return PromptComposer.composePrompt({
     baseSystemPrompt,
     runMode,
-    trigger,
+    triggerContext,
     userQuestion,
     baseUserPayload,
     involvedCanvasTypeIds,
@@ -927,6 +1141,91 @@ async function persistMemoryAfterAgentRun(agentObj, runContext, actionResult) {
     "Memory aktualisiert: " + state.memoryLog.length +
     " Einträge, stepStatus=" + (state.memoryState.stepStatus || "(leer)") + "."
   );
+}
+
+function buildFeedbackFallbackTitle(triggerContext, sourceLabel = "Feedback") {
+  const parsed = triggerContext ? ExerciseEngine.parseTriggerKey(triggerContext.triggerKey) : null;
+  if (!parsed) return sourceLabel;
+
+  const intentMap = {
+    check: "Check",
+    hint: "Hinweis",
+    autocorrect: "Autokorrektur",
+    review: "Review",
+    synthesize: "Synthese",
+    coach: "Coach",
+    grade: "Bewertung"
+  };
+  const scopeLabel = parsed.scope === "global" ? "Global" : "Selection";
+  const intentLabel = intentMap[parsed.intent] || parsed.intent || sourceLabel;
+  return `${intentLabel} · ${scopeLabel}`;
+}
+
+function normalizeAgentExerciseArtifacts(agentObj, triggerContext, sourceLabel = "Agent") {
+  const fallbackSummary = pickFirstNonEmptyString(agentObj?.analysis, null);
+  const feedback = ExerciseEngine.normalizeFeedbackBlock(agentObj?.feedback, {
+    fallbackTitle: buildFeedbackFallbackTitle(triggerContext, sourceLabel),
+    fallbackSummary
+  });
+  const recommendations = ExerciseEngine.normalizeRecommendationsBlock(agentObj?.recommendations);
+  const evaluation = ExerciseEngine.normalizeEvaluationBlock(agentObj?.evaluation);
+
+  if (triggerContext?.intent === "grade" && !evaluation) {
+    log("WARNUNG: Grade-Trigger ohne evaluation im Agent-Output.");
+  }
+
+  return { feedback, recommendations, evaluation };
+}
+
+async function persistExerciseRuntimeAfterAgentRun({
+  triggerContext = null,
+  feedback = null,
+  recommendations = null,
+  evaluation = null,
+  exercisePack = null,
+  currentStep = null
+} = {}) {
+  if (!triggerContext) return null;
+
+  const runtimePatch = {
+    lastTriggerKey: triggerContext.triggerKey || null,
+    lastTriggerSource: triggerContext.source || null,
+    lastTriggerAt: new Date().toISOString(),
+    recommendedNextTrigger: recommendations?.recommendedNextTrigger || null,
+    recommendedNextStepId: recommendations?.recommendedNextStepId || null,
+    advanceStepSuggested: recommendations?.advanceStepSuggested === true,
+    recommendationReason: recommendations?.reason || null
+  };
+
+  let feedbackRenderResult = null;
+  if (triggerContext.feedbackPolicy === "text" || triggerContext.feedbackPolicy === "both") {
+    try {
+      feedbackRenderResult = await Board.renderFeedbackTextForRun({
+        boardConfig: state.boardConfig,
+        runtime: state.exerciseRuntime,
+        triggerContext,
+        feedback,
+        recommendations,
+        evaluation,
+        exercisePack,
+        currentStep,
+        log
+      });
+    } catch (e) {
+      log("WARNUNG: Feedback-Text konnte nicht gerendert werden: " + e.message);
+    }
+  }
+
+  if (feedbackRenderResult) {
+    runtimePatch.feedbackTextCounter = feedbackRenderResult.counter;
+    runtimePatch.lastFeedbackTextIds = Array.isArray(feedbackRenderResult.textItemIds)
+      ? feedbackRenderResult.textItemIds.filter(Boolean)
+      : [];
+  }
+
+  await persistExerciseRuntime(runtimePatch);
+  renderExerciseControls();
+  return feedbackRenderResult;
 }
 
 async function ensureInstancesScanned(force = false) {
@@ -2007,9 +2306,9 @@ async function runAgentForSelectedInstances(selectedInstanceIds, options = {}) {
   const apiKey = getApiKey();
   const model = getModel();
   const userText = options.userText || getCurrentUserQuestion();
-  const runMode = pickFirstNonEmptyString(options.runMode, "selection");
-  const trigger = pickFirstNonEmptyString(options.trigger, "generic");
-  const sourceLabel = pickFirstNonEmptyString(options.sourceLabel, "Instanz-Agent");
+  const triggerContext = options.triggerContext || null;
+  const runMode = pickFirstNonEmptyString(options.runMode, (triggerContext ? buildRunModeFromTriggerKey(triggerContext.triggerKey) : null), "selection");
+  const sourceLabel = pickFirstNonEmptyString(options.sourceLabel, (triggerContext ? buildTriggerSourceLabel(triggerContext) : null), "Instanz-Agent");
 
   if (!apiKey) {
     log("Bitte OpenAI API Key eingeben (Agent).");
@@ -2028,8 +2327,7 @@ async function runAgentForSelectedInstances(selectedInstanceIds, options = {}) {
     const st = stateById[id];
     const instance = state.instancesById.get(id) || null;
     const instanceLabel = instance?.instanceLabel || null;
-    if (!st?.classification) continue;
-    if (!instanceLabel) continue;
+    if (!st?.classification || !instanceLabel) continue;
 
     const payload = Catalog.buildPromptPayloadFromClassification(st.classification, {
       useAliases: true,
@@ -2072,7 +2370,7 @@ async function runAgentForSelectedInstances(selectedInstanceIds, options = {}) {
 
   const composedPrompt = composePromptForRun({
     runMode,
-    trigger,
+    triggerContext,
     baseSystemPrompt: promptCfg.system,
     involvedCanvasTypeIds: getInvolvedCanvasTypeIdsFromInstanceIds(resolvedActiveIds),
     baseUserPayload,
@@ -2087,6 +2385,7 @@ async function runAgentForSelectedInstances(selectedInstanceIds, options = {}) {
     "Starte " + sourceLabel + " für selektierte Instanzen: " +
     resolvedActiveLabels.join(", ") +
     exerciseInfo +
+    (triggerContext?.triggerKey ? (" | Trigger: " + triggerContext.triggerKey) : "") +
     " ..."
   );
 
@@ -2111,6 +2410,8 @@ async function runAgentForSelectedInstances(selectedInstanceIds, options = {}) {
       log(answer);
       return;
     }
+
+    const { feedback, recommendations, evaluation } = normalizeAgentExerciseArtifacts(agentObj, triggerContext, sourceLabel);
 
     log(sourceLabel + " analysis:");
     log(agentObj.analysis || "(keine analysis)");
@@ -2155,10 +2456,25 @@ async function runAgentForSelectedInstances(selectedInstanceIds, options = {}) {
 
     await persistMemoryAfterAgentRun(agentObj, {
       runMode,
-      trigger: composedPrompt.exerciseContext?.trigger || trigger,
+      trigger: triggerContext?.triggerKey || "generic",
       targetInstanceLabels: resolvedActiveLabels,
       userRequest: userText
     }, actionResult);
+
+    if (triggerContext) {
+      const feedbackRenderResult = await persistExerciseRuntimeAfterAgentRun({
+        triggerContext,
+        feedback,
+        recommendations,
+        evaluation,
+        exercisePack: getSelectedExercisePack(),
+        currentStep: getCurrentExerciseStep()
+      });
+
+      if (feedbackRenderResult?.textItemIds?.length) {
+        log(sourceLabel + ": Feedback-Text erzeugt in Frame '" + (feedbackRenderResult.frameTitle || state.boardConfig?.feedbackFrameName || "AI Coach Output") + "' – Item(s): " + feedbackRenderResult.textItemIds.join(", ") + ".");
+      }
+    }
 
   } catch (e) {
     log("Exception beim " + sourceLabel + "-Run: " + e.message);
@@ -2554,38 +2870,65 @@ async function applyResolvedAgentActions(actions, { candidateInstanceIds, trigge
 // --------------------------------------------------------------------
 // Global Agent Modus A
 // --------------------------------------------------------------------
-async function runGlobalAgent(triggerInstanceId, userText) {
+async function runGlobalAgent(triggerInstanceId, userText, options = {}) {
   await Board.ensureMiroReady(log);
   await ensureInstancesScanned();
   await loadMemoryRuntimeState();
 
   const apiKey = getApiKey();
   const model = getModel();
+  const finalUserText = (userText || "").trim() ? userText.trim() : getCurrentUserQuestion();
+  const triggerContext = options.triggerContext || null;
+  const sourceLabel = pickFirstNonEmptyString(options.sourceLabel, (triggerContext ? buildTriggerSourceLabel(triggerContext) : null), "Global Agent");
+  const runMode = pickFirstNonEmptyString(options.runMode, (triggerContext ? buildRunModeFromTriggerKey(triggerContext.triggerKey) : null), "global");
+  const updateGlobalBaseline = options.updateGlobalBaseline !== false;
+  const forceTargetSet = options.forceTargetSet === true;
+  const forcedInstanceIds = Array.from(new Set((options.forcedInstanceIds || []).filter((id) => state.instancesById.has(id))));
 
-  const finalUserText = (userText || "").trim()
-    ? userText.trim()
-    : getCurrentUserQuestion();
+  if (!apiKey) {
+    log("Bitte OpenAI API Key eingeben (Global Agent).");
+    return;
+  }
 
-  if (!apiKey) { log("Bitte OpenAI API Key eingeben (Global Agent)."); return; }
-
-  log("Starte globalen Agenten-Run (Modus A), Trigger: " + (getInstanceLabelByInternalId(triggerInstanceId) || triggerInstanceId || "(keine)"));
+  log(
+    "Starte globalen Agenten-Run, Trigger-Instanz: " +
+    (getInstanceLabelByInternalId(triggerInstanceId) || triggerInstanceId || "(keine)") +
+    (triggerContext?.triggerKey ? (" | Trigger: " + triggerContext.triggerKey) : "")
+  );
 
   const { liveCatalog } = await refreshBoardState();
   const stateById = await computeInstanceStatesById(liveCatalog);
 
-  const boardCatalog = Catalog.buildBoardCatalogSummary(state.instancesById, {
+  const baseBoardCatalog = Catalog.buildBoardCatalogSummary(state.instancesById, {
     mode: "global",
     hasGlobalBaseline: state.hasGlobalBaseline
   });
 
-  const activeInstanceLabels = boardCatalog.instances
-    .filter((e) => e.isActive)
-    .map((e) => e.instanceLabel)
-    .filter(Boolean);
+  let activeInstanceIds = [];
+  if (forceTargetSet) {
+    activeInstanceIds = forcedInstanceIds.slice();
+  } else {
+    activeInstanceIds = (baseBoardCatalog.instances || [])
+      .filter((entry) => entry.isActive)
+      .map((entry) => getInternalInstanceIdByLabel(entry.instanceLabel))
+      .filter((id) => state.instancesById.has(id));
+  }
 
-  const activeInstanceIds = activeInstanceLabels
-    .map((label) => getInternalInstanceIdByLabel(label))
-    .filter((id) => state.instancesById.has(id));
+  const activeInstanceLabels = getInstanceLabelsFromIds(activeInstanceIds);
+  const forcedLabelSet = new Set(activeInstanceLabels);
+  const boardCatalog = forceTargetSet
+    ? {
+        instances: (baseBoardCatalog.instances || []).map((entry) => ({
+          ...entry,
+          isActive: forcedLabelSet.has(entry.instanceLabel)
+        }))
+      }
+    : baseBoardCatalog;
+
+  if (forceTargetSet && !activeInstanceIds.length) {
+    log(sourceLabel + ": Keine gültigen Ziel-Instanzen für den globalen Exercise-Lauf gefunden.");
+    return;
+  }
 
   const activeCanvasStates = Object.create(null);
   const activeInstanceChangesSinceLastAgent = Object.create(null);
@@ -2594,8 +2937,7 @@ async function runGlobalAgent(triggerInstanceId, userText) {
     const st = stateById[id];
     const instance = state.instancesById.get(id) || null;
     const instanceLabel = instance?.instanceLabel || null;
-    if (!st?.classification) continue;
-    if (!instanceLabel) continue;
+    if (!st?.classification || !instanceLabel) continue;
 
     const payload = Catalog.buildPromptPayloadFromClassification(st.classification, {
       useAliases: true,
@@ -2603,21 +2945,15 @@ async function runGlobalAgent(triggerInstanceId, userText) {
       log
     });
     if (payload) activeCanvasStates[instanceLabel] = payload;
-  }
 
-  for (const id of activeInstanceIds) {
-    const st = stateById[id];
-    const instanceLabel = getInstanceLabelByInternalId(id);
-    if (!instanceLabel) continue;
-    if (!st?.diff || !state.hasGlobalBaseline) {
+    if (!state.hasGlobalBaseline || !st?.diff) {
       activeInstanceChangesSinceLastAgent[instanceLabel] = null;
-      continue;
+    } else {
+      activeInstanceChangesSinceLastAgent[instanceLabel] = Catalog.aliasDiffForActiveInstance(st.diff, state.aliasState);
     }
-    activeInstanceChangesSinceLastAgent[instanceLabel] = Catalog.aliasDiffForActiveInstance(st.diff, state.aliasState);
   }
 
   const memoryPayload = buildMemoryInjectionPayload();
-
   const baseUserPayload = {
     triggerInstanceLabel: getInstanceLabelByInternalId(triggerInstanceId) || null,
     hasBaseline: state.hasGlobalBaseline,
@@ -2627,12 +2963,12 @@ async function runGlobalAgent(triggerInstanceId, userText) {
     activeInstanceChangesSinceLastAgent,
     memoryState: memoryPayload.memoryState,
     recentMemoryLogEntries: memoryPayload.recentMemoryLogEntries,
-    hint: "boardCatalog = Übersicht, activeCanvasStates = Detaildaten nur für aktive Instanzen. Jede mutierende Action muss genau eine instanceLabel enthalten und dieses Label muss exakt einem Wert aus activeInstanceLabels bzw. einem Schlüssel von activeCanvasStates entsprechen. area/targetArea muss exakt einem vorhandenen Area-Namen der Ziel-Instanz entsprechen. Verwende create_connector für Beziehungen zwischen Stickies. fromStickyId/toStickyId dürfen bestehende Alias-IDs oder refId-Werte aus create_sticky-Actions derselben Antwort sein. memoryState/recentMemoryLogEntries bilden das semantische Arbeitsgedächtnis; referenziere dort Canvas ebenfalls nur über instanceLabel."
+    hint: "boardCatalog = Übersicht, activeCanvasStates = Detaildaten für die im aktuellen Lauf relevanten Instanzen. Jede mutierende Action muss genau eine instanceLabel enthalten und dieses Label muss exakt einem Wert aus activeInstanceLabels bzw. einem Schlüssel von activeCanvasStates entsprechen. area/targetArea muss exakt einem vorhandenen Area-Namen der Ziel-Instanz entsprechen. Verwende create_connector für Beziehungen zwischen Stickies. fromStickyId/toStickyId dürfen bestehende Alias-IDs oder refId-Werte aus create_sticky-Actions derselben Antwort sein. memoryState/recentMemoryLogEntries bilden das semantische Arbeitsgedächtnis; referenziere dort Canvas ebenfalls nur über instanceLabel."
   };
 
   const composedPrompt = composePromptForRun({
-    runMode: "global",
-    trigger: "generic",
+    runMode,
+    triggerContext,
     baseSystemPrompt: DT_GLOBAL_SYSTEM_PROMPT,
     involvedCanvasTypeIds: getInvolvedCanvasTypeIdsFromInstanceIds(activeInstanceIds),
     baseUserPayload,
@@ -2642,11 +2978,10 @@ async function runGlobalAgent(triggerInstanceId, userText) {
   const exerciseInfo = composedPrompt.exerciseContext?.exercisePackLabel
     ? (" | Exercise: " + composedPrompt.exerciseContext.exercisePackLabel + " / " + (composedPrompt.exerciseContext.currentStepLabel || "kein Schritt"))
     : "";
-
-  log("Global-Agent-Kontext" + exerciseInfo + ". Aktive Canvas: " + (activeInstanceLabels.join(", ") || "(keine)"));
+  log(sourceLabel + "-Kontext" + exerciseInfo + ". Ziel-Canvas: " + (activeInstanceLabels.join(", ") || "(keine)"));
 
   try {
-    log("Sende globalen Agent-Request an OpenAI (Modus A) ...");
+    log("Sende " + sourceLabel + "-Request an OpenAI ...");
     const answer = await OpenAI.callOpenAIResponses({
       apiKey,
       model,
@@ -2656,25 +2991,27 @@ async function runGlobalAgent(triggerInstanceId, userText) {
     });
 
     if (!answer) {
-      log("Global Agent: Keine Antwort (output_text).");
+      log(sourceLabel + ": Keine Antwort (output_text).");
       return;
     }
 
     const agentObj = OpenAI.parseJsonFromModelOutput(answer);
     if (!agentObj) {
-      log("Global Agent: Antwort ist kein valides JSON. Rohantwort:");
+      log(sourceLabel + ": Antwort ist kein valides JSON. Rohantwort:");
       log(answer);
       return;
     }
 
-    log("Global Agent analysis:");
+    const { feedback, recommendations, evaluation } = normalizeAgentExerciseArtifacts(agentObj, triggerContext, sourceLabel);
+
+    log(sourceLabel + " analysis:");
     log(agentObj.analysis || "(keine analysis)");
 
     const actionResult = Array.isArray(agentObj.actions) && agentObj.actions.length
       ? await applyResolvedAgentActions(agentObj.actions, {
           candidateInstanceIds: activeInstanceIds,
           triggerInstanceId,
-          sourceLabel: "Global Agent"
+          sourceLabel
         })
       : {
           appliedCount: 0,
@@ -2686,7 +3023,7 @@ async function runGlobalAgent(triggerInstanceId, userText) {
 
     if (Array.isArray(agentObj.actions) && agentObj.actions.length) {
       log(
-        "Global Agent: Action-Run abgeschlossen. " +
+        sourceLabel + ": Action-Run abgeschlossen. " +
         "Geplant=" + actionResult.appliedCount +
         ", ausgeführt=" + actionResult.executedMutationCount +
         ", Hinweise=" + actionResult.infoCount +
@@ -2695,41 +3032,65 @@ async function runGlobalAgent(triggerInstanceId, userText) {
         ", Ziel-Instanzen=" + actionResult.targetedInstanceCount + "."
       );
     } else {
-      log("Global Agent lieferte keine Actions.");
+      log(sourceLabel + " lieferte keine Actions.");
     }
 
     const { liveCatalog: refreshedLiveCatalog } = await refreshBoardState();
     const postActionStateById = await computeInstanceStatesById(refreshedLiveCatalog);
-
     const nowIso = new Date().toISOString();
-    const savePromises = [];
 
-    for (const inst of state.instancesById.values()) {
-      const st = postActionStateById[inst.instanceId];
-      if (st?.signature && inst.imageId) {
-        inst.baselineSignature = st.signature;
-        inst.baselineSignatureLoaded = true;
-        savePromises.push(Board.saveBaselineSignatureForImageId(inst.imageId, st.signature, log));
+    if (updateGlobalBaseline) {
+      const savePromises = [];
+
+      for (const inst of state.instancesById.values()) {
+        const st = postActionStateById[inst.instanceId];
+        if (st?.signature && inst.imageId) {
+          inst.baselineSignature = st.signature;
+          inst.baselineSignatureLoaded = true;
+          savePromises.push(Board.saveBaselineSignatureForImageId(inst.imageId, st.signature, log));
+        }
+
+        inst.lastDiff = null;
+        inst.lastAgentRunAt = nowIso;
+        inst.lastChangedAt = nowIso;
       }
 
-      inst.lastDiff = null;
-      inst.lastAgentRunAt = nowIso;
-      inst.lastChangedAt = nowIso;
+      state.hasGlobalBaseline = true;
+      state.globalBaselineAt = nowIso;
+
+      await Promise.all(savePromises);
+      await Board.savePersistedBaselineMeta({ hasGlobalBaseline: true, baselineAt: nowIso }, log);
+      log(sourceLabel + ": Baseline aktualisiert (" + nowIso + ").");
+    } else {
+      for (const id of activeInstanceIds) {
+        const inst = state.instancesById.get(id);
+        if (!inst) continue;
+        inst.lastAgentRunAt = nowIso;
+        inst.lastChangedAt = nowIso;
+      }
     }
 
-    state.hasGlobalBaseline = true;
-    state.globalBaselineAt = nowIso;
-
-    await Promise.all(savePromises);
-    await Board.savePersistedBaselineMeta({ hasGlobalBaseline: true, baselineAt: nowIso }, log);
-    log("Global Agent: Baseline aktualisiert (" + nowIso + ").");
-
     await persistMemoryAfterAgentRun(agentObj, {
-      runMode: "global",
-      trigger: composedPrompt.exerciseContext?.trigger || "generic",
+      runMode,
+      trigger: triggerContext?.triggerKey || "generic",
       targetInstanceLabels: activeInstanceLabels,
       userRequest: finalUserText
     }, actionResult);
+
+    if (triggerContext) {
+      const feedbackRenderResult = await persistExerciseRuntimeAfterAgentRun({
+        triggerContext,
+        feedback,
+        recommendations,
+        evaluation,
+        exercisePack: getSelectedExercisePack(),
+        currentStep: getCurrentExerciseStep()
+      });
+
+      if (feedbackRenderResult?.textItemIds?.length) {
+        log(sourceLabel + ": Feedback-Text erzeugt in Frame '" + (feedbackRenderResult.frameTitle || state.boardConfig?.feedbackFrameName || "AI Coach Output") + "' – Item(s): " + feedbackRenderResult.textItemIds.join(", ") + ".");
+      }
+    }
 
   } catch (e) {
     log("Exception beim globalen Agent-Run: " + e.message);
