@@ -6,17 +6,17 @@ import {
   DT_GLOBAL_SYSTEM_PROMPT,
   DT_MEMORY_RECENT_LOG_LIMIT,
   STICKY_LAYOUT
-} from "./config.js?v=20260301-step10";
+} from "./config.js?v=20260301-step11";
 
-import { createLogger, stripHtml, extractUnderlinedText, isFiniteNumber } from "./utils.js?v=20260301-step10";
+import { createLogger, stripHtml, extractUnderlinedText, isFiniteNumber } from "./utils.js?v=20260301-step11";
 
-import * as Board from "./miro/board.js?v=20260301-step10";
-import * as Catalog from "./domain/catalog.js?v=20260301-step10";
-import * as OpenAI from "./ai/openai.js?v=20260301-step10";
-import * as Memory from "./runtime/memory.js?v=20260301-step10";
-import * as Exercises from "./exercises/registry.js?v=20260301-step10";
-import * as PromptComposer from "./prompt/composer.js?v=20260301-step10";
-import * as ExerciseEngine from "./runtime/exercise-engine.js?v=20260301-step10";
+import * as Board from "./miro/board.js?v=20260301-step11";
+import * as Catalog from "./domain/catalog.js?v=20260301-step11";
+import * as OpenAI from "./ai/openai.js?v=20260301-step11";
+import * as Memory from "./runtime/memory.js?v=20260301-step11";
+import * as Exercises from "./exercises/registry.js?v=20260301-step11";
+import * as PromptComposer from "./prompt/composer.js?v=20260301-step11";
+import * as ExerciseEngine from "./runtime/exercise-engine.js?v=20260301-step11";
 
 // --------------------------------------------------------------------
 // State (Controller-Level)
@@ -1932,11 +1932,10 @@ async function applyAgentActionsToInstance(instanceId, actions) {
     return out;
   }
 
-  const occupiedByRegion = {
-    left:   buildOccupied(liveInst?.regions?.body?.left?.stickies),
-    middle: buildOccupied(liveInst?.regions?.body?.middle?.stickies),
-    right:  buildOccupied(liveInst?.regions?.body?.right?.stickies)
-  };
+  const occupiedByRegion = Object.create(null);
+  for (const region of Catalog.getBodyRegionDefs(instance.canvasTypeId || TEMPLATE_ID)) {
+    occupiedByRegion[region.id] = buildOccupied(liveInst?.regions?.body?.[region.id]?.stickies);
+  }
 
   function deriveStickySize(regionId) {
     const occ = occupiedByRegion[regionId] || [];
@@ -1966,8 +1965,7 @@ async function applyAgentActionsToInstance(instanceId, actions) {
 
     const loc = Catalog.classifyNormalizedLocation(canvasTypeId, px, py);
     const rid = loc?.role === "body" ? loc.regionId : null;
-    if (rid === "left" || rid === "middle" || rid === "right") return rid;
-    return null;
+    return (rid && Object.prototype.hasOwnProperty.call(occupiedByRegion, rid)) ? rid : null;
   }
 
   function registerCreatedStickyRef(refId, stickyId) {
@@ -2055,7 +2053,7 @@ async function applyAgentActionsToInstance(instanceId, actions) {
         targetX = coords.x;
         targetY = coords.y;
       } else {
-        const region = Catalog.areaNameToRegion(action.targetArea);
+        const region = Catalog.areaNameToRegion(action.targetArea, canvasTypeId);
         const regionId = region?.id || null;
 
         if (regionId && occupiedByRegion[regionId]) {
@@ -2120,7 +2118,7 @@ async function applyAgentActionsToInstance(instanceId, actions) {
       const canvasTypeId = instance.canvasTypeId || TEMPLATE_ID;
 
       const areaName = action.area || action.targetArea || null;
-      const region = Catalog.areaNameToRegion(areaName);
+      const region = Catalog.areaNameToRegion(areaName, canvasTypeId);
       const regionId = region?.id || null;
 
       if (!regionId || !occupiedByRegion[regionId]) {
