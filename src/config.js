@@ -8,6 +8,10 @@ export const TEMPLATE_ID = "datentreiber-3boxes";
 export const TEMPLATE_IMAGE_URL =
   "https://www.datentreiber.com/wp-content/uploads/2024/12/Datentreiber_EN_3-Boxes_v1-1_20240610.png";
 
+export const ANALYTICS_AI_USE_CASE_TEMPLATE_ID = "datentreiber-analytics-ai-use-case";
+export const ANALYTICS_AI_USE_CASE_IMAGE_URL =
+  "https://www.datentreiber.com/wp-content/uploads/2024/08/Datentreiber_EN_Analytics-AI-Use-Case_v1-1_20240610.png";
+
 // Template-Katalog: Canvas-Typ-Erkennung über PNG-URL
 export const DT_TEMPLATE_CATALOG = {
   [TEMPLATE_ID]: {
@@ -24,6 +28,33 @@ Dieser Canvas-Typ hat drei Body-Bereiche plus Header und Footer:
 - Box 3 (rechts)
 Sticky Notes müssen inhaltlich sinnvoll diesen Bereichen zugeordnet werden.
 Wenn Beziehungen zwischen Stickies bestehen, sollen Connectoren so geplant werden, dass die inhaltliche Einheit lesbar bleibt.`.trim()
+  },
+  [ANALYTICS_AI_USE_CASE_TEMPLATE_ID]: {
+    canvasTypeId: ANALYTICS_AI_USE_CASE_TEMPLATE_ID,
+    displayName: "Analytics & AI Use Case",
+    agentLabelPrefix: "Analytics & AI Use Case",
+    thumbnailUrl: ANALYTICS_AI_USE_CASE_IMAGE_URL,
+    imageUrl: ANALYTICS_AI_USE_CASE_IMAGE_URL,
+    insertWidthPx: 2000,
+    promptContext: `
+Dieser Canvas-Typ ist das Analytics & AI Use Case Canvas.
+Die rechte Seite beschreibt die Nutzerperspektive:
+- User & Situation
+- Objectives & Results
+- Decisions & Actions
+- User Gains
+- User Pains
+
+Die linke Seite beschreibt die Lösungsperspektive:
+- Solutions
+- Information
+- Functions
+- Benefits
+
+Das Feld Check in der Mitte dient dem Problem-Solution-Fit.
+Nutze die fachliche Kette Information → Decisions & Actions → Results → Objectives.
+Informationen und Funktionen sind nur dann wertvoll, wenn sie Entscheidungen oder Handlungen verbessern.
+Benefits sind nur dann gut, wenn sie Pains reduzieren, Gains verstärken oder zu Ergebnissen und Zielen beitragen.`.trim()
   }
 };
 
@@ -147,6 +178,109 @@ export const DT_CANVAS_DEFS = {
         ]
       }
     ]
+  },
+  [ANALYTICS_AI_USE_CASE_TEMPLATE_ID]: {
+    originalWidth: 1000,
+    originalHeight: 720,
+    headerPolygons: [
+      {
+        id: "1a_header",
+        title: "Header",
+        polygonNorm: [
+          [0.1560, 0.0194],
+          [0.6260, 0.0194],
+          [0.6260, 0.1042],
+          [0.1560, 0.1042]
+        ]
+      }
+    ],
+    footerPolygons: [
+      {
+        id: "1b_footer",
+        title: "Footer",
+        polygonNorm: [
+          [0.0160, 0.9236],
+          [0.5690, 0.9236],
+          [0.5690, 0.9806],
+          [0.0160, 0.9806]
+        ]
+      }
+    ],
+    regionPolygons: [
+      {
+        id: "2_user_and_situation",
+        title: "User & Situation",
+        polygonNorm: [
+          [0.7090, 0.4625],
+          [0.7940, 0.4625],
+          [0.7940, 0.5458],
+          [0.7090, 0.5458]
+        ]
+      },
+      {
+        id: "3_objectives_and_results",
+        title: "Objectives & Results",
+        polygonNorm: [
+          [0.8990, 0.3083],[0.7900, 0.4583],[0.7980, 0.4583],[0.7980, 0.5500],[0.7250, 0.5500],[0.6120, 0.7042],[0.6390, 0.7333],[0.6620, 0.7528],[0.6930, 0.7708],[0.7270, 0.7806],[0.7590, 0.7833],[0.7930, 0.7778],[0.8210, 0.7667],[0.8550, 0.7458],[0.8920, 0.7056],[0.9190, 0.6625],[0.9420, 0.6042],[0.9540, 0.5319],[0.9530, 0.4625],[0.9400, 0.3972],[0.9230, 0.3514]
+        ]
+      },
+      {
+        id: "4_decisions_and_actions",
+        title: "Decisions & Actions",
+        polygonNorm: [
+          [0.8920, 0.3000],[0.7780, 0.4583],[0.7070, 0.4583],[0.7070, 0.5486],[0.7130, 0.5486],[0.6060, 0.6958],[0.5830, 0.6556],[0.5680, 0.6153],[0.5570, 0.5722],[0.5510, 0.5194],[0.5530, 0.4583],[0.5620, 0.4097],[0.5760, 0.3667],[0.5950, 0.3264],[0.6170, 0.2944],[0.6390, 0.2694],[0.6700, 0.2472],[0.7040, 0.2306],[0.7440, 0.2222],[0.7760, 0.2236],[0.8040, 0.2319],[0.8400, 0.2500],[0.8660, 0.2708]
+        ]
+      },
+      {
+        id: "5a_user_gains",
+        title: "User Gains",
+        polygonNorm: [
+          [0.5020, 0.4722],[0.5040, 0.1542],[0.9960, 0.1542],[0.9980, 0.4736],[0.9570, 0.4736],[0.9520, 0.4361],[0.9430, 0.3931],[0.9290, 0.3569],[0.9110, 0.3208],[0.8870, 0.2861],[0.8630, 0.2597],[0.8300, 0.2375],[0.7940, 0.2222],[0.7610, 0.2167],[0.7220, 0.2194],[0.6870, 0.2306],[0.6480, 0.2542],[0.6150, 0.2889],[0.5850, 0.3333],[0.5650, 0.3833],[0.5530, 0.4278],[0.5480, 0.4708]
+        ]
+      },
+      {
+        id: "5b_user_pains",
+        title: "User Pains",
+        polygonNorm: [
+          [0.5010, 0.5306],[0.5030, 0.8500],[0.9990, 0.8569],[0.9990, 0.5347],[0.9570, 0.5347],[0.9510, 0.5722],[0.9420, 0.6139],[0.9250, 0.6569],[0.9020, 0.6986],[0.8710, 0.7347],[0.8370, 0.7625],[0.7980, 0.7806],[0.7520, 0.7875],[0.7040, 0.7792],[0.6620, 0.7583],[0.6250, 0.7250],[0.5990, 0.6917],[0.5720, 0.6389],[0.5550, 0.5819],[0.5490, 0.5306]
+        ]
+      },
+      {
+        id: "6_solutions",
+        title: "Solutions",
+        polygonNorm: [
+          [0.0220, 0.3944],[0.0220, 0.6097],[0.2570, 0.6083],[0.2770, 0.5000],[0.2570, 0.3944]
+        ]
+      },
+      {
+        id: "6a_information",
+        title: "Information",
+        polygonNorm: [
+          [0.0210, 0.1861],[0.2180, 0.1847],[0.2570, 0.3931],[0.0220, 0.3931]
+        ]
+      },
+      {
+        id: "6b_functions",
+        title: "Functions",
+        polygonNorm: [
+          [0.0220, 0.8153],[0.2180, 0.8153],[0.2570, 0.6097],[0.0220, 0.6111]
+        ]
+      },
+      {
+        id: "7_benefits",
+        title: "Benefits",
+        polygonNorm: [
+          [0.2200, 0.8153],[0.4750, 0.8153],[0.4750, 0.1875],[0.2200, 0.1847],[0.2790, 0.5014]
+        ]
+      },
+      {
+        id: "8_check",
+        title: "Check",
+        polygonNorm: [
+          [0.5010, 0.4750],[0.5480, 0.4750],[0.5480, 0.5278],[0.5010, 0.5278]
+        ]
+      }
+    ]
   }
 };
 
@@ -169,7 +303,7 @@ Antworte ausschließlich mit einem JSON-Objekt in diesem Format:
   "memoryEntry": {
     "summary": "kurze semantische Zusammenfassung dieses Laufs",
     "workSteps": [
-      { "instanceLabel": "Datentreiber 3-Boxes #1", "text": "Kurzer semantischer Arbeitsschritt." }
+      { "instanceLabel": "Analytics & AI Use Case #1", "text": "Kurzer semantischer Arbeitsschritt." }
     ],
     "decisionsAdded": [],
     "decisionsRemoved": [],
@@ -239,19 +373,17 @@ Zusatz für ${modeLabel}:
 - recommendations und evaluation dürfen niemals die eigentliche Board-Manipulation ersetzen; actions, memoryEntry und feedback bleiben gleichwertige Bestandteile des Outputs.`.trim();
 }
 
-// --------------------------------------------------------------------
-// Prompt-Katalog (Modus B, instanzspezifisch)
-// --------------------------------------------------------------------
-export const DT_PROMPT_CATALOG = {
-  [TEMPLATE_ID]: {
-    system: `
+function buildSelectionSystemPrompt() {
+  return `
 Du bist ein Facilitation-Bot für Miro-Workshops.
 Du siehst:
-- eine oder mehrere selektierte Canvas-Instanzen (3-Boxes-Canvas) mit Sticky Notes als JSON unter activeCanvasState bzw. activeCanvasStates
+- eine oder mehrere selektierte Canvas-Instanzen mit Sticky Notes als JSON unter activeCanvasState bzw. activeCanvasStates
 - einen Board-Katalog mit allen weiteren Instanzen (nur als Zusammenfassung)
 - ein aktuelles Gedächtnisobjekt unter memoryState
 - eine kleine Verlaufsliste jüngerer Gedächtniseinträge unter recentMemoryLogEntries
 - optional einen Übungs-/Trainingskontext unter exerciseContext.
+
+Die genaue fachliche Bedeutung der Canvas-Instanzen wird in nachgelagerten Canvas-Typ-Kontextblöcken erklärt. Verlasse dich nicht auf stillschweigendes Vorwissen über einen bestimmten Canvas-Typ.
 
 Deine Aufgabe besteht aus vier gleichwertigen Teilen:
 1) sinnvolle Sticky Notes planen, verschieben, ergänzen oder löschen,
@@ -260,15 +392,14 @@ Deine Aufgabe besteht aus vier gleichwertigen Teilen:
 4) ein verständliches feedback für Menschen erzeugen.
 
 Standardregel:
-- Sobald aus der Nutzeranfrage ableitbar ist, dass Sticky Notes zusammengehören, voneinander abhängen, in Beziehung stehen oder als gemeinsame Einheit gelesen werden sollen, musst du dafür Connectoren einplanen.
+- Sobald aus der Nutzeranfrage, dem Canvas-Kontext oder dem Exercise-Kontext ableitbar ist, dass Sticky Notes zusammengehören, voneinander abhängen, in Beziehung stehen oder als gemeinsame Einheit gelesen werden sollen, musst du dafür Connectoren einplanen.
 - Beispiele für solche Beziehungen sind u.a.: "gehört zu", "hängt von ... ab", "führt zu", "unterstützt", "ist Teil von", "steht im Zusammenhang mit".
-- Wenn mehrere getrennte Gruppen erzeugt werden, verbinde nur die Stickies innerhalb derselben Gruppe. Verbinde verschiedene Gruppen nur dann miteinander, wenn die Nutzeranfrage das ausdrücklich verlangt.
-- Beispiel: Wenn für mehrere Personen je drei Stickies (Name, Tätigkeit, Erwartung) entstehen, verbinde pro Person die jeweilige Kette innerhalb der Person, z.B. Name → Tätigkeit → Erwartung. Verbinde die verschiedenen Personen nicht untereinander, außer es wird ausdrücklich verlangt.
+- Wenn mehrere getrennte Gruppen erzeugt werden, verbinde nur die Stickies innerhalb derselben Gruppe. Verbinde verschiedene Gruppen nur dann miteinander, wenn der aktuelle Kontext das ausdrücklich verlangt.
 
 WICHTIG:
 - Jede bestehende Sticky Note in activeCanvasState bzw. activeCanvasStates hat eine kurze ID im Feld "id" (z.B. "S0001"). Wenn du eine bestehende Sticky Note in einer Action referenzierst, verwende genau diese ID.
 - Wenn du neue Stickies anlegst und diese später in derselben Antwort in weiteren Actions referenzieren willst, gib der create_sticky-Action zusätzlich ein Feld "refId" (z.B. "P1_NAME"). Danach darfst du diese refId in move_sticky, delete_sticky und create_connector wie eine Sticky-ID verwenden.
-- Canvas-Instanzen werden immer über menschenlesbare Labels referenziert, z.B. "Datentreiber 3-Boxes #1".
+- Canvas-Instanzen werden immer über menschenlesbare Labels referenziert, z.B. "Datentreiber 3-Boxes #1" oder "Analytics & AI Use Case #1".
 - Wenn activeCanvasStates mehr als eine Instanz enthält, muss jede mutierende Action zusätzlich ein Feld "instanceLabel" enthalten. Der Wert muss exakt einem Label aus selectedInstanceLabels bzw. den Schlüsseln von activeCanvasStates entsprechen.
 - Connectoren sind kein optionales Nice-to-have, sondern ein fester Teil der Aufgabe, wenn Relationen erkennbar sind.
 - Bestehende Kernaufgaben bleiben vollständig bestehen: Inhalt, Area-Zuordnung, Cluster, Tags, Connectoren, Board-Kontext und Gedächtnis müssen zusammen konsistent behandelt werden.
@@ -281,7 +412,18 @@ Regeln für create_connector:
 - directed=false bedeutet: sichtbare Verbindung ohne Pfeil.
 - Wenn du Connectoren für neu erzeugte Stickies planst, gib zuerst die create_sticky-Actions aus und danach die create_connector-Actions.
 
-${buildCommonAgentContractBlock("selection / instanzbezogenen Agentenlauf")}`
+${buildCommonAgentContractBlock("selection / instanzbezogenen Agentenlauf")}`;
+}
+
+// --------------------------------------------------------------------
+// Prompt-Katalog (Modus B, instanzspezifisch)
+// --------------------------------------------------------------------
+export const DT_PROMPT_CATALOG = {
+  [TEMPLATE_ID]: {
+    system: buildSelectionSystemPrompt()
+  },
+  [ANALYTICS_AI_USE_CASE_TEMPLATE_ID]: {
+    system: buildSelectionSystemPrompt()
   }
 };
 
@@ -314,10 +456,10 @@ WICHTIG:
 - Wenn exerciseContext vorhanden ist, behandle ihn als verbindlichen Zusatzkontext für Ziel, Schritt, erlaubte Aktionen, Mutation Policy und sichtbare Instruktion.
 
 Verwende für Actions ausschließlich diese Typen:
-- { "type": "move_sticky", "instanceLabel": "Datentreiber 3-Boxes #1", "stickyId": "S0001", "targetArea": "Box 2 (Mitte)" }
-- { "type": "create_sticky", "instanceLabel": "Datentreiber 3-Boxes #1", "refId": "P1_NAME", "area": "Box 3 (rechts)", "text": "Neuer Inhalt" }
-- { "type": "delete_sticky", "instanceLabel": "Datentreiber 3-Boxes #1", "stickyId": "S0002" }
-- { "type": "create_connector", "instanceLabel": "Datentreiber 3-Boxes #1", "fromStickyId": "S0001", "toStickyId": "P1_NAME", "directed": true }
+- { "type": "move_sticky", "instanceLabel": "Analytics & AI Use Case #1", "stickyId": "S0001", "targetArea": "Objectives & Results" }
+- { "type": "create_sticky", "instanceLabel": "Analytics & AI Use Case #1", "refId": "FIT_1", "area": "Check", "text": "Information improves a critical decision." }
+- { "type": "delete_sticky", "instanceLabel": "Analytics & AI Use Case #1", "stickyId": "S0002" }
+- { "type": "create_connector", "instanceLabel": "Analytics & AI Use Case #1", "fromStickyId": "S0001", "toStickyId": "FIT_1", "directed": true }
 Optional für reine Hinweise ohne Board-Mutation:
 - { "type": "inform", "message": "Kurzer Hinweis" }
 
