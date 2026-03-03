@@ -1,11 +1,12 @@
 import {
   TEMPLATE_ID,
+  ANALYTICS_AI_USE_CASE_TEMPLATE_ID,
   DT_DEFAULT_APP_ADMIN_POLICY,
   DT_DEFAULT_FEEDBACK_CHANNEL,
   DT_DEFAULT_FEEDBACK_FRAME_NAME,
   DT_TRIGGER_KEYS,
   DT_TRIGGER_DEFAULTS
-} from "../config.js?v=20260301-step10";
+} from "../config.js?v=20260301-step11";
 
 function asNonEmptyString(value) {
   if (typeof value !== "string") return null;
@@ -49,6 +50,13 @@ function createTriggerConfig(triggerKey, prompt, overrides = {}) {
   };
 }
 
+function normalizeTriggerInput(input) {
+  if (typeof input === "string") {
+    return { prompt: input };
+  }
+  return (input && typeof input === "object") ? input : { prompt: null };
+}
+
 function buildStepAllowedTriggers({
   selectionCheck,
   selectionHint,
@@ -65,21 +73,36 @@ function buildStepAllowedTriggers({
   globalCoach,
   globalGrade
 }) {
+  const sc = normalizeTriggerInput(selectionCheck);
+  const sh = normalizeTriggerInput(selectionHint);
+  const sa = normalizeTriggerInput(selectionAutocorrect);
+  const sr = normalizeTriggerInput(selectionReview);
+  const ss = normalizeTriggerInput(selectionSynthesize);
+  const sco = normalizeTriggerInput(selectionCoach);
+  const sg = normalizeTriggerInput(selectionGrade);
+  const gc = normalizeTriggerInput(globalCheck);
+  const gh = normalizeTriggerInput(globalHint);
+  const ga = normalizeTriggerInput(globalAutocorrect);
+  const gr = normalizeTriggerInput(globalReview);
+  const gs = normalizeTriggerInput(globalSynthesize);
+  const gco = normalizeTriggerInput(globalCoach);
+  const gg = normalizeTriggerInput(globalGrade);
+
   return {
-    "selection.check": createTriggerConfig("selection.check", selectionCheck),
-    "selection.hint": createTriggerConfig("selection.hint", selectionHint),
-    "selection.autocorrect": createTriggerConfig("selection.autocorrect", selectionAutocorrect, { feedbackPolicy: "both" }),
-    "selection.review": createTriggerConfig("selection.review", selectionReview),
-    "selection.synthesize": createTriggerConfig("selection.synthesize", selectionSynthesize),
-    "selection.coach": createTriggerConfig("selection.coach", selectionCoach),
-    "selection.grade": createTriggerConfig("selection.grade", selectionGrade),
-    "global.check": createTriggerConfig("global.check", globalCheck),
-    "global.hint": createTriggerConfig("global.hint", globalHint),
-    "global.autocorrect": createTriggerConfig("global.autocorrect", globalAutocorrect, { feedbackPolicy: "both" }),
-    "global.review": createTriggerConfig("global.review", globalReview),
-    "global.synthesize": createTriggerConfig("global.synthesize", globalSynthesize),
-    "global.coach": createTriggerConfig("global.coach", globalCoach),
-    "global.grade": createTriggerConfig("global.grade", globalGrade)
+    "selection.check": createTriggerConfig("selection.check", sc.prompt, sc),
+    "selection.hint": createTriggerConfig("selection.hint", sh.prompt, sh),
+    "selection.autocorrect": createTriggerConfig("selection.autocorrect", sa.prompt, { feedbackPolicy: "both", ...sa }),
+    "selection.review": createTriggerConfig("selection.review", sr.prompt, sr),
+    "selection.synthesize": createTriggerConfig("selection.synthesize", ss.prompt, ss),
+    "selection.coach": createTriggerConfig("selection.coach", sco.prompt, sco),
+    "selection.grade": createTriggerConfig("selection.grade", sg.prompt, sg),
+    "global.check": createTriggerConfig("global.check", gc.prompt, gc),
+    "global.hint": createTriggerConfig("global.hint", gh.prompt, gh),
+    "global.autocorrect": createTriggerConfig("global.autocorrect", ga.prompt, { feedbackPolicy: "both", ...ga }),
+    "global.review": createTriggerConfig("global.review", gr.prompt, gr),
+    "global.synthesize": createTriggerConfig("global.synthesize", gs.prompt, gs),
+    "global.coach": createTriggerConfig("global.coach", gco.prompt, gco),
+    "global.grade": createTriggerConfig("global.grade", gg.prompt, gg)
   };
 }
 
@@ -268,8 +291,288 @@ Globaler Bewertungsmodus für den Schritt "Personas schärfen":
   }
 };
 
+
+const ANALYTICS_AI_USECASE_FIT_SPRINT_PACK = {
+  id: "analytics-ai-usecase-fit-sprint-v1",
+  label: "Use Case Fit Sprint",
+  version: 1,
+  description: "Geführte Miniübung auf dem Analytics & AI Use Case Canvas, um Nutzerperspektive, Lösungsperspektive und Problem-Solution-Fit schrittweise auszuarbeiten.",
+  boardMode: "exercise",
+  allowedCanvasTypes: [ANALYTICS_AI_USE_CASE_TEMPLATE_ID],
+  defaultCanvasTypeId: ANALYTICS_AI_USE_CASE_TEMPLATE_ID,
+  defaultStepId: "step1_user_perspective",
+  defaults: {
+    feedbackFrameName: DT_DEFAULT_FEEDBACK_FRAME_NAME,
+    feedbackChannel: DT_DEFAULT_FEEDBACK_CHANNEL,
+    userMayChangePack: false,
+    userMayChangeStep: false,
+    appAdminPolicy: DT_DEFAULT_APP_ADMIN_POLICY
+  },
+  globalPrompt: `
+Auf diesem Board läuft die Übung "Use Case Fit Sprint" auf dem Canvas "Analytics & AI Use Case".
+
+Übergeordnetes Ziel:
+- Entwickle einen Analytics- oder KI-Anwendungsfall konsequent aus der Nutzerperspektive.
+- Arbeite erst die rechte Seite des Canvas tragfähig aus und leite danach die linke Seite als Antwort darauf ab.
+- Verdichte anschließend den Problem-Solution-Fit im Feld Check.
+
+Methodische Leitregeln:
+- Die rechte Seite beschreibt die Nutzerperspektive: User & Situation, Objectives & Results, Decisions & Actions, User Gains, User Pains.
+- Die linke Seite beschreibt die Lösungsperspektive: Solutions, Information, Functions, Benefits.
+- Das Feld Check verdichtet den Problem-Solution-Fit.
+- Verwende die Kette Information → Decisions & Actions → Results → Objectives als fachliche Leitlinie.
+- Benefits sind nur dann tragfähig, wenn sie Pains reduzieren, Gains verstärken oder zu besseren Ergebnissen und Zielen beitragen.
+- Nutze Connectoren nur dort, wo Beziehungen methodisch klar und lesbar sind.
+- Erfinde keine unnötigen Systemarchitekturen oder technischen Details; bleibe auf Use-Case-Ebene.
+- Arbeite präzise, atomar und area-genau.`.trim(),
+  steps: {
+    step1_user_perspective: {
+      id: "step1_user_perspective",
+      order: 10,
+      label: "User Perspective First",
+      visibleInstruction: "Fülle zuerst die Nutzerperspektive aus: User & Situation, Objectives & Results, Decisions & Actions, User Gains und User Pains.",
+      allowedActions: ["create_sticky", "move_sticky", "delete_sticky", "create_connector"],
+      defaultEnterTrigger: null,
+      allowedTriggers: buildStepAllowedTriggers({
+        selectionCheck: `
+Prüfmodus für den Schritt "User Perspective First":
+- Fokus ausschließlich auf der rechten Seite des Canvas.
+- Prüfe, ob User & Situation konkret genug sind.
+- Prüfe, ob Objectives & Results als gewünschte Ziele oder erwartete Ergebnisse formuliert sind.
+- Prüfe, ob Decisions & Actions echte Entscheidungen oder Handlungen beschreiben.
+- Prüfe, ob User Gains und User Pains plausibel aus Nutzersicht formuliert sind.
+- Prüfe Fehlplatzierungen und verschiebe nur dann, wenn die Korrektur eindeutig und unstrittig ist.
+- Connectoren sind nur dann sinnvoll, wenn Beziehungen klar sind, insbesondere Decisions & Actions → Objectives & Results.
+- Liefere feedback mit korrekten Punkten, Lücken, Unklarheiten und Fehlplatzierungen.`.trim(),
+        selectionHint: `
+Hinweismodus für den Schritt "User Perspective First":
+- Gib möglichst wenig invasive Unterstützung.
+- Formuliere knappe Hinweise, was auf der rechten Seite noch fehlt oder zu vage ist.
+- Nutze Board-Mutationen nur in Ausnahmefällen; bevorzuge feedback und recommendations.`.trim(),
+        selectionAutocorrect: `
+Autokorrekturmodus für den Schritt "User Perspective First":
+- Korrigiere aktiv die rechte Seite des Canvas.
+- Verschiebe eindeutig falsch platzierte Sticky Notes in die passende Area der Nutzerperspektive.
+- Ergänze nur klar notwendige Sticky Notes, um offensichtliche Lücken zu schließen.
+- Entferne nur leere, redundante oder doppelte Inhalte.
+- Entwickle in diesem Schritt noch keine vollständige linke Lösungsperspektive.
+- Ergänze Connectoren nur dort, wo sie methodisch klar sind, insbesondere Decisions & Actions → Objectives & Results.
+- Erkläre in feedback, welche Korrekturen vorgenommen wurden und ob die Instanz für den nächsten Schritt tragfähig ist.`.trim(),
+        selectionReview: `
+Reviewmodus für den Schritt "User Perspective First":
+- Beurteile die Qualität, Lesbarkeit und methodische Sauberkeit der rechten Seite.
+- Nimm standardmäßig keine Board-Mutationen vor.
+- Gib präzises feedback zu Vollständigkeit, Spezifität und Reifegrad.`.trim(),
+        selectionSynthesize: `
+Synthesemodus für den Schritt "User Perspective First":
+- Verdichte, welche Nutzer, Ziele, Entscheidungen, Gains und Pains bereits sichtbar sind.
+- Fokus auf Einsichten und Muster, nicht auf Mutationen.`.trim(),
+        selectionCoach: `
+Coachmodus für den Schritt "User Perspective First":
+- Coache die selektierten Canvas-Instanzen, wie die rechte Seite sinnvoll ausgefüllt werden soll.
+- Erkläre konkret, was in User & Situation, Objectives & Results, Decisions & Actions, User Gains und User Pains gehört.
+- Nutze vorhandene Stickies als Ausgangspunkt.
+- actions sollen normalerweise leer bleiben.
+- Liefere starkes feedback und recommendations in Richtung selection.check oder selection.hint.`.trim(),
+        selectionGrade: `
+Bewertungsmodus für den Schritt "User Perspective First":
+- Bewerte die rechte Seite anhand der Kriterien User Clarity, Objective Quality, Decision/Action Quality, Pain/Gain Quality und Area Correctness.
+- Führe keine oder praktisch keine Board-Mutationen aus.
+- Liefere zusätzlich eine evaluation mit Rubrik.
+- Setze advanceStepSuggested nur dann auf true, wenn die rechte Seite tragfähig genug ist, um daraus die Lösungsperspektive abzuleiten.`.trim(),
+        globalCheck: `
+Globaler Prüfmodus für den Schritt "User Perspective First":
+- Prüfe über alle relevanten Instanzen hinweg, ob Nutzerperspektiven konsistent, konkret und methodisch tragfähig sind.
+- Hebe globale Lücken und wiederkehrende Fehlplatzierungen hervor.`.trim(),
+        globalHint: `
+Globaler Hinweismodus für den Schritt "User Perspective First":
+- Gib globale Hinweise, welche Aspekte der Nutzerperspektive typischerweise noch fehlen oder unscharf sind.
+- Bevorzuge feedback und recommendations; handle Board-Mutationen sehr sparsam.`.trim(),
+        globalAutocorrect: `
+Globaler Autokorrekturmodus für den Schritt "User Perspective First":
+- Korrigiere über alle relevanten Instanzen hinweg nur eindeutige Fehlplatzierungen oder Lücken auf der rechten Seite.
+- Entwickle noch keine vollständige linke Lösungsperspektive.`.trim(),
+        globalReview: `
+Globaler Reviewmodus für den Schritt "User Perspective First":
+- Führe einen qualitativen Gesamt-Review über die Nutzerperspektiven aller relevanten Instanzen durch.
+- Fokus: Reifegrad, Präzision, Area-Korrektheit und Vergleichbarkeit.`.trim(),
+        globalSynthesize: `
+Globaler Synthesemodus für den Schritt "User Perspective First":
+- Verdichte über alle relevanten Instanzen hinweg die wichtigsten Nutzerziele, Pains, Gains und Handlungsmuster.
+- Keine Standard-Mutationen; Fokus auf Muster und Erkenntnisse.`.trim(),
+        globalCoach: `
+Globaler Coachmodus für den Schritt "User Perspective First":
+- Gib dem Team eine klare übergreifende Anleitung, wie es die Nutzerperspektive weiter schärfen soll.`.trim(),
+        globalGrade: `
+Globaler Bewertungsmodus für den Schritt "User Perspective First":
+- Bewerte die Gesamtqualität der Nutzerperspektive über alle relevanten Instanzen.
+- Liefere zusätzlich eine evaluation mit Rubrik.`.trim()
+      }),
+      transitions: [
+        createManualTransition("step2_solution_perspective", {
+          allowedAfterTriggers: ["selection.check", "selection.grade", "global.review"],
+          requiredStepStatuses: ["ready_for_review", "completed"]
+        })
+      ]
+    },
+    step2_solution_perspective: {
+      id: "step2_solution_perspective",
+      order: 20,
+      label: "Solution Perspective",
+      visibleInstruction: "Leite nun aus der Nutzerperspektive die Lösungsperspektive ab: Solutions, Information, Functions und Benefits.",
+      allowedActions: ["create_sticky", "move_sticky", "delete_sticky", "create_connector"],
+      defaultEnterTrigger: null,
+      allowedTriggers: buildStepAllowedTriggers({
+        selectionCheck: `
+Prüfmodus für den Schritt "Solution Perspective":
+- Fokus auf der linken Seite des Canvas.
+- Prüfe, ob Solutions, Information, Functions und Benefits nachvollziehbar aus der Nutzerperspektive abgeleitet sind.
+- Prüfe, ob Information Entscheidungen oder Handlungen verbessert.
+- Prüfe, ob Functions reale Entscheidungen oder Handlungen unterstützen.
+- Prüfe, ob Benefits Pains reduzieren, Gains verstärken oder zu Ergebnissen und Zielen beitragen.
+- Ergänze Connectoren nur dort, wo Beziehungen klar ableitbar sind, insbesondere Information → Decisions & Actions, Functions → Decisions & Actions sowie Benefits → User Pains/User Gains/Objectives & Results.`.trim(),
+        selectionHint: `
+Hinweismodus für den Schritt "Solution Perspective":
+- Gib präzise Hinweise, wie die linke Seite aus der rechten Seite abgeleitet werden sollte.
+- Board-Mutationen nur in Ausnahmefällen; bevorzuge feedback und recommendations.`.trim(),
+        selectionAutocorrect: `
+Autokorrekturmodus für den Schritt "Solution Perspective":
+- Korrigiere aktiv die linke Seite des Canvas.
+- Verschiebe fehlplatzierte Inhalte in Solutions, Information, Functions oder Benefits.
+- Ergänze nur klar notwendige Sticky Notes, um offensichtliche Lücken zu schließen.
+- Ergänze sinnvolle Connectoren zwischen linker und rechter Seite.
+- Bleibe auf Use-Case-Ebene und erfinde keine komplexen Systemarchitekturen.
+- Erkläre in feedback, welche Korrekturen du vorgenommen hast und ob der Check-Schritt sinnvoll ist.`.trim(),
+        selectionReview: `
+Reviewmodus für den Schritt "Solution Perspective":
+- Beurteile die Relevanz, Präzision und Nutzennähe der Lösungsperspektive.
+- Nimm standardmäßig keine Board-Mutationen vor.`.trim(),
+        selectionSynthesize: `
+Synthesemodus für den Schritt "Solution Perspective":
+- Verdichte, welche Lösungsmuster, Informationsbedarfe, Funktionen und Benefits bereits sichtbar sind.
+- Fokus auf übergreifende Einsichten, nicht auf Mutationen.`.trim(),
+        selectionCoach: `
+Coachmodus für den Schritt "Solution Perspective":
+- Erkläre klar den Unterschied zwischen Solutions, Information, Functions und Benefits.
+- Hilf dabei, aus Decisions & Actions sinnvolle Information und Functions und aus Pains/Gains tragfähige Benefits abzuleiten.
+- actions sollen normalerweise leer bleiben.`.trim(),
+        selectionGrade: `
+Bewertungsmodus für den Schritt "Solution Perspective":
+- Bewerte die linke Seite anhand der Kriterien Solution Relevance, Information Quality, Function Usefulness, Benefit Strength und Cross-Side Traceability.
+- Führe keine oder praktisch keine Board-Mutationen aus.
+- Liefere zusätzlich eine evaluation mit Rubrik.
+- Setze advanceStepSuggested nur dann auf true, wenn die Lösungsperspektive tragfähig genug ist, um den Problem-Solution-Fit explizit zu verdichten.`.trim(),
+        globalCheck: `
+Globaler Prüfmodus für den Schritt "Solution Perspective":
+- Prüfe über alle relevanten Instanzen hinweg, ob die Lösungsperspektiven nachvollziehbar aus der Nutzerperspektive abgeleitet sind.`.trim(),
+        globalHint: `
+Globaler Hinweismodus für den Schritt "Solution Perspective":
+- Gib globale Hinweise zu fehlenden Informationsbedarfen, vagen Funktionen und schwachen Benefits.`.trim(),
+        globalAutocorrect: `
+Globaler Autokorrekturmodus für den Schritt "Solution Perspective":
+- Korrigiere selektionsunabhängig über alle relevanten Instanzen hinweg eindeutige Probleme der linken Seite.`.trim(),
+        globalReview: `
+Globaler Reviewmodus für den Schritt "Solution Perspective":
+- Führe einen qualitativen Gesamt-Review über alle relevanten Lösungsperspektiven durch.
+- Fokus: Relevanz, Lesbarkeit, Ableitung aus der Nutzerperspektive.`.trim(),
+        globalSynthesize: `
+Globaler Synthesemodus für den Schritt "Solution Perspective":
+- Verdichte die wichtigsten Lösungs-, Informations-, Funktions- und Benefit-Muster über alle relevanten Instanzen hinweg.`.trim(),
+        globalCoach: `
+Globaler Coachmodus für den Schritt "Solution Perspective":
+- Gib dem Team eine klare Anleitung für die nächste übergreifende Ausarbeitung der Lösungsperspektive.`.trim(),
+        globalGrade: `
+Globaler Bewertungsmodus für den Schritt "Solution Perspective":
+- Bewerte die Gesamtqualität der Lösungsperspektiven über alle relevanten Instanzen.
+- Liefere zusätzlich eine evaluation mit Rubrik.`.trim()
+      }),
+      transitions: [
+        createManualTransition("step3_fit_check_and_synthesis", {
+          allowedAfterTriggers: ["selection.check", "selection.grade", "global.review"],
+          requiredStepStatuses: ["ready_for_review", "completed"]
+        })
+      ]
+    },
+    step3_fit_check_and_synthesis: {
+      id: "step3_fit_check_and_synthesis",
+      order: 30,
+      label: "Fit Check & Synthesis",
+      visibleInstruction: "Verdichte den Problem-Solution-Fit im Feld Check und prüfe die Konsistenz zwischen Nutzer- und Lösungsperspektive.",
+      allowedActions: ["create_sticky", "move_sticky", "delete_sticky", "create_connector"],
+      defaultEnterTrigger: null,
+      allowedTriggers: buildStepAllowedTriggers({
+        selectionCheck: `
+Prüfmodus für den Schritt "Fit Check & Synthesis":
+- Prüfe die Konsistenz zwischen rechter und linker Seite.
+- Prüfe, ob Benefits tatsächlich Pains reduzieren, Gains verstärken oder Entscheidungen, Handlungen, Ergebnisse und Ziele unterstützen.
+- Das Feld Check dient der Verdichtung des Problem-Solution-Fit.`.trim(),
+        selectionHint: `
+Hinweismodus für den Schritt "Fit Check & Synthesis":
+- Gib knappe Hinweise, wie der Problem-Solution-Fit klarer und belastbarer formuliert werden kann.`.trim(),
+        selectionAutocorrect: `
+Autokorrekturmodus für den Schritt "Fit Check & Synthesis":
+- Korrigiere aktiv klare Inkonsistenzen zwischen rechter und linker Seite.
+- Ergänze bei Bedarf fehlende, eindeutige Connectoren oder kleine Präzisierungen im Check-Feld.
+- Keine große Restrukturierung des Canvas.`.trim(),
+        selectionReview: `
+Reviewmodus für den Schritt "Fit Check & Synthesis":
+- Führe einen qualitativen Review des Problem-Solution-Fit durch.
+- Nimm standardmäßig keine Board-Mutationen vor.`.trim(),
+        selectionSynthesize: {
+          mutationPolicy: "limited",
+          feedbackPolicy: "text",
+          prompt: `
+Synthesemodus für den Schritt "Fit Check & Synthesis":
+- Verdichte die selektierte Instanz oder die selektierten Instanzen und mache den Problem-Solution-Fit sichtbar.
+- Formuliere pro Instanz 1 bis 3 knappe Fit-Aussagen für das Feld Check.
+- In diesem Trigger darfst du begrenzte Mutationen durchführen: bis zu drei neue Sticky Notes im Feld Check und sinnvolle ergänzende Connectoren.
+- Nimm keine große Restrukturierung des restlichen Canvas vor.
+- Liefere feedback, das die Verdichtung erklärt, und recommendations, ob global.review, global.synthesize oder der Abschluss sinnvoll ist.`.trim()
+        },
+        selectionCoach: `
+Coachmodus für den Schritt "Fit Check & Synthesis":
+- Erkläre, wie aus Nutzerperspektive und Lösungsperspektive belastbare Fit-Aussagen im Feld Check formuliert werden.
+- actions sollen normalerweise leer bleiben.`.trim(),
+        selectionGrade: `
+Bewertungsmodus für den Schritt "Fit Check & Synthesis":
+- Bewerte den Problem-Solution-Fit anhand der Kriterien Fit Clarity, Fit Evidence, Consistency, Actionability und Overall Coherence.
+- Führe keine oder praktisch keine Board-Mutationen aus.
+- Liefere zusätzlich eine evaluation mit Rubrik.`.trim(),
+        globalCheck: `
+Globaler Prüfmodus für den Schritt "Fit Check & Synthesis":
+- Prüfe über alle aktiven Instanzen hinweg, wo Problem-Solution-Fit bereits klar ist und wo noch Schwächen bestehen.`.trim(),
+        globalHint: `
+Globaler Hinweismodus für den Schritt "Fit Check & Synthesis":
+- Gib globale Hinweise, wo Fit-Aussagen fehlen oder die Konsistenz noch nicht überzeugend ist.`.trim(),
+        globalAutocorrect: `
+Globaler Autokorrekturmodus für den Schritt "Fit Check & Synthesis":
+- Korrigiere nur klare globale Inkonsistenzen oder fehlende Verdichtungen mit Bedacht.`.trim(),
+        globalReview: `
+Globaler Reviewmodus für den Schritt "Fit Check & Synthesis":
+- Prüfe alle aktiven Instanzen dieses Exercise Packs im Zusammenhang.
+- Ziel ist ein qualitativer Gesamt-Review: Welche Instanzen haben einen klaren Problem-Solution-Fit, wo sind Nutzerperspektiven zu vage, wo sind Lösungen zu allgemein oder nicht ausreichend an Entscheidungen und Handlungen gekoppelt, und welche Stärken oder Schwächen wiederholen sich über mehrere Instanzen hinweg?
+- Dieser Trigger dient primär Analyse und feedback; nimm normalerweise keine oder nur minimale Board-Mutationen vor.`.trim(),
+        globalSynthesize: `
+Globaler Synthesemodus für den Schritt "Fit Check & Synthesis":
+- Verdichte alle aktiven Instanzen dieses Exercise Packs zu einer übergreifenden Synthese.
+- Suche nach wiederkehrenden Nutzerzielen, Pains, Entscheidungs- und Handlungsmustern, Informations- und Funktionsmustern, Benefits und Fit-Lücken.
+- Dieser Trigger dient primär der übergreifenden Zusammenfassung und dem feedback, nicht der massiven Board-Manipulation.`.trim(),
+        globalCoach: `
+Globaler Coachmodus für den Schritt "Fit Check & Synthesis":
+- Gib dem Team eine klare Anleitung, ob es vertiefen, korrigieren oder abschließen sollte.`.trim(),
+        globalGrade: `
+Globaler Bewertungsmodus für den Schritt "Fit Check & Synthesis":
+- Bewerte die Gesamtqualität des Problem-Solution-Fit über alle relevanten Instanzen.
+- Liefere zusätzlich eine evaluation mit Rubrik.`.trim()
+      }),
+      transitions: []
+    }
+  }
+};
+
 export const EXERCISE_PACKS = Object.freeze({
-  [PERSONA_BASICS_PACK.id]: PERSONA_BASICS_PACK
+  [PERSONA_BASICS_PACK.id]: PERSONA_BASICS_PACK,
+  [ANALYTICS_AI_USECASE_FIT_SPRINT_PACK.id]: ANALYTICS_AI_USECASE_FIT_SPRINT_PACK
 });
 
 export function normalizeExercisePackId(value) {
