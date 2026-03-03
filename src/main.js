@@ -376,8 +376,7 @@ function renderExerciseContextStatus() {
       "Standard-Canvas-Typ: " + (selectedCanvasType?.displayName || getSelectedCanvasTypeId()),
       "Feedback-Frame: " + feedbackFrameName
     ];
-    exerciseContextStatusEl.textContent = lines.join("
-");
+    exerciseContextStatusEl.textContent = lines.join("\n");
   }
 
   if (exerciseStepInstructionEl) {
@@ -438,8 +437,7 @@ function renderRecommendationStatus() {
   lines.push("Feedback-Texte erzeugt: " + feedbackCounter);
   if (lastFeedbackIds.length) lines.push("Letzte Feedback-Textitems: " + lastFeedbackIds.join(", "));
 
-  exerciseRecommendationStatusEl.textContent = lines.join("
-");
+  exerciseRecommendationStatusEl.textContent = lines.join("\n");
 }
 
 function renderExerciseActionButtons() {
