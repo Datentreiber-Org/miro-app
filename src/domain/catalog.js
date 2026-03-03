@@ -1,23 +1,49 @@
-import { TEMPLATE_ID, DT_CANVAS_DEFS } from "../config.js?v=20260301-step10";
+import { TEMPLATE_ID, DT_CANVAS_DEFS } from "../config.js?v=20260301-step11";
 import {
   stripHtml,
   isFiniteNumber,
   buildInstanceSignatureFromClassification,
   computeInstanceDiffFromSignatures,
   diffHasChanges
-} from "../utils.js?v=20260301-step10";
+} from "../utils.js?v=20260301-step11";
 import {
   computeTemplateGeometry,
   buildInstanceGeometryIndex,
   resolveBoardCoords,
   findInstanceByPoint
-} from "../miro/board.js?v=20260301-step10";
+} from "../miro/board.js?v=20260301-step11";
 
 // --------------------------------------------------------------------
 // Canvas Definitions / Region Mapping
 // --------------------------------------------------------------------
 export function getCanvasDef(canvasTypeId) {
   return DT_CANVAS_DEFS[canvasTypeId] || null;
+}
+
+export function getBodyRegionDefs(canvasTypeId) {
+  const def = getCanvasDef(canvasTypeId);
+  const result = [];
+  const seen = new Set();
+
+  for (const region of def?.regionPolygons || []) {
+    if (!region?.id || seen.has(region.id)) continue;
+    seen.add(region.id);
+    result.push({
+      id: region.id,
+      title: region.title || region.id,
+      polygonNorm: Array.isArray(region.polygonNorm) ? region.polygonNorm : []
+    });
+  }
+
+  if (!result.length) {
+    return [
+      { id: "left", title: "Box 1 (links)" },
+      { id: "middle", title: "Box 2 (Mitte)" },
+      { id: "right", title: "Box 3 (rechts)" }
+    ];
+  }
+
+  return result;
 }
 
 export function pointInPolygonNorm(px, py, polygonNorm) {
@@ -102,12 +128,45 @@ export function classifyNormalizedLocation(canvasTypeId, px, py) {
   return { role: "body", regionId: null, regionTitle: null };
 }
 
-export function areaNameToRegion(areaName) {
+function normalizeAreaLookupToken(value) {
+  return String(value || "")
+    .toLowerCase()
+    .replace(/&/g, " and ")
+    .replace(/[_-]+/g, " ")
+    .replace(/[^a-z0-9äöüß]+/g, " ")
+    .replace(/\s+/g, " ")
+    .trim();
+}
+
+export function areaNameToRegion(areaName, canvasTypeId = null) {
   if (!areaName) return null;
-  const norm = areaName.toLowerCase();
-  if (norm.includes("box 1") || norm.includes("links")) return { id: "left", title: "Box 1 (links)" };
-  if (norm.includes("box 2") || norm.includes("mitte")) return { id: "middle", title: "Box 2 (Mitte)" };
-  if (norm.includes("box 3") || norm.includes("rechts")) return { id: "right", title: "Box 3 (rechts)" };
+
+  const raw = String(areaName).trim();
+  if (!raw) return null;
+
+  const norm = normalizeAreaLookupToken(raw);
+  const candidates = canvasTypeId
+    ? [{ canvasTypeId, regions: getBodyRegionDefs(canvasTypeId) }]
+    : Object.keys(DT_CANVAS_DEFS).map((id) => ({ canvasTypeId: id, regions: getBodyRegionDefs(id) }));
+
+  for (const candidate of candidates) {
+    for (const region of candidate.regions) {
+      const regionId = String(region.id || "").trim();
+      const regionTitle = String(region.title || regionId).trim();
+      if (!regionId) continue;
+
+      const normalizedId = normalizeAreaLookupToken(regionId);
+      const normalizedTitle = normalizeAreaLookupToken(regionTitle);
+      if (norm === normalizedId || norm === normalizedTitle || norm.includes(normalizedTitle)) {
+        return { id: regionId, title: regionTitle, canvasTypeId: candidate.canvasTypeId };
+      }
+    }
+  }
+
+  if (norm.includes("box 1") || norm.includes("links")) return { id: "left", title: "Box 1 (links)", canvasTypeId: canvasTypeId || TEMPLATE_ID };
+  if (norm.includes("box 2") || norm.includes("mitte")) return { id: "middle", title: "Box 2 (Mitte)", canvasTypeId: canvasTypeId || TEMPLATE_ID };
+  if (norm.includes("box 3") || norm.includes("rechts")) return { id: "right", title: "Box 3 (rechts)", canvasTypeId: canvasTypeId || TEMPLATE_ID };
+
   return null;
 }
 
@@ -357,12 +416,14 @@ export async function rebuildLiveCatalog({ ctx, instancesById, clusterAssignment
         regions: {
           header: { stickies: [] },
           footer: { stickies: [] },
-          body: {
-            left:   { stickies: [] },
-            middle: { stickies: [] },
-            right:  { stickies: [] },
-            none:   { stickies: [] }
-          }
+          body: (() => {
+            const body = Object.create(null);
+            for (const region of getBodyRegionDefs(inst.canvasTypeId)) {
+              body[region.id] = { id: region.id, title: region.title || region.id, stickies: [] };
+            }
+            body.none = { id: null, title: null, stickies: [] };
+            return body;
+          })()
         },
         allStickies: [],
         connections: [],
@@ -461,9 +522,12 @@ export async function rebuildLiveCatalog({ ctx, instancesById, clusterAssignment
     } else if (stickObj.role === "footer") {
       liveInst.regions.footer.stickies.push(stickObj);
     } else {
-      const key = (stickObj.regionId === "left" || stickObj.regionId === "middle" || stickObj.regionId === "right")
+      const key = (stickObj.regionId && liveInst.regions.body[stickObj.regionId])
         ? stickObj.regionId
         : "none";
+      if (!liveInst.regions.body[key]) {
+        liveInst.regions.body[key] = { id: key === "none" ? null : key, title: stickObj.regionTitle || null, stickies: [] };
+      }
       liveInst.regions.body[key].stickies.push(stickObj);
     }
 
@@ -537,7 +601,7 @@ export function buildClassificationFromLiveInstance(instance, liveInst) {
   }
 
   function addBodyRegion(regionId, regionTitle, list) {
-    for (const s of list) {
+    for (const s of list || []) {
       items.push({
         stickyId: s.id,
         text: s.text,
@@ -553,10 +617,11 @@ export function buildClassificationFromLiveInstance(instance, liveInst) {
     }
   }
 
-  addBodyRegion("left",   "Box 1 (links)",  liveInst.regions.body.left.stickies);
-  addBodyRegion("middle", "Box 2 (Mitte)",  liveInst.regions.body.middle.stickies);
-  addBodyRegion("right",  "Box 3 (rechts)", liveInst.regions.body.right.stickies);
-  addBodyRegion(null,     null,             liveInst.regions.body.none.stickies);
+  for (const region of getBodyRegionDefs(instance.canvasTypeId)) {
+    const bucket = liveInst.regions.body?.[region.id];
+    addBodyRegion(region.id, region.title, bucket?.stickies || []);
+  }
+  addBodyRegion(null, null, liveInst.regions.body?.none?.stickies || []);
 
   // Footer
   for (const s of liveInst.regions.footer.stickies) {
