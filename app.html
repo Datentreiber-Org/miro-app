@@ -5,12 +5,20 @@
   <title>Datentreiber Canvas – Miro Panel</title>
   <script src="https://miro.com/app/static/sdk/v2/miro.js"></script>
   <style>
+    html, body {
+      height: 100%;
+      overflow-y: auto;
+    }
     body {
       font-family: system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
       font-size: 13px;
       margin: 0;
       padding: 8px;
       color: #111827;
+      box-sizing: border-box;
+      min-height: 100vh;
+      overflow-y: auto;
+      background: #f8fafc;
     }
     h1 { font-size: 16px; margin: 0 0 8px 0; }
     label { font-weight: 500; }
@@ -118,7 +126,7 @@
       color: #4b5563;
       line-height: 1.4;
     }
-    #selection-status, #exercise-context-status, #exercise-step-instruction, #panel-mode-status {
+    #selection-status, #exercise-context-status, #exercise-step-instruction, #panel-mode-status, #exercise-recommendation-status {
       margin-top: 6px;
       margin-bottom: 8px;
       padding: 8px;
@@ -134,6 +142,11 @@
     }
     .hidden {
       display: none !important;
+    }
+    .inline-grid {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 8px;
     }
   </style>
 </head>
@@ -157,6 +170,7 @@
 
   <div id="exercise-context-status">Exercise-Kontext wird geladen ...</div>
   <div id="exercise-step-instruction">Noch keine sichtbare Schrittanweisung geladen.</div>
+  <div id="exercise-recommendation-status">Noch keine Empfehlungen gespeichert.</div>
   <div id="selection-status">Selektion wird geladen ...</div>
 
   <div class="panel-section" id="user-actions-panel">
@@ -165,6 +179,8 @@
       <button id="btn-exercise-check">Antworten prüfen</button>
       <button id="btn-exercise-hint">Hinweis geben</button>
       <button id="btn-exercise-autocorrect">Korrektur anwenden</button>
+      <button id="btn-exercise-review">Review</button>
+      <button id="btn-exercise-coach">Coach</button>
       <button id="btn-exercise-next-step">Nächster Schritt</button>
     </div>
     <div id="exercise-action-help" class="helper-text">
@@ -219,6 +235,29 @@
       <div class="helper-text">Der Admin-Override wird im Exercise-Runtime-State gespeichert und bei Agentenläufen zusätzlich in den Systemprompt injiziert.</div>
     </div>
 
+    <div class="row">
+      <label>Exercise-Trigger (Admin)</label>
+      <div class="inline-grid">
+        <select id="admin-trigger-scope">
+          <option value="selection">selection</option>
+          <option value="global">global</option>
+        </select>
+        <select id="admin-trigger-intent">
+          <option value="check">check</option>
+          <option value="hint">hint</option>
+          <option value="autocorrect">autocorrect</option>
+          <option value="review">review</option>
+          <option value="synthesize">synthesize</option>
+          <option value="coach">coach</option>
+          <option value="grade">grade</option>
+        </select>
+      </div>
+      <div class="btn-row">
+        <button id="btn-admin-run-trigger">Trigger ausführen</button>
+      </div>
+      <div class="helper-text">Der Trigger wird gegen Step-Regeln, Scope und aktuelle Selektion validiert, bevor der Agentenlauf gestartet wird.</div>
+    </div>
+
     <div class="btn-row">
       <button id="btn-insert-template">Canvas einfügen</button>
     </div>
@@ -237,6 +276,6 @@
 
   <pre id="log"></pre>
 
-  <script type="module" src="./src/main.js?v=20260301-step9"></script>
+  <script type="module" src="./src/main.js?v=20260301-step10"></script>
 </body>
 </html>
