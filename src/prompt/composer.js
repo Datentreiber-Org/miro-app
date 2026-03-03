@@ -1,7 +1,10 @@
 import {
   getAllowedCanvasTypesForPack,
-  getDefaultCanvasTypeIdForPack
-} from "../exercises/registry.js?v=20260301-step9";
+  getDefaultCanvasTypeIdForPack,
+  getPackDefaults,
+  getStepTriggerConfig
+} from "../exercises/registry.js?v=20260301-step10";
+import { parseTriggerKey } from "../runtime/exercise-engine.js?v=20260301-step10";
 
 function asNonEmptyString(value) {
   if (typeof value !== "string") return null;
@@ -25,10 +28,6 @@ function normalizeUniqueStrings(values) {
 
 function sanitizeBoardMode(value) {
   return value === "exercise" ? "exercise" : "generic";
-}
-
-function sanitizeTrigger(value) {
-  return asNonEmptyString(value) || "generic";
 }
 
 function sanitizeRunMode(value) {
@@ -55,23 +54,34 @@ function buildCanvasTypePromptBlocks(involvedCanvasTypeIds, templateCatalog) {
   return blocks;
 }
 
-function buildModePromptBlock(runMode, trigger) {
-  return [
+function buildModePromptBlock(runMode, triggerContext) {
+  const parsed = triggerContext ? parseTriggerKey(triggerContext.triggerKey) : null;
+  const lines = [
     "Laufkontext:",
     `- runMode: ${sanitizeRunMode(runMode)}`,
-    `- trigger: ${sanitizeTrigger(trigger)}`,
-    "- Wenn exerciseContext vorhanden ist, behandle ihn als verbindlichen zusätzlichen Arbeitskontext."
-  ].join("\n");
+    `- triggerKey: ${triggerContext?.triggerKey || "generic"}`,
+    `- triggerSource: ${triggerContext?.source || "system"}`
+  ];
+
+  if (parsed?.scope) lines.push(`- triggerScope: ${parsed.scope}`);
+  if (parsed?.intent) lines.push(`- triggerIntent: ${parsed.intent}`);
+  if (triggerContext?.mutationPolicy) lines.push(`- mutationPolicy: ${triggerContext.mutationPolicy}`);
+  if (triggerContext?.feedbackPolicy) lines.push(`- feedbackPolicy: ${triggerContext.feedbackPolicy}`);
+  lines.push("- Wenn exerciseContext vorhanden ist, behandle ihn als verbindlichen zusätzlichen Arbeitskontext.");
+
+  return lines.join("\n");
 }
 
 export function buildExerciseContext({
   boardConfig = null,
   exercisePack = null,
   currentStep = null,
-  trigger = "generic",
+  triggerContext = null,
   templateCatalog = null
 } = {}) {
   const boardMode = sanitizeBoardMode(boardConfig?.boardMode);
+  const parsed = triggerContext ? parseTriggerKey(triggerContext.triggerKey) : null;
+  const packDefaults = getPackDefaults(exercisePack);
 
   if (!exercisePack) {
     return {
@@ -86,7 +96,16 @@ export function buildExerciseContext({
       currentStepLabel: null,
       visibleInstruction: null,
       allowedActions: [],
-      trigger: sanitizeTrigger(trigger)
+      triggerKey: triggerContext?.triggerKey || "generic",
+      triggerSource: triggerContext?.source || "system",
+      triggerScope: parsed?.scope || null,
+      triggerIntent: parsed?.intent || null,
+      mutationPolicy: triggerContext?.mutationPolicy || null,
+      feedbackPolicy: triggerContext?.feedbackPolicy || asNonEmptyString(boardConfig?.feedbackChannelDefault) || packDefaults.feedbackChannel,
+      requiresSelection: !!triggerContext?.requiresSelection,
+      feedbackFrameName: asNonEmptyString(boardConfig?.feedbackFrameName) || packDefaults.feedbackFrameName,
+      userMayChangePack: !!boardConfig?.userMayChangePack,
+      userMayChangeStep: !!boardConfig?.userMayChangeStep
     };
   }
 
@@ -112,14 +131,23 @@ export function buildExerciseContext({
     currentStepLabel: asNonEmptyString(currentStep?.label),
     visibleInstruction: asNonEmptyString(currentStep?.visibleInstruction),
     allowedActions: stepAllowedActions,
-    trigger: sanitizeTrigger(trigger)
+    triggerKey: triggerContext?.triggerKey || "generic",
+    triggerSource: triggerContext?.source || "system",
+    triggerScope: parsed?.scope || null,
+    triggerIntent: parsed?.intent || null,
+    mutationPolicy: triggerContext?.mutationPolicy || null,
+    feedbackPolicy: triggerContext?.feedbackPolicy || packDefaults.feedbackChannel,
+    requiresSelection: !!triggerContext?.requiresSelection,
+    feedbackFrameName: asNonEmptyString(boardConfig?.feedbackFrameName) || packDefaults.feedbackFrameName,
+    userMayChangePack: !!boardConfig?.userMayChangePack,
+    userMayChangeStep: !!boardConfig?.userMayChangeStep
   };
 }
 
 export function composePrompt({
   baseSystemPrompt,
   runMode,
-  trigger = "generic",
+  triggerContext = null,
   userQuestion,
   baseUserPayload = null,
   involvedCanvasTypeIds = [],
@@ -135,7 +163,7 @@ export function composePrompt({
     systemBlocks.push(String(baseSystemPrompt).trim());
   }
 
-  systemBlocks.push(buildModePromptBlock(runMode, trigger));
+  systemBlocks.push(buildModePromptBlock(runMode, triggerContext));
 
   for (const block of buildCanvasTypePromptBlocks(involvedCanvasTypeIds, templateCatalog)) {
     systemBlocks.push(block);
@@ -145,7 +173,7 @@ export function composePrompt({
     boardConfig,
     exercisePack,
     currentStep,
-    trigger,
+    triggerContext,
     templateCatalog
   });
 
@@ -154,10 +182,10 @@ export function composePrompt({
     systemBlocks.push(`Exercise-Pack-Kontext (${exercisePack.label || exercisePack.id}):\n${exerciseGlobalPrompt}`);
   }
 
-  const triggerKey = sanitizeTrigger(trigger);
-  const stepPrompt = asNonEmptyString(currentStep?.triggerPrompts?.[triggerKey])
-    || asNonEmptyString(currentStep?.triggerPrompts?.generic)
-    || null;
+  const stepTriggerConfig = currentStep && triggerContext
+    ? getStepTriggerConfig(currentStep, triggerContext.triggerKey)
+    : null;
+  const stepPrompt = asNonEmptyString(stepTriggerConfig?.prompt);
 
   if (stepPrompt) {
     systemBlocks.push(`Schritt-Kontext (${currentStep?.label || currentStep?.id || "aktueller Schritt"}):\n${stepPrompt}`);
@@ -181,4 +209,3 @@ export function composePrompt({
     }
   };
 }
-
