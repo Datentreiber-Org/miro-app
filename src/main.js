@@ -6,20 +6,20 @@ import {
   DT_GLOBAL_SYSTEM_PROMPT,
   DT_MEMORY_RECENT_LOG_LIMIT,
   STICKY_LAYOUT
-} from "./config.js?v=20260304-batch2";
+} from "./config.js?v=20260304-batch21";
 
 import { createLogger, stripHtml, extractUnderlinedText, isFiniteNumber } from "./utils.js?v=20260301-step11-hotfix2";
 
 import * as Board from "./miro/board.js?v=20260304-batch2";
 import * as Catalog from "./domain/catalog.js?v=20260304-editorial15";
-import * as OpenAI from "./ai/openai.js?v=20260304-batch2";
+import * as OpenAI from "./ai/openai.js?v=20260304-batch21";
 import * as Memory from "./runtime/memory.js?v=20260301-step11-hotfix2";
 import * as Exercises from "./exercises/registry.js?v=20260304-editorial15";
 import * as ExerciseLibrary from "./exercises/library.js?v=20260304-editorial15";
 import * as PromptComposer from "./prompt/composer.js?v=20260303-flowbatch1";
 import * as ExerciseEngine from "./runtime/exercise-engine.js?v=20260304-editorial15";
 import * as BoardFlow from "./runtime/board-flow.js?v=20260303-flowbatch1";
-import * as PanelBridge from "./runtime/panel-bridge.js?v=20260304-batch2";
+import * as PanelBridge from "./runtime/panel-bridge.js?v=20260304-batch21";
 
 // --------------------------------------------------------------------
 // State (Controller-Level)
@@ -115,7 +115,14 @@ const btnExerciseAutocorrectEl = document.getElementById("btn-exercise-autocorre
 const btnExerciseReviewEl = document.getElementById("btn-exercise-review");
 const btnExerciseCoachEl = document.getElementById("btn-exercise-coach");
 const btnExerciseNextStepEl = document.getElementById("btn-exercise-next-step");
-const log = createLogger(logEl);
+const RUNTIME_CONTEXT = window.__DT_RUNTIME_CONTEXT === "headless" ? "headless" : "panel";
+const IS_HEADLESS = RUNTIME_CONTEXT === "headless";
+const log = logEl
+  ? createLogger(logEl)
+  : function logHeadless(msg) {
+      const text = (typeof msg === "string") ? msg : JSON.stringify(msg, null, 2);
+      console.log("[DT][" + RUNTIME_CONTEXT + "] " + text);
+    };
 
 (function initialLog() {
   if (logEl) {
@@ -656,10 +663,14 @@ function syncFlowControlLabelFromRunProfile({ force = false } = {}) {
   const nextLabel = (runProfile.label || "").trim();
   const currentText = (flowControlLabelEl.value || "").trim();
   const lastAutoText = (state.lastAutoFlowControlLabel || "").trim();
-  const mayOverwrite = force || !state.flowControlLabelDirty || !currentText || currentText === lastAutoText;
+  const manuallyEdited = !!state.flowControlLabelDirty;
+  const mayOverwrite = force || !manuallyEdited || !currentText || currentText === lastAutoText;
+
+  if (mayOverwrite && currentText !== nextLabel) {
+    flowControlLabelEl.value = nextLabel;
+  }
 
   if (mayOverwrite) {
-    flowControlLabelEl.value = nextLabel;
     state.lastAutoFlowControlLabel = nextLabel;
     state.flowControlLabelDirty = false;
   }
@@ -691,11 +702,11 @@ function renderFlowAuthoringStatus() {
   flowAuthoringStatusEl.textContent = lines.join("\n");
 }
 
-function renderFlowAuthoringControls() {
+function renderFlowAuthoringControls({ forceLabelSync = false } = {}) {
   renderFlowPackTemplatePicker();
   renderFlowStepTemplatePicker();
   renderFlowRunProfilePicker();
-  syncFlowControlLabelFromRunProfile();
+  syncFlowControlLabelFromRunProfile({ force: forceLabelSync });
   renderFlowAuthoringStatus();
 }
 
@@ -1430,10 +1441,10 @@ function initPanelButtons() {
   panelModeEl?.addEventListener("change", onPanelModeChange);
   exercisePackEl?.addEventListener("change", onExercisePackChange);
   exerciseStepEl?.addEventListener("change", onExerciseStepChange);
-  flowPackTemplateEl?.addEventListener("change", () => renderFlowAuthoringControls());
-  flowStepTemplateEl?.addEventListener("change", () => renderFlowAuthoringControls());
+  flowPackTemplateEl?.addEventListener("change", () => renderFlowAuthoringControls({ forceLabelSync: true }));
+  flowStepTemplateEl?.addEventListener("change", () => renderFlowAuthoringControls({ forceLabelSync: true }));
   flowRunProfileEl?.addEventListener("change", () => {
-    syncFlowControlLabelFromRunProfile();
+    syncFlowControlLabelFromRunProfile({ force: true });
     renderFlowAuthoringStatus();
   });
   flowScopeTypeEl?.addEventListener("change", renderFlowAuthoringStatus);
@@ -1488,13 +1499,14 @@ function initPanelButtons() {
 
   renderPanelMode();
 }
-initPanelButtons();
+if (!IS_HEADLESS) initPanelButtons();
 
 // --------------------------------------------------------------------
 // Boot
 // --------------------------------------------------------------------
 (async function boot() {
   await Board.ensureMiroReady(log);
+  log("Runtime-Kontext: " + RUNTIME_CONTEXT);
   await afterMiroReady();
 })().catch((e) => {
   console.error("[DT] Boot fehlgeschlagen:", e);
@@ -1515,8 +1527,10 @@ async function afterMiroReady() {
   await loadMemoryRuntimeState();
   await loadBoardExerciseState();
   await loadBoardFlows();
-  renderFlowAuthoringControls();
-  await maybeConsumePendingFlowControlTrigger({ source: "after_miro_ready" });
+  renderFlowAuthoringControls({ forceLabelSync: true });
+  if (!IS_HEADLESS) {
+    await maybeConsumePendingFlowControlTrigger({ source: "after_miro_ready" });
+  }
 
   // UI selection events
   await Board.registerSelectionUpdateHandler(onSelectionUpdate, log);
@@ -1957,6 +1971,11 @@ async function onSelectionUpdate(event) {
 
   const controlSelection = await resolveSelectedFlowControl(items);
   if (controlSelection) {
+    if (!IS_HEADLESS) {
+      await refreshSelectionStatusFromItems(items);
+      return;
+    }
+
     const now = Date.now();
     if (
       state.lastTriggeredFlowControlItemId === controlSelection.item.id &&
