@@ -10,14 +10,19 @@ import {
   DT_IMAGE_META_KEY_INSTANCE,
   DT_ANCHOR_META_KEY_BOARD,
   DT_STORAGE_KEY_EXERCISE_RUNTIME,
+  DT_STORAGE_KEY_BOARD_FLOW_INDEX,
+  DT_STORAGE_KEY_BOARD_FLOW_PREFIX,
+  DT_SHAPE_META_KEY_FLOW_CONTROL,
   DT_DEFAULT_FEEDBACK_FRAME_NAME,
   DT_DEFAULT_FEEDBACK_CHANNEL,
   DT_DEFAULT_APP_ADMIN_POLICY,
   DT_FEEDBACK_TEXT_LAYOUT,
-  DT_TEXT_META_KEY_FEEDBACK
-} from "../config.js?v=20260301-step10";
+  DT_TEXT_META_KEY_FEEDBACK,
+  DT_FLOW_CONTROL_LAYOUT
+} from "../config.js?v=20260303-flowbatch1";
 
-import { isFiniteNumber } from "../utils.js?v=20260301-step10";
+import { isFiniteNumber } from "../utils.js?v=20260301-step11-hotfix2";
+import { normalizeBoardFlow } from "../runtime/board-flow.js?v=20260303-flowbatch1";
 
 // --------------------------------------------------------------------
 // Miro Ready
@@ -307,6 +312,153 @@ function asTrimmedString(value) {
   if (typeof value !== "string") return null;
   const trimmed = value.trim();
   return trimmed || null;
+}
+
+function boardFlowKey(flowId) {
+  return DT_STORAGE_KEY_BOARD_FLOW_PREFIX + String(flowId);
+}
+
+function normalizeFlowControlMeta(rawMeta) {
+  const src = (rawMeta && typeof rawMeta === "object") ? rawMeta : {};
+  return {
+    version: 1,
+    kind: "flow_control",
+    flowId: asTrimmedString(src.flowId),
+    controlId: asTrimmedString(src.controlId)
+  };
+}
+
+async function loadBoardFlowIndex(log) {
+  await ensureMiroReady(log);
+  const col = getStorageCollection();
+  if (!col) return [];
+
+  try {
+    const raw = await col.get(DT_STORAGE_KEY_BOARD_FLOW_INDEX);
+    return uniqueIds(raw);
+  } catch (e) {
+    if (typeof log === "function") log("Fehler beim Laden des Board-Flow-Index: " + e.message);
+    return [];
+  }
+}
+
+async function saveBoardFlowIndex(flowIds, log) {
+  await ensureMiroReady(log);
+  const col = getStorageCollection();
+  const normalized = uniqueIds(flowIds);
+  if (!col) return normalized;
+
+  try {
+    await col.set(DT_STORAGE_KEY_BOARD_FLOW_INDEX, normalized);
+  } catch (e) {
+    if (typeof log === "function") log("Fehler beim Speichern des Board-Flow-Index: " + e.message);
+  }
+  return normalized;
+}
+
+export async function loadBoardFlow(flowId, log) {
+  await ensureMiroReady(log);
+  const normalizedId = asTrimmedString(flowId);
+  if (!normalizedId) return null;
+
+  const col = getStorageCollection();
+  if (!col) return null;
+
+  try {
+    const raw = await col.get(boardFlowKey(normalizedId));
+    return raw ? normalizeBoardFlow(raw) : null;
+  } catch (e) {
+    if (typeof log === "function") log("Fehler beim Laden des Board-Flows '" + normalizedId + "': " + e.message);
+    return null;
+  }
+}
+
+export async function saveBoardFlow(flow, log) {
+  await ensureMiroReady(log);
+  const normalized = normalizeBoardFlow(flow);
+  const flowId = asTrimmedString(normalized?.id);
+  if (!flowId) {
+    throw new Error("Board-Flow kann nicht gespeichert werden: id fehlt.");
+  }
+
+  const col = getStorageCollection();
+  if (col) {
+    try {
+      await col.set(boardFlowKey(flowId), normalized);
+      const index = await loadBoardFlowIndex(log);
+      if (!index.includes(flowId)) {
+        index.push(flowId);
+        await saveBoardFlowIndex(index, log);
+      }
+    } catch (e) {
+      if (typeof log === "function") log("Fehler beim Speichern des Board-Flows '" + flowId + "': " + e.message);
+    }
+  }
+
+  return normalized;
+}
+
+export async function listBoardFlows(log) {
+  await ensureMiroReady(log);
+  const flowIds = await loadBoardFlowIndex(log);
+  if (!flowIds.length) return [];
+
+  const result = [];
+  for (const flowId of flowIds) {
+    const flow = await loadBoardFlow(flowId, log);
+    if (flow) result.push(flow);
+  }
+  return result;
+}
+
+export async function readFlowControlMeta(itemOrId, log) {
+  await ensureMiroReady(log);
+  const item = typeof itemOrId === "object" && itemOrId
+    ? itemOrId
+    : (itemOrId ? await getItemById(itemOrId, log) : null);
+
+  if (!item?.getMetadata) return null;
+
+  try {
+    const rawMeta = await item.getMetadata(DT_SHAPE_META_KEY_FLOW_CONTROL);
+    const normalized = normalizeFlowControlMeta(rawMeta);
+    return normalized.flowId && normalized.controlId ? normalized : null;
+  } catch (_) {
+    return null;
+  }
+}
+
+export async function writeFlowControlMeta(itemOrId, meta, log) {
+  await ensureMiroReady(log);
+  const item = typeof itemOrId === "object" && itemOrId
+    ? itemOrId
+    : (itemOrId ? await getItemById(itemOrId, log) : null);
+
+  if (!item?.setMetadata) return null;
+
+  const normalized = normalizeFlowControlMeta(meta);
+  try {
+    await item.setMetadata(DT_SHAPE_META_KEY_FLOW_CONTROL, normalized);
+  } catch (e) {
+    if (typeof log === "function") log("Fehler beim Speichern der Flow-Control-Metadata: " + e.message);
+  }
+  return normalized;
+}
+
+export async function removeFlowControlMeta(itemOrId, log) {
+  await ensureMiroReady(log);
+  const item = typeof itemOrId === "object" && itemOrId
+    ? itemOrId
+    : (itemOrId ? await getItemById(itemOrId, log) : null);
+
+  if (!item?.setMetadata) return false;
+
+  try {
+    await item.setMetadata(DT_SHAPE_META_KEY_FLOW_CONTROL, null);
+    return true;
+  } catch (_) {
+    return false;
+  }
 }
 
 function normalizeBoardMode(value) {
@@ -1066,12 +1218,16 @@ async function createFeedbackTextItem({ frameId, x, y, width, content, metadata 
     throw new Error("Feedback-Text kann nicht erstellt werden: miro.board.createText nicht verfügbar");
   }
 
+  const frame = frameId ? await getItemById(frameId, log) : null;
+  const frameLeft = Number(frame?.x || 0) - Number(frame?.width || 0) / 2;
+  const frameTop = Number(frame?.y || 0) - Number(frame?.height || 0) / 2;
+  const boardX = frame ? frameLeft + Number(x || 0) : Number(x || 0);
+  const boardY = frame ? frameTop + Number(y || 0) : Number(y || 0);
+
   const textItem = await board.createText({
     content,
-    parentId: frameId,
-    relativeTo: "parent_top_left",
-    x,
-    y,
+    x: boardX,
+    y: boardY,
     width,
     style: {
       color: "#111827",
@@ -1082,6 +1238,17 @@ async function createFeedbackTextItem({ frameId, x, y, width, content, metadata 
       textAlign: "left"
     }
   });
+
+  if (frame?.type === "frame" && typeof frame.add === "function") {
+    try {
+      await frame.add(textItem);
+      await frame.sync();
+    } catch (e) {
+      if (typeof log === "function") {
+        log("WARNUNG: Feedback-Text konnte dem Frame " + frame.id + " nicht hinzugefügt werden: " + e.message);
+      }
+    }
+  }
 
   if (metadata && typeof textItem?.setMetadata === "function") {
     try {
@@ -1252,6 +1419,62 @@ export async function createImage(payload, log) {
   const board = getBoard();
   if (!board?.createImage) throw new Error("miro.board.createImage nicht verfügbar");
   return await board.createImage(payload);
+}
+
+export async function computeSuggestedFlowControlPosition(instance, { offsetIndex = 0 } = {}, log) {
+  await ensureMiroReady(log);
+  const geom = instance ? (await computeTemplateGeometry(instance, log)) : null;
+  const fallbackX = Number(instance?.lastGeometry?.x) || 0;
+  const fallbackY = Number(instance?.lastGeometry?.y) || 0;
+  const fallbackHeight = Number(instance?.lastGeometry?.height) || 0;
+  const baseX = geom?.x || fallbackX;
+  const baseY = geom?.y || fallbackY;
+  const baseHeight = geom?.height || fallbackHeight;
+
+  return {
+    x: baseX + offsetIndex * (DT_FLOW_CONTROL_LAYOUT.widthPx + DT_FLOW_CONTROL_LAYOUT.gapXPx),
+    y: baseY + baseHeight / 2 + DT_FLOW_CONTROL_LAYOUT.offsetFromCanvasBottomPx,
+    width: DT_FLOW_CONTROL_LAYOUT.widthPx,
+    height: DT_FLOW_CONTROL_LAYOUT.heightPx
+  };
+}
+
+export async function createFlowControlShape({ label, x, y, frameId = null, width = DT_FLOW_CONTROL_LAYOUT.widthPx, height = DT_FLOW_CONTROL_LAYOUT.heightPx }, log) {
+  await ensureMiroReady(log);
+  const board = getBoard();
+  if (!board?.createShape) throw new Error("miro.board.createShape nicht verfügbar");
+
+  const shape = await board.createShape({
+    content: asTrimmedString(label) || "Flow Control",
+    shape: "round_rectangle",
+    x,
+    y,
+    width,
+    height,
+    style: {
+      fillColor: "#e0f2fe",
+      borderColor: "#0369a1",
+      borderWidth: 2,
+      color: "#0f172a",
+      fontSize: 14,
+      textAlign: "center",
+      textAlignVertical: "middle"
+    }
+  });
+
+  if (frameId) {
+    try {
+      const frame = await getItemById(frameId, log);
+      if (frame?.type === "frame" && typeof frame.add === "function") {
+        await frame.add(shape);
+        await frame.sync();
+      }
+    } catch (e) {
+      if (typeof log === "function") log("Konnte Flow-Control-Shape nicht dem Frame hinzufügen: " + e.message);
+    }
+  }
+
+  return shape;
 }
 
 export async function getViewport(log) {
