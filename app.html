@@ -7,18 +7,21 @@
   <style>
     html, body {
       height: 100%;
-      overflow-y: auto;
+      margin: 0;
+      overflow: hidden;
     }
     body {
       font-family: system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
       font-size: 13px;
-      margin: 0;
-      padding: 8px;
       color: #111827;
       box-sizing: border-box;
-      min-height: 100vh;
-      overflow-y: auto;
       background: #f8fafc;
+    }
+    #app-root {
+      box-sizing: border-box;
+      height: 100vh;
+      overflow-y: auto;
+      padding: 8px;
     }
     h1 { font-size: 16px; margin: 0 0 8px 0; }
     label { font-weight: 500; }
@@ -69,28 +72,27 @@
       max-height: 180px;
       overflow: auto;
     }
-    .canvas-option {
-      display: block;
-      cursor: pointer;
-    }
-    .canvas-option input {
-      position: absolute;
-      opacity: 0;
-      pointer-events: none;
-    }
-    .canvas-option-card {
+    .canvas-option-button {
       display: flex;
+      width: 100%;
       align-items: center;
       gap: 10px;
       padding: 8px;
       border-radius: 8px;
       border: 1px solid #d1d5db;
       background: #ffffff;
+      cursor: pointer;
+      text-align: left;
+      margin: 0;
     }
-    .canvas-option input:checked + .canvas-option-card {
+    .canvas-option-button.is-selected {
       border-color: #2563eb;
       background: #eff6ff;
       box-shadow: inset 0 0 0 1px #2563eb;
+    }
+    .canvas-option-button.is-disabled {
+      opacity: 0.45;
+      cursor: not-allowed;
     }
     .canvas-thumb {
       width: 84px;
@@ -151,6 +153,7 @@
   </style>
 </head>
 <body>
+  <div id="app-root">
   <h1>Datentreiber Canvas – Panel</h1>
 
   <div class="row">
@@ -289,6 +292,7 @@
 
   <pre id="log"></pre>
 
-  <script type="module" src="./src/main.js?v=20260304-batch21-hotfix1"></script>
+  </div>
+  <script type="module" src="./src/main.js?v=20260304-batch21-fix2"></script>
 </body>
 </html>
