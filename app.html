@@ -7,18 +7,31 @@
   <style>
     html, body {
       height: 100%;
-      overflow-y: auto;
+      margin: 0;
     }
     body {
       font-family: system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
       font-size: 13px;
-      margin: 0;
-      padding: 8px;
       color: #111827;
       box-sizing: border-box;
       min-height: 100vh;
-      overflow-y: auto;
+      height: 100vh;
+      overflow: hidden;
       background: #f8fafc;
+    }
+    #panel-root {
+      height: 100%;
+      min-height: 100vh;
+      display: flex;
+      flex-direction: column;
+      min-width: 0;
+    }
+    #panel-scroll {
+      flex: 1 1 auto;
+      min-height: 0;
+      overflow-y: auto;
+      padding: 8px;
+      box-sizing: border-box;
     }
     h1 { font-size: 16px; margin: 0 0 8px 0; }
     label { font-weight: 500; }
@@ -151,6 +164,8 @@
   </style>
 </head>
 <body>
+<div id="panel-root">
+  <div id="panel-scroll">
   <h1>Datentreiber Canvas – Panel</h1>
 
   <div class="row">
@@ -232,29 +247,6 @@
       <div class="helper-text">Der Admin-Override wird im Exercise-Runtime-State gespeichert und bei Agentenläufen zusätzlich in den Systemprompt injiziert.</div>
     </div>
 
-    <div class="row">
-      <label>Exercise-Trigger (Admin)</label>
-      <div class="inline-grid">
-        <select id="admin-trigger-scope">
-          <option value="selection">selection</option>
-          <option value="global">global</option>
-        </select>
-        <select id="admin-trigger-intent">
-          <option value="check">check</option>
-          <option value="hint">hint</option>
-          <option value="autocorrect">autocorrect</option>
-          <option value="review">review</option>
-          <option value="synthesize">synthesize</option>
-          <option value="coach">coach</option>
-          <option value="grade">grade</option>
-        </select>
-      </div>
-      <div class="btn-row">
-        <button id="btn-admin-run-trigger">Trigger ausführen</button>
-      </div>
-      <div class="helper-text">Der Trigger wird gegen Step-Regeln, Scope und aktuelle Selektion validiert, bevor der Agentenlauf gestartet wird.</div>
-    </div>
-
     <div class="panel-section" id="flow-authoring-panel">
       <div class="panel-section-title">Board Flow Controls</div>
       <div class="helper-text">Selektiere eine oder mehrere Canvas-Instanzen auf dem Board. Die erste Instanz dient als visuelle Ankerposition für den Shape-Button; der Scope kann trotzdem mehrere Instanzen oder den globalen Board-Kontext abdecken.</div>
@@ -312,6 +304,8 @@
 
   <pre id="log"></pre>
 
-  <script type="module" src="./src/main.js?v=20260304-batch2"></script>
+  <script type="module" src="./src/main.js?v=20260304-batch21"></script>
+  </div>
+</div>
 </body>
 </html>
