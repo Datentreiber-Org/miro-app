@@ -4,13 +4,13 @@ import {
   DT_TRIGGER_SOURCES,
   DT_FEEDBACK_CHANNELS,
   DT_MUTATION_POLICIES
-} from "../config.js?v=20260301-step10";
+} from "../config.js?v=20260303-flowbatch1";
 import {
   getPackDefaults,
   getStepTriggerConfig,
   listStepTransitions,
   resolveNamedTransition
-} from "../exercises/registry.js?v=20260301-step10";
+} from "../exercises/registry.js?v=20260301-step11-hotfix2";
 
 function asNonEmptyString(value) {
   if (typeof value !== "string") return null;
@@ -214,6 +214,78 @@ export function resolveTriggerContext({
     feedbackPolicy: normalizeFeedbackPolicy(effectiveConfig.feedbackPolicy, packDefaults.feedbackChannel || boardConfig?.feedbackChannelDefault || defaults?.feedbackPolicy || "text"),
     allowedActions,
     prompt: asNonEmptyString(effectiveConfig.prompt),
+    targetInstanceLabels: normalizedTargets
+  };
+}
+
+export function buildTriggerConfigFromRunProfile(runProfile) {
+  const triggerKey = normalizeTriggerKey(runProfile?.triggerKey);
+  if (!triggerKey) return null;
+
+  const defaults = getTriggerDefault(triggerKey);
+  if (!defaults) return null;
+
+  return {
+    triggerKey,
+    scope: defaults.scope,
+    intent: defaults.intent,
+    requiresSelection: defaults.requiresSelection === true,
+    mutationPolicy: normalizeMutationPolicy(runProfile?.mutationPolicy, defaults.mutationPolicy || "none"),
+    feedbackPolicy: normalizeFeedbackPolicy(runProfile?.feedbackPolicy, defaults.feedbackPolicy || "text"),
+    allowedActions: normalizeUniqueStrings(runProfile?.allowedActions || [])
+  };
+}
+
+export function resolveTriggerContextForRunProfile({
+  runProfile = null,
+  source = "system",
+  selectionCount = 0,
+  targetInstanceLabels = [],
+  boardConfig = null
+} = {}) {
+  const triggerConfig = buildTriggerConfigFromRunProfile(runProfile);
+  const normalizedSource = normalizeTriggerSource(source);
+  const normalizedTargets = normalizeUniqueStrings(targetInstanceLabels);
+
+  if (!triggerConfig) {
+    return {
+      valid: false,
+      reason: "Run Profile enthält keinen gültigen Trigger-Key.",
+      triggerKey: null,
+      scope: null,
+      intent: null,
+      source: normalizedSource,
+      targetInstanceLabels: normalizedTargets
+    };
+  }
+
+  if (triggerConfig.requiresSelection && !(Number(selectionCount) > 0 && normalizedTargets.length > 0)) {
+    return {
+      valid: false,
+      reason: `Trigger ${triggerConfig.triggerKey} erwartet mindestens eine Ziel-Instanz.`,
+      triggerKey: triggerConfig.triggerKey,
+      scope: triggerConfig.scope,
+      intent: triggerConfig.intent,
+      source: normalizedSource,
+      requiresSelection: true,
+      mutationPolicy: triggerConfig.mutationPolicy,
+      feedbackPolicy: normalizeFeedbackPolicy(triggerConfig.feedbackPolicy, boardConfig?.feedbackChannelDefault || "text"),
+      allowedActions: triggerConfig.allowedActions,
+      targetInstanceLabels: normalizedTargets
+    };
+  }
+
+  return {
+    valid: true,
+    triggerKey: triggerConfig.triggerKey,
+    scope: triggerConfig.scope,
+    intent: triggerConfig.intent,
+    source: normalizedSource,
+    requiresSelection: triggerConfig.requiresSelection,
+    mutationPolicy: triggerConfig.mutationPolicy,
+    feedbackPolicy: normalizeFeedbackPolicy(triggerConfig.feedbackPolicy, boardConfig?.feedbackChannelDefault || "text"),
+    allowedActions: triggerConfig.allowedActions,
+    prompt: null,
     targetInstanceLabels: normalizedTargets
   };
 }
