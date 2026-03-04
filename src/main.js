@@ -656,31 +656,45 @@ function renderFlowRunProfilePicker() {
   flowRunProfileEl.disabled = state.panelMode !== "admin";
 }
 
+function buildFlowControlLabelSourceKey() {
+  const packId = getSelectedFlowPackTemplateId() || "";
+  const stepId = getSelectedFlowStepTemplateId() || "";
+  const runProfileId = getSelectedFlowRunProfileId() || "";
+  return [packId, stepId, runProfileId].join("::");
+}
+
 function syncFlowControlLabelFromRunProfile({ force = false } = {}) {
   const runProfile = getSelectedFlowRunProfile();
   if (!flowControlLabelEl || !runProfile) return;
 
   const nextLabel = (runProfile.label || "").trim();
   const currentText = (flowControlLabelEl.value || "").trim();
-  const lastAutoText = (state.lastAutoFlowControlLabel || "").trim();
-  const manuallyEdited = !!state.flowControlLabelDirty;
-  const mayOverwrite = force || !manuallyEdited || !currentText || currentText === lastAutoText;
+  const autoText = (flowControlLabelEl.dataset.autoLabel || state.lastAutoFlowControlLabel || "").trim();
+  const sourceKey = buildFlowControlLabelSourceKey();
+  const previousSourceKey = (flowControlLabelEl.dataset.autoSourceKey || "").trim();
+  const isManual = flowControlLabelEl.dataset.manualLabel === "1" || (!!state.flowControlLabelDirty && currentText !== autoText);
+  const mayOverwrite = !currentText || !isManual || currentText === autoText;
 
   if (mayOverwrite && currentText !== nextLabel) {
     flowControlLabelEl.value = nextLabel;
   }
 
-  if (mayOverwrite) {
+  if (mayOverwrite || force || previousSourceKey !== sourceKey) {
+    flowControlLabelEl.dataset.autoLabel = nextLabel;
+    flowControlLabelEl.dataset.autoSourceKey = sourceKey;
+    flowControlLabelEl.dataset.manualLabel = mayOverwrite ? "0" : (isManual ? "1" : "0");
     state.lastAutoFlowControlLabel = nextLabel;
-    state.flowControlLabelDirty = false;
+    state.flowControlLabelDirty = flowControlLabelEl.dataset.manualLabel === "1";
   }
 }
 
 function updateFlowControlLabelDirtyState() {
   if (!flowControlLabelEl) return;
   const currentText = (flowControlLabelEl.value || "").trim();
-  const lastAutoText = (state.lastAutoFlowControlLabel || "").trim();
-  state.flowControlLabelDirty = !!currentText && currentText !== lastAutoText;
+  const autoText = (flowControlLabelEl.dataset.autoLabel || state.lastAutoFlowControlLabel || "").trim();
+  const manual = !!currentText && currentText !== autoText;
+  flowControlLabelEl.dataset.manualLabel = manual ? "1" : "0";
+  state.flowControlLabelDirty = manual;
 }
 
 function renderFlowAuthoringStatus() {
