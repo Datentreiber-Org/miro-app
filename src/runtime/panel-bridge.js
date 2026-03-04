@@ -112,6 +112,7 @@ export function saveRuntimeSettings(patch = {}) {
   writeStorageJson(localStorage, PANEL_RUNTIME_STORAGE_KEY, {
     version: 1,
     model: next.model,
+    apiKey: next.apiKey,
     updatedAt: next.updatedAt
   });
 
