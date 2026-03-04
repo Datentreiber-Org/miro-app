@@ -329,7 +329,11 @@ Wenn exerciseContext vorhanden ist, sind zusätzlich folgende Regeln verbindlich
 - Wenn du keinen sinnvollen nächsten Trigger oder Schritt empfehlen willst, setze die Felder in recommendations auf null/false.
 
 Antworte ausschließlich mit einem JSON-Objekt in diesem Format:
+- Gib niemals Markdown, keine Code-Fences und keine Vor- oder Nachbemerkungen aus.
+- Der API-Call erzwingt zusätzlich ein JSON-Schema. Deshalb müssen alle Top-Level-Felder immer vorhanden sein.
+- Wenn recommendations oder evaluation inhaltlich leer sind, liefere dennoch das Objekt mit leeren Strings/null-Werten und leeren Arrays gemäß Schema.
 {
+
   "analysis": "kurze Erklärung in natürlicher Sprache",
   "actions": [ ... ],
   "memoryEntry": {
