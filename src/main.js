@@ -6,19 +6,20 @@ import {
   DT_GLOBAL_SYSTEM_PROMPT,
   DT_MEMORY_RECENT_LOG_LIMIT,
   STICKY_LAYOUT
-} from "./config.js?v=20260303-flowbatch1";
+} from "./config.js?v=20260304-batch2";
 
 import { createLogger, stripHtml, extractUnderlinedText, isFiniteNumber } from "./utils.js?v=20260301-step11-hotfix2";
 
-import * as Board from "./miro/board.js?v=20260303-flowbatch1";
-import * as Catalog from "./domain/catalog.js?v=20260301-step11-hotfix2";
-import * as OpenAI from "./ai/openai.js?v=20260301-step11-hotfix2";
+import * as Board from "./miro/board.js?v=20260304-batch2";
+import * as Catalog from "./domain/catalog.js?v=20260304-editorial15";
+import * as OpenAI from "./ai/openai.js?v=20260304-batch2";
 import * as Memory from "./runtime/memory.js?v=20260301-step11-hotfix2";
-import * as Exercises from "./exercises/registry.js?v=20260301-step11-hotfix2";
-import * as ExerciseLibrary from "./exercises/library.js?v=20260303-flowbatch1";
+import * as Exercises from "./exercises/registry.js?v=20260304-editorial15";
+import * as ExerciseLibrary from "./exercises/library.js?v=20260304-editorial15";
 import * as PromptComposer from "./prompt/composer.js?v=20260303-flowbatch1";
-import * as ExerciseEngine from "./runtime/exercise-engine.js?v=20260303-flowbatch1";
+import * as ExerciseEngine from "./runtime/exercise-engine.js?v=20260304-editorial15";
 import * as BoardFlow from "./runtime/board-flow.js?v=20260303-flowbatch1";
+import * as PanelBridge from "./runtime/panel-bridge.js?v=20260304-batch2";
 
 // --------------------------------------------------------------------
 // State (Controller-Level)
@@ -63,6 +64,8 @@ const state = {
   flowControlRunLock: false,
   lastTriggeredFlowControlItemId: null,
   lastTriggeredFlowControlAt: 0,
+  flowControlLabelDirty: false,
+  lastAutoFlowControlLabel: "",
 
   // UI state
   selectedCanvasTypeId: TEMPLATE_ID,
@@ -91,6 +94,8 @@ const exerciseStepInstructionEl = document.getElementById("exercise-step-instruc
 const exerciseRecommendationStatusEl = document.getElementById("exercise-recommendation-status");
 const userActionsPanelEl = document.getElementById("user-actions-panel");
 const adminPanelEl = document.getElementById("admin-panel");
+const apiKeyEl = document.getElementById("api-key");
+const modelEl = document.getElementById("model");
 const adminOverrideTextEl = document.getElementById("admin-override-text");
 const adminTriggerScopeEl = document.getElementById("admin-trigger-scope");
 const adminTriggerIntentEl = document.getElementById("admin-trigger-intent");
@@ -176,17 +181,49 @@ function renderPanelMode() {
   }
 }
 
+function loadRuntimeSettings() {
+  return PanelBridge.loadRuntimeSettings();
+}
+
+function applyRuntimeSettingsToUi() {
+  const settings = loadRuntimeSettings();
+  if (apiKeyEl && !apiKeyEl.value && settings.apiKey) {
+    apiKeyEl.value = settings.apiKey;
+  }
+  if (modelEl) {
+    const wantedModel = settings.model || "gpt-5.2";
+    const optionValues = Array.from(modelEl.options || []).map((option) => option.value);
+    modelEl.value = optionValues.includes(wantedModel) ? wantedModel : "gpt-5.2";
+  }
+}
+
+function persistRuntimeSettingsFromUi() {
+  PanelBridge.saveRuntimeSettings({
+    apiKey: (apiKeyEl?.value || "").trim(),
+    model: (modelEl?.value || "gpt-5.2").trim() || "gpt-5.2"
+  });
+}
+
 function getApiKey() {
-  const el = document.getElementById("api-key");
-  return (el?.value || "").trim();
+  const uiValue = (apiKeyEl?.value || "").trim();
+  if (uiValue) return uiValue;
+  return loadRuntimeSettings().apiKey || "";
 }
 function getModel() {
-  const el = document.getElementById("model");
-  return (el?.value || "gpt-4.1-mini").trim();
+  const uiValue = (modelEl?.value || "").trim();
+  if (uiValue) return uiValue;
+  return loadRuntimeSettings().model || "gpt-5.2";
 }
 function getPanelUserText() {
   const el = document.getElementById("user-text");
   return (el?.value || "").trim();
+}
+
+function startPanelRuntimeBridge() {
+  PanelBridge.startPanelHeartbeat();
+  window.addEventListener("beforeunload", () => {
+    PanelBridge.stopPanelHeartbeat();
+  }, { once: true });
 }
 
 function getSelectedExercisePackId() {
@@ -612,13 +649,27 @@ function renderFlowRunProfilePicker() {
   flowRunProfileEl.disabled = state.panelMode !== "admin";
 }
 
-function syncFlowControlLabelFromRunProfile() {
+function syncFlowControlLabelFromRunProfile({ force = false } = {}) {
   const runProfile = getSelectedFlowRunProfile();
   if (!flowControlLabelEl || !runProfile) return;
+
+  const nextLabel = (runProfile.label || "").trim();
   const currentText = (flowControlLabelEl.value || "").trim();
-  if (!currentText) {
-    flowControlLabelEl.value = runProfile.label || "";
+  const lastAutoText = (state.lastAutoFlowControlLabel || "").trim();
+  const mayOverwrite = force || !state.flowControlLabelDirty || !currentText || currentText === lastAutoText;
+
+  if (mayOverwrite) {
+    flowControlLabelEl.value = nextLabel;
+    state.lastAutoFlowControlLabel = nextLabel;
+    state.flowControlLabelDirty = false;
   }
+}
+
+function updateFlowControlLabelDirtyState() {
+  if (!flowControlLabelEl) return;
+  const currentText = (flowControlLabelEl.value || "").trim();
+  const lastAutoText = (state.lastAutoFlowControlLabel || "").trim();
+  state.flowControlLabelDirty = !!currentText && currentText !== lastAutoText;
 }
 
 function renderFlowAuthoringStatus() {
@@ -916,6 +967,47 @@ async function runAgentFromFlowControl(flow, control, selectedItem) {
       runMode: buildRunModeFromTriggerKey(runProfile.triggerKey),
       userText: getCurrentUserQuestion()
     });
+  }
+}
+
+async function maybeConsumePendingFlowControlTrigger({ source = "panel" } = {}) {
+  const pending = PanelBridge.loadPendingFlowControlTrigger();
+  if (!pending) return false;
+
+  if (!getApiKey()) {
+    log("Headless Bridge: Ausstehender Flow-Trigger erkannt, aber kein API Key ist im Panel verfügbar.");
+    return false;
+  }
+
+  const flow = state.boardFlowsById.get(pending.flowId) || await Board.loadBoardFlow(pending.flowId, log);
+  if (!flow) {
+    PanelBridge.clearPendingFlowControlTrigger();
+    log("Headless Bridge: Gespeicherter Flow '" + pending.flowId + "' wurde nicht gefunden.");
+    return false;
+  }
+  state.boardFlowsById.set(flow.id, flow);
+
+  const control = flow.controls?.[pending.controlId] || null;
+  if (!control) {
+    PanelBridge.clearPendingFlowControlTrigger();
+    log("Headless Bridge: Gespeichertes Control '" + pending.controlId + "' wurde nicht gefunden.");
+    return false;
+  }
+
+  PanelBridge.clearPendingFlowControlTrigger();
+  state.lastTriggeredFlowControlItemId = pending.itemId || null;
+  state.lastTriggeredFlowControlAt = Date.now();
+  state.flowControlRunLock = true;
+
+  try {
+    log("Headless Bridge: Starte ausstehendes Flow-Control '" + (control.label || control.id) + "' (Quelle: " + source + ").");
+    await runAgentFromFlowControl(flow, control, null);
+    return true;
+  } catch (error) {
+    log("Headless Bridge: Ausstehender Flow-Trigger konnte nicht ausgeführt werden – " + error.message);
+    return false;
+  } finally {
+    state.flowControlRunLock = false;
   }
 }
 
@@ -1319,8 +1411,21 @@ function renderCanvasTypePicker() {
 // --------------------------------------------------------------------
 function initPanelButtons() {
   state.panelMode = loadPersistedPanelMode();
+  applyRuntimeSettingsToUi();
+  startPanelRuntimeBridge();
   renderCanvasTypePicker();
   renderExerciseControls();
+
+  apiKeyEl?.addEventListener("input", () => {
+    persistRuntimeSettingsFromUi();
+  });
+  apiKeyEl?.addEventListener("change", async () => {
+    persistRuntimeSettingsFromUi();
+    await maybeConsumePendingFlowControlTrigger({ source: "api_key_change" });
+  });
+  modelEl?.addEventListener("change", () => {
+    persistRuntimeSettingsFromUi();
+  });
 
   panelModeEl?.addEventListener("change", onPanelModeChange);
   exercisePackEl?.addEventListener("change", onExercisePackChange);
@@ -1332,7 +1437,10 @@ function initPanelButtons() {
     renderFlowAuthoringStatus();
   });
   flowScopeTypeEl?.addEventListener("change", renderFlowAuthoringStatus);
-  flowControlLabelEl?.addEventListener("input", renderFlowAuthoringStatus);
+  flowControlLabelEl?.addEventListener("input", () => {
+    updateFlowControlLabelDirtyState();
+    renderFlowAuthoringStatus();
+  });
 
   document.getElementById("btn-save-admin-override")?.addEventListener("click", saveAdminOverrideFromUi);
   document.getElementById("btn-clear-admin-override")?.addEventListener("click", clearAdminOverrideFromUi);
@@ -1408,6 +1516,7 @@ async function afterMiroReady() {
   await loadBoardExerciseState();
   await loadBoardFlows();
   renderFlowAuthoringControls();
+  await maybeConsumePendingFlowControlTrigger({ source: "after_miro_ready" });
 
   // UI selection events
   await Board.registerSelectionUpdateHandler(onSelectionUpdate, log);
@@ -2295,8 +2404,7 @@ async function callOpenAIClassic() {
         "Du bist ein Assistent, der Miro-Boards analysiert. " +
         "Du bekommst Sticky-Notes als JSON und eine Nutzerfrage und sollst exakte Antworten liefern. " +
         "Antworte standardmäßig auf Deutsch.",
-      userText: fullUserText,
-      maxOutputTokens: 10000
+      userText: fullUserText
     });
 
     log("Antwort von OpenAI (klassisch):");
@@ -2865,23 +2973,22 @@ async function runAgentForSelectedInstances(selectedInstanceIds, options = {}) {
 
   try {
     log("Sende " + sourceLabel + "-Request an OpenAI ...");
-    const answer = await OpenAI.callOpenAIResponses({
+    const structuredResult = await OpenAI.callOpenAIAgentStructured({
       apiKey,
       model,
       systemPrompt: composedPrompt.systemPrompt,
-      userText: JSON.stringify(composedPrompt.userPayload, null, 2),
-      maxOutputTokens: 4000
+      userText: JSON.stringify(composedPrompt.userPayload, null, 2)
     });
 
-    if (!answer) {
-      log(sourceLabel + ": Keine Antwort (output_text) gefunden.");
+    if (structuredResult.refusal) {
+      log(sourceLabel + ": Modell verweigert die Antwort: " + structuredResult.refusal);
       return;
     }
 
-    const agentObj = OpenAI.parseJsonFromModelOutput(answer);
+    const agentObj = structuredResult.parsed;
     if (!agentObj) {
-      log(sourceLabel + ": Antwort ist kein valides JSON. Rohantwort:");
-      log(answer);
+      log(sourceLabel + ": Antwort ist kein valides strukturiertes JSON. Rohantwort:");
+      log(structuredResult.outputText || "(keine output_text-Antwort)");
       return;
     }
 
@@ -3460,23 +3567,22 @@ async function runGlobalAgent(triggerInstanceId, userText, options = {}) {
 
   try {
     log("Sende " + sourceLabel + "-Request an OpenAI ...");
-    const answer = await OpenAI.callOpenAIResponses({
+    const structuredResult = await OpenAI.callOpenAIAgentStructured({
       apiKey,
       model,
       systemPrompt: composedPrompt.systemPrompt,
-      userText: JSON.stringify(composedPrompt.userPayload, null, 2),
-      maxOutputTokens: 4000
+      userText: JSON.stringify(composedPrompt.userPayload, null, 2)
     });
 
-    if (!answer) {
-      log(sourceLabel + ": Keine Antwort (output_text).");
+    if (structuredResult.refusal) {
+      log(sourceLabel + ": Modell verweigert die Antwort: " + structuredResult.refusal);
       return;
     }
 
-    const agentObj = OpenAI.parseJsonFromModelOutput(answer);
+    const agentObj = structuredResult.parsed;
     if (!agentObj) {
-      log(sourceLabel + ": Antwort ist kein valides JSON. Rohantwort:");
-      log(answer);
+      log(sourceLabel + ": Antwort ist kein valides strukturiertes JSON. Rohantwort:");
+      log(structuredResult.outputText || "(keine output_text-Antwort)");
       return;
     }
 
