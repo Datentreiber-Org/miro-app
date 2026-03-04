@@ -282,6 +282,33 @@ function getCurrentTriggerSource() {
   return state.panelMode === "admin" ? "admin" : "user";
 }
 
+async function notifyRuntime(message, { level = "info" } = {}) {
+  if (!message) return;
+  try {
+    const notifications = window.miro?.board?.notifications;
+    if (!notifications) return;
+    if (level === "error" && typeof notifications.showError === "function") {
+      await notifications.showError(message);
+      return;
+    }
+    if (level === "warning" && typeof notifications.showWarning === "function") {
+      await notifications.showWarning(message);
+      return;
+    }
+    if (typeof notifications.showInfo === "function") {
+      await notifications.showInfo(message);
+    }
+  } catch (_) {}
+}
+
+function shouldHeadlessHandleFlowControls() {
+  return IS_HEADLESS && !PanelBridge.isPanelHeartbeatFresh();
+}
+
+function shouldPanelHandleFlowControls() {
+  return !IS_HEADLESS;
+}
+
 function buildBoardConfigPatchForPack(pack) {
   const defaults = Exercises.getPackDefaults(pack);
   return {
@@ -928,12 +955,23 @@ async function runAgentFromFlowControl(flow, control, selectedItem) {
   const flowStep = BoardFlow.getFlowStep(flow, control?.stepId);
 
   if (!runProfile || !packTemplate || !flowStep) {
-    log("Board Flow: Control ist unvollständig konfiguriert.");
+    const msg = "Board Flow: Control ist unvollständig konfiguriert.";
+    log(msg);
+    if (IS_HEADLESS) await notifyRuntime(msg, { level: "error" });
     return;
   }
 
   if (control.state !== "active") {
-    log("Board Flow: Control '" + (control.label || control.id) + "' ist derzeit nicht aktiv.");
+    const msg = "Board Flow: Control '" + (control.label || control.id) + "' ist derzeit nicht aktiv.";
+    log(msg);
+    if (IS_HEADLESS) await notifyRuntime(msg, { level: "warning" });
+    return;
+  }
+
+  if (!getApiKey()) {
+    const msg = "Board Flow: Kein OpenAI API Key verfügbar.";
+    log(msg);
+    if (IS_HEADLESS) await notifyRuntime(msg, { level: "error" });
     return;
   }
 
@@ -948,7 +986,9 @@ async function runAgentFromFlowControl(flow, control, selectedItem) {
   });
 
   if (!triggerContext.valid) {
-    log("Board Flow: " + (triggerContext.reason || "Run Profile ist im aktuellen Kontext nicht ausführbar."));
+    const msg = "Board Flow: " + (triggerContext.reason || "Run Profile ist im aktuellen Kontext nicht ausführbar.");
+    log(msg);
+    if (IS_HEADLESS) await notifyRuntime(msg, { level: "warning" });
     return;
   }
 
@@ -973,25 +1013,38 @@ async function runAgentFromFlowControl(flow, control, selectedItem) {
   await saveBoardFlowAndCache(nextFlow);
 
   log("Board Flow Trigger: '" + sourceLabel + "' → " + runProfile.triggerKey + " | Ziele: " + (targetInstanceLabels.join(", ") || "(keine)"));
+  if (IS_HEADLESS) {
+    await notifyRuntime("AI Flow startet: " + sourceLabel, { level: "info" });
+  }
 
-  if (runProfile.triggerKey.startsWith("global.")) {
-    await runGlobalAgent(null, getCurrentUserQuestion(), {
-      triggerContext,
-      sourceLabel,
-      promptRuntimeOverride,
-      forcedInstanceIds: targetInstanceIds,
-      forceTargetSet: true,
-      runMode: buildRunModeFromTriggerKey(runProfile.triggerKey),
-      updateGlobalBaseline: false
-    });
-  } else {
-    await runAgentForSelectedInstances(targetInstanceIds, {
-      triggerContext,
-      sourceLabel,
-      promptRuntimeOverride,
-      runMode: buildRunModeFromTriggerKey(runProfile.triggerKey),
-      userText: getCurrentUserQuestion()
-    });
+  try {
+    if (runProfile.triggerKey.startsWith("global.")) {
+      await runGlobalAgent(null, getCurrentUserQuestion(), {
+        triggerContext,
+        sourceLabel,
+        promptRuntimeOverride,
+        forcedInstanceIds: targetInstanceIds,
+        forceTargetSet: true,
+        runMode: buildRunModeFromTriggerKey(runProfile.triggerKey),
+        updateGlobalBaseline: false
+      });
+    } else {
+      await runAgentForSelectedInstances(targetInstanceIds, {
+        triggerContext,
+        sourceLabel,
+        promptRuntimeOverride,
+        runMode: buildRunModeFromTriggerKey(runProfile.triggerKey),
+        userText: getCurrentUserQuestion()
+      });
+    }
+    if (IS_HEADLESS) {
+      await notifyRuntime("AI Flow abgeschlossen: " + sourceLabel, { level: "info" });
+    }
+  } catch (error) {
+    const msg = "Board Flow: Trigger '" + sourceLabel + "' fehlgeschlagen – " + (error?.message || String(error));
+    log(msg);
+    if (IS_HEADLESS) await notifyRuntime(msg, { level: "error" });
+    throw error;
   }
 }
 
@@ -1382,26 +1435,17 @@ function renderCanvasTypePicker() {
   for (const entry of entries) {
     const isAllowed = !hasRestriction || allowedCanvasTypeIds.has(entry.canvasTypeId);
 
-    const label = document.createElement("label");
-    label.className = "canvas-option";
-
-    const input = document.createElement("input");
-    input.type = "radio";
-    input.name = "dt-canvas-type";
-    input.value = entry.canvasTypeId;
-    input.checked = entry.canvasTypeId === selectedCanvasTypeId;
-    input.disabled = !isAllowed;
-    input.addEventListener("change", async () => {
-      if (!input.checked || input.disabled) return;
+    const button = document.createElement("button");
+    button.type = "button";
+    button.className = "canvas-option-button" + (entry.canvasTypeId === selectedCanvasTypeId ? " is-selected" : "") + (!isAllowed ? " is-disabled" : "");
+    button.disabled = !isAllowed;
+    button.setAttribute("aria-pressed", entry.canvasTypeId === selectedCanvasTypeId ? "true" : "false");
+    button.addEventListener("click", async (event) => {
+      event.preventDefault();
+      event.stopPropagation();
+      if (button.disabled) return;
       await syncDefaultCanvasTypeToBoardConfig(entry.canvasTypeId);
     });
-
-    const card = document.createElement("span");
-    card.className = "canvas-option-card";
-    if (!isAllowed) {
-      card.style.opacity = "0.45";
-      card.style.cursor = "not-allowed";
-    }
 
     const thumb = document.createElement("img");
     thumb.className = "canvas-thumb";
@@ -1423,11 +1467,9 @@ function renderCanvasTypePicker() {
 
     textWrap.appendChild(title);
     textWrap.appendChild(meta);
-    card.appendChild(thumb);
-    card.appendChild(textWrap);
-    label.appendChild(input);
-    label.appendChild(card);
-    canvasTypePickerEl.appendChild(label);
+    button.appendChild(thumb);
+    button.appendChild(textWrap);
+    canvasTypePickerEl.appendChild(button);
   }
 }
 
@@ -1979,32 +2021,38 @@ async function refreshSelectionStatusFromBoard() {
   return await refreshSelectionStatusFromItems(selection || []);
 }
 
+async function executeSelectedFlowControl(controlSelection, items) {
+  const now = Date.now();
+  if (
+    state.lastTriggeredFlowControlItemId === controlSelection.item.id &&
+    now - Number(state.lastTriggeredFlowControlAt || 0) < 1200
+  ) {
+    return;
+  }
+
+  state.flowControlRunLock = true;
+  state.lastTriggeredFlowControlItemId = controlSelection.item.id;
+  state.lastTriggeredFlowControlAt = now;
+  try {
+    await runAgentFromFlowControl(controlSelection.flow, controlSelection.control, controlSelection.item);
+  } finally {
+    state.flowControlRunLock = false;
+    await refreshSelectionStatusFromItems(items);
+  }
+}
+
 async function onSelectionUpdate(event) {
   if (state.handlingSelection || state.flowControlRunLock) return;
   const items = event?.items || [];
 
   const controlSelection = await resolveSelectedFlowControl(items);
   if (controlSelection) {
-    if (!IS_HEADLESS) {
-      await refreshSelectionStatusFromItems(items);
-      return;
-    }
+    const headlessShouldRun = shouldHeadlessHandleFlowControls();
+    const panelShouldRun = shouldPanelHandleFlowControls();
 
-    const now = Date.now();
-    if (
-      state.lastTriggeredFlowControlItemId === controlSelection.item.id &&
-      now - Number(state.lastTriggeredFlowControlAt || 0) < 1200
-    ) {
-      return;
-    }
-
-    state.flowControlRunLock = true;
-    state.lastTriggeredFlowControlItemId = controlSelection.item.id;
-    state.lastTriggeredFlowControlAt = now;
-    try {
-      await runAgentFromFlowControl(controlSelection.flow, controlSelection.control, controlSelection.item);
-    } finally {
-      state.flowControlRunLock = false;
+    if (headlessShouldRun || panelShouldRun) {
+      await executeSelectedFlowControl(controlSelection, items);
+    } else {
       await refreshSelectionStatusFromItems(items);
     }
     return;
@@ -2925,7 +2973,9 @@ async function runAgentForSelectedInstances(selectedInstanceIds, options = {}) {
   const sourceLabel = pickFirstNonEmptyString(options.sourceLabel, (triggerContext ? buildTriggerSourceLabel(triggerContext) : null), "Instanz-Agent");
 
   if (!apiKey) {
-    log("Bitte OpenAI API Key eingeben (Agent).");
+    const msg = "Bitte OpenAI API Key eingeben (Agent).";
+    log(msg);
+    if (IS_HEADLESS) await notifyRuntime(msg, { level: "error" });
     return;
   }
 
@@ -3503,7 +3553,9 @@ async function runGlobalAgent(triggerInstanceId, userText, options = {}) {
   const forcedInstanceIds = Array.from(new Set((options.forcedInstanceIds || []).filter((id) => state.instancesById.has(id))));
 
   if (!apiKey) {
-    log("Bitte OpenAI API Key eingeben (Global Agent).");
+    const msg = "Bitte OpenAI API Key eingeben (Global Agent).";
+    log(msg);
+    if (IS_HEADLESS) await notifyRuntime(msg, { level: "error" });
     return;
   }
 
