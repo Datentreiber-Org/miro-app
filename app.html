@@ -258,6 +258,45 @@
       <div class="helper-text">Der Trigger wird gegen Step-Regeln, Scope und aktuelle Selektion validiert, bevor der Agentenlauf gestartet wird.</div>
     </div>
 
+    <div class="panel-section" id="flow-authoring-panel">
+      <div class="panel-section-title">Board Flow Controls</div>
+      <div class="helper-text">Selektiere eine oder mehrere Canvas-Instanzen auf dem Board. Die erste Instanz dient als visuelle Ankerposition für den Shape-Button; der Scope kann trotzdem mehrere Instanzen oder den globalen Board-Kontext abdecken.</div>
+
+      <div class="row">
+        <label for="flow-pack-template">Pack Template</label>
+        <select id="flow-pack-template"></select>
+      </div>
+
+      <div class="row">
+        <label for="flow-step-template">Step Template</label>
+        <select id="flow-step-template"></select>
+      </div>
+
+      <div class="row">
+        <label for="flow-run-profile">Run Profile</label>
+        <select id="flow-run-profile"></select>
+      </div>
+
+      <div class="row">
+        <label for="flow-scope-type">Scope</label>
+        <select id="flow-scope-type">
+          <option value="fixed_instances">Selektierte Instanzen</option>
+          <option value="global">Global (alle passenden Instanzen)</option>
+        </select>
+      </div>
+
+      <div class="row">
+        <label for="flow-control-label">Button-Label</label>
+        <input type="text" id="flow-control-label" placeholder="z. B. Prüfen" />
+      </div>
+
+      <div class="btn-row">
+        <button id="btn-flow-create-control">Control erzeugen</button>
+        <button id="btn-flow-set-current-step">Schritt aktiv setzen</button>
+      </div>
+      <div id="flow-authoring-status" class="helper-text">Noch keine Flow-Information geladen.</div>
+    </div>
+
     <div class="btn-row">
       <button id="btn-insert-template">Canvas einfügen</button>
     </div>
@@ -276,6 +315,6 @@
 
   <pre id="log"></pre>
 
-  <script type="module" src="./src/main.js?v=20260301-step11"></script>
+  <script type="module" src="./src/main.js?v=20260303-flowbatch1"></script>
 </body>
 </html>
