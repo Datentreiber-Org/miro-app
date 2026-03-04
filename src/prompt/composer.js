@@ -3,8 +3,8 @@ import {
   getDefaultCanvasTypeIdForPack,
   getPackDefaults,
   getStepTriggerConfig
-} from "../exercises/registry.js?v=20260301-step10";
-import { parseTriggerKey } from "../runtime/exercise-engine.js?v=20260301-step10";
+} from "../exercises/registry.js?v=20260301-step11-hotfix2";
+import { parseTriggerKey } from "../runtime/exercise-engine.js?v=20260303-flowbatch1";
 
 function asNonEmptyString(value) {
   if (typeof value !== "string") return null;
@@ -72,15 +72,125 @@ function buildModePromptBlock(runMode, triggerContext) {
   return lines.join("\n");
 }
 
+function mapAllowedCanvasTypes(canvasTypeIds, templateCatalog) {
+  return normalizeUniqueStrings(canvasTypeIds).map((canvasTypeId) => ({
+    canvasTypeId,
+    displayName: getCanvasTypeDisplayName(templateCatalog, canvasTypeId) || canvasTypeId
+  }));
+}
+
+function buildPackTemplatePromptBlock(packTemplate) {
+  const prompt = asNonEmptyString(packTemplate?.globalPrompt);
+  if (!prompt) return null;
+  return `Pack-Template-Kontext (${packTemplate?.label || packTemplate?.id || "Pack Template"}):\n${prompt}`;
+}
+
+function buildFlowStepPromptBlock(flowStep) {
+  if (!flowStep || typeof flowStep !== "object") return null;
+  const lines = [];
+  const instruction = asNonEmptyString(flowStep?.instructionOverride) || asNonEmptyString(flowStep?.instruction);
+  const summary = asNonEmptyString(flowStep?.summary);
+  if (instruction) lines.push(`- sichtbareInstruktion: ${instruction}`);
+  if (summary) lines.push(`- stepSummary: ${summary}`);
+  if (!lines.length) return null;
+  return `Flow-Schritt (${flowStep?.label || flowStep?.id || "aktueller Schritt"}):\n${lines.join("\n")}`;
+}
+
+function buildRunProfilePromptBlock(runProfile) {
+  if (!runProfile || typeof runProfile !== "object") return null;
+  const lines = [
+    `- id: ${runProfile.id || "(leer)"}`,
+    `- triggerKey: ${runProfile.triggerKey || "(leer)"}`
+  ];
+
+  if (asNonEmptyString(runProfile?.summary)) lines.push(`- summary: ${runProfile.summary}`);
+  if (asNonEmptyString(runProfile?.defaultScopeType)) lines.push(`- defaultScopeType: ${runProfile.defaultScopeType}`);
+  if (asNonEmptyString(runProfile?.mutationPolicy)) lines.push(`- mutationPolicyOverride: ${runProfile.mutationPolicy}`);
+  if (asNonEmptyString(runProfile?.feedbackPolicy)) lines.push(`- feedbackPolicyOverride: ${runProfile.feedbackPolicy}`);
+  if (Array.isArray(runProfile?.allowedActions) && runProfile.allowedActions.length) {
+    lines.push(`- allowedActions: ${runProfile.allowedActions.join(", ")}`);
+  }
+  return `Run-Profile (${runProfile?.label || runProfile?.id || "Run Profile"}):\n${lines.join("\n")}`;
+}
+
+function buildPromptModuleBlocks(promptModules) {
+  return (Array.isArray(promptModules) ? promptModules : [])
+    .map((module) => {
+      const prompt = asNonEmptyString(module?.prompt);
+      if (!prompt) return null;
+      const title = asNonEmptyString(module?.label) || asNonEmptyString(module?.id) || "Prompt-Modul";
+      return `Prompt-Modul (${title}):\n${prompt}`;
+    })
+    .filter(Boolean);
+}
+
+function buildControlContextBlock(controlContext) {
+  if (!controlContext || typeof controlContext !== "object") return null;
+  const lines = [];
+  if (asNonEmptyString(controlContext?.controlId)) lines.push(`- controlId: ${controlContext.controlId}`);
+  if (asNonEmptyString(controlContext?.controlLabel)) lines.push(`- controlLabel: ${controlContext.controlLabel}`);
+  if (asNonEmptyString(controlContext?.flowId)) lines.push(`- flowId: ${controlContext.flowId}`);
+  if (asNonEmptyString(controlContext?.scopeType)) lines.push(`- scopeType: ${controlContext.scopeType}`);
+  if (Array.isArray(controlContext?.targetInstanceLabels) && controlContext.targetInstanceLabels.length) {
+    lines.push(`- targetInstanceLabels: ${controlContext.targetInstanceLabels.join(", ")}`);
+  }
+  if (!lines.length) return null;
+  return `Control-Kontext:\n${lines.join("\n")}`;
+}
+
 export function buildExerciseContext({
   boardConfig = null,
   exercisePack = null,
   currentStep = null,
   triggerContext = null,
-  templateCatalog = null
+  templateCatalog = null,
+  packTemplate = null,
+  flowStep = null,
+  runProfile = null,
+  controlContext = null
 } = {}) {
   const boardMode = sanitizeBoardMode(boardConfig?.boardMode);
   const parsed = triggerContext ? parseTriggerKey(triggerContext.triggerKey) : null;
+  const useFlowContext = !!(packTemplate || runProfile || flowStep || controlContext);
+
+  if (useFlowContext) {
+    const allowedCanvasTypes = mapAllowedCanvasTypes(packTemplate?.allowedCanvasTypeIds || [], templateCatalog);
+    const defaultCanvasTypeId = normalizeUniqueStrings(packTemplate?.allowedCanvasTypeIds || [])[0] || asNonEmptyString(boardConfig?.defaultCanvasTypeId);
+    const visibleInstruction = asNonEmptyString(flowStep?.instructionOverride) || asNonEmptyString(flowStep?.instruction);
+
+    return {
+      boardMode: "exercise",
+      exercisePackId: asNonEmptyString(packTemplate?.id),
+      exercisePackLabel: asNonEmptyString(packTemplate?.label),
+      exercisePackVersion: 1,
+      defaultCanvasTypeId: defaultCanvasTypeId || null,
+      defaultCanvasTypeLabel: getCanvasTypeDisplayName(templateCatalog, defaultCanvasTypeId),
+      allowedCanvasTypes,
+      currentStepId: asNonEmptyString(flowStep?.id),
+      currentStepLabel: asNonEmptyString(flowStep?.label),
+      visibleInstruction: visibleInstruction || null,
+      allowedActions: normalizeUniqueStrings(runProfile?.allowedActions || []),
+      triggerKey: triggerContext?.triggerKey || "generic",
+      triggerSource: triggerContext?.source || "system",
+      triggerScope: parsed?.scope || null,
+      triggerIntent: parsed?.intent || null,
+      mutationPolicy: triggerContext?.mutationPolicy || asNonEmptyString(runProfile?.mutationPolicy) || null,
+      feedbackPolicy: triggerContext?.feedbackPolicy || asNonEmptyString(runProfile?.feedbackPolicy) || asNonEmptyString(boardConfig?.feedbackChannelDefault) || null,
+      requiresSelection: !!triggerContext?.requiresSelection,
+      feedbackFrameName: asNonEmptyString(boardConfig?.feedbackFrameName),
+      userMayChangePack: false,
+      userMayChangeStep: false,
+      packTemplateId: asNonEmptyString(packTemplate?.id),
+      packTemplateLabel: asNonEmptyString(packTemplate?.label),
+      runProfileId: asNonEmptyString(runProfile?.id),
+      runProfileLabel: asNonEmptyString(runProfile?.label),
+      controlId: asNonEmptyString(controlContext?.controlId),
+      controlLabel: asNonEmptyString(controlContext?.controlLabel),
+      scopeType: asNonEmptyString(controlContext?.scopeType),
+      targetInstanceLabels: normalizeUniqueStrings(controlContext?.targetInstanceLabels || triggerContext?.targetInstanceLabels || [])
+    };
+  }
+
   const packDefaults = getPackDefaults(exercisePack);
 
   if (!exercisePack) {
@@ -155,9 +265,15 @@ export function composePrompt({
   boardConfig = null,
   exercisePack = null,
   currentStep = null,
-  adminOverrideText = null
+  adminOverrideText = null,
+  packTemplate = null,
+  flowStep = null,
+  runProfile = null,
+  promptModules = [],
+  controlContext = null
 } = {}) {
   const systemBlocks = [];
+  const hasFlowContext = !!(packTemplate || runProfile || flowStep || (Array.isArray(promptModules) && promptModules.length) || controlContext);
 
   if (asNonEmptyString(baseSystemPrompt)) {
     systemBlocks.push(String(baseSystemPrompt).trim());
@@ -174,21 +290,43 @@ export function composePrompt({
     exercisePack,
     currentStep,
     triggerContext,
-    templateCatalog
+    templateCatalog,
+    packTemplate,
+    flowStep,
+    runProfile,
+    controlContext
   });
 
-  const exerciseGlobalPrompt = asNonEmptyString(exercisePack?.globalPrompt);
-  if (exerciseGlobalPrompt) {
-    systemBlocks.push(`Exercise-Pack-Kontext (${exercisePack.label || exercisePack.id}):\n${exerciseGlobalPrompt}`);
-  }
+  if (hasFlowContext) {
+    const packBlock = buildPackTemplatePromptBlock(packTemplate);
+    if (packBlock) systemBlocks.push(packBlock);
 
-  const stepTriggerConfig = currentStep && triggerContext
-    ? getStepTriggerConfig(currentStep, triggerContext.triggerKey)
-    : null;
-  const stepPrompt = asNonEmptyString(stepTriggerConfig?.prompt);
+    const stepBlock = buildFlowStepPromptBlock(flowStep);
+    if (stepBlock) systemBlocks.push(stepBlock);
 
-  if (stepPrompt) {
-    systemBlocks.push(`Schritt-Kontext (${currentStep?.label || currentStep?.id || "aktueller Schritt"}):\n${stepPrompt}`);
+    const runProfileBlock = buildRunProfilePromptBlock(runProfile);
+    if (runProfileBlock) systemBlocks.push(runProfileBlock);
+
+    for (const block of buildPromptModuleBlocks(promptModules)) {
+      systemBlocks.push(block);
+    }
+
+    const controlBlock = buildControlContextBlock(controlContext);
+    if (controlBlock) systemBlocks.push(controlBlock);
+  } else {
+    const exerciseGlobalPrompt = asNonEmptyString(exercisePack?.globalPrompt);
+    if (exerciseGlobalPrompt) {
+      systemBlocks.push(`Exercise-Pack-Kontext (${exercisePack.label || exercisePack.id}):\n${exerciseGlobalPrompt}`);
+    }
+
+    const stepTriggerConfig = currentStep && triggerContext
+      ? getStepTriggerConfig(currentStep, triggerContext.triggerKey)
+      : null;
+    const stepPrompt = asNonEmptyString(stepTriggerConfig?.prompt);
+
+    if (stepPrompt) {
+      systemBlocks.push(`Schritt-Kontext (${currentStep?.label || currentStep?.id || "aktueller Schritt"}):\n${stepPrompt}`);
+    }
   }
 
   const normalizedAdminOverrideText = asNonEmptyString(adminOverrideText);
