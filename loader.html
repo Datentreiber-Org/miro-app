@@ -2,4 +2,20 @@
 <meta charset="utf-8">
 <title>loader</title>
 <script src="https://miro.com/app/static/sdk/v2/miro.js"></script>
-<script type="module" src="./src/headless/runtime.js?v=20260304-batch21"></script>
+<script type="module">
+  const PANEL_BASE = "https://datentreiber-org.github.io/miro-app/app.html";
+
+  function openPanelFresh() {
+    const url = `${PANEL_BASE}?panel=1&v=${Date.now()}`;
+    return miro.board.ui.openPanel({ url });
+  }
+
+  // Wichtig: Der App-Icon-Klick muss im Loader registriert bleiben.
+  miro.board.ui.on("icon:click", openPanelFresh);
+
+  // Headless-Runtime parallel booten.
+  window.__DT_RUNTIME_CONTEXT = "headless";
+  import("./src/headless/runtime.js?v=20260304-batch21-hotfix1").catch((error) => {
+    console.error("[DT][loader] Headless-Boot fehlgeschlagen", error);
+  });
+</script>
