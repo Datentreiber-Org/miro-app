@@ -70,7 +70,19 @@ export const DT_STORAGE_KEY_MEMORY_LOG_ENTRY_PREFIX = "dt-memory-log-entry-v1:";
 export const DT_IMAGE_META_KEY_INSTANCE = "dt-canvas-instance-v1";
 export const DT_ANCHOR_META_KEY_BOARD = "dt-board-config-v1";
 export const DT_STORAGE_KEY_EXERCISE_RUNTIME = "dt-exercise-runtime-v1";
+export const DT_STORAGE_KEY_BOARD_FLOW_INDEX = "dt-board-flow-index-v1";
+export const DT_STORAGE_KEY_BOARD_FLOW_PREFIX = "dt-board-flow-v1:";
+export const DT_SHAPE_META_KEY_FLOW_CONTROL = "dt-flow-control-v1";
 export const DT_MEMORY_RECENT_LOG_LIMIT = 12;
+
+export const DT_FLOW_SCOPE_TYPES = Object.freeze(["fixed_instances", "global"]);
+export const DT_FLOW_CONTROL_STATES = Object.freeze(["active", "disabled", "done"]);
+export const DT_FLOW_CONTROL_LAYOUT = Object.freeze({
+  widthPx: 180,
+  heightPx: 52,
+  gapXPx: 24,
+  offsetFromCanvasBottomPx: 120
+});
 
 // Trigger / Feedback Engine Defaults
 export const DT_TRIGGER_SCOPES = Object.freeze(["selection", "global"]);
