@@ -38,23 +38,43 @@ Wenn Beziehungen zwischen Stickies bestehen, sollen Connectoren so geplant werde
     insertWidthPx: 2000,
     promptContext: `
 Dieser Canvas-Typ ist das Analytics & AI Use Case Canvas.
-Die rechte Seite beschreibt die Nutzerperspektive:
-- User & Situation
-- Objectives & Results
-- Decisions & Actions
-- User Gains
-- User Pains
+Ziel dieses Canvas ist es, einen Analytics- oder KI-Anwendungsfall konsequent aus einer realen Nutzer- und Entscheidungssituation herzuleiten.
 
-Die linke Seite beschreibt die Lösungsperspektive:
-- Solutions
-- Information
-- Functions
-- Benefits
+Die rechte Seite beschreibt die Nutzerperspektive. Sie sollte fachlich zuerst tragfähig werden:
+- User & Situation: konkrete Nutzerrolle oder Nutzergruppe, Auslöser, Arbeitssituation, Kontext, Job to be done.
+- Objectives & Results: angestrebte Ziele oder messbare gewünschte Ergebnisse.
+- Decisions & Actions: reale Entscheidungen oder Handlungen, die der Nutzer treffen oder ausführen muss.
+- User Gains: gewünschte positive Effekte aus Nutzersicht.
+- User Pains: Hindernisse, Unsicherheiten, Friktionen, Risiken oder Aufwände aus Nutzersicht.
 
-Das Feld Check in der Mitte dient dem Problem-Solution-Fit.
-Nutze die fachliche Kette Information → Decisions & Actions → Results → Objectives.
-Informationen und Funktionen sind nur dann wertvoll, wenn sie Entscheidungen oder Handlungen verbessern.
-Benefits sind nur dann gut, wenn sie Pains reduzieren, Gains verstärken oder zu Ergebnissen und Zielen beitragen.`.trim()
+Die linke Seite beschreibt die Lösungsperspektive, die aus der rechten Seite abgeleitet werden muss:
+- Solutions: Lösungsideen oder Interventionen auf Use-Case-Ebene, keine bloßen Buzzwords.
+- Information: konkrete Informationen, Signale oder Erkenntnisse, die Entscheidungen oder Handlungen verbessern.
+- Functions: Funktionen oder Mechanismen, mit denen diese Informationen erzeugt, bereitgestellt oder nutzbar gemacht werden.
+- Benefits: resultierende Vorteile der Lösung, die Pains reduzieren, Gains verstärken oder zu besseren Ergebnissen und Zielen beitragen.
+
+Das Feld Check in der Mitte dient dem Problem-Solution-Fit. Dort werden kurze Verdichtungen festgehalten, warum die Lösung für die konkrete Nutzer- und Entscheidungssituation Sinn ergibt.
+
+Fachliche Arbeitslogik dieses Canvas:
+- Arbeite grundsätzlich erst rechts, dann links und zuletzt das Feld Check.
+- Gute Inhalte sind konkret, atomar und area-genau; eine Sticky Note sollte möglichst nur eine klare Aussage enthalten.
+- Entscheidungen und Handlungen sind der methodische Drehpunkt: Informationen und Funktionen sind nur dann wertvoll, wenn sie Entscheidungen oder Handlungen tatsächlich verbessern.
+- Nutze als Leitlinie die Kette Information → Decisions & Actions → Results → Objectives.
+- Benefits sind nur dann tragfähig, wenn sie aus der Lösung ableitbar sind und einen Bezug zu Pains, Gains, Results oder Objectives haben.
+- Vermeide zu frühe Technologiediskussionen, Systemarchitekturen oder generische KI-Floskeln ohne Bezug zur Nutzerarbeit.
+- Connectoren sind sinnvoll, wenn klare semantische Beziehungen lesbar gemacht werden, insbesondere zwischen Information und Decisions & Actions sowie zwischen Benefits und den adressierten Pains, Gains, Results oder Objectives.
+
+Qualitätskriterien:
+- Lieber konkrete, überprüfbare Formulierungen als abstrakte Schlagworte.
+- Objectives & Results beschreiben erwünschte Zustände oder Outcomes, nicht bloß Maßnahmen.
+- Decisions & Actions beschreiben Verhalten oder Auswahlhandlungen, nicht Features.
+- User Gains sind nicht dasselbe wie Benefits: Gains kommen aus Nutzersicht, Benefits aus der Lösungsperspektive.
+- User Pains sind nicht dasselbe wie Objectives: Pains beschreiben Probleme oder Friktionen, Objectives beschreiben Zielzustände.
+
+Didaktischer Reifegrad:
+- Wenn die relevante Seite des Canvas leer oder fast leer ist, wechsle von harter Bewertung zu aktivierender Anleitung: erkläre einen sinnvollen Einstieg, schlage eine Reihenfolge vor und gib konkrete Formulierungsanstöße.
+- Wenn bereits Material vorhanden ist, arbeite anschlussfähig an den vorhandenen Inhalten statt das Canvas völlig neu zu erfinden.
+- Wenn der Canvas reif ist, darfst du strenger auf Konsistenz, Präzision und Problem-Solution-Fit prüfen.`.trim()
   }
 };
 
