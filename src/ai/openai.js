@@ -2,27 +2,35 @@ import { OPENAI_ENDPOINT } from "../config.js?v=20260304-batch2";
 
 function nullableStringSchema(description = "") {
   return {
-    anyOf: [
-      { type: "string", description },
-      { type: "null" }
-    ]
+    type: ["string", "null"],
+    description
   };
 }
 
 function nullableNumberSchema(description = "") {
   return {
-    anyOf: [
-      { type: "number", description },
-      { type: "null" }
-    ]
+    type: ["number", "null"],
+    description
   };
 }
 
-const AGENT_ACTION_SCHEMA = {
-  type: "object",
-  additionalProperties: false,
-  required: ["type"],
-  properties: {
+function nullableBooleanSchema(description = "") {
+  return {
+    type: ["boolean", "null"],
+    description
+  };
+}
+
+function strictObjectSchema(properties) {
+  return {
+    type: "object",
+    additionalProperties: false,
+    required: Object.keys(properties),
+    properties
+  };
+}
+
+const AGENT_ACTION_SCHEMA = strictObjectSchema({
     type: { type: "string" },
     instanceLabel: nullableStringSchema("Menschenlesbares Canvas-Label der Zielinstanz."),
     instanceId: nullableStringSchema("Optionale interne Zielinstanz-ID; wenn möglich instanceLabel bevorzugen."),
@@ -34,125 +42,65 @@ const AGENT_ACTION_SCHEMA = {
     targetArea: nullableStringSchema("Synonym zu area für Ziel-Regionen."),
     text: nullableStringSchema("Textinhalt für create_sticky oder inform."),
     message: nullableStringSchema("Informationsnachricht für inform."),
-    directed: {
-      anyOf: [
-        { type: "boolean" },
-        { type: "null" }
-      ]
-    },
-    reverseDirection: {
-      anyOf: [
-        { type: "boolean" },
-        { type: "null" }
-      ]
-    },
+    directed: nullableBooleanSchema("Ob der Connector gerichtet sein soll."),
+    reverseDirection: nullableBooleanSchema("Ob die vom Modell gedachte Richtung invertiert werden soll."),
     targetPx: nullableNumberSchema("Optionale Zielposition X in Board-Pixeln."),
     targetPy: nullableNumberSchema("Optionale Zielposition Y in Board-Pixeln.")
-  }
-};
+});
 
-const AGENT_RESPONSE_JSON_SCHEMA = {
-  type: "object",
-  additionalProperties: false,
-  required: ["analysis", "actions", "memoryEntry", "feedback", "recommendations", "evaluation"],
-  properties: {
+const AGENT_RESPONSE_JSON_SCHEMA = strictObjectSchema({
     analysis: { type: "string", description: "Kurze Analyse des aktuellen Board-Zustands." },
     actions: {
       type: "array",
       items: AGENT_ACTION_SCHEMA
     },
-    memoryEntry: {
-      type: "object",
-      additionalProperties: false,
-      required: [
-        "summary",
-        "workSteps",
-        "decisionsAdded",
-        "decisionsRemoved",
-        "openIssuesAdded",
-        "openIssuesResolved",
-        "nextFocus",
-        "stepStatus"
-      ],
-      properties: {
-        summary: { type: "string" },
-        workSteps: {
-          type: "array",
-          items: {
-            type: "object",
-            additionalProperties: false,
-            required: ["instanceLabel", "text"],
-            properties: {
-              instanceLabel: nullableStringSchema("Menschenlesbares Canvas-Label oder null."),
-              text: { type: "string" }
-            }
-          }
-        },
-        decisionsAdded: { type: "array", items: { type: "string" } },
-        decisionsRemoved: { type: "array", items: { type: "string" } },
-        openIssuesAdded: { type: "array", items: { type: "string" } },
-        openIssuesResolved: { type: "array", items: { type: "string" } },
-        nextFocus: nullableStringSchema("Sinnvoller nächster Fokus."),
-        stepStatus: nullableStringSchema("z. B. not_started, in_progress, ready_for_review.")
+    memoryEntry: strictObjectSchema({
+      summary: { type: "string" },
+      workSteps: {
+        type: "array",
+        items: strictObjectSchema({
+          instanceLabel: nullableStringSchema("Menschenlesbares Canvas-Label oder null."),
+          text: { type: "string" }
+        })
+      },
+      decisionsAdded: { type: "array", items: { type: "string" } },
+      decisionsRemoved: { type: "array", items: { type: "string" } },
+      openIssuesAdded: { type: "array", items: { type: "string" } },
+      openIssuesResolved: { type: "array", items: { type: "string" } },
+      nextFocus: nullableStringSchema("Sinnvoller nächster Fokus."),
+      stepStatus: nullableStringSchema("z. B. not_started, in_progress, ready_for_review.")
+    }),
+    feedback: strictObjectSchema({
+      title: { type: "string" },
+      summary: { type: "string" },
+      sections: {
+        type: "array",
+        items: strictObjectSchema({
+          heading: nullableStringSchema("Überschrift des Feedback-Abschnitts."),
+          bullets: { type: "array", items: { type: "string" } }
+        })
       }
-    },
-    feedback: {
-      type: "object",
-      additionalProperties: false,
-      required: ["title", "summary", "sections"],
-      properties: {
-        title: { type: "string" },
-        summary: { type: "string" },
-        sections: {
-          type: "array",
-          items: {
-            type: "object",
-            additionalProperties: false,
-            required: ["heading", "bullets"],
-            properties: {
-              heading: nullableStringSchema("Überschrift des Feedback-Abschnitts."),
-              bullets: { type: "array", items: { type: "string" } }
-            }
-          }
-        }
+    }),
+    recommendations: strictObjectSchema({
+      recommendedNextTrigger: nullableStringSchema("Optionaler nächster Trigger-Key."),
+      recommendedNextStepId: nullableStringSchema("Optionaler nächster Step im aktuellen Pack/Flow."),
+      advanceStepSuggested: { type: "boolean" },
+      reason: nullableStringSchema("Kurze Begründung der Empfehlung.")
+    }),
+    evaluation: strictObjectSchema({
+      score: nullableNumberSchema("Optionaler numerischer Score."),
+      scale: nullableStringSchema("Skalenbeschreibung, z. B. 0-100."),
+      verdict: nullableStringSchema("Kurzurteil."),
+      rubric: {
+        type: "array",
+        items: strictObjectSchema({
+          criterion: nullableStringSchema("Bewertungskriterium."),
+          status: nullableStringSchema("z. B. met, partly_met, missing."),
+          comment: nullableStringSchema("Kurzer Kommentar zum Kriterium.")
+        })
       }
-    },
-    recommendations: {
-      type: "object",
-      additionalProperties: false,
-      required: ["recommendedNextTrigger", "recommendedNextStepId", "advanceStepSuggested", "reason"],
-      properties: {
-        recommendedNextTrigger: nullableStringSchema("Optionaler nächster Trigger-Key."),
-        recommendedNextStepId: nullableStringSchema("Optionaler nächster Step im aktuellen Pack/Flow."),
-        advanceStepSuggested: { type: "boolean" },
-        reason: nullableStringSchema("Kurze Begründung der Empfehlung.")
-      }
-    },
-    evaluation: {
-      type: "object",
-      additionalProperties: false,
-      required: ["score", "scale", "verdict", "rubric"],
-      properties: {
-        score: nullableNumberSchema("Optionaler numerischer Score."),
-        scale: nullableStringSchema("Skalenbeschreibung, z. B. 0-100."),
-        verdict: nullableStringSchema("Kurzurteil."),
-        rubric: {
-          type: "array",
-          items: {
-            type: "object",
-            additionalProperties: false,
-            required: ["criterion", "status", "comment"],
-            properties: {
-              criterion: nullableStringSchema("Bewertungskriterium."),
-              status: nullableStringSchema("z. B. met, partly_met, missing."),
-              comment: nullableStringSchema("Kurzer Kommentar zum Kriterium.")
-            }
-          }
-        }
-      }
-    }
-  }
-};
+    })
+});
 
 function buildMessageInput(systemPrompt, userText) {
   return [
