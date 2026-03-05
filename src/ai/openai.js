@@ -38,14 +38,12 @@ const AGENT_ACTION_SCHEMA = strictObjectSchema({
     refId: nullableStringSchema("Temporäre Ref-ID für neu erzeugte Stickies, damit spätere Actions darauf referenzieren können."),
     fromStickyId: nullableStringSchema("Alias-ID oder Ref-ID der Start-Sticky für Connectoren."),
     toStickyId: nullableStringSchema("Alias-ID oder Ref-ID der Ziel-Sticky für Connectoren."),
-    area: nullableStringSchema("Area/Region innerhalb der Zielinstanz."),
-    targetArea: nullableStringSchema("Synonym zu area für Ziel-Regionen."),
+    area: nullableStringSchema("Area/Region innerhalb der Zielinstanz. Die App platziert Stickies innerhalb der Region automatisch."),
+    targetArea: nullableStringSchema("Ziel-Region innerhalb der Zielinstanz. Die App platziert Stickies innerhalb der Region automatisch."),
     text: nullableStringSchema("Textinhalt für create_sticky oder inform."),
     message: nullableStringSchema("Informationsnachricht für inform."),
     directed: nullableBooleanSchema("Ob der Connector gerichtet sein soll."),
-    reverseDirection: nullableBooleanSchema("Ob die vom Modell gedachte Richtung invertiert werden soll."),
-    targetPx: nullableNumberSchema("Optionale Zielposition X in Board-Pixeln."),
-    targetPy: nullableNumberSchema("Optionale Zielposition Y in Board-Pixeln.")
+    reverseDirection: nullableBooleanSchema("Ob die vom Modell gedachte Richtung invertiert werden soll.")
 });
 
 const AGENT_RESPONSE_JSON_SCHEMA = strictObjectSchema({
