@@ -69,6 +69,7 @@ export async function removeFlowControlMeta(itemOrId, log) {
   } catch (_) {
     return false;
   }
+}
 
 export async function computeSuggestedFlowControlPosition(instance, { offsetIndex = 0 } = {}, log) {
   await ensureMiroReady(log);

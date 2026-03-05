@@ -1,4 +1,4 @@
-import { TEMPLATE_ID, DT_CANVAS_DEFS } from "../config.js?v=20260301-step11";
+import { TEMPLATE_ID, DT_CANVAS_DEFS } from "../config.js?v=20260305-batch06";
 import {
   stripHtml,
   isFiniteNumber,
@@ -11,7 +11,7 @@ import {
   buildInstanceGeometryIndex,
   resolveBoardCoords,
   findInstanceByPoint
-} from "../miro/board.js?v=20260305-batch05";
+} from "../miro/board.js?v=20260305-batch06";
 
 // --------------------------------------------------------------------
 // Canvas Definitions / Region Mapping
@@ -765,6 +765,29 @@ export function buildPromptPayloadFromClassification(classification, { useAliase
       for (const item of one.items) if (item?.stickyId) idToItem[item.stickyId] = item;
     }
 
+    const canvasTypeId = one.template?.canvasTypeId || one.template?.id || null;
+    const orderedBodyRegions = getBodyRegionDefs(canvasTypeId);
+    const knownAreaIds = new Set(orderedBodyRegions.map((region) => region.id).filter(Boolean));
+
+    function resolveAreaKey(item) {
+      if (!item) return null;
+      if (item.role === "header") return "header";
+      if (item.role === "footer") return "footer";
+
+      const directRegionId = typeof item.regionId === "string" ? item.regionId.trim() : null;
+      if (directRegionId && knownAreaIds.has(directRegionId)) {
+        return directRegionId;
+      }
+
+      const mappedRegion = areaNameToRegion(item.regionTitle, canvasTypeId);
+      const mappedRegionId = typeof mappedRegion?.id === "string" ? mappedRegion.id.trim() : null;
+      if (mappedRegionId && knownAreaIds.has(mappedRegionId)) {
+        return mappedRegionId;
+      }
+
+      return null;
+    }
+
     function buildConnectionsOut(item) {
       const result = [];
       if (!item?.connectionsOut) return result;
@@ -774,7 +797,7 @@ export function buildPromptPayloadFromClassification(classification, { useAliase
           connectorId: co.connectorId,
           toId: target?.stickyId ? getOrCreateStickyAlias(target.stickyId) : null,
           toText: target ? target.text : null,
-          toArea: target ? (target.regionTitle || (target.role === "header" ? "Header" : null)) : null
+          toArea: resolveAreaKey(target)
         });
       }
       return result;
@@ -789,7 +812,7 @@ export function buildPromptPayloadFromClassification(classification, { useAliase
           connectorId: ci.connectorId,
           fromId: source?.stickyId ? getOrCreateStickyAlias(source.stickyId) : null,
           fromText: source ? source.text : null,
-          fromArea: source ? (source.regionTitle || (source.role === "header" ? "Header" : null)) : null
+          fromArea: resolveAreaKey(source)
         });
       }
       return result;
@@ -818,13 +841,17 @@ export function buildPromptPayloadFromClassification(classification, { useAliase
     };
 
     const areasByName = Object.create(null);
+    for (const region of orderedBodyRegions) {
+      if (!region?.id) continue;
+      areasByName[region.id] = { name: region.id, stickies: [] };
+    }
 
     if (Array.isArray(one.items)) {
       for (const item of one.items) {
-        if (!item || item.role === "header") continue;
+        if (!item || item.role !== "body") continue;
 
-        const areaName = item.regionTitle || "Ohne Area";
-        if (!areasByName[areaName]) areasByName[areaName] = { name: areaName, stickies: [] };
+        const areaKey = resolveAreaKey(item);
+        if (!areaKey || !areasByName[areaKey]) continue;
 
         const tags = Array.isArray(item.tags)
           ? item.tags.map((t) => t?.title).filter(Boolean)
@@ -832,7 +859,7 @@ export function buildPromptPayloadFromClassification(classification, { useAliase
 
         const alias = getOrCreateStickyAlias(item.stickyId);
 
-        areasByName[areaName].stickies.push({
+        areasByName[areaKey].stickies.push({
           id: alias,
           text: item.text,
           color: item.color || null,
@@ -849,34 +876,31 @@ export function buildPromptPayloadFromClassification(classification, { useAliase
           const fromItem = c.fromStickyId ? idToItem[c.fromStickyId] : null;
           const toItem = c.toStickyId ? idToItem[c.toStickyId] : null;
 
-          const fromArea = fromItem ? (fromItem.regionTitle || (fromItem.role === "header" ? "Header" : null)) : null;
-          const toArea = toItem ? (toItem.regionTitle || (toItem.role === "header" ? "Header" : null)) : null;
-
           return {
             connectorId: c.connectorId,
             fromId: fromItem?.stickyId ? getOrCreateStickyAlias(fromItem.stickyId) : null,
             fromText: fromItem ? fromItem.text : null,
-            fromArea,
+            fromArea: resolveAreaKey(fromItem),
             toId: toItem?.stickyId ? getOrCreateStickyAlias(toItem.stickyId) : null,
             toText: toItem ? toItem.text : null,
-            toArea
+            toArea: resolveAreaKey(toItem)
           };
         })
       : [];
 
     return {
       instanceLabel: one.template?.instanceLabel || null,
-      canvasTypeId: one.template?.canvasTypeId || one.template?.id || null,
+      canvasTypeId,
       canvasTypeLabel: one.template?.canvasTypeLabel || one.template?.name || null,
       template: {
         name: one.template?.name,
         headerSummary: one.template?.headerSummary,
         instanceLabel: one.template?.instanceLabel || null,
-        canvasTypeId: one.template?.canvasTypeId || one.template?.id || null,
+        canvasTypeId,
         canvasTypeLabel: one.template?.canvasTypeLabel || one.template?.name || null
       },
       header,
-      areas: Object.keys(areasByName).map((k) => areasByName[k]),
+      areas: orderedBodyRegions.map((region) => areasByName[region.id] || { name: region.id, stickies: [] }),
       connections: connectionsSummary
     };
   }

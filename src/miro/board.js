@@ -21,7 +21,7 @@ export {
   loadBoardFlow,
   saveBoardFlow,
   listBoardFlows
-} from "./storage.js?v=20260305-batch05";
+} from "./storage.js?v=20260305-batch06";
 
 export {
   buildFeedbackTextContent,
@@ -53,7 +53,7 @@ export {
   removeFlowControlMeta,
   computeSuggestedFlowControlPosition,
   createFlowControlShape
-} from "./flow-controls.js?v=20260305-batch05";
+} from "./flow-controls.js?v=20260305-batch06";
 
 export {
   computeTemplateGeometry,

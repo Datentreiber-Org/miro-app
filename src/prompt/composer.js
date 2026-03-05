@@ -39,6 +39,33 @@ function getCanvasTypeDisplayName(templateCatalog, canvasTypeId) {
   return asNonEmptyString(cfg?.displayName) || asNonEmptyString(cfg?.agentLabelPrefix) || canvasTypeId || null;
 }
 
+const ADMIN_OVERRIDE_ALLOWED_ACTIONS = Object.freeze([
+  "create_sticky",
+  "move_sticky",
+  "delete_sticky",
+  "create_connector",
+  "inform"
+]);
+
+function buildAdminOverridePromptBlock(adminOverrideText) {
+  return `Admin-Override (höchste Priorität):
+Die folgenden Debug-Anweisungen überschreiben alle Gating- und Policy-Regeln dieses Runs, insbesondere Einschränkungen aus exerciseContext.allowedActions, mutationPolicy, feedbackPolicy, Run-Profile-Regeln und vergleichbaren Freigaben.
+Wenn der Admin-Override Board-Mutationen verlangt, darfst du dafür die nötigen Vertragstypen verwenden.
+Halte den Output dennoch strikt schema-konform, verwende nur vorhandene instanceLabel-Werte und nur vorhandene Area-Keys aus templates[].areas[].name.
+
+${adminOverrideText}`;
+}
+
+function applyAdminOverrideToExerciseContext(exerciseContext) {
+  const src = (exerciseContext && typeof exerciseContext === "object") ? exerciseContext : {};
+  return {
+    ...src,
+    adminOverrideActive: true,
+    allowedActions: [...ADMIN_OVERRIDE_ALLOWED_ACTIONS],
+    mutationPolicy: "full"
+  };
+}
+
 function buildCanvasTypePromptBlocks(involvedCanvasTypeIds, templateCatalog) {
   const blocks = [];
 
@@ -284,7 +311,7 @@ export function composePrompt({
     systemBlocks.push(block);
   }
 
-  const exerciseContext = buildExerciseContext({
+  const rawExerciseContext = buildExerciseContext({
     boardConfig,
     exercisePack,
     currentStep,
@@ -295,6 +322,11 @@ export function composePrompt({
     runProfile,
     controlContext
   });
+
+  const normalizedAdminOverrideText = asNonEmptyString(adminOverrideText);
+  const exerciseContext = normalizedAdminOverrideText
+    ? applyAdminOverrideToExerciseContext(rawExerciseContext)
+    : rawExerciseContext;
 
   if (hasFlowContext) {
     const packBlock = buildPackTemplatePromptBlock(packTemplate);
@@ -327,10 +359,8 @@ export function composePrompt({
       systemBlocks.push(`Schritt-Kontext (${currentStep?.label || currentStep?.id || "aktueller Schritt"}):\n${stepPrompt}`);
     }
   }
-
-  const normalizedAdminOverrideText = asNonEmptyString(adminOverrideText);
   if (normalizedAdminOverrideText) {
-    systemBlocks.push(`Admin-Override:\n${normalizedAdminOverrideText}`);
+    systemBlocks.push(buildAdminOverridePromptBlock(normalizedAdminOverrideText));
   }
 
   const systemPrompt = systemBlocks.filter(Boolean).join("\n\n---\n\n");

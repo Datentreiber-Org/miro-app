@@ -13,12 +13,13 @@ import {
   DT_STORAGE_KEY_BOARD_FLOW_PREFIX,
   DT_DEFAULT_FEEDBACK_FRAME_NAME,
   DT_DEFAULT_FEEDBACK_CHANNEL,
-  DT_DEFAULT_APP_ADMIN_POLICY
-} from "../config.js?v=20260303-flowbatch1";
+  DT_DEFAULT_APP_ADMIN_POLICY,
+  DT_MEMORY_RECENT_LOG_LIMIT
+} from "../config.js?v=20260305-batch06";
 
 import { normalizeBoardFlow } from "../runtime/board-flow.js?v=20260303-flowbatch1";
 import { ensureMiroReady, getBoard } from "./sdk.js?v=20260305-batch05";
-import { compareItemIdsAsc, normalizePositiveInt, uniqueIds, asTrimmedString } from "./helpers.js?v=20260305-batch05";
+import { compareItemIdsAsc, normalizePositiveInt } from "./helpers.js?v=20260305-batch05";
 
 // --------------------------------------------------------------------
 // Storage, board config, baseline, memory and exercise runtime
@@ -635,6 +636,64 @@ function buildMemoryLogEntryId() {
   return "m-" + Date.now().toString(36) + "-" + Math.floor(Math.random() * 1e9).toString(36);
 }
 
+function compareMemoryLogEntriesAsc(a, b) {
+  const aTs = typeof a?.ts === "string" ? a.ts : "";
+  const bTs = typeof b?.ts === "string" ? b.ts : "";
+  if (aTs !== bTs) return aTs.localeCompare(bTs);
+  return String(a?.entryId || "").localeCompare(String(b?.entryId || ""));
+}
+
+function getMemoryLogRetentionLimit() {
+  return normalizePositiveInt(DT_MEMORY_RECENT_LOG_LIMIT) || 5;
+}
+
+async function loadPersistedMemoryLogEntries(entryIds, col) {
+  const values = await Promise.all((entryIds || []).map((entryId) => col.get(memoryLogEntryKey(entryId)).catch(() => undefined)));
+  const result = [];
+
+  for (let i = 0; i < (entryIds || []).length; i++) {
+    const value = values[i];
+    if (!value || typeof value !== "object") continue;
+    result.push({
+      entryId: value.entryId || entryIds[i],
+      ...value
+    });
+  }
+
+  result.sort(compareMemoryLogEntriesAsc);
+  return result;
+}
+
+async function prunePersistedMemoryLog(col, log) {
+  if (!col) return [];
+
+  const entryIds = await loadMemoryLogIndex(log);
+  if (!entryIds.length) return [];
+
+  const persistedEntries = await loadPersistedMemoryLogEntries(entryIds, col);
+  const retentionLimit = getMemoryLogRetentionLimit();
+  const retainedEntries = retentionLimit > 0
+    ? persistedEntries.slice(Math.max(0, persistedEntries.length - retentionLimit))
+    : persistedEntries;
+  const retainedEntryIds = retainedEntries.map((entry) => entry.entryId).filter(Boolean);
+  const retainedIdSet = new Set(retainedEntryIds);
+  const staleEntryIds = entryIds.filter((entryId) => !retainedIdSet.has(entryId));
+
+  if (staleEntryIds.length) {
+    await Promise.all(staleEntryIds.map((entryId) => col.remove(memoryLogEntryKey(entryId)).catch(() => undefined)));
+  }
+
+  const indexNeedsUpdate = staleEntryIds.length > 0
+    || retainedEntryIds.length !== entryIds.length
+    || retainedEntryIds.some((entryId, index) => entryId !== entryIds[index]);
+
+  if (indexNeedsUpdate) {
+    await saveMemoryLogIndex(retainedEntryIds, log);
+  }
+
+  return retainedEntries;
+}
+
 export async function loadMemoryState(log) {
   await ensureMiroReady(log);
 
@@ -703,30 +762,8 @@ export async function loadMemoryLog(log) {
   const col = getStorageCollection();
   if (!col) return [];
 
-  const entryIds = await loadMemoryLogIndex(log);
-  if (!entryIds.length) return [];
-
   try {
-    const values = await Promise.all(entryIds.map((entryId) => col.get(memoryLogEntryKey(entryId)).catch(() => undefined)));
-    const result = [];
-
-    for (let i = 0; i < entryIds.length; i++) {
-      const value = values[i];
-      if (!value || typeof value !== "object") continue;
-      result.push({
-        entryId: value.entryId || entryIds[i],
-        ...value
-      });
-    }
-
-    result.sort((a, b) => {
-      const aTs = typeof a?.ts === "string" ? a.ts : "";
-      const bTs = typeof b?.ts === "string" ? b.ts : "";
-      if (aTs !== bTs) return aTs.localeCompare(bTs);
-      return String(a?.entryId || "").localeCompare(String(b?.entryId || ""));
-    });
-
-    return result;
+    return await prunePersistedMemoryLog(col, log);
   } catch (e) {
     if (typeof log === "function") log("Fehler beim Laden des Memory-Logs: " + e.message);
     return [];
@@ -756,6 +793,8 @@ export async function appendMemoryLogEntry(entry, log) {
       entryIds.push(entryId);
       await saveMemoryLogIndex(entryIds, log);
     }
+
+    await prunePersistedMemoryLog(col, log);
   } catch (e) {
     if (typeof log === "function") log("Fehler beim Anhängen eines Memory-Log-Eintrags: " + e.message);
   }

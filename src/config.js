@@ -22,10 +22,11 @@ export const DT_TEMPLATE_CATALOG = {
     imageUrl: TEMPLATE_IMAGE_URL,
     insertWidthPx: 2000,
     promptContext: `
-Dieser Canvas-Typ hat drei Body-Bereiche plus Header und Footer:
-- Box 1 (links)
-- Box 2 (Mitte)
-- Box 3 (rechts)
+Dieser Canvas-Typ hat drei Body-Bereiche plus Header und Footer.
+Verwende für area bzw. targetArea ausschließlich diese Area-Keys:
+- left = Box 1 (links)
+- middle = Box 2 (Mitte)
+- right = Box 3 (rechts)
 Sticky Notes müssen inhaltlich sinnvoll diesen Bereichen zugeordnet werden.
 Wenn Beziehungen zwischen Stickies bestehen, sollen Connectoren so geplant werden, dass die inhaltliche Einheit lesbar bleibt.`.trim()
   },
@@ -40,36 +41,33 @@ Wenn Beziehungen zwischen Stickies bestehen, sollen Connectoren so geplant werde
 Dieser Canvas-Typ ist das Analytics & AI Use Case Canvas.
 Ziel dieses Canvas ist es, einen Analytics- oder KI-Anwendungsfall konsequent aus einer realen Nutzer- und Entscheidungssituation herzuleiten.
 
-Die rechte Seite beschreibt die Nutzerperspektive. Sie sollte fachlich zuerst tragfähig werden:
-- User & Situation: konkrete Nutzerrolle oder Nutzergruppe, Auslöser, Arbeitssituation, Kontext, Job to be done.
-- Objectives & Results: angestrebte Ziele oder messbare gewünschte Ergebnisse.
-- Decisions & Actions: reale Entscheidungen oder Handlungen, die der Nutzer treffen oder ausführen muss.
-- User Gains: gewünschte positive Effekte aus Nutzersicht.
-- User Pains: Hindernisse, Unsicherheiten, Friktionen, Risiken oder Aufwände aus Nutzersicht.
-
-Die linke Seite beschreibt die Lösungsperspektive, die aus der rechten Seite abgeleitet werden muss:
-- Solutions: Lösungsideen oder Interventionen auf Use-Case-Ebene, keine bloßen Buzzwords.
-- Information: konkrete Informationen, Signale oder Erkenntnisse, die Entscheidungen oder Handlungen verbessern.
-- Functions: Funktionen oder Mechanismen, mit denen diese Informationen erzeugt, bereitgestellt oder nutzbar gemacht werden.
-- Benefits: resultierende Vorteile der Lösung, die Pains reduzieren, Gains verstärken oder zu besseren Ergebnissen und Zielen beitragen.
-
-Das Feld Check in der Mitte dient dem Problem-Solution-Fit. Dort werden kurze Verdichtungen festgehalten, warum die Lösung für die konkrete Nutzer- und Entscheidungssituation Sinn ergibt.
+Verwende für area bzw. targetArea ausschließlich diese Area-Keys:
+- 2_user_and_situation = User & Situation: konkrete Nutzerrolle oder Nutzergruppe, Auslöser, Arbeitssituation, Kontext, Job to be done.
+- 3_objectives_and_results = Objectives & Results: angestrebte Ziele oder messbare gewünschte Ergebnisse.
+- 4_decisions_and_actions = Decisions & Actions: reale Entscheidungen oder Handlungen, die der Nutzer treffen oder ausführen muss.
+- 5a_user_gains = User Gains: gewünschte positive Effekte aus Nutzersicht.
+- 5b_user_pains = User Pains: Hindernisse, Unsicherheiten, Friktionen, Risiken oder Aufwände aus Nutzersicht.
+- 6_solutions = Solutions: Lösungsideen oder Interventionen auf Use-Case-Ebene, keine bloßen Buzzwords.
+- 6a_information = Information: konkrete Informationen, Signale oder Erkenntnisse, die Entscheidungen oder Handlungen verbessern.
+- 6b_functions = Functions: Funktionen oder Mechanismen, mit denen diese Informationen erzeugt, bereitgestellt oder nutzbar gemacht werden.
+- 7_benefits = Benefits: resultierende Vorteile der Lösung, die Pains reduzieren, Gains verstärken oder zu besseren Ergebnissen und Zielen beitragen.
+- 8_check = Check: kurze Verdichtungen zum Problem-Solution-Fit.
 
 Fachliche Arbeitslogik dieses Canvas:
-- Arbeite grundsätzlich erst rechts, dann links und zuletzt das Feld Check.
+- Arbeite grundsätzlich erst rechts, dann links und zuletzt das Feld 8_check.
 - Gute Inhalte sind konkret, atomar und area-genau; eine Sticky Note sollte möglichst nur eine klare Aussage enthalten.
 - Entscheidungen und Handlungen sind der methodische Drehpunkt: Informationen und Funktionen sind nur dann wertvoll, wenn sie Entscheidungen oder Handlungen tatsächlich verbessern.
-- Nutze als Leitlinie die Kette Information → Decisions & Actions → Results → Objectives.
-- Benefits sind nur dann tragfähig, wenn sie aus der Lösung ableitbar sind und einen Bezug zu Pains, Gains, Results oder Objectives haben.
+- Nutze als Leitlinie die Kette 6a_information → 4_decisions_and_actions → 3_objectives_and_results.
+- 7_benefits sind nur dann tragfähig, wenn sie aus der Lösung ableitbar sind und einen Bezug zu 5b_user_pains, 5a_user_gains, 3_objectives_and_results oder Objectives haben.
 - Vermeide zu frühe Technologiediskussionen, Systemarchitekturen oder generische KI-Floskeln ohne Bezug zur Nutzerarbeit.
-- Connectoren sind sinnvoll, wenn klare semantische Beziehungen lesbar gemacht werden, insbesondere zwischen Information und Decisions & Actions sowie zwischen Benefits und den adressierten Pains, Gains, Results oder Objectives.
+- Connectoren sind sinnvoll, wenn klare semantische Beziehungen lesbar gemacht werden, insbesondere zwischen 6a_information und 4_decisions_and_actions sowie zwischen 7_benefits und den adressierten 5b_user_pains, 5a_user_gains oder 3_objectives_and_results.
 
 Qualitätskriterien:
 - Lieber konkrete, überprüfbare Formulierungen als abstrakte Schlagworte.
-- Objectives & Results beschreiben erwünschte Zustände oder Outcomes, nicht bloß Maßnahmen.
-- Decisions & Actions beschreiben Verhalten oder Auswahlhandlungen, nicht Features.
-- User Gains sind nicht dasselbe wie Benefits: Gains kommen aus Nutzersicht, Benefits aus der Lösungsperspektive.
-- User Pains sind nicht dasselbe wie Objectives: Pains beschreiben Probleme oder Friktionen, Objectives beschreiben Zielzustände.
+- 3_objectives_and_results beschreibt erwünschte Zustände oder Outcomes, nicht bloß Maßnahmen.
+- 4_decisions_and_actions beschreibt Verhalten oder Auswahlhandlungen, nicht Features.
+- 5a_user_gains ist nicht dasselbe wie 7_benefits: Gains kommen aus Nutzersicht, Benefits aus der Lösungsperspektive.
+- 5b_user_pains ist nicht dasselbe wie 3_objectives_and_results: Pains beschreiben Probleme oder Friktionen, Objectives/Results beschreiben Zielzustände.
 
 Didaktischer Reifegrad:
 - Wenn die relevante Seite des Canvas leer oder fast leer ist, wechsle von harter Bewertung zu aktivierender Anleitung: erkläre einen sinnvollen Einstieg, schlage eine Reihenfolge vor und gib konkrete Formulierungsanstöße.
@@ -93,7 +91,7 @@ export const DT_STORAGE_KEY_EXERCISE_RUNTIME = "dt-exercise-runtime-v1";
 export const DT_STORAGE_KEY_BOARD_FLOW_INDEX = "dt-board-flow-index-v1";
 export const DT_STORAGE_KEY_BOARD_FLOW_PREFIX = "dt-board-flow-v1:";
 export const DT_SHAPE_META_KEY_FLOW_CONTROL = "dt-flow-control-v1";
-export const DT_MEMORY_RECENT_LOG_LIMIT = 12;
+export const DT_MEMORY_RECENT_LOG_LIMIT = 5;
 
 export const DT_FLOW_SCOPE_TYPES = Object.freeze(["fixed_instances", "global"]);
 export const DT_FLOW_CONTROL_STATES = Object.freeze(["active", "disabled", "done"]);
@@ -341,7 +339,7 @@ function buildActionReferenceRulesBlock({ instanceLabelRule = null } = {}) {
     lines.push(`- ${instanceLabelRule}`);
   }
 
-  lines.push('- Für create_sticky und move_sticky gib nur area bzw. targetArea an; die App übernimmt die Platzierung.');
+  lines.push('- Für create_sticky und move_sticky gib nur area bzw. targetArea an. Verwende dafür exakt einen vorhandenen Area-Key aus activeCanvasState/activeCanvasStates → templates[].areas[].name; die App übernimmt die Platzierung.');
   lines.push('- In memoryEntry referenziere Canvas nur über instanceLabel.');
   return lines.join("\n");
 }

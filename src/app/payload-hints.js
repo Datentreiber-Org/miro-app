@@ -12,7 +12,7 @@ export function buildPayloadMappingHint({
   ];
 
   if (mentionArea) {
-    lines.splice(2, 0, "area/targetArea muss exakt einem vorhandenen Area-Namen der Ziel-Instanz entsprechen.");
+    lines.splice(2, 0, "area/targetArea muss exakt einem vorhandenen Area-Key der Ziel-Instanz entsprechen, also einem Wert aus templates[].areas[].name.");
   }
 
   return lines.join(" ");

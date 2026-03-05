@@ -6,21 +6,21 @@ import {
   DT_GLOBAL_SYSTEM_PROMPT,
   DT_MEMORY_RECENT_LOG_LIMIT,
   STICKY_LAYOUT
-} from "./config.js?v=20260305-schemafix2";
+} from "./config.js?v=20260305-batch06";
 
 import { createLogger, stripHtml, extractUnderlinedText, isFiniteNumber } from "./utils.js?v=20260301-step11-hotfix2";
 
-import * as Board from "./miro/board.js?v=20260305-batch05";
-import * as Catalog from "./domain/catalog.js?v=20260305-batch05";
+import * as Board from "./miro/board.js?v=20260305-batch06";
+import * as Catalog from "./domain/catalog.js?v=20260305-batch06";
 import * as OpenAI from "./ai/openai.js?v=20260305-schemafix2";
 import * as Memory from "./runtime/memory.js?v=20260301-step11-hotfix2";
 import * as Exercises from "./exercises/registry.js?v=20260304-editorial15";
 import * as ExerciseLibrary from "./exercises/library.js?v=20260304-editorial15";
-import * as PromptComposer from "./prompt/composer.js?v=20260303-flowbatch1";
+import * as PromptComposer from "./prompt/composer.js?v=20260305-batch06";
 import * as ExerciseEngine from "./runtime/exercise-engine.js?v=20260304-editorial15";
 import * as BoardFlow from "./runtime/board-flow.js?v=20260303-flowbatch1";
 import * as PanelBridge from "./runtime/panel-bridge.js?v=20260305-schemafix2";
-import { buildPayloadMappingHint } from "./app/payload-hints.js?v=20260305-batch05";
+import { buildPayloadMappingHint } from "./app/payload-hints.js?v=20260305-batch06";
 import { getInsertWidthPxForCanvasType, computeTemplateInsertPosition } from "./app/template-insertion.js?v=20260305-batch05";
 import { pickFirstNonEmptyString, makeCanonicalStickyPairKey, normalizeAgentAction } from "./agent/action-normalization.js?v=20260305-batch05";
 import { createEmptyActionExecutionStats, mergeActionExecutionStats, summarizeAppliedActions } from "./agent/action-stats.js?v=20260305-batch05";
@@ -1654,10 +1654,13 @@ async function persistMemoryAfterAgentRun(agentObj, runContext, actionResult) {
   const appendedLogEntry = await Board.appendMemoryLogEntry(storedLogEntry, log);
 
   state.memoryState = nextMemoryState;
-  state.memoryLog = Memory.normalizeMemoryLog([
-    ...(Array.isArray(state.memoryLog) ? state.memoryLog : []),
-    appendedLogEntry || storedLogEntry
-  ]);
+  state.memoryLog = Memory.getRecentMemoryEntries(
+    Memory.normalizeMemoryLog([
+      ...(Array.isArray(state.memoryLog) ? state.memoryLog : []),
+      appendedLogEntry || storedLogEntry
+    ]),
+    DT_MEMORY_RECENT_LOG_LIMIT
+  );
 
   log(
     "Memory aktualisiert: " + state.memoryLog.length +
