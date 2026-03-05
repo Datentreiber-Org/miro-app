@@ -316,9 +316,9 @@ export const DT_CANVAS_DEFS = {
   }
 };
 
-function buildCommonAgentContractBlock(modeLabel) {
+function buildExerciseContextBindingBlock() {
   return `
-Wenn exerciseContext vorhanden ist, sind zusätzlich folgende Regeln verbindlich:
+Wenn exerciseContext vorhanden ist, ist er verbindlich:
 - exerciseContext.triggerKey beschreibt den aktuellen Ausführungsmodus, z.B. selection.check oder global.review.
 - exerciseContext.triggerIntent, exerciseContext.mutationPolicy und exerciseContext.feedbackPolicy sind verbindliche Ausführungsrichtlinien.
 - Halte dich an exerciseContext.allowedActions. Erfinde keine Action-Typen außerhalb des Vertrags.
@@ -326,7 +326,45 @@ Wenn exerciseContext vorhanden ist, sind zusätzlich folgende Regeln verbindlich
 - feedback.title enthält niemals eine Nummerierung; die Nummerierung und Platzierung im Feedback-Frame übernimmt die App.
 - recommendations sind Empfehlungen, keine technischen Befehle. Nutze sie, um den sinnvoll nächsten Trigger oder Schritt vorzuschlagen.
 - Wenn exerciseContext.triggerKey auf ".grade" endet, ist evaluation Pflicht.
-- Wenn du keinen sinnvollen nächsten Trigger oder Schritt empfehlen willst, setze die Felder in recommendations auf null/false.
+- Wenn du keinen sinnvollen nächsten Trigger oder Schritt empfehlen willst, setze die Felder in recommendations auf null/false.`.trim();
+}
+
+function buildActionReferenceRulesBlock({ instanceLabelRule = null } = {}) {
+  const lines = [
+    'WICHTIG:',
+    '- Referenziere bestehende Stickies nur über ihre Kurz-ID im Feld "id" (z.B. "S0001").',
+    '- Neue Stickies kannst du über refId für spätere Actions derselben Antwort referenzieren.',
+    '- Referenziere Canvas-Instanzen nur über menschenlesbare instanceLabel-Werte.'
+  ];
+
+  if (instanceLabelRule) {
+    lines.push(`- ${instanceLabelRule}`);
+  }
+
+  lines.push('- Für create_sticky und move_sticky gib nur area bzw. targetArea an; die App übernimmt die Platzierung.');
+  lines.push('- In memoryEntry referenziere Canvas nur über instanceLabel.');
+  return lines.join("\n");
+}
+
+function buildConnectorRulesBlock({ forbidAltNames = false } = {}) {
+  const lines = [
+    'Regeln für create_connector:',
+    '- fromStickyId und toStickyId müssen bestehende Sticky-IDs oder refId-Werte aus derselben Antwort sein.',
+    '- directed=true = Pfeil von fromStickyId nach toStickyId.',
+    '- directed=false = Verbindung ohne Pfeil.',
+    '- Wenn neue Stickies verbunden werden sollen, gib zuerst create_sticky und danach create_connector aus.'
+  ];
+
+  if (forbidAltNames) {
+    lines.push('- Verwende KEINE alternativen Action-Namen wie createStickyNote, moveSticky, deleteStickyNote oder createConnection.');
+  }
+
+  return lines.join("\n");
+}
+
+function buildCommonAgentContractBlock(modeLabel) {
+  return `
+${buildExerciseContextBindingBlock()}
 
 Antworte ausschließlich mit einem JSON-Objekt in diesem Format:
 - Gib niemals Markdown, keine Code-Fences und keine Vor- oder Nachbemerkungen aus.
@@ -398,10 +436,12 @@ Regeln für evaluation:
 - Nutze evaluation nur für qualitative Bewertung, nicht für technische Board-Diagnosen.
 
 Regeln für memoryEntry:
+- memoryEntry ist Pflicht.
 - summary beschreibt semantisch, was in diesem Lauf passiert bzw. entschieden wurde.
 - workSteps enthält kurze semantische Arbeitsschritte; jeder Eintrag darf optional ein instanceLabel enthalten.
 - decisionsAdded/decisionsRemoved beschreiben aktive methodische oder inhaltliche Festlegungen, nicht technische Details.
 - openIssuesAdded/openIssuesResolved beschreiben offene fachliche Punkte.
+- Referenziere dort niemals Sticky-IDs, keine Rohkoordinaten und keine internen technischen IDs. Referenziere Canvas ausschließlich über instanceLabel.
 - Wenn es für ein Feld nichts zu melden gibt, setze ein leeres Array [] oder null/leer, aber lasse memoryEntry nicht weg.
 - Falls du keine Board-Mutationen vorschlägst, setze actions auf ein leeres Array [], liefere aber trotzdem analysis, memoryEntry und feedback.
 
@@ -432,21 +472,11 @@ Standardregel:
 - Beispiele für solche Beziehungen sind u.a.: "gehört zu", "hängt von ... ab", "führt zu", "unterstützt", "ist Teil von", "steht im Zusammenhang mit".
 - Wenn mehrere getrennte Gruppen erzeugt werden, verbinde nur die Stickies innerhalb derselben Gruppe. Verbinde verschiedene Gruppen nur dann miteinander, wenn der aktuelle Kontext das ausdrücklich verlangt.
 
-WICHTIG:
-- Jede bestehende Sticky Note in activeCanvasState bzw. activeCanvasStates hat eine kurze ID im Feld "id" (z.B. "S0001"). Wenn du eine bestehende Sticky Note in einer Action referenzierst, verwende genau diese ID.
-- Wenn du neue Stickies anlegst und diese später in derselben Antwort in weiteren Actions referenzieren willst, gib der create_sticky-Action zusätzlich ein Feld "refId" (z.B. "P1_NAME"). Danach darfst du diese refId in move_sticky, delete_sticky und create_connector wie eine Sticky-ID verwenden.
-- Canvas-Instanzen werden immer über menschenlesbare Labels referenziert, z.B. "Datentreiber 3-Boxes #1" oder "Analytics & AI Use Case #1".
-- Wenn activeCanvasStates mehr als eine Instanz enthält, muss jede mutierende Action zusätzlich ein Feld "instanceLabel" enthalten. Der Wert muss exakt einem Label aus selectedInstanceLabels bzw. den Schlüsseln von activeCanvasStates entsprechen.
-- Connectoren sind kein optionales Nice-to-have, sondern ein fester Teil der Aufgabe, wenn Relationen erkennbar sind.
-- Bestehende Kernaufgaben bleiben vollständig bestehen: Inhalt, Area-Zuordnung, Cluster, Tags, Connectoren, Board-Kontext und Gedächtnis müssen zusammen konsistent behandelt werden.
-- memoryEntry ist Pflicht. Es beschreibt semantisch, was dieser Lauf bedeutet. Referenziere dort niemals Sticky-IDs, keine Rohkoordinaten und keine internen technischen IDs. Referenziere Canvas ausschließlich über instanceLabel.
-- Wenn exerciseContext vorhanden ist, behandle ihn als verbindlichen Zusatzkontext für Ziel, Schritt, erlaubte Aktionen, Mutation Policy und sichtbare Instruktion.
+${buildActionReferenceRulesBlock({
+  instanceLabelRule: 'Wenn activeCanvasStates mehr als eine Instanz enthält, muss jede mutierende Action zusätzlich ein Feld "instanceLabel" enthalten. Der Wert muss exakt einem Label aus selectedInstanceLabels bzw. den Schlüsseln von activeCanvasStates entsprechen.'
+})}
 
-Regeln für create_connector:
-- fromStickyId und toStickyId müssen entweder bestehende Sticky-IDs aus dem JSON (z.B. "S0001") oder refId-Werte aus create_sticky-Actions derselben Antwort sein.
-- directed=true bedeutet: sichtbarer Pfeil von fromStickyId nach toStickyId.
-- directed=false bedeutet: sichtbare Verbindung ohne Pfeil.
-- Wenn du Connectoren für neu erzeugte Stickies planst, gib zuerst die create_sticky-Actions aus und danach die create_connector-Actions.
+${buildConnectorRulesBlock()}
 
 ${buildCommonAgentContractBlock("selection / instanzbezogenen Agentenlauf")}`;
 }
@@ -483,28 +513,13 @@ Standardregel:
 - Wenn die Nutzeranfrage oder der aktuelle Kontext erkennen lassen, dass Sticky Notes zusammengehören, in Relation stehen oder als gemeinsame Einheit dargestellt werden sollen, musst du dafür Connectoren einplanen.
 - Verbinde nur die logisch zusammengehörigen Stickies. Erzeuge keine Verbindungen zwischen unabhängigen Gruppen oder Instanzen, außer die Anfrage verlangt es ausdrücklich.
 
-WICHTIG:
-- Jede mutierende Action muss genau eine Ziel-Instanz angeben. Verwende dafür das Feld "instanceLabel" und nur Werte, die als Labels in activeInstanceLabels bzw. als Schlüssel in activeCanvasStates vorhanden sind.
-- Wenn du bestehende Sticky Notes in Actions referenzierst, verwende die Kurz-IDs aus den JSON-Strukturen.
-- Wenn du neue Stickies anlegst und diese später in derselben Antwort in weiteren Actions referenzieren willst, gib der create_sticky-Action zusätzlich ein Feld "refId". Diese refId darfst du danach in move_sticky, delete_sticky und create_connector wie eine Sticky-ID verwenden.
-- Connectoren sind ein fester Teil der Aufgabe, sobald Relationen erkennbar sind.
-- memoryEntry ist Pflicht. Es beschreibt semantisch, was dieser globale Lauf bedeutet. Referenziere dort niemals Sticky-IDs, keine Rohkoordinaten und keine internen technischen IDs. Referenziere Canvas ausschließlich über instanceLabel.
-- Wenn exerciseContext vorhanden ist, behandle ihn als verbindlichen Zusatzkontext für Ziel, Schritt, erlaubte Aktionen, Mutation Policy und sichtbare Instruktion.
+${buildActionReferenceRulesBlock({
+  instanceLabelRule: 'Jede mutierende Action muss genau eine Ziel-Instanz angeben. Verwende dafür das Feld "instanceLabel" und nur Werte, die als Labels in activeInstanceLabels bzw. als Schlüssel in activeCanvasStates vorhanden sind.'
+})}
 
-Verwende für Actions ausschließlich diese Typen:
-- { "type": "move_sticky", "instanceLabel": "Analytics & AI Use Case #1", "stickyId": "S0001", "targetArea": "Objectives & Results" }
-- { "type": "create_sticky", "instanceLabel": "Analytics & AI Use Case #1", "refId": "FIT_1", "area": "Check", "text": "Information improves a critical decision." }
-- { "type": "delete_sticky", "instanceLabel": "Analytics & AI Use Case #1", "stickyId": "S0002" }
-- { "type": "create_connector", "instanceLabel": "Analytics & AI Use Case #1", "fromStickyId": "S0001", "toStickyId": "FIT_1", "directed": true }
-Optional für reine Hinweise ohne Board-Mutation:
-- { "type": "inform", "message": "Kurzer Hinweis" }
+Verwende für Actions nur die Vertragstypen move_sticky, create_sticky, delete_sticky, create_connector und optional inform.
 
-Regeln für create_connector:
-- fromStickyId und toStickyId müssen entweder bestehende Sticky-IDs aus den JSON-Daten oder refId-Werte aus create_sticky-Actions derselben Antwort sein.
-- directed=true bedeutet: sichtbarer Pfeil von fromStickyId nach toStickyId.
-- directed=false bedeutet: sichtbare Verbindung ohne Pfeil.
-- Wenn du Connectoren für neu erzeugte Stickies planst, gib zuerst die create_sticky-Actions aus und danach die create_connector-Actions.
-- Verwende KEINE alternativen Action-Namen wie createStickyNote, moveSticky, deleteStickyNote oder createConnection.
+${buildConnectorRulesBlock({ forbidAltNames: true })}
 
 ${buildCommonAgentContractBlock("globalen Agentenlauf")}`;
 
