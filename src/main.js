@@ -10,8 +10,8 @@ import {
 
 import { createLogger, stripHtml, extractUnderlinedText, isFiniteNumber } from "./utils.js?v=20260301-step11-hotfix2";
 
-import * as Board from "./miro/board.js?v=20260304-batch2";
-import * as Catalog from "./domain/catalog.js?v=20260304-editorial15";
+import * as Board from "./miro/board.js?v=20260305-batch05";
+import * as Catalog from "./domain/catalog.js?v=20260305-batch05";
 import * as OpenAI from "./ai/openai.js?v=20260305-schemafix2";
 import * as Memory from "./runtime/memory.js?v=20260301-step11-hotfix2";
 import * as Exercises from "./exercises/registry.js?v=20260304-editorial15";
@@ -20,6 +20,10 @@ import * as PromptComposer from "./prompt/composer.js?v=20260303-flowbatch1";
 import * as ExerciseEngine from "./runtime/exercise-engine.js?v=20260304-editorial15";
 import * as BoardFlow from "./runtime/board-flow.js?v=20260303-flowbatch1";
 import * as PanelBridge from "./runtime/panel-bridge.js?v=20260305-schemafix2";
+import { buildPayloadMappingHint } from "./app/payload-hints.js?v=20260305-batch05";
+import { getInsertWidthPxForCanvasType, computeTemplateInsertPosition } from "./app/template-insertion.js?v=20260305-batch05";
+import { pickFirstNonEmptyString, makeCanonicalStickyPairKey, normalizeAgentAction } from "./agent/action-normalization.js?v=20260305-batch05";
+import { createEmptyActionExecutionStats, mergeActionExecutionStats, summarizeAppliedActions } from "./agent/action-stats.js?v=20260305-batch05";
 
 // --------------------------------------------------------------------
 // State (Controller-Level)
@@ -1627,45 +1631,6 @@ function composePromptForRun({
   });
 }
 
-function createEmptyActionExecutionStats() {
-  return {
-    createdStickyCount: 0,
-    movedStickyCount: 0,
-    deletedStickyCount: 0,
-    createdConnectorCount: 0,
-    failedActionCount: 0,
-    executedMutationCount: 0
-  };
-}
-
-function mergeActionExecutionStats(target, addition) {
-  if (!target || !addition) return target;
-  target.createdStickyCount += Number(addition.createdStickyCount || 0);
-  target.movedStickyCount += Number(addition.movedStickyCount || 0);
-  target.deletedStickyCount += Number(addition.deletedStickyCount || 0);
-  target.createdConnectorCount += Number(addition.createdConnectorCount || 0);
-  target.failedActionCount += Number(addition.failedActionCount || 0);
-  target.executedMutationCount += Number(addition.executedMutationCount || 0);
-  return target;
-}
-
-function summarizeAppliedActions(actionResult) {
-  const src = (actionResult && typeof actionResult === "object") ? actionResult : {};
-
-  return {
-    createdStickyCount: Number(src.createdStickyCount || 0),
-    movedStickyCount: Number(src.movedStickyCount || 0),
-    deletedStickyCount: Number(src.deletedStickyCount || 0),
-    createdConnectorCount: Number(src.createdConnectorCount || 0),
-    failedActionCount: Number(src.failedActionCount || 0),
-    skippedActionCount: Number(src.skippedCount || 0),
-    infoCount: Number(src.infoCount || 0),
-    targetedInstanceCount: Number(src.targetedInstanceCount || 0),
-    executedMutationCount: Number(src.executedMutationCount || 0),
-    plannedMutationCount: Number(src.appliedCount || 0)
-  };
-}
-
 async function persistMemoryAfterAgentRun(agentObj, runContext, actionResult) {
   const fallbackSummary = pickFirstNonEmptyString(agentObj?.analysis, "Agent-Run ohne Summary.");
   const normalizedMemoryEntry = Memory.normalizeMemoryEntry(agentObj?.memoryEntry, { fallbackSummary });
@@ -2000,30 +1965,6 @@ const TEMPLATE_INSERTION = {
   maxSearchRings: 60
 };
 
-function estimateTemplateSize(canvasTypeId, widthPx) {
-  const def = DT_CANVAS_DEFS[canvasTypeId] || DT_CANVAS_DEFS[TEMPLATE_ID] || null;
-  const originalWidth = Number(def?.originalWidth) || 0;
-  const originalHeight = Number(def?.originalHeight) || 0;
-
-  if (originalWidth > 0 && originalHeight > 0) {
-    return {
-      width: widthPx,
-      height: widthPx * (originalHeight / originalWidth)
-    };
-  }
-
-  return {
-    width: widthPx,
-    height: widthPx
-  };
-}
-
-function getInsertWidthPxForCanvasType(canvasTypeId) {
-  const entry = getCanvasTypeEntry(canvasTypeId);
-  const configuredWidth = Number(entry?.insertWidthPx) || 0;
-  return configuredWidth > 0 ? configuredWidth : TEMPLATE_INSERTION.defaultWidthPx;
-}
-
 async function getViewportSafe() {
   if (typeof Board.getViewport === "function") {
     try {
@@ -2042,121 +1983,13 @@ async function getViewportSafe() {
   return null;
 }
 
-function rectsOverlapByCenter(a, b, padding = 0) {
-  if (!a || !b) return false;
-
-  const dx = Math.abs((a.x || 0) - (b.x || 0));
-  const dy = Math.abs((a.y || 0) - (b.y || 0));
-  const limitX = ((a.width || 0) + (b.width || 0)) / 2 + padding;
-  const limitY = ((a.height || 0) + (b.height || 0)) / 2 + padding;
-
-  return dx < limitX && dy < limitY;
-}
-
-function buildInsertionCandidates(centerX, centerY, stepX, stepY, maxRings) {
-  const candidates = [];
-  const seen = new Set();
-
-  function pushCandidate(gridX, gridY) {
-    const x = centerX + (gridX * stepX);
-    const y = centerY + (gridY * stepY);
-    const key = String(gridX) + ":" + String(gridY);
-    if (seen.has(key)) return;
-    seen.add(key);
-    candidates.push({ x, y, gridX, gridY });
-  }
-
-  pushCandidate(0, 0);
-
-  for (let ring = 1; ring <= maxRings; ring++) {
-    for (let gx = -ring; gx <= ring; gx++) {
-      pushCandidate(gx, -ring);
-      pushCandidate(gx, ring);
-    }
-    for (let gy = -ring + 1; gy <= ring - 1; gy++) {
-      pushCandidate(-ring, gy);
-      pushCandidate(ring, gy);
-    }
-  }
-
-  return candidates;
-}
-
-async function getOccupiedTemplateFootprints() {
-  const occupied = [];
-
-  for (const inst of state.instancesById.values()) {
-    const geom = await Board.computeTemplateGeometry(inst, log);
-    if (!geom) continue;
-
-    occupied.push({
-      instanceId: inst.instanceId,
-      x: geom.x,
-      y: geom.y,
-      width: geom.width,
-      height: geom.height
-    });
-  }
-
-  return occupied;
-}
-
-async function computeTemplateInsertPosition(canvasTypeId, insertWidthPx) {
-  await ensureInstancesScanned(true);
-
-  const viewport = await getViewportSafe();
-  const viewportCenterX = viewport && isFiniteNumber(viewport.x) && isFiniteNumber(viewport.width)
-    ? viewport.x + viewport.width / 2
-    : 0;
-  const viewportCenterY = viewport && isFiniteNumber(viewport.y) && isFiniteNumber(viewport.height)
-    ? viewport.y + viewport.height / 2
-    : 0;
-
-  const estimatedImage = estimateTemplateSize(canvasTypeId, insertWidthPx);
-  const footprint = {
-    width: estimatedImage.width,
-    height: estimatedImage.height
-  };
-  const occupied = await getOccupiedTemplateFootprints();
-
-  const stepX = footprint.width + TEMPLATE_INSERTION.footprintGapPx;
-  const stepY = footprint.height + TEMPLATE_INSERTION.footprintGapPx;
-
-  const candidates = buildInsertionCandidates(
-    viewportCenterX,
-    viewportCenterY,
-    stepX,
-    stepY,
-    TEMPLATE_INSERTION.maxSearchRings
-  );
-
-  for (const candidate of candidates) {
-    const candidateRect = {
-      x: candidate.x,
-      y: candidate.y,
-      width: footprint.width,
-      height: footprint.height
-    };
-
-    const overlaps = occupied.some((rect) => rectsOverlapByCenter(candidateRect, rect, 0));
-    if (!overlaps) {
-      return {
-        x: candidate.x,
-        y: candidate.y,
-        viewportCenterX,
-        viewportCenterY,
-        usedViewportCenter: candidate.gridX === 0 && candidate.gridY === 0
-      };
-    }
-  }
-
-  throw new Error("Kein kollisionsfreier Einfügepunkt für den Canvas gefunden.");
-}
-
 async function insertTemplateImage() {
   const selectedCanvasTypeId = getSelectedCanvasTypeId();
   const selectedCanvasType = getCanvasTypeEntry(selectedCanvasTypeId);
-  const insertWidthPx = getInsertWidthPxForCanvasType(selectedCanvasTypeId);
+  const insertWidthPx = getInsertWidthPxForCanvasType(selectedCanvasTypeId, {
+    getCanvasTypeEntry,
+    fallbackWidthPx: TEMPLATE_INSERTION.defaultWidthPx
+  });
 
   if (!selectedCanvasType?.imageUrl) {
     log("Fehler beim Einfügen des Canvas: Kein gültiger Canvas-Typ ausgewählt.");
@@ -2167,7 +2000,19 @@ async function insertTemplateImage() {
   await Board.ensureMiroReady(log);
 
   try {
-    const placement = await computeTemplateInsertPosition(selectedCanvasTypeId, insertWidthPx);
+    const placement = await computeTemplateInsertPosition({
+      canvasTypeId: selectedCanvasTypeId,
+      insertWidthPx,
+      ensureInstancesScanned,
+      getViewport: getViewportSafe,
+      instances: Array.from(state.instancesById.values()),
+      computeTemplateGeometry: (instance, runLog) => Board.computeTemplateGeometry(instance, runLog),
+      templateInsertion: TEMPLATE_INSERTION,
+      canvasDefs: DT_CANVAS_DEFS,
+      defaultTemplateId: TEMPLATE_ID,
+      isFiniteNumber,
+      log
+    });
 
     const image = await Board.createImage({
       url: selectedCanvasType.imageUrl,
@@ -2826,26 +2671,6 @@ async function applyAgentActionsToInstance(instanceId, actions) {
   return executionStats;
 }
 
-function buildPayloadMappingHint({
-  scopeLabel = "aktuellen Ziel-Instanzen",
-  labelListKey = "selectedInstanceLabels",
-  mentionArea = false
-} = {}) {
-  const lines = [
-    `boardCatalog = Kurzüberblick über alle Canvas, activeCanvasStates = Detaildaten für die ${scopeLabel}.`,
-    `Verwende instanceLabel exakt wie in ${labelListKey} bzw. den Schlüsseln von activeCanvasStates.`,
-    "Verwende create_connector für Beziehungen zwischen Stickies.",
-    "fromStickyId/toStickyId dürfen bestehende Alias-IDs oder refId-Werte aus create_sticky-Actions derselben Antwort sein.",
-    "Referenziere Canvas in memoryEntry nur über instanceLabel."
-  ];
-
-  if (mentionArea) {
-    lines.splice(2, 0, "area/targetArea muss exakt einem vorhandenen Area-Namen der Ziel-Instanz entsprechen.");
-  }
-
-  return lines.join(" ");
-}
-
 // --------------------------------------------------------------------
 // Agent Modus B (selektierte Canvas-Instanzen)
 // --------------------------------------------------------------------
@@ -3087,214 +2912,6 @@ async function runAgentForSelectedInstances(selectedInstanceIds, options = {}) {
   } catch (e) {
     log("Exception beim " + sourceLabel + "-Run: " + e.message);
   }
-}
-
-function pickFirstNonEmptyString(...values) {
-  for (const value of values) {
-    if (typeof value !== "string") continue;
-    const trimmed = value.trim();
-    if (trimmed) return trimmed;
-  }
-  return null;
-}
-
-function coerceBooleanLike(value) {
-  if (typeof value === "boolean") return value;
-  if (typeof value === "number") return value !== 0;
-  if (typeof value !== "string") return null;
-
-  const normalized = value.trim().toLowerCase();
-  if (!normalized) return null;
-
-  if (["true", "yes", "ja", "1", "directed", "with_arrow", "arrow"].includes(normalized)) return true;
-  if (["false", "no", "nein", "0", "none", "undirected", "without_arrow", "no_arrow"].includes(normalized)) return false;
-  return null;
-}
-
-function normalizeConnectorDirection(rawAction) {
-  const rawDirection = pickFirstNonEmptyString(
-    rawAction?.direction,
-    rawAction?.arrowDirection,
-    rawAction?.connectorDirection
-  );
-
-  if (rawDirection) {
-    const dir = rawDirection.trim().toLowerCase();
-    if (["none", "undirected", "without_arrow", "no_arrow"].includes(dir)) {
-      return { directed: false, reverseDirection: false };
-    }
-    if (["to_from", "reverse", "backward", "target_to_source", "end_to_start"].includes(dir)) {
-      return { directed: true, reverseDirection: true };
-    }
-    if (["from_to", "forward", "source_to_target", "start_to_end"].includes(dir)) {
-      return { directed: true, reverseDirection: false };
-    }
-  }
-
-  const coerced = coerceBooleanLike(
-    rawAction?.directed ??
-    rawAction?.isDirected ??
-    rawAction?.withArrow ??
-    rawAction?.hasArrow ??
-    rawAction?.arrow
-  );
-
-  return {
-    directed: coerced == null ? true : coerced,
-    reverseDirection: false
-  };
-}
-
-function makeCanonicalStickyPairKey(a, b) {
-  if (!a || !b) return null;
-  return [String(a), String(b)].sort().join("<->");
-}
-
-function canonicalizeAgentActionType(rawType) {
-  if (typeof rawType !== "string") return null;
-
-  const snake = rawType
-    .trim()
-    .replace(/([a-z0-9])([A-Z])/g, "$1_$2")
-    .replace(/[\s-]+/g, "_")
-    .replace(/__+/g, "_")
-    .toLowerCase();
-
-  const compact = snake.replace(/_/g, "");
-
-  const typeMap = {
-    movesticky: "move_sticky",
-    movestickynote: "move_sticky",
-    movenote: "move_sticky",
-    createsticky: "create_sticky",
-    createstickynote: "create_sticky",
-    createnote: "create_sticky",
-    addsticky: "create_sticky",
-    addstickynote: "create_sticky",
-    addnote: "create_sticky",
-    deletesticky: "delete_sticky",
-    deletestickynote: "delete_sticky",
-    deletenote: "delete_sticky",
-    removesticky: "delete_sticky",
-    removestickynote: "delete_sticky",
-    removenote: "delete_sticky",
-    createconnector: "create_connector",
-    addconnector: "create_connector",
-    connectsticky: "create_connector",
-    connectstickies: "create_connector",
-    connectnote: "create_connector",
-    connectnotes: "create_connector",
-    createconnection: "create_connector",
-    addconnection: "create_connector",
-    linksticky: "create_connector",
-    linkstickies: "create_connector",
-    linknote: "create_connector",
-    linknotes: "create_connector",
-    inform: "inform",
-    message: "inform",
-    note: "inform",
-    log: "inform"
-  };
-
-  return typeMap[compact] || null;
-}
-
-function normalizeAgentAction(rawAction) {
-  if (!rawAction || typeof rawAction !== "object") return null;
-
-  const type = canonicalizeAgentActionType(
-    rawAction.type || rawAction.action || rawAction.kind || rawAction.operation
-  );
-  if (!type) return null;
-
-  const normalizedDirection = normalizeConnectorDirection(rawAction);
-
-  const normalized = {
-    type,
-    instanceLabel: pickFirstNonEmptyString(
-      rawAction.instanceLabel,
-      rawAction.targetInstanceLabel,
-      rawAction.canvasLabel,
-      rawAction.instanceName,
-      typeof rawAction.instance === "string" ? rawAction.instance : null,
-      typeof rawAction.targetInstance === "string" ? rawAction.targetInstance : null
-    ),
-    instanceId: pickFirstNonEmptyString(
-      rawAction.instanceId,
-      rawAction.targetInstanceId,
-      rawAction.canvasInstanceId,
-      rawAction.instance,
-      rawAction.targetCanvasInstanceId
-    ),
-    stickyId: pickFirstNonEmptyString(
-      rawAction.stickyId,
-      rawAction.noteId,
-      rawAction.stickyAlias,
-      rawAction.sticky?.id,
-      typeof rawAction.sticky === "string" ? rawAction.sticky : null
-    ),
-    refId: pickFirstNonEmptyString(
-      rawAction.refId,
-      rawAction.tempId,
-      rawAction.localId,
-      rawAction.clientRefId,
-      rawAction.referenceId,
-      rawAction.newStickyRefId
-    ),
-    fromStickyId: pickFirstNonEmptyString(
-      rawAction.fromStickyId,
-      rawAction.fromId,
-      rawAction.sourceStickyId,
-      rawAction.sourceNoteId,
-      rawAction.startStickyId,
-      rawAction.startNoteId,
-      rawAction.from?.id,
-      rawAction.start?.id,
-      typeof rawAction.from === "string" ? rawAction.from : null,
-      typeof rawAction.start === "string" ? rawAction.start : null
-    ),
-    toStickyId: pickFirstNonEmptyString(
-      rawAction.toStickyId,
-      rawAction.toId,
-      rawAction.targetStickyId,
-      rawAction.targetNoteId,
-      rawAction.endStickyId,
-      rawAction.endNoteId,
-      rawAction.to?.id,
-      rawAction.end?.id,
-      typeof rawAction.to === "string" ? rawAction.to : null,
-      typeof rawAction.end === "string" ? rawAction.end : null
-    ),
-    area: pickFirstNonEmptyString(
-      rawAction.area,
-      rawAction.targetArea,
-      rawAction.target_area,
-      rawAction.destinationArea
-    ),
-    targetArea: pickFirstNonEmptyString(
-      rawAction.targetArea,
-      rawAction.target_area,
-      rawAction.area,
-      rawAction.destinationArea
-    ),
-    text: pickFirstNonEmptyString(
-      rawAction.text,
-      rawAction.content,
-      rawAction.note,
-      rawAction.stickyText
-    ),
-    message: pickFirstNonEmptyString(
-      rawAction.message,
-      rawAction.text,
-      rawAction.content,
-      rawAction.note
-    ),
-    directed: normalizedDirection.directed,
-    reverseDirection: normalizedDirection.reverseDirection
-  };
-
-
-  return normalized;
 }
 
 function resolveOwnerInstanceIdForStickyReference(stickyRef) {
