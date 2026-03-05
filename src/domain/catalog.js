@@ -11,7 +11,7 @@ import {
   buildInstanceGeometryIndex,
   resolveBoardCoords,
   findInstanceByPoint
-} from "../miro/board.js?v=20260305-batch06";
+} from "../miro/board.js?v=20260305-batch31";
 
 // --------------------------------------------------------------------
 // Canvas Definitions / Region Mapping

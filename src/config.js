@@ -76,12 +76,10 @@ Didaktischer Reifegrad:
   }
 };
 
-// Persistenz (Global-Baseline + Action-Bindings + Memory)
+// Persistenz (Global-Baseline + Memory)
 export const DT_STORAGE_COLLECTION_NAME = "datentreiber-mirobot";
 export const DT_STORAGE_KEY_META = "dt-global-meta-v1";
 export const DT_STORAGE_KEY_BASELINE_PREFIX = "dt-baseline-v1:";
-export const DT_STORAGE_KEY_ACTION_BINDING_PREFIX = "dt-action-binding-v1:";
-export const DT_STORAGE_KEY_ACTION_BINDING_INDEX = "dt-action-binding-index-v1";
 export const DT_STORAGE_KEY_MEMORY_STATE = "dt-memory-state-v1";
 export const DT_STORAGE_KEY_MEMORY_LOG_INDEX = "dt-memory-log-index-v1";
 export const DT_STORAGE_KEY_MEMORY_LOG_ENTRY_PREFIX = "dt-memory-log-entry-v1:";

@@ -10,8 +10,8 @@ import {
 
 import { createLogger, stripHtml, extractUnderlinedText, isFiniteNumber } from "./utils.js?v=20260301-step11-hotfix2";
 
-import * as Board from "./miro/board.js?v=20260305-batch06";
-import * as Catalog from "./domain/catalog.js?v=20260305-batch1";
+import * as Board from "./miro/board.js?v=20260305-batch31";
+import * as Catalog from "./domain/catalog.js?v=20260305-batch31";
 import * as OpenAI from "./ai/openai.js?v=20260305-schemafix2";
 import * as Memory from "./runtime/memory.js?v=20260301-step11-hotfix2";
 import * as Exercises from "./exercises/registry.js?v=20260304-editorial15";
@@ -949,8 +949,7 @@ async function createFlowControlFromAdmin() {
       x: position.x,
       y: position.y,
       width: position.width,
-      height: position.height,
-      frameId: state.instancesById.get(anchorInstanceId)?.actionItems?.frameId || null
+      height: position.height
     }, log);
 
     const controlId = buildFlowControlId(stepTemplate.id, runProfile.id);
@@ -1918,13 +1917,6 @@ function setSelectionStatus(text) {
   selectionStatusEl.textContent = text || "Keine Canvas selektiert.";
 }
 
-function getActionFrameInstanceId(frameId) {
-  if (!frameId) return null;
-  for (const inst of state.instancesById.values()) {
-    if (inst?.actionItems?.frameId === frameId) return inst.instanceId;
-  }
-  return null;
-}
 
 async function resolveSelectionToInstanceIds(items) {
   await ensureInstancesScanned();
@@ -1955,10 +1947,6 @@ async function resolveSelectionToInstanceIds(items) {
       continue;
     }
 
-    if (item.type === "frame") {
-      addInstanceId(getActionFrameInstanceId(item.id));
-      continue;
-    }
 
     if (item.type === "connector") {
       const fromOwner = item.start?.item ? (state.stickyOwnerCache?.get(item.start.item) || null) : null;
@@ -2155,7 +2143,6 @@ async function insertTemplateImage() {
       instancesByImageId: state.instancesByImageId,
       instancesById: state.instancesById,
       hasGlobalBaseline: state.hasGlobalBaseline,
-      createActionShapes: false,
       canvasTypeId: selectedCanvasTypeId,
       log
     });
@@ -2208,8 +2195,6 @@ async function clusterSelectionWithIds(stickyIdsOrNull, expectedInstanceIdOrNull
   const byInstance = Object.create(null);
   const outside = [];
 
-  const expectedInst = expectedInstanceIdOrNull ? state.instancesById.get(expectedInstanceIdOrNull) : null;
-  const expectedFrameId = expectedInst?.actionItems?.frameId || null;
 
   const parentGeomCache = new Map();
 
@@ -2222,14 +2207,7 @@ async function clusterSelectionWithIds(stickyIdsOrNull, expectedInstanceIdOrNull
     const sx = boardPos?.x ?? s.x;
     const sy = boardPos?.y ?? s.y;
 
-    let instance = null;
-
-    // Wenn Cluster via Button in einem Frame ausgelöst wurde, priorisiere ParentId==frameId
-    if (expectedInst && expectedFrameId && s.parentId === expectedFrameId) {
-      instance = expectedInst;
-    } else {
-      instance = Board.findInstanceByPoint(sx, sy, geomEntries);
-    }
+    const instance = Board.findInstanceByPoint(sx, sy, geomEntries);
 
     if (!instance) {
       outside.push(s);
@@ -2606,8 +2584,7 @@ async function applyAgentActionsToInstance(instanceId, actions) {
     const sticky = await Board.createStickyNoteAtBoardCoords({
       content: action.text || "(leer)",
       x,
-      y,
-      frameId: instance.actionItems?.frameId || null
+      y
     }, log);
 
     if (sticky?.id && action.refId) {
@@ -2798,8 +2775,7 @@ async function applyAgentActionsToInstance(instanceId, actions) {
       await Board.createConnectorBetweenItems({
         startItemId: fromStickyId,
         endItemId: toStickyId,
-        directed,
-        frameId: instance.actionItems?.frameId || null
+        directed
       }, log);
       rememberConnector(fromStickyId, toStickyId, directed);
       markSuccess("create_connector");

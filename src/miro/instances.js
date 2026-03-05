@@ -6,22 +6,13 @@ import {
   normalizePositiveInt,
   getCanvasTypeDisplayName,
   formatInstanceLabel,
-  buildInternalInstanceIdFromImageId,
-  uniqueIds
+  buildInternalInstanceIdFromImageId
 } from "./helpers.js?v=20260305-batch05";
-import { getItemsById, getItemById, resolveBoardCoords } from "./items.js?v=20260305-batch05";
+import { getItemById, resolveBoardCoords } from "./items.js?v=20260305-batch05";
 import {
-  normalizeActionItems,
-  hasAnyActionItems,
-  hasCompleteActionBinding,
-  mergeActionItems,
-  loadActionBindingIndex,
-  loadActionBindingForImageId,
-  saveActionBindingForImageId,
-  removeActionBindingForImageId,
   loadBaselineSignatureForImageId,
   removeBaselineSignatureForImageId
-} from "./storage.js?v=20260305-batch05";
+} from "./storage.js?v=20260305-batch31";
 
 // --------------------------------------------------------------------
 // Template instance registration, geometry and scan/rebind logic
@@ -258,7 +249,7 @@ export function findInstanceByPoint(x, y, geomEntries) {
 }
 
 // --------------------------------------------------------------------
-// Template-Detection + Action-Frames/Buttons
+// Template-Detection und Instanz-Scan
 // --------------------------------------------------------------------
 function detectCanvasTypeIdFromImage(image, templateCatalog) {
   if (!image || image.type !== "image") return null;
@@ -273,328 +264,12 @@ function detectCanvasTypeIdFromImage(image, templateCatalog) {
   return null;
 }
 
-const ACTION_LABELS = {
-  ai: "Send to OpenAI",
-  cluster: "Cluster",
-  global: "Global Agent"
-};
-
-const ACTION_LAYOUT = {
-  frameWidthPaddingPx: 200,
-  frameHeightPaddingPx: 260,
-  frameCenterYOffsetPx: 80,
-  buttonOffsetXPx: 260,
-  buttonWidthPx: 260,
-  buttonHeightPx: 60,
-  buttonRowOffsetFromImageBottomPx: 80,
-  inputOffsetFromButtonTopPx: 100
-};
-
-const ACTION_REBIND_GEO = {
-  maxButtonRowSpreadPx: 140,
-  minButtonGapPx: 120,
-  maxButtonGapPx: 480,
-  maxInputDxPx: 220,
-  minInputDyPx: 20,
-  maxInputDyPx: 240
-};
-
-function compareByX(a, b) {
-  return a.x - b.x;
-}
-
-async function removeKnownItemsById(itemIds, log) {
-  await ensureMiroReady(log);
-
-  const board = getBoard();
-  if (!board?.remove) return;
-
-  const ids = uniqueIds(itemIds);
-  if (ids.length === 0) return;
-
-  const items = await getItemsById(ids, log);
-  for (const item of items) {
-    try {
-      await board.remove(item);
-    } catch (e) {
-      if (typeof log === "function") log("Fehler beim Entfernen von Item " + item.id + ": " + e.message);
-    }
-  }
-}
-
-async function cleanupOrphanedActionArtifacts(imageId, actionItems, log) {
-  const normalized = normalizeActionItems(actionItems);
-  if (!hasAnyActionItems(normalized)) return;
-
-  await removeKnownItemsById([
-    normalized.aiItemId,
-    normalized.clusterItemId,
-    normalized.globalAgentItemId,
-    normalized.globalAgentInputItemId
-  ], log);
-
-  await removeKnownItemsById([normalized.frameId], log);
-
-  if (typeof log === "function") {
-    log("Verwaiste Action-Artefakte entfernt für Bild-ID " + imageId);
-  }
-}
-
-async function validateActionBindingForImage(image, actionItems, log) {
-  const normalized = normalizeActionItems(actionItems);
-  if (!image || !hasAnyActionItems(normalized)) return null;
-
-  const idsToLoad = uniqueIds([
-    normalized.frameId,
-    normalized.aiItemId,
-    normalized.clusterItemId,
-    normalized.globalAgentItemId,
-    normalized.globalAgentInputItemId
-  ]);
-  if (idsToLoad.length === 0) return null;
-
-  const items = await getItemsById(idsToLoad, log);
-  const itemsById = new Map();
-  for (const item of items) itemsById.set(item.id, item);
-
-  let frameId = normalized.frameId;
-  if (image.parentId) {
-    frameId = image.parentId;
-  }
-  if (frameId && !itemsById.has(frameId)) {
-    const frame = await getItemById(frameId, log);
-    if (frame) itemsById.set(frame.id, frame);
-  }
-  if (frameId && !itemsById.has(frameId)) {
-    frameId = null;
-  }
-
-  function validateChildId(itemId) {
-    if (!itemId) return null;
-    const item = itemsById.get(itemId);
-    if (!item) return null;
-    if (frameId && item.parentId !== frameId) return null;
-    return itemId;
-  }
-
-  const validated = {
-    aiItemId: validateChildId(normalized.aiItemId),
-    clusterItemId: validateChildId(normalized.clusterItemId),
-    globalAgentItemId: validateChildId(normalized.globalAgentItemId),
-    globalAgentInputItemId: validateChildId(normalized.globalAgentInputItemId),
-    frameId
-  };
-
-  return hasAnyActionItems(validated) ? validated : null;
-}
-
-function chooseBestButtonShapeTriplet(shapeEntries) {
-  if (!Array.isArray(shapeEntries) || shapeEntries.length < 3) return null;
-
-  let best = null;
-  let bestScore = Infinity;
-
-  for (let i = 0; i < shapeEntries.length - 2; i++) {
-    for (let j = i + 1; j < shapeEntries.length - 1; j++) {
-      for (let k = j + 1; k < shapeEntries.length; k++) {
-        const trio = [shapeEntries[i], shapeEntries[j], shapeEntries[k]].slice().sort(compareByX);
-        const [left, middle, right] = trio;
-
-        const rowSpread = Math.max(left.y, middle.y, right.y) - Math.min(left.y, middle.y, right.y);
-        if (rowSpread > ACTION_REBIND_GEO.maxButtonRowSpreadPx) continue;
-
-        const gap1 = middle.x - left.x;
-        const gap2 = right.x - middle.x;
-        if (gap1 < ACTION_REBIND_GEO.minButtonGapPx || gap2 < ACTION_REBIND_GEO.minButtonGapPx) continue;
-        if (gap1 > ACTION_REBIND_GEO.maxButtonGapPx || gap2 > ACTION_REBIND_GEO.maxButtonGapPx) continue;
-
-        const widthPenalty =
-          Math.abs((left.item.width || 0) - (middle.item.width || 0)) +
-          Math.abs((middle.item.width || 0) - (right.item.width || 0));
-        const heightPenalty =
-          Math.abs((left.item.height || 0) - (middle.item.height || 0)) +
-          Math.abs((middle.item.height || 0) - (right.item.height || 0));
-
-        const score =
-          Math.abs(gap1 - gap2) * Math.abs(gap1 - gap2) +
-          rowSpread * rowSpread +
-          widthPenalty +
-          heightPenalty;
-
-        if (score < bestScore) {
-          bestScore = score;
-          best = { left, middle, right };
-        }
-      }
-    }
-  }
-
-  return best;
-}
-
-function chooseGlobalInputText(textEntries, rightButtonEntry) {
-  if (!Array.isArray(textEntries) || textEntries.length === 0 || !rightButtonEntry) return null;
-
-  let best = null;
-  let bestScore = Infinity;
-
-  for (const entry of textEntries) {
-    const dx = Math.abs(entry.x - rightButtonEntry.x);
-    const dy = entry.y - rightButtonEntry.y;
-    if (dx > ACTION_REBIND_GEO.maxInputDxPx) continue;
-    if (dy < ACTION_REBIND_GEO.minInputDyPx || dy > ACTION_REBIND_GEO.maxInputDyPx) continue;
-
-    const score = (dx * dx) + Math.pow(dy - ACTION_LAYOUT.inputOffsetFromButtonTopPx, 2);
-    if (score < bestScore) {
-      bestScore = score;
-      best = entry;
-    }
-  }
-
-  return best;
-}
-
-async function inferActionItemsFromFrameGeometry(image, frameId, frameShapes, frameTexts, log) {
-  if (!image || !frameId) return null;
-
-  const parentGeomCache = new Map();
-  const shapeEntries = [];
-  for (const shape of frameShapes || []) {
-    const pos = await resolveBoardCoords(shape, parentGeomCache, log);
-    if (!pos) continue;
-    shapeEntries.push({ item: shape, x: pos.x, y: pos.y });
-  }
-
-  const textEntries = [];
-  for (const text of frameTexts || []) {
-    const pos = await resolveBoardCoords(text, parentGeomCache, log);
-    if (!pos) continue;
-    textEntries.push({ item: text, x: pos.x, y: pos.y });
-  }
-
-  const buttons = chooseBestButtonShapeTriplet(shapeEntries);
-  if (!buttons) return null;
-
-  const globalInput = chooseGlobalInputText(textEntries, buttons.right);
-
-  return {
-    aiItemId: buttons.left.item.id,
-    clusterItemId: buttons.middle.item.id,
-    globalAgentItemId: buttons.right.item.id,
-    globalAgentInputItemId: globalInput ? globalInput.item.id : null,
-    frameId
-  };
-}
-
-async function createInstanceActionShapes(instance, image, log) {
-  await ensureMiroReady(log);
-
-  const board = getBoard();
-  const hasCreateShape = typeof board?.createShape === "function";
-  const hasCreateText  = typeof board?.createText === "function";
-  const hasCreateFrame = typeof board?.createFrame === "function";
-
-  if (!hasCreateShape || !hasCreateFrame) return;
-
-  const frameWidth  = image.width + ACTION_LAYOUT.frameWidthPaddingPx;
-  const frameHeight = image.height + ACTION_LAYOUT.frameHeightPaddingPx;
-  const frameY = image.y + ACTION_LAYOUT.frameCenterYOffsetPx;
-
-  const frame = await board.createFrame({
-    title: image.title || "Datentreiber 3-Boxes",
-    x: image.x,
-    y: frameY,
-    width: frameWidth,
-    height: frameHeight
-  });
-
-  const baseY = image.y + image.height / 2 + ACTION_LAYOUT.buttonRowOffsetFromImageBottomPx;
-  const baseX = image.x;
-  const dx = ACTION_LAYOUT.buttonOffsetXPx;
-  const buttonWidth = ACTION_LAYOUT.buttonWidthPx;
-  const buttonHeight = ACTION_LAYOUT.buttonHeightPx;
-
-  const aiShape = await board.createShape({
-    content: ACTION_LABELS.ai,
-    shape: "round_rectangle",
-    x: baseX - dx,
-    y: baseY,
-    width: buttonWidth,
-    height: buttonHeight
-  });
-
-  const clusterShape = await board.createShape({
-    content: ACTION_LABELS.cluster,
-    shape: "round_rectangle",
-    x: baseX,
-    y: baseY,
-    width: buttonWidth,
-    height: buttonHeight
-  });
-
-  const globalAgentShape = await board.createShape({
-    content: ACTION_LABELS.global,
-    shape: "round_rectangle",
-    x: baseX + dx,
-    y: baseY,
-    width: buttonWidth,
-    height: buttonHeight
-  });
-
-  let globalInput = null;
-  if (hasCreateText) {
-    globalInput = await board.createText({
-      content: "",
-      x: baseX + dx,
-      y: baseY + ACTION_LAYOUT.inputOffsetFromButtonTopPx
-    });
-  }
-
-  try {
-    await frame.add(image);
-    await frame.add(aiShape);
-    await frame.add(clusterShape);
-    await frame.add(globalAgentShape);
-    if (globalInput) await frame.add(globalInput);
-    await frame.sync();
-  } catch (e) {
-    console.error("[DT] Fehler beim Hinzufügen der Items zum Frame:", e);
-  }
-
-  instance.actionItems = normalizeActionItems({
-    aiItemId: aiShape.id,
-    clusterItemId: clusterShape.id,
-    globalAgentItemId: globalAgentShape.id,
-    globalAgentInputItemId: globalInput ? globalInput.id : null,
-    frameId: frame.id
-  });
-
-  await saveActionBindingForImageId(image.id, instance.actionItems, log);
-}
-
-async function maybeSetFrameIdFromParent(instance, itemWithParent, log) {
-  if (!instance || !itemWithParent?.parentId) return;
-  if (instance.actionItems?.frameId) return;
-
-  try {
-    const parent = await getItemById(itemWithParent.parentId, log);
-    if (parent?.type === "frame") {
-      instance.actionItems = instance.actionItems || {};
-      instance.actionItems.frameId = parent.id;
-    }
-  } catch (_) {}
-}
-
-// --------------------------------------------------------------------
-// Register/Scan/Rebind Instanzen
-// --------------------------------------------------------------------
 export async function registerInstanceFromImage(image, {
   templateCatalog,
   defaultTemplateId,
   instancesByImageId,
   instancesById,
   hasGlobalBaseline,
-  createActionShapes = true,
   canvasTypeId = null,
   log
 }) {
@@ -647,7 +322,6 @@ export async function registerInstanceFromImage(image, {
     instance.instanceLabel = instanceLabel;
     instance.instanceId = internalInstanceId;
     instance.lastGeometry = { x: image.x, y: image.y, width: image.width, height: image.height };
-    instance.actionItems = normalizeActionItems(instance.actionItems);
 
     if (previousInstanceId && previousInstanceId !== internalInstanceId) {
       instancesById.delete(previousInstanceId);
@@ -656,9 +330,6 @@ export async function registerInstanceFromImage(image, {
       instancesById.set(internalInstanceId, instance);
     }
 
-    if (!createActionShapes) {
-      await maybeSetFrameIdFromParent(instance, image, log);
-    }
 
     if (hasGlobalBaseline && !instance.baselineSignatureLoaded) {
       instance.baselineSignature = await loadBaselineSignatureForImageId(image.id, log);
@@ -690,13 +361,9 @@ export async function registerInstanceFromImage(image, {
     lastDiff: null,
 
     lastAgentRunAt: null,
-    actionItems: normalizeActionItems(null),
     liveCatalog: null
   };
 
-  if (!createActionShapes) {
-    await maybeSetFrameIdFromParent(instance, image, log);
-  }
 
   instancesByImageId.set(image.id, instance);
   instancesById.set(internalInstanceId, instance);
@@ -710,88 +377,7 @@ export async function registerInstanceFromImage(image, {
     instance.baselineSignatureLoaded = true;
   }
 
-  if (createActionShapes) {
-    try {
-      await createInstanceActionShapes(instance, image, log);
-    } catch (e) {
-      console.error("[DT] Fehler beim Erzeugen der Action-Shapes:", e);
-    }
-  }
-
   return instance;
-}
-
-async function rebindActionShapesAfterScan(images, instancesByImageId, instancesById, log) {
-  await ensureMiroReady(log);
-
-  const board = getBoard();
-  if (!board?.get) return;
-
-  let shapes = [];
-  let textItems = [];
-
-  try {
-    shapes = await board.get({ type: "shape" }) || [];
-    textItems = await board.get({ type: "text" }) || [];
-  } catch (e) {
-    if (typeof log === "function") log("Fehler bei Rebind der Action-Shapes: " + e.message);
-    return;
-  }
-
-  const shapesByParent = new Map();
-  for (const s of shapes) {
-    const pid = s.parentId;
-    if (!pid) continue;
-    if (!shapesByParent.has(pid)) shapesByParent.set(pid, []);
-    shapesByParent.get(pid).push(s);
-  }
-
-  const textsByParent = new Map();
-  for (const t of textItems) {
-    const pid = t.parentId;
-    if (!pid) continue;
-    if (!textsByParent.has(pid)) textsByParent.set(pid, []);
-    textsByParent.get(pid).push(t);
-  }
-
-  const imageById = new Map();
-  for (const img of images || []) imageById.set(img.id, img);
-
-  for (const [imageId, inst] of instancesByImageId.entries()) {
-    const img = imageById.get(imageId);
-    if (!img) continue;
-
-    const frameId = img.parentId || inst?.actionItems?.frameId || null;
-    if (!frameId) {
-      inst.actionItems = normalizeActionItems(inst.actionItems);
-      continue;
-    }
-
-    const frameShapes = shapesByParent.get(frameId) || [];
-    const frameTexts  = textsByParent.get(frameId) || [];
-
-    let rebound = await validateActionBindingForImage(img, inst.actionItems, log);
-
-    if (!hasCompleteActionBinding(rebound)) {
-      const persisted = await loadActionBindingForImageId(imageId, log);
-      const validatedPersisted = await validateActionBindingForImage(img, persisted, log);
-      rebound = mergeActionItems(rebound, validatedPersisted);
-    }
-
-    if (!hasCompleteActionBinding(rebound)) {
-      const inferred = await inferActionItemsFromFrameGeometry(img, frameId, frameShapes, frameTexts, log);
-      rebound = mergeActionItems(rebound, inferred);
-    }
-
-    inst.actionItems = normalizeActionItems(rebound);
-
-    if (hasCompleteActionBinding(inst.actionItems)) {
-      if (typeof log === "function") log("Action-Shapes re-gebunden für Instanz " + (inst.instanceLabel || inst.instanceId));
-      await saveActionBindingForImageId(imageId, inst.actionItems, log);
-    }
-  }
-
-  // optional: instancesById ist derselbe Object-Graph; nichts weiter nötig
 }
 
 export async function scanTemplateInstances({
@@ -830,7 +416,6 @@ export async function scanTemplateInstances({
         instancesByImageId,
         instancesById,
         hasGlobalBaseline,
-        createActionShapes: false,
         canvasTypeId,
         log
       });
@@ -838,12 +423,6 @@ export async function scanTemplateInstances({
   }
 
   const orphanImageIds = new Set();
-
-  for (const imageId of await loadActionBindingIndex(log)) {
-    if (!templateImageIdsOnBoard.has(imageId)) {
-      orphanImageIds.add(imageId);
-    }
-  }
 
   for (const imageId of Array.from(instancesByImageId.keys())) {
     if (!templateImageIdsOnBoard.has(imageId)) {
@@ -853,9 +432,6 @@ export async function scanTemplateInstances({
 
   for (const imageId of orphanImageIds) {
     const inst = instancesByImageId.get(imageId) || null;
-    const actionItems = hasAnyActionItems(inst?.actionItems)
-      ? normalizeActionItems(inst.actionItems)
-      : (await loadActionBindingForImageId(imageId, log));
 
     instancesByImageId.delete(imageId);
     if (inst) {
@@ -865,16 +441,8 @@ export async function scanTemplateInstances({
       }
     }
 
-    if (actionItems) {
-      await cleanupOrphanedActionArtifacts(imageId, actionItems, log).catch(() => {});
-    }
-
     await removeBaselineSignatureForImageId(imageId, log).catch(() => {});
-    await removeActionBindingForImageId(imageId, log).catch(() => {});
   }
-
-  // Rebind nach Scan (Buttons/Frames wieder verbinden)
-  await rebindActionShapesAfterScan(images, instancesByImageId, instancesById, log);
 
   return images;
 }

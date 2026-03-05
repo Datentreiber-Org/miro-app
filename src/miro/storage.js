@@ -2,8 +2,6 @@ import {
   DT_STORAGE_COLLECTION_NAME,
   DT_STORAGE_KEY_META,
   DT_STORAGE_KEY_BASELINE_PREFIX,
-  DT_STORAGE_KEY_ACTION_BINDING_PREFIX,
-  DT_STORAGE_KEY_ACTION_BINDING_INDEX,
   DT_STORAGE_KEY_MEMORY_STATE,
   DT_STORAGE_KEY_MEMORY_LOG_INDEX,
   DT_STORAGE_KEY_MEMORY_LOG_ENTRY_PREFIX,
@@ -36,49 +34,6 @@ function getStorageCollection() {
 
 function baselineKeyForImageId(imageId) {
   return DT_STORAGE_KEY_BASELINE_PREFIX + String(imageId);
-}
-
-function actionBindingKeyForImageId(imageId) {
-  return DT_STORAGE_KEY_ACTION_BINDING_PREFIX + String(imageId);
-}
-
-export function normalizeActionItems(actionItems) {
-  const src = (actionItems && typeof actionItems === "object") ? actionItems : {};
-
-  function idOrNull(key) {
-    const value = src[key];
-    return (value === undefined || value === null || value === "") ? null : value;
-  }
-
-  return {
-    aiItemId: idOrNull("aiItemId"),
-    clusterItemId: idOrNull("clusterItemId"),
-    globalAgentItemId: idOrNull("globalAgentItemId"),
-    globalAgentInputItemId: idOrNull("globalAgentInputItemId"),
-    frameId: idOrNull("frameId")
-  };
-}
-
-export function hasAnyActionItems(actionItems) {
-  const norm = normalizeActionItems(actionItems);
-  return !!(norm.aiItemId || norm.clusterItemId || norm.globalAgentItemId || norm.globalAgentInputItemId || norm.frameId);
-}
-
-export function hasCompleteActionBinding(actionItems) {
-  const norm = normalizeActionItems(actionItems);
-  return !!(norm.frameId && norm.aiItemId && norm.clusterItemId && norm.globalAgentItemId);
-}
-
-export function mergeActionItems(primary, secondary) {
-  const a = normalizeActionItems(primary);
-  const b = normalizeActionItems(secondary);
-  return {
-    aiItemId: a.aiItemId || b.aiItemId || null,
-    clusterItemId: a.clusterItemId || b.clusterItemId || null,
-    globalAgentItemId: a.globalAgentItemId || b.globalAgentItemId || null,
-    globalAgentInputItemId: a.globalAgentInputItemId || b.globalAgentInputItemId || null,
-    frameId: a.frameId || b.frameId || null
-  };
 }
 
 function uniqueIds(ids) {
@@ -480,116 +435,6 @@ export async function removeBaselineSignatureForImageId(imageId, log) {
   } catch (e) {
     if (typeof log === "function") log("Fehler beim Entfernen der Baseline-Signatur (" + imageId + "): " + e.message);
   }
-}
-
-export async function loadActionBindingIndex(log) {
-  await ensureMiroReady(log);
-
-  const col = getStorageCollection();
-  if (!col) return [];
-
-  try {
-    const rec = await col.get(DT_STORAGE_KEY_ACTION_BINDING_INDEX);
-    if (rec && typeof rec === "object" && rec.version === 1 && Array.isArray(rec.imageIds)) {
-      return Array.from(new Set(rec.imageIds.map((id) => String(id)).filter(Boolean))).sort();
-    }
-  } catch (e) {
-    if (typeof log === "function") log("Fehler beim Laden des Action-Binding-Index: " + e.message);
-  }
-
-  return [];
-}
-
-export async function saveActionBindingIndex(imageIds, log) {
-  await ensureMiroReady(log);
-
-  const col = getStorageCollection();
-  if (!col) return;
-
-  const normalizedImageIds = Array.from(new Set((imageIds || []).map((id) => String(id)).filter(Boolean))).sort();
-
-  try {
-    await col.set(DT_STORAGE_KEY_ACTION_BINDING_INDEX, {
-      version: 1,
-      imageIds: normalizedImageIds
-    });
-  } catch (e) {
-    if (typeof log === "function") log("Fehler beim Speichern des Action-Binding-Index: " + e.message);
-  }
-}
-
-export async function addImageIdToActionBindingIndex(imageId, log) {
-  if (!imageId) return;
-
-  const ids = await loadActionBindingIndex(log);
-  const key = String(imageId);
-  if (!ids.includes(key)) {
-    ids.push(key);
-    await saveActionBindingIndex(ids, log);
-  }
-}
-
-export async function removeImageIdFromActionBindingIndex(imageId, log) {
-  if (!imageId) return;
-
-  const key = String(imageId);
-  const ids = await loadActionBindingIndex(log);
-  const nextIds = ids.filter((id) => id !== key);
-  if (nextIds.length !== ids.length) {
-    await saveActionBindingIndex(nextIds, log);
-  }
-}
-
-export async function loadActionBindingForImageId(imageId, log) {
-  await ensureMiroReady(log);
-
-  const col = getStorageCollection();
-  if (!col || !imageId) return null;
-
-  try {
-    const rec = await col.get(actionBindingKeyForImageId(imageId));
-    if (rec && typeof rec === "object" && rec.version === 1) {
-      return normalizeActionItems(rec);
-    }
-  } catch (e) {
-    if (typeof log === "function") log("Fehler beim Laden des Action-Bindings (" + imageId + "): " + e.message);
-  }
-
-  return null;
-}
-
-export async function saveActionBindingForImageId(imageId, actionItems, log) {
-  await ensureMiroReady(log);
-
-  const col = getStorageCollection();
-  const normalized = normalizeActionItems(actionItems);
-  if (!col || !imageId || !hasCompleteActionBinding(normalized)) return;
-
-  try {
-    await col.set(actionBindingKeyForImageId(imageId), {
-      version: 1,
-      imageId: String(imageId),
-      ...normalized
-    });
-    await addImageIdToActionBindingIndex(imageId, log);
-  } catch (e) {
-    if (typeof log === "function") log("Fehler beim Speichern des Action-Bindings (" + imageId + "): " + e.message);
-  }
-}
-
-export async function removeActionBindingForImageId(imageId, log) {
-  await ensureMiroReady(log);
-
-  const col = getStorageCollection();
-  if (!col || !imageId) return;
-
-  try {
-    await col.remove(actionBindingKeyForImageId(imageId));
-  } catch (e) {
-    if (typeof log === "function") log("Fehler beim Entfernen des Action-Bindings (" + imageId + "): " + e.message);
-  }
-
-  await removeImageIdFromActionBindingIndex(imageId, log);
 }
 
 async function loadMemoryLogIndex(log) {

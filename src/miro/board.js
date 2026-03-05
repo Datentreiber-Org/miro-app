@@ -21,7 +21,7 @@ export {
   loadBoardFlow,
   saveBoardFlow,
   listBoardFlows
-} from "./storage.js?v=20260305-batch06";
+} from "./storage.js?v=20260305-batch31";
 
 export {
   buildFeedbackTextContent,
@@ -61,4 +61,4 @@ export {
   findInstanceByPoint,
   registerInstanceFromImage,
   scanTemplateInstances
-} from "./instances.js?v=20260305-batch05";
+} from "./instances.js?v=20260305-batch31";
