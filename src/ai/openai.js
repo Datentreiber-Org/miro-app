@@ -1,4 +1,4 @@
-import { OPENAI_ENDPOINT } from "../config.js?v=20260304-batch2";
+import { OPENAI_ENDPOINT } from "../config.js?v=20260305-schemafix2";
 
 function nullableStringSchema(description = "") {
   return {
