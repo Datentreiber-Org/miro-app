@@ -67,7 +67,6 @@ function buildModePromptBlock(runMode, triggerContext) {
   if (parsed?.intent) lines.push(`- triggerIntent: ${parsed.intent}`);
   if (triggerContext?.mutationPolicy) lines.push(`- mutationPolicy: ${triggerContext.mutationPolicy}`);
   if (triggerContext?.feedbackPolicy) lines.push(`- feedbackPolicy: ${triggerContext.feedbackPolicy}`);
-  lines.push("- Wenn exerciseContext vorhanden ist, behandle ihn als verbindlichen zusätzlichen Arbeitskontext.");
 
   return lines.join("\n");
 }
