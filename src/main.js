@@ -97,9 +97,6 @@ const adminPanelEl = document.getElementById("admin-panel");
 const apiKeyEl = document.getElementById("api-key");
 const modelEl = document.getElementById("model");
 const adminOverrideTextEl = document.getElementById("admin-override-text");
-const adminTriggerScopeEl = document.getElementById("admin-trigger-scope");
-const adminTriggerIntentEl = document.getElementById("admin-trigger-intent");
-const btnAdminRunTriggerEl = document.getElementById("btn-admin-run-trigger");
 const flowPackTemplateEl = document.getElementById("flow-pack-template");
 const flowStepTemplateEl = document.getElementById("flow-step-template");
 const flowRunProfileEl = document.getElementById("flow-run-profile");
@@ -480,20 +477,6 @@ function renderAdminOverrideEditor() {
 }
 
 
-function syncAdminTriggerControls() {
-  if (adminTriggerScopeEl && !adminTriggerScopeEl.value) {
-    adminTriggerScopeEl.value = "selection";
-  }
-  if (adminTriggerIntentEl && !adminTriggerIntentEl.value) {
-    adminTriggerIntentEl.value = "check";
-  }
-
-  const hasExerciseContext = !!getSelectedExercisePack() && !!getCurrentExerciseStep();
-  if (adminTriggerScopeEl) adminTriggerScopeEl.disabled = state.panelMode !== "admin" || !hasExerciseContext;
-  if (adminTriggerIntentEl) adminTriggerIntentEl.disabled = state.panelMode !== "admin" || !hasExerciseContext;
-  if (btnAdminRunTriggerEl) btnAdminRunTriggerEl.disabled = state.panelMode !== "admin" || !hasExerciseContext;
-}
-
 function packLabelWithStep(pack, stepId) {
   const step = pack ? Exercises.getExerciseStep(pack, stepId) : null;
   if (!pack) return "keins";
@@ -572,7 +555,6 @@ function renderExerciseControls() {
   renderExerciseContextStatus();
   renderRecommendationStatus();
   renderAdminOverrideEditor();
-  syncAdminTriggerControls();
   renderExerciseActionButtons();
   renderFlowAuthoringControls();
   renderPanelMode();
@@ -1048,47 +1030,6 @@ async function runAgentFromFlowControl(flow, control, selectedItem) {
   }
 }
 
-async function maybeConsumePendingFlowControlTrigger({ source = "panel" } = {}) {
-  const pending = PanelBridge.loadPendingFlowControlTrigger();
-  if (!pending) return false;
-
-  if (!getApiKey()) {
-    log("Headless Bridge: Ausstehender Flow-Trigger erkannt, aber kein API Key ist im Panel verfügbar.");
-    return false;
-  }
-
-  const flow = state.boardFlowsById.get(pending.flowId) || await Board.loadBoardFlow(pending.flowId, log);
-  if (!flow) {
-    PanelBridge.clearPendingFlowControlTrigger();
-    log("Headless Bridge: Gespeicherter Flow '" + pending.flowId + "' wurde nicht gefunden.");
-    return false;
-  }
-  state.boardFlowsById.set(flow.id, flow);
-
-  const control = flow.controls?.[pending.controlId] || null;
-  if (!control) {
-    PanelBridge.clearPendingFlowControlTrigger();
-    log("Headless Bridge: Gespeichertes Control '" + pending.controlId + "' wurde nicht gefunden.");
-    return false;
-  }
-
-  PanelBridge.clearPendingFlowControlTrigger();
-  state.lastTriggeredFlowControlItemId = pending.itemId || null;
-  state.lastTriggeredFlowControlAt = Date.now();
-  state.flowControlRunLock = true;
-
-  try {
-    log("Headless Bridge: Starte ausstehendes Flow-Control '" + (control.label || control.id) + "' (Quelle: " + source + ").");
-    await runAgentFromFlowControl(flow, control, null);
-    return true;
-  } catch (error) {
-    log("Headless Bridge: Ausstehender Flow-Trigger konnte nicht ausgeführt werden – " + error.message);
-    return false;
-  } finally {
-    state.flowControlRunLock = false;
-  }
-}
-
 async function syncDefaultCanvasTypeToBoardConfig(canvasTypeId) {
   const normalizedCanvasTypeId = normalizeCanvasTypeId(canvasTypeId);
   setSelectedCanvasTypeId(normalizedCanvasTypeId);
@@ -1486,9 +1427,8 @@ function initPanelButtons() {
   apiKeyEl?.addEventListener("input", () => {
     persistRuntimeSettingsFromUi();
   });
-  apiKeyEl?.addEventListener("change", async () => {
+  apiKeyEl?.addEventListener("change", () => {
     persistRuntimeSettingsFromUi();
-    await maybeConsumePendingFlowControlTrigger({ source: "api_key_change" });
   });
   modelEl?.addEventListener("change", () => {
     persistRuntimeSettingsFromUi();
@@ -1518,13 +1458,6 @@ function initPanelButtons() {
   btnExerciseReviewEl?.addEventListener("click", () => runExerciseTriggerRequest({ scope: "selection", intent: "review", source: getCurrentTriggerSource() }));
   btnExerciseCoachEl?.addEventListener("click", () => runExerciseTriggerRequest({ scope: "selection", intent: "coach", source: getCurrentTriggerSource() }));
   btnExerciseNextStepEl?.addEventListener("click", advanceExerciseStep);
-  btnAdminRunTriggerEl?.addEventListener("click", async () => {
-    await runExerciseTriggerRequest({
-      scope: adminTriggerScopeEl?.value || "selection",
-      intent: adminTriggerIntentEl?.value || "check",
-      source: "admin"
-    });
-  });
   btnFlowCreateControlEl?.addEventListener("click", createFlowControlFromAdmin);
   btnFlowSetCurrentStepEl?.addEventListener("click", setCurrentFlowStepFromAdmin);
 
@@ -1584,9 +1517,6 @@ async function afterMiroReady() {
   await loadBoardExerciseState();
   await loadBoardFlows();
   renderFlowAuthoringControls({ forceLabelSync: true });
-  if (!IS_HEADLESS) {
-    await maybeConsumePendingFlowControlTrigger({ source: "after_miro_ready" });
-  }
 
   // UI selection events
   await Board.registerSelectionUpdateHandler(onSelectionUpdate, log);
@@ -2708,51 +2638,42 @@ async function applyAgentActionsToInstance(instanceId, actions) {
       let targetX = null;
       let targetY = null;
 
-      const hasExplicitTarget =
-        (typeof action.targetPx === "number" && typeof action.targetPy === "number");
+      const region = Catalog.areaNameToRegion(action.targetArea, canvasTypeId);
+      const regionId = region?.id || null;
 
-      if (hasExplicitTarget) {
-        const coords = Catalog.normalizedToBoardCoords(geom, action.targetPx, action.targetPy);
-        targetX = coords.x;
-        targetY = coords.y;
-      } else {
-        const region = Catalog.areaNameToRegion(action.targetArea, canvasTypeId);
-        const regionId = region?.id || null;
+      if (regionId && occupiedByRegion[regionId]) {
+        const pos = Catalog.computeNextFreeStickyPositionInBodyRegion({
+          templateGeometry: geom,
+          canvasTypeId,
+          regionId,
+          stickyWidthPx: stickyW,
+          stickyHeightPx: stickyH,
+          marginPx: STICKY_LAYOUT.marginPx,
+          gapPx: STICKY_LAYOUT.gapPx,
+          occupiedRects: occupiedByRegion[regionId]
+        });
 
-        if (regionId && occupiedByRegion[regionId]) {
-          const pos = Catalog.computeNextFreeStickyPositionInBodyRegion({
-            templateGeometry: geom,
-            canvasTypeId,
-            regionId,
-            stickyWidthPx: stickyW,
-            stickyHeightPx: stickyH,
-            marginPx: STICKY_LAYOUT.marginPx,
-            gapPx: STICKY_LAYOUT.gapPx,
-            occupiedRects: occupiedByRegion[regionId]
-          });
-
-          if (pos) {
-            if (pos.isFull) {
-              log(
-                "WARNUNG: Region '" + regionId + "' wirkt voll (Grid " +
-                pos.cols + "x" + pos.rows +
-                "). move_sticky setzt auf letzte Zelle."
-              );
-            }
-            targetX = pos.x;
-            targetY = pos.y;
-          } else {
-            const center = Catalog.areaCenterNormalized(regionId, canvasTypeId);
-            const coords = Catalog.normalizedToBoardCoords(geom, center.px, center.py);
-            targetX = coords.x;
-            targetY = coords.y;
+        if (pos) {
+          if (pos.isFull) {
+            log(
+              "WARNUNG: Region '" + regionId + "' wirkt voll (Grid " +
+              pos.cols + "x" + pos.rows +
+              "). move_sticky setzt auf letzte Zelle."
+            );
           }
+          targetX = pos.x;
+          targetY = pos.y;
         } else {
-          const center = Catalog.areaCenterNormalized(null, canvasTypeId);
+          const center = Catalog.areaCenterNormalized(regionId, canvasTypeId);
           const coords = Catalog.normalizedToBoardCoords(geom, center.px, center.py);
           targetX = coords.x;
           targetY = coords.y;
         }
+      } else {
+        const center = Catalog.areaCenterNormalized(null, canvasTypeId);
+        const coords = Catalog.normalizedToBoardCoords(geom, center.px, center.py);
+        targetX = coords.x;
+        targetY = coords.y;
       }
 
       if (!isFiniteNumber(targetX) || !isFiniteNumber(targetY)) {
@@ -2905,6 +2826,26 @@ async function applyAgentActionsToInstance(instanceId, actions) {
   return executionStats;
 }
 
+function buildPayloadMappingHint({
+  scopeLabel = "aktuellen Ziel-Instanzen",
+  labelListKey = "selectedInstanceLabels",
+  mentionArea = false
+} = {}) {
+  const lines = [
+    `boardCatalog = Kurzüberblick über alle Canvas, activeCanvasStates = Detaildaten für die ${scopeLabel}.`,
+    `Verwende instanceLabel exakt wie in ${labelListKey} bzw. den Schlüsseln von activeCanvasStates.`,
+    "Verwende create_connector für Beziehungen zwischen Stickies.",
+    "fromStickyId/toStickyId dürfen bestehende Alias-IDs oder refId-Werte aus create_sticky-Actions derselben Antwort sein.",
+    "Referenziere Canvas in memoryEntry nur über instanceLabel."
+  ];
+
+  if (mentionArea) {
+    lines.splice(2, 0, "area/targetArea muss exakt einem vorhandenen Area-Namen der Ziel-Instanz entsprechen.");
+  }
+
+  return lines.join(" ");
+}
+
 // --------------------------------------------------------------------
 // Agent Modus B (selektierte Canvas-Instanzen)
 // --------------------------------------------------------------------
@@ -3029,7 +2970,10 @@ async function runAgentForSelectedInstances(selectedInstanceIds, options = {}) {
     activeInstanceChangesSinceLastAgent,
     memoryState: memoryPayload.memoryState,
     recentMemoryLogEntries: memoryPayload.recentMemoryLogEntries,
-    hint: "boardCatalog = Kurzüberblick über alle Canvas, activeCanvasStates = Detaildaten nur für die selektierten Instanzen. Wenn mehrere Instanzen selektiert sind, muss jede mutierende Action eine instanceLabel enthalten. Verwende exakt die menschenlesbaren Canvas-Labels aus selectedInstanceLabels bzw. den Schlüsseln von activeCanvasStates. Verwende create_connector für Beziehungen zwischen Stickies. fromStickyId/toStickyId dürfen bestehende Alias-IDs oder refId-Werte aus create_sticky-Actions derselben Antwort sein. memoryState/recentMemoryLogEntries bilden das semantische Arbeitsgedächtnis; referenziere dort Canvas ebenfalls nur über instanceLabel."
+    hint: buildPayloadMappingHint({
+      scopeLabel: "selektierten Instanzen",
+      labelListKey: "selectedInstanceLabels"
+    })
   };
 
   const composedPrompt = composePromptForRun({
@@ -3349,8 +3293,6 @@ function normalizeAgentAction(rawAction) {
     reverseDirection: normalizedDirection.reverseDirection
   };
 
-  if (isFiniteNumber(rawAction.targetPx)) normalized.targetPx = rawAction.targetPx;
-  if (isFiniteNumber(rawAction.targetPy)) normalized.targetPy = rawAction.targetPy;
 
   return normalized;
 }
@@ -3632,7 +3574,11 @@ async function runGlobalAgent(triggerInstanceId, userText, options = {}) {
     activeInstanceChangesSinceLastAgent,
     memoryState: memoryPayload.memoryState,
     recentMemoryLogEntries: memoryPayload.recentMemoryLogEntries,
-    hint: "boardCatalog = Übersicht, activeCanvasStates = Detaildaten für die im aktuellen Lauf relevanten Instanzen. Jede mutierende Action muss genau eine instanceLabel enthalten und dieses Label muss exakt einem Wert aus activeInstanceLabels bzw. einem Schlüssel von activeCanvasStates entsprechen. area/targetArea muss exakt einem vorhandenen Area-Namen der Ziel-Instanz entsprechen. Verwende create_connector für Beziehungen zwischen Stickies. fromStickyId/toStickyId dürfen bestehende Alias-IDs oder refId-Werte aus create_sticky-Actions derselben Antwort sein. memoryState/recentMemoryLogEntries bilden das semantische Arbeitsgedächtnis; referenziere dort Canvas ebenfalls nur über instanceLabel."
+    hint: buildPayloadMappingHint({
+      scopeLabel: "im aktuellen Lauf relevanten Instanzen",
+      labelListKey: "activeInstanceLabels",
+      mentionArea: true
+    })
   };
 
   const composedPrompt = composePromptForRun({
