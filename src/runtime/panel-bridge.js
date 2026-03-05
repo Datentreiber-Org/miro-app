@@ -1,11 +1,9 @@
 const PANEL_RUNTIME_STORAGE_KEY = "dt-panel-runtime-settings-v1";
 const PANEL_RUNTIME_SECRETS_KEY = "dt-panel-runtime-secrets-v1";
 const PANEL_HEARTBEAT_STORAGE_KEY = "dt-panel-runtime-heartbeat-v1";
-const PENDING_FLOW_TRIGGER_STORAGE_KEY = "dt-pending-flow-trigger-v1";
 
 export const PANEL_HEARTBEAT_INTERVAL_MS = 1500;
 export const PANEL_HEARTBEAT_STALE_AFTER_MS = 4500;
-export const PENDING_FLOW_TRIGGER_MAX_AGE_MS = 20000;
 
 let heartbeatTimer = null;
 
@@ -47,20 +45,6 @@ function normalizeRuntimeSettings(rawSettings) {
     apiKey: asNonEmptyString(src.apiKey),
     model: asNonEmptyString(src.model) || "gpt-5.2",
     updatedAt: asNonEmptyString(src.updatedAt) || null
-  };
-}
-
-function normalizePendingFlowTrigger(rawTrigger) {
-  const src = (rawTrigger && typeof rawTrigger === "object") ? rawTrigger : {};
-  const requestedAt = Number(src.requestedAtMs || src.requestedAt || 0);
-  return {
-    version: 1,
-    flowId: asNonEmptyString(src.flowId),
-    controlId: asNonEmptyString(src.controlId),
-    itemId: src.itemId == null ? null : String(src.itemId),
-    requestId: asNonEmptyString(src.requestId),
-    requestedAtMs: Number.isFinite(requestedAt) && requestedAt > 0 ? requestedAt : Date.now(),
-    source: asNonEmptyString(src.source) || "headless"
   };
 }
 
@@ -128,34 +112,6 @@ export function saveRuntimeSettings(patch = {}) {
 export function clearRuntimeSettings() {
   removeStorageKey(getLocalStorage(), PANEL_RUNTIME_STORAGE_KEY);
   removeStorageKey(getSessionStorage(), PANEL_RUNTIME_SECRETS_KEY);
-}
-
-export function loadPendingFlowControlTrigger() {
-  const raw = readStorageJson(getLocalStorage(), PENDING_FLOW_TRIGGER_STORAGE_KEY);
-  const normalized = normalizePendingFlowTrigger(raw);
-  if (!normalized.flowId || !normalized.controlId) return null;
-  if (Date.now() - normalized.requestedAtMs > PENDING_FLOW_TRIGGER_MAX_AGE_MS) {
-    clearPendingFlowControlTrigger();
-    return null;
-  }
-  return normalized;
-}
-
-export function savePendingFlowControlTrigger(trigger) {
-  const normalized = normalizePendingFlowTrigger(trigger);
-  if (!normalized.flowId || !normalized.controlId) return null;
-  writeStorageJson(getLocalStorage(), PENDING_FLOW_TRIGGER_STORAGE_KEY, normalized);
-  return normalized;
-}
-
-export function clearPendingFlowControlTrigger() {
-  removeStorageKey(getLocalStorage(), PENDING_FLOW_TRIGGER_STORAGE_KEY);
-}
-
-export function consumePendingFlowControlTrigger() {
-  const pending = loadPendingFlowControlTrigger();
-  if (pending) clearPendingFlowControlTrigger();
-  return pending;
 }
 
 export function touchPanelHeartbeat() {
