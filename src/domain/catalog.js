@@ -384,6 +384,16 @@ export function computeNextFreeStickyPositionInBodyRegion({
   return { x, y, col: lastC, row: lastR, cols, rows, isFull: true, bounds };
 }
 
+function connectorHasVisibleArrow(cap) {
+  if (typeof cap !== "string") return false;
+  return cap.trim().toLowerCase() !== "none";
+}
+
+function isConnectorDirected(connector) {
+  if (!connector || typeof connector !== "object") return true;
+  return connectorHasVisibleArrow(connector?.style?.endStrokeCap) || connectorHasVisibleArrow(connector?.style?.startStrokeCap);
+}
+
 // --------------------------------------------------------------------
 // Live Catalog
 // --------------------------------------------------------------------
@@ -548,7 +558,12 @@ export async function rebuildLiveCatalog({ ctx, instancesById, clusterAssignment
     const liveInst = liveCatalog.instances[instFrom];
     if (!liveInst) continue;
 
-    liveInst.connections.push({ connectorId: c.id, fromStickyId: fromId, toStickyId: toId });
+    liveInst.connections.push({
+      connectorId: c.id,
+      fromStickyId: fromId,
+      toStickyId: toId,
+      directed: isConnectorDirected(c)
+    });
   }
 
   // Meta aktualisieren
@@ -649,10 +664,23 @@ export function buildClassificationFromLiveInstance(instance, liveInst) {
     const toItem   = idToItem[c.toStickyId];
     if (!fromItem || !toItem) continue;
 
-    connections.push({ connectorId: c.connectorId, fromStickyId: c.fromStickyId, toStickyId: c.toStickyId });
+    connections.push({
+      connectorId: c.connectorId,
+      fromStickyId: c.fromStickyId,
+      toStickyId: c.toStickyId,
+      directed: c.directed !== false
+    });
 
-    fromItem.connectionsOut.push({ connectorId: c.connectorId, toStickyId: c.toStickyId });
-    toItem.connectionsIn.push({ connectorId: c.connectorId, fromStickyId: c.fromStickyId });
+    fromItem.connectionsOut.push({
+      connectorId: c.connectorId,
+      toStickyId: c.toStickyId,
+      directed: c.directed !== false
+    });
+    toItem.connectionsIn.push({
+      connectorId: c.connectorId,
+      fromStickyId: c.fromStickyId,
+      directed: c.directed !== false
+    });
   }
 
   // Counts
@@ -797,7 +825,8 @@ export function buildPromptPayloadFromClassification(classification, { useAliase
           connectorId: co.connectorId,
           toId: target?.stickyId ? getOrCreateStickyAlias(target.stickyId) : null,
           toText: target ? target.text : null,
-          toArea: resolveAreaKey(target)
+          toArea: resolveAreaKey(target),
+          directed: co.directed !== false
         });
       }
       return result;
@@ -812,7 +841,8 @@ export function buildPromptPayloadFromClassification(classification, { useAliase
           connectorId: ci.connectorId,
           fromId: source?.stickyId ? getOrCreateStickyAlias(source.stickyId) : null,
           fromText: source ? source.text : null,
-          fromArea: resolveAreaKey(source)
+          fromArea: resolveAreaKey(source),
+          directed: ci.directed !== false
         });
       }
       return result;
@@ -883,7 +913,8 @@ export function buildPromptPayloadFromClassification(classification, { useAliase
             fromArea: resolveAreaKey(fromItem),
             toId: toItem?.stickyId ? getOrCreateStickyAlias(toItem.stickyId) : null,
             toText: toItem ? toItem.text : null,
-            toArea: resolveAreaKey(toItem)
+            toArea: resolveAreaKey(toItem),
+            directed: c.directed !== false
           };
         })
       : [];

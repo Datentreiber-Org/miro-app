@@ -11,7 +11,7 @@ import {
 import { createLogger, stripHtml, extractUnderlinedText, isFiniteNumber } from "./utils.js?v=20260301-step11-hotfix2";
 
 import * as Board from "./miro/board.js?v=20260305-batch06";
-import * as Catalog from "./domain/catalog.js?v=20260305-batch06";
+import * as Catalog from "./domain/catalog.js?v=20260305-batch1";
 import * as OpenAI from "./ai/openai.js?v=20260305-schemafix2";
 import * as Memory from "./runtime/memory.js?v=20260301-step11-hotfix2";
 import * as Exercises from "./exercises/registry.js?v=20260304-editorial15";
@@ -22,8 +22,13 @@ import * as BoardFlow from "./runtime/board-flow.js?v=20260303-flowbatch1";
 import * as PanelBridge from "./runtime/panel-bridge.js?v=20260305-schemafix2";
 import { buildPayloadMappingHint } from "./app/payload-hints.js?v=20260305-batch06";
 import { getInsertWidthPxForCanvasType, computeTemplateInsertPosition } from "./app/template-insertion.js?v=20260305-batch05";
-import { pickFirstNonEmptyString, makeCanonicalStickyPairKey, normalizeAgentAction } from "./agent/action-normalization.js?v=20260305-batch05";
-import { createEmptyActionExecutionStats, mergeActionExecutionStats, summarizeAppliedActions } from "./agent/action-stats.js?v=20260305-batch05";
+import {
+  pickFirstNonEmptyString,
+  makeDirectedConnectorKey,
+  makeUndirectedConnectorKey,
+  normalizeAgentAction
+} from "./agent/action-normalization.js?v=20260305-batch1";
+import { createEmptyActionExecutionStats, mergeActionExecutionStats, summarizeAppliedActions } from "./agent/action-stats.js?v=20260305-batch1";
 
 // --------------------------------------------------------------------
 // State (Controller-Level)
@@ -66,6 +71,9 @@ const state = {
   // New Board Flow runtime
   boardFlowsById: new Map(),
   flowControlRunLock: false,
+  agentRunLock: false,
+  activeAgentRunLabel: null,
+  activeAgentRunStartedAt: 0,
   lastTriggeredFlowControlItemId: null,
   lastTriggeredFlowControlAt: 0,
   flowControlLabelDirty: false,
@@ -135,8 +143,115 @@ const log = logEl
 })();
 
 window.onerror = function (msg, src, line, col) {
-  log("JS-Fehler: " + msg + " @ " + line + ":" + col);
+  logRuntimeNotice("fatal", "JS-Fehler: " + msg + " @ " + line + ":" + col);
 };
+
+window.onunhandledrejection = function (event) {
+  const reason = event?.reason;
+  logRuntimeNotice("fatal", "Unhandled Promise Rejection: " + formatRuntimeErrorMessage(reason), reason?.stack || null);
+};
+
+function formatRuntimeErrorMessage(error) {
+  if (!error) return "Unbekannter Fehler";
+  if (typeof error === "string") return error;
+  if (typeof error?.message === "string" && error.message.trim()) return error.message.trim();
+  try {
+    return JSON.stringify(error);
+  } catch (_) {
+    return String(error);
+  }
+}
+
+function logRuntimeNotice(kind, message, details = null) {
+  const normalizedKind = (typeof kind === "string" && kind.trim()) ? kind.trim() : "info";
+  const severity = ["fatal", "invalid_json", "action_failed"].includes(normalizedKind)
+    ? "FEHLER"
+    : (["skipped_action", "run_locked", "model_refusal", "precondition"].includes(normalizedKind) ? "WARNUNG" : "INFO");
+
+  log(severity + " [" + normalizedKind + "] " + message);
+  if (details !== null && details !== undefined) {
+    log(details);
+  }
+}
+
+function buildRunFailureResult(errorType, message, extra = {}) {
+  return {
+    ok: false,
+    errorType: errorType || "fatal",
+    message: message || "",
+    ...extra
+  };
+}
+
+function buildRunSuccessResult(extra = {}) {
+  return { ok: true, ...extra };
+}
+
+function formatRunFailure(runResult) {
+  if (!runResult) return "Unbekannter Fehler";
+  const parts = [];
+  if (runResult.errorType) parts.push(String(runResult.errorType));
+  if (runResult.message) parts.push(String(runResult.message));
+  return parts.join(": ") || "Unbekannter Fehler";
+}
+
+function getManagedAgentRunButtons() {
+  return [
+    btnExerciseCheckEl,
+    btnExerciseHintEl,
+    btnExerciseAutocorrectEl,
+    btnExerciseReviewEl,
+    btnExerciseCoachEl,
+    document.getElementById("btn-agent-selection"),
+    document.getElementById("btn-global-agent"),
+    document.getElementById("btn-openai-classic")
+  ].filter(Boolean);
+}
+
+function setManagedAgentRunButtonsDisabled(disabled) {
+  for (const button of getManagedAgentRunButtons()) {
+    if (!(button instanceof HTMLButtonElement)) continue;
+    if (disabled) {
+      button.dataset.dtRunLockPrevDisabled = button.disabled ? "1" : "0";
+      button.disabled = true;
+      continue;
+    }
+
+    const prevDisabled = button.dataset.dtRunLockPrevDisabled === "1";
+    delete button.dataset.dtRunLockPrevDisabled;
+    button.disabled = prevDisabled;
+  }
+}
+
+function tryAcquireAgentRunLock(sourceLabel) {
+  if (state.agentRunLock) {
+    const activeLabel = state.activeAgentRunLabel || "anderer Agent-Run";
+    logRuntimeNotice("run_locked", (sourceLabel || "Agent") + ": Ein Agent-Run läuft bereits (" + activeLabel + "). Neuer Start übersprungen.");
+    return null;
+  }
+
+  state.agentRunLock = true;
+  state.activeAgentRunLabel = sourceLabel || "Agent";
+  state.activeAgentRunStartedAt = Date.now();
+  setManagedAgentRunButtonsDisabled(true);
+
+  return {
+    label: state.activeAgentRunLabel,
+    startedAt: state.activeAgentRunStartedAt
+  };
+}
+
+function releaseAgentRunLock(lockToken) {
+  if (!state.agentRunLock) return;
+  if (lockToken?.startedAt && state.activeAgentRunStartedAt && lockToken.startedAt !== state.activeAgentRunStartedAt) {
+    return;
+  }
+
+  state.agentRunLock = false;
+  state.activeAgentRunLabel = null;
+  state.activeAgentRunStartedAt = 0;
+  setManagedAgentRunButtonsDisabled(false);
+}
 
 // --------------------------------------------------------------------
 // UI helpers
@@ -1004,33 +1119,43 @@ async function runAgentFromFlowControl(flow, control, selectedItem) {
   }
 
   try {
-    if (runProfile.triggerKey.startsWith("global.")) {
-      await runGlobalAgent(null, getCurrentUserQuestion(), {
-        triggerContext,
-        sourceLabel,
-        promptRuntimeOverride,
-        forcedInstanceIds: targetInstanceIds,
-        forceTargetSet: true,
-        runMode: buildRunModeFromTriggerKey(runProfile.triggerKey),
-        updateGlobalBaseline: false
-      });
-    } else {
-      await runAgentForSelectedInstances(targetInstanceIds, {
-        triggerContext,
-        sourceLabel,
-        promptRuntimeOverride,
-        runMode: buildRunModeFromTriggerKey(runProfile.triggerKey),
-        userText: getCurrentUserQuestion()
-      });
+    const runResult = runProfile.triggerKey.startsWith("global.")
+      ? await runGlobalAgent(null, getCurrentUserQuestion(), {
+          triggerContext,
+          sourceLabel,
+          promptRuntimeOverride,
+          forcedInstanceIds: targetInstanceIds,
+          forceTargetSet: true,
+          runMode: buildRunModeFromTriggerKey(runProfile.triggerKey),
+          updateGlobalBaseline: false
+        })
+      : await runAgentForSelectedInstances(targetInstanceIds, {
+          triggerContext,
+          sourceLabel,
+          promptRuntimeOverride,
+          runMode: buildRunModeFromTriggerKey(runProfile.triggerKey),
+          userText: getCurrentUserQuestion()
+        });
+
+    if (!runResult?.ok) {
+      const msg = "Board Flow: Trigger '" + sourceLabel + "' fehlgeschlagen – " + formatRunFailure(runResult);
+      logRuntimeNotice(runResult?.errorType === "model_refusal" ? "model_refusal" : "fatal", msg);
+      if (IS_HEADLESS) {
+        const notifyLevel = ["model_refusal", "precondition", "run_locked"].includes(runResult?.errorType) ? "warning" : "error";
+        await notifyRuntime(msg, { level: notifyLevel });
+      }
+      return runResult;
     }
+
     if (IS_HEADLESS) {
       await notifyRuntime("AI Flow abgeschlossen: " + sourceLabel, { level: "info" });
     }
+    return runResult;
   } catch (error) {
-    const msg = "Board Flow: Trigger '" + sourceLabel + "' fehlgeschlagen – " + (error?.message || String(error));
-    log(msg);
+    const msg = "Board Flow: Trigger '" + sourceLabel + "' fehlgeschlagen – " + formatRuntimeErrorMessage(error);
+    logRuntimeNotice("fatal", msg, error?.stack || null);
     if (IS_HEADLESS) await notifyRuntime(msg, { level: "error" });
-    throw error;
+    return buildRunFailureResult("fatal", msg, { error });
   }
 }
 
@@ -1940,7 +2065,7 @@ async function executeSelectedFlowControl(controlSelection, items) {
 }
 
 async function onSelectionUpdate(event) {
-  if (state.handlingSelection || state.flowControlRunLock) return;
+  if (state.handlingSelection || state.flowControlRunLock || state.agentRunLock) return;
   const items = event?.items || [];
 
   const controlSelection = await resolveSelectedFlowControl(items);
@@ -2312,7 +2437,7 @@ async function applyAgentActionsToInstance(instanceId, actions) {
 
   const instance = state.instancesById.get(instanceId);
   if (!instance) {
-    log("applyAgentActions: Unbekannte Instanz " + instanceId);
+    logRuntimeNotice("action_failed", "applyAgentActions: Unbekannte Instanz " + instanceId);
     executionStats.failedActionCount += actions.length;
     return executionStats;
   }
@@ -2321,7 +2446,7 @@ async function applyAgentActionsToInstance(instanceId, actions) {
 
   const geom = await Board.computeTemplateGeometry(instance, log);
   if (!geom) {
-    log("applyAgentActions: Keine Geometrie für Instanz " + instanceLabel);
+    logRuntimeNotice("action_failed", "applyAgentActions: Keine Geometrie für Instanz " + instanceLabel);
     executionStats.failedActionCount += actions.length;
     return executionStats;
   }
@@ -2332,11 +2457,16 @@ async function applyAgentActionsToInstance(instanceId, actions) {
 
   const liveInst = state.liveCatalog?.instances?.[instanceId] || null;
   const createdStickyIdsByRef = new Map();
-  const connectedPairSet = new Set();
+  const directedConnectorSet = new Set();
+  const undirectedConnectorSet = new Set();
 
   for (const connection of liveInst?.connections || []) {
     if (!connection?.fromStickyId || !connection?.toStickyId) continue;
-    connectedPairSet.add(makeCanonicalStickyPairKey(connection.fromStickyId, connection.toStickyId));
+    if (connection.directed === false) {
+      undirectedConnectorSet.add(makeUndirectedConnectorKey(connection.fromStickyId, connection.toStickyId));
+    } else {
+      directedConnectorSet.add(makeDirectedConnectorKey(connection.fromStickyId, connection.toStickyId));
+    }
   }
 
   function markSuccess(type) {
@@ -2348,9 +2478,14 @@ async function applyAgentActionsToInstance(instanceId, actions) {
     if (type === "create_connector") executionStats.createdConnectorCount += 1;
   }
 
-  function markFailure(message) {
+  function markSkipped(message, details = null) {
+    executionStats.skippedActionCount += 1;
+    if (message) logRuntimeNotice("skipped_action", message, details);
+  }
+
+  function markFailure(message, details = null) {
     executionStats.failedActionCount += 1;
-    if (message) log(message);
+    if (message) logRuntimeNotice("action_failed", message, details);
   }
 
   function rectFromLiveSticky(st) {
@@ -2422,14 +2557,49 @@ async function applyAgentActionsToInstance(instanceId, actions) {
     return Catalog.resolveStickyId(stickyRef, state.aliasState);
   }
 
-  function rememberConnectorPair(fromStickyId, toStickyId) {
+  function rememberConnector(fromStickyId, toStickyId, directed = true) {
     if (!fromStickyId || !toStickyId) return;
-    connectedPairSet.add(makeCanonicalStickyPairKey(fromStickyId, toStickyId));
+    if (directed === false) {
+      undirectedConnectorSet.add(makeUndirectedConnectorKey(fromStickyId, toStickyId));
+      return;
+    }
+    directedConnectorSet.add(makeDirectedConnectorKey(fromStickyId, toStickyId));
   }
 
-  function hasKnownConnectorBetween(fromStickyId, toStickyId) {
-    if (!fromStickyId || !toStickyId) return false;
-    return connectedPairSet.has(makeCanonicalStickyPairKey(fromStickyId, toStickyId));
+  function detectConnectorCollision(fromStickyId, toStickyId, directed = true) {
+    const undirectedKey = makeUndirectedConnectorKey(fromStickyId, toStickyId);
+    const forwardKey = makeDirectedConnectorKey(fromStickyId, toStickyId);
+    const reverseKey = makeDirectedConnectorKey(toStickyId, fromStickyId);
+
+    if (directed === false) {
+      if (undirectedConnectorSet.has(undirectedKey)) return { type: "exact_undirected_duplicate" };
+      if (directedConnectorSet.has(forwardKey)) return { type: "directed_forward_exists" };
+      if (directedConnectorSet.has(reverseKey)) return { type: "directed_reverse_exists" };
+      return null;
+    }
+
+    if (undirectedConnectorSet.has(undirectedKey)) return { type: "undirected_exists" };
+    if (directedConnectorSet.has(forwardKey)) return { type: "exact_directed_duplicate" };
+    return null;
+  }
+
+  function buildConnectorCollisionMessage(collision, fromStickyId, toStickyId) {
+    if (!collision) return null;
+    const pairLabel = fromStickyId + " → " + toStickyId;
+    switch (collision.type) {
+      case "exact_directed_duplicate":
+        return "create_connector: Gerichtete Verbindung " + pairLabel + " existiert bereits – übersprungen.";
+      case "exact_undirected_duplicate":
+        return "create_connector: Ungerichtete Verbindung zwischen " + fromStickyId + " und " + toStickyId + " existiert bereits – übersprungen.";
+      case "undirected_exists":
+        return "create_connector: Zwischen " + fromStickyId + " und " + toStickyId + " existiert bereits eine ungerichtete Verbindung; gerichtete Duplikate werden nicht angelegt – übersprungen.";
+      case "directed_forward_exists":
+        return "create_connector: Zwischen " + fromStickyId + " und " + toStickyId + " existiert bereits eine gerichtete Verbindung; ungerichtete Duplikate werden nicht angelegt – übersprungen.";
+      case "directed_reverse_exists":
+        return "create_connector: Zwischen " + fromStickyId + " und " + toStickyId + " existiert bereits die Gegenrichtung; ungerichtete Duplikate werden nicht angelegt – übersprungen.";
+      default:
+        return "create_connector: Verbindungskollision erkannt (" + collision.type + ") – übersprungen.";
+    }
   }
 
   async function createStickyAtBoardPosition(action, x, y, sizeHint = null) {
@@ -2467,11 +2637,17 @@ async function applyAgentActionsToInstance(instanceId, actions) {
     "move_sticky": async (action) => {
       const stickyId = resolveActionStickyReference(action.stickyId);
       if (!stickyId) {
-        markFailure("move_sticky: Sticky-Referenz nicht auflösbar: " + String(action.stickyId || "(leer)"));
+        markSkipped("move_sticky: Sticky-Referenz nicht auflösbar: " + String(action.stickyId || "(leer)"));
         return;
       }
 
       const canvasTypeId = instance.canvasTypeId || TEMPLATE_ID;
+      const region = Catalog.areaNameToRegion(action.targetArea, canvasTypeId);
+      const regionId = region?.id || null;
+      if (!regionId || !occupiedByRegion[regionId]) {
+        markSkipped("move_sticky: Unbekannte targetArea '" + String(action.targetArea || "(leer)") + "' – übersprungen.");
+        return;
+      }
 
       let stickyItem = null;
       try {
@@ -2486,39 +2662,29 @@ async function applyAgentActionsToInstance(instanceId, actions) {
       let targetX = null;
       let targetY = null;
 
-      const region = Catalog.areaNameToRegion(action.targetArea, canvasTypeId);
-      const regionId = region?.id || null;
+      const pos = Catalog.computeNextFreeStickyPositionInBodyRegion({
+        templateGeometry: geom,
+        canvasTypeId,
+        regionId,
+        stickyWidthPx: stickyW,
+        stickyHeightPx: stickyH,
+        marginPx: STICKY_LAYOUT.marginPx,
+        gapPx: STICKY_LAYOUT.gapPx,
+        occupiedRects: occupiedByRegion[regionId]
+      });
 
-      if (regionId && occupiedByRegion[regionId]) {
-        const pos = Catalog.computeNextFreeStickyPositionInBodyRegion({
-          templateGeometry: geom,
-          canvasTypeId,
-          regionId,
-          stickyWidthPx: stickyW,
-          stickyHeightPx: stickyH,
-          marginPx: STICKY_LAYOUT.marginPx,
-          gapPx: STICKY_LAYOUT.gapPx,
-          occupiedRects: occupiedByRegion[regionId]
-        });
-
-        if (pos) {
-          if (pos.isFull) {
-            log(
-              "WARNUNG: Region '" + regionId + "' wirkt voll (Grid " +
-              pos.cols + "x" + pos.rows +
-              "). move_sticky setzt auf letzte Zelle."
-            );
-          }
-          targetX = pos.x;
-          targetY = pos.y;
-        } else {
-          const center = Catalog.areaCenterNormalized(regionId, canvasTypeId);
-          const coords = Catalog.normalizedToBoardCoords(geom, center.px, center.py);
-          targetX = coords.x;
-          targetY = coords.y;
+      if (pos) {
+        if (pos.isFull) {
+          log(
+            "WARNUNG: Region '" + regionId + "' wirkt voll (Grid " +
+            pos.cols + "x" + pos.rows +
+            "). move_sticky setzt auf letzte Zelle."
+          );
         }
+        targetX = pos.x;
+        targetY = pos.y;
       } else {
-        const center = Catalog.areaCenterNormalized(null, canvasTypeId);
+        const center = Catalog.areaCenterNormalized(regionId, canvasTypeId);
         const coords = Catalog.normalizedToBoardCoords(geom, center.px, center.py);
         targetX = coords.x;
         targetY = coords.y;
@@ -2548,22 +2714,16 @@ async function applyAgentActionsToInstance(instanceId, actions) {
     "create_sticky": async (action) => {
       const text = action.text || "(leer)";
       const canvasTypeId = instance.canvasTypeId || TEMPLATE_ID;
-
       const areaName = action.area || action.targetArea || null;
       const region = Catalog.areaNameToRegion(areaName, canvasTypeId);
       const regionId = region?.id || null;
 
       if (!regionId || !occupiedByRegion[regionId]) {
-        const center = Catalog.areaCenterNormalized(null, canvasTypeId);
-        const coords = Catalog.normalizedToBoardCoords(geom, center.px, center.py);
-        const sticky = await createStickyAtBoardPosition({ ...action, text }, coords.x, coords.y, null);
-        if (sticky?.id) markSuccess("create_sticky");
-        else markFailure("create_sticky: Miro lieferte kein Sticky-Item zurück.");
+        markSkipped("create_sticky: Unbekannte area '" + String(areaName || "(leer)") + "' – übersprungen.");
         return;
       }
 
       const size = deriveStickySize(regionId);
-
       const pos = Catalog.computeNextFreeStickyPositionInBodyRegion({
         templateGeometry: geom,
         canvasTypeId,
@@ -2601,7 +2761,7 @@ async function applyAgentActionsToInstance(instanceId, actions) {
     "delete_sticky": async (action) => {
       const stickyId = resolveActionStickyReference(action.stickyId);
       if (!stickyId) {
-        markFailure("delete_sticky: Sticky-Referenz nicht auflösbar: " + String(action.stickyId || "(leer)"));
+        markSkipped("delete_sticky: Sticky-Referenz nicht auflösbar: " + String(action.stickyId || "(leer)"));
         return;
       }
 
@@ -2615,7 +2775,7 @@ async function applyAgentActionsToInstance(instanceId, actions) {
       const toStickyId = resolveActionStickyReference(action.toStickyId);
 
       if (!fromStickyId || !toStickyId) {
-        markFailure(
+        markSkipped(
           "create_connector: Sticky-Referenzen nicht auflösbar (from=" +
           String(action.fromStickyId || "(leer)") +
           ", to=" + String(action.toStickyId || "(leer)") + ")."
@@ -2624,22 +2784,24 @@ async function applyAgentActionsToInstance(instanceId, actions) {
       }
 
       if (fromStickyId === toStickyId) {
-        markFailure("create_connector: Quelle und Ziel sind identisch – übersprungen (" + fromStickyId + ").");
+        markSkipped("create_connector: Quelle und Ziel sind identisch – übersprungen (" + fromStickyId + ").");
         return;
       }
 
-      if (hasKnownConnectorBetween(fromStickyId, toStickyId)) {
-        markFailure("create_connector: Verbindung zwischen " + fromStickyId + " und " + toStickyId + " existiert bereits – übersprungen.");
+      const directed = action.directed !== false;
+      const collision = detectConnectorCollision(fromStickyId, toStickyId, directed);
+      if (collision) {
+        markSkipped(buildConnectorCollisionMessage(collision, fromStickyId, toStickyId));
         return;
       }
 
       await Board.createConnectorBetweenItems({
         startItemId: fromStickyId,
         endItemId: toStickyId,
-        directed: action.directed !== false,
+        directed,
         frameId: instance.actionItems?.frameId || null
       }, log);
-      rememberConnectorPair(fromStickyId, toStickyId);
+      rememberConnector(fromStickyId, toStickyId, directed);
       markSuccess("create_connector");
     }
   };
@@ -2655,7 +2817,7 @@ async function applyAgentActionsToInstance(instanceId, actions) {
       try {
         await handler(action);
       } catch (e) {
-        markFailure("Action '" + action.type + "' fehlgeschlagen: " + e.message);
+        markFailure("Action '" + action.type + "' fehlgeschlagen: " + formatRuntimeErrorMessage(e), e?.stack || null);
       }
     }
   }
@@ -2727,8 +2889,9 @@ async function runAgentForSelectedInstances(selectedInstanceIds, options = {}) {
 
   const normalizedSelectedIds = Array.from(new Set((selectedInstanceIds || []).filter((id) => state.instancesById.has(id))));
   if (!normalizedSelectedIds.length) {
-    log("Instanz-Agent: Keine gültigen Ziel-Instanzen übergeben.");
-    return;
+    const msg = "Instanz-Agent: Keine gültigen Ziel-Instanzen übergeben.";
+    logRuntimeNotice("precondition", msg);
+    return buildRunFailureResult("precondition", msg);
   }
 
   const apiKey = getApiKey();
@@ -2743,90 +2906,96 @@ async function runAgentForSelectedInstances(selectedInstanceIds, options = {}) {
 
   if (!apiKey) {
     const msg = "Bitte OpenAI API Key eingeben (Agent).";
-    log(msg);
+    logRuntimeNotice("precondition", msg);
     if (IS_HEADLESS) await notifyRuntime(msg, { level: "error" });
-    return;
+    return buildRunFailureResult("precondition", msg);
   }
 
-  const promptCfg = getPromptConfigForSelectedInstances(normalizedSelectedIds);
-
-  const { liveCatalog } = await refreshBoardState();
-  const stateById = await computeInstanceStatesById(liveCatalog);
-
-  const activeCanvasStates = Object.create(null);
-  const activeInstanceChangesSinceLastAgent = Object.create(null);
-
-  for (const id of normalizedSelectedIds) {
-    const st = stateById[id];
-    const instance = state.instancesById.get(id) || null;
-    const instanceLabel = instance?.instanceLabel || null;
-    if (!st?.classification || !instanceLabel) continue;
-
-    const payload = Catalog.buildPromptPayloadFromClassification(st.classification, {
-      useAliases: true,
-      aliasState: state.aliasState,
-      log
-    });
-    if (payload) activeCanvasStates[instanceLabel] = payload;
-
-    if (!state.hasGlobalBaseline || !st?.diff) {
-      activeInstanceChangesSinceLastAgent[instanceLabel] = null;
-    } else {
-      activeInstanceChangesSinceLastAgent[instanceLabel] = Catalog.aliasDiffForActiveInstance(st.diff, state.aliasState);
-    }
+  const runLock = tryAcquireAgentRunLock(sourceLabel);
+  if (!runLock) {
+    return buildRunFailureResult("run_locked", sourceLabel + ": Ein Agent-Run läuft bereits.");
   }
-
-  const resolvedActiveLabels = Object.keys(activeCanvasStates);
-  if (!resolvedActiveLabels.length) {
-    log(sourceLabel + ": Konnte für die selektierten Canvas keine Zustandsdaten aufbauen.");
-    return;
-  }
-
-  const resolvedActiveIds = resolvedActiveLabels
-    .map((label) => getInternalInstanceIdByLabel(label))
-    .filter((id) => state.instancesById.has(id));
-  const singleLabel = resolvedActiveLabels.length === 1 ? resolvedActiveLabels[0] : null;
-  const boardCatalog = buildBoardCatalogForSelectedInstances(resolvedActiveIds);
-  const memoryPayload = buildMemoryInjectionPayload();
-
-  const baseUserPayload = {
-    activeInstanceLabel: singleLabel,
-    selectedInstanceLabels: resolvedActiveLabels,
-    boardCatalog,
-    activeCanvasState: singleLabel ? activeCanvasStates[singleLabel] : null,
-    activeCanvasStates,
-    activeInstanceChangesSinceLastAgent,
-    memoryState: memoryPayload.memoryState,
-    recentMemoryLogEntries: memoryPayload.recentMemoryLogEntries,
-    hint: buildPayloadMappingHint({
-      scopeLabel: "selektierten Instanzen",
-      labelListKey: "selectedInstanceLabels"
-    })
-  };
-
-  const composedPrompt = composePromptForRun({
-    runMode,
-    triggerContext,
-    baseSystemPrompt: promptCfg.system,
-    involvedCanvasTypeIds: getInvolvedCanvasTypeIdsFromInstanceIds(resolvedActiveIds),
-    baseUserPayload,
-    userQuestion: userText,
-    promptRuntimeOverride
-  });
-
-  const exerciseInfo = composedPrompt.exerciseContext?.exercisePackLabel
-    ? (" | Exercise: " + composedPrompt.exerciseContext.exercisePackLabel + " / " + (composedPrompt.exerciseContext.currentStepLabel || "kein Schritt"))
-    : "";
-
-  log(
-    "Starte " + sourceLabel + " für selektierte Instanzen: " +
-    resolvedActiveLabels.join(", ") +
-    exerciseInfo +
-    (triggerContext?.triggerKey ? (" | Trigger: " + triggerContext.triggerKey) : "") +
-    " ..."
-  );
 
   try {
+    const promptCfg = getPromptConfigForSelectedInstances(normalizedSelectedIds);
+
+    const { liveCatalog } = await refreshBoardState();
+    const stateById = await computeInstanceStatesById(liveCatalog);
+
+    const activeCanvasStates = Object.create(null);
+    const activeInstanceChangesSinceLastAgent = Object.create(null);
+
+    for (const id of normalizedSelectedIds) {
+      const st = stateById[id];
+      const instance = state.instancesById.get(id) || null;
+      const instanceLabel = instance?.instanceLabel || null;
+      if (!st?.classification || !instanceLabel) continue;
+
+      const payload = Catalog.buildPromptPayloadFromClassification(st.classification, {
+        useAliases: true,
+        aliasState: state.aliasState,
+        log
+      });
+      if (payload) activeCanvasStates[instanceLabel] = payload;
+
+      if (!state.hasGlobalBaseline || !st?.diff) {
+        activeInstanceChangesSinceLastAgent[instanceLabel] = null;
+      } else {
+        activeInstanceChangesSinceLastAgent[instanceLabel] = Catalog.aliasDiffForActiveInstance(st.diff, state.aliasState);
+      }
+    }
+
+    const resolvedActiveLabels = Object.keys(activeCanvasStates);
+    if (!resolvedActiveLabels.length) {
+      const msg = sourceLabel + ": Konnte für die selektierten Canvas keine Zustandsdaten aufbauen.";
+      logRuntimeNotice("precondition", msg);
+      return buildRunFailureResult("precondition", msg);
+    }
+
+    const resolvedActiveIds = resolvedActiveLabels
+      .map((label) => getInternalInstanceIdByLabel(label))
+      .filter((id) => state.instancesById.has(id));
+    const singleLabel = resolvedActiveLabels.length === 1 ? resolvedActiveLabels[0] : null;
+    const boardCatalog = buildBoardCatalogForSelectedInstances(resolvedActiveIds);
+    const memoryPayload = buildMemoryInjectionPayload();
+
+    const baseUserPayload = {
+      activeInstanceLabel: singleLabel,
+      selectedInstanceLabels: resolvedActiveLabels,
+      boardCatalog,
+      activeCanvasState: singleLabel ? activeCanvasStates[singleLabel] : null,
+      activeCanvasStates,
+      activeInstanceChangesSinceLastAgent,
+      memoryState: memoryPayload.memoryState,
+      recentMemoryLogEntries: memoryPayload.recentMemoryLogEntries,
+      hint: buildPayloadMappingHint({
+        scopeLabel: "selektierten Instanzen",
+        labelListKey: "selectedInstanceLabels"
+      })
+    };
+
+    const composedPrompt = composePromptForRun({
+      runMode,
+      triggerContext,
+      baseSystemPrompt: promptCfg.system,
+      involvedCanvasTypeIds: getInvolvedCanvasTypeIdsFromInstanceIds(resolvedActiveIds),
+      baseUserPayload,
+      userQuestion: userText,
+      promptRuntimeOverride
+    });
+
+    const exerciseInfo = composedPrompt.exerciseContext?.exercisePackLabel
+      ? (" | Exercise: " + composedPrompt.exerciseContext.exercisePackLabel + " / " + (composedPrompt.exerciseContext.currentStepLabel || "kein Schritt"))
+      : "";
+
+    log(
+      "Starte " + sourceLabel + " für selektierte Instanzen: " +
+      resolvedActiveLabels.join(", ") +
+      exerciseInfo +
+      (triggerContext?.triggerKey ? (" | Trigger: " + triggerContext.triggerKey) : "") +
+      " ..."
+    );
+
     log("Sende " + sourceLabel + "-Request an OpenAI ...");
     const structuredResult = await OpenAI.callOpenAIAgentStructured({
       apiKey,
@@ -2836,15 +3005,16 @@ async function runAgentForSelectedInstances(selectedInstanceIds, options = {}) {
     });
 
     if (structuredResult.refusal) {
-      log(sourceLabel + ": Modell verweigert die Antwort: " + structuredResult.refusal);
-      return;
+      const msg = sourceLabel + ": Modell verweigert die Antwort: " + structuredResult.refusal;
+      logRuntimeNotice("model_refusal", msg);
+      return buildRunFailureResult("model_refusal", msg, { refusal: structuredResult.refusal });
     }
 
     const agentObj = structuredResult.parsed;
     if (!agentObj) {
-      log(sourceLabel + ": Antwort ist kein valides strukturiertes JSON. Rohantwort:");
-      log(structuredResult.outputText || "(keine output_text-Antwort)");
-      return;
+      const msg = sourceLabel + ": Antwort ist kein valides strukturiertes JSON.";
+      logRuntimeNotice("invalid_json", msg, structuredResult.outputText || "(keine output_text-Antwort)");
+      return buildRunFailureResult("invalid_json", msg, { rawOutputText: structuredResult.outputText || null });
     }
 
     const { feedback, recommendations, evaluation } = normalizeAgentExerciseArtifacts(agentObj, triggerContext, sourceLabel);
@@ -2912,8 +3082,17 @@ async function runAgentForSelectedInstances(selectedInstanceIds, options = {}) {
       }
     }
 
+    return buildRunSuccessResult({
+      sourceLabel,
+      targetInstanceLabels: resolvedActiveLabels,
+      actionResult
+    });
   } catch (e) {
-    log("Exception beim " + sourceLabel + "-Run: " + e.message);
+    const msg = "Exception beim " + sourceLabel + "-Run: " + formatRuntimeErrorMessage(e);
+    logRuntimeNotice("fatal", msg, e?.stack || null);
+    return buildRunFailureResult("fatal", msg, { error: e });
+  } finally {
+    releaseAgentRunLock(runLock);
   }
 }
 
@@ -2924,6 +3103,44 @@ function resolveOwnerInstanceIdForStickyReference(stickyRef) {
   return state.stickyOwnerCache?.get(resolvedStickyId) || null;
 }
 
+function validateNormalizedAction(action) {
+  if (!action || typeof action !== "object" || !action.type) {
+    return { ok: false, message: "Unbekanntes oder nicht unterstütztes Action-Schema." };
+  }
+
+  if (action.type === "move_sticky") {
+    const targetArea = pickFirstNonEmptyString(action.targetArea, action.area);
+    if (!action.stickyId) return { ok: false, message: "move_sticky ohne stickyId." };
+    if (!targetArea) return { ok: false, message: "move_sticky ohne targetArea." };
+    return { ok: true, action: { ...action, targetArea } };
+  }
+
+  if (action.type === "create_sticky") {
+    const area = pickFirstNonEmptyString(action.area, action.targetArea);
+    if (!action.text) return { ok: false, message: "create_sticky ohne text." };
+    if (!area) return { ok: false, message: "create_sticky ohne area." };
+    return { ok: true, action: { ...action, area, targetArea: area } };
+  }
+
+  if (action.type === "delete_sticky") {
+    if (!action.stickyId) return { ok: false, message: "delete_sticky ohne stickyId." };
+    return { ok: true, action };
+  }
+
+  if (action.type === "create_connector") {
+    if (!action.fromStickyId || !action.toStickyId) {
+      return { ok: false, message: "create_connector ohne fromStickyId/toStickyId." };
+    }
+    return { ok: true, action: { ...action, directed: action.directed !== false } };
+  }
+
+  if (action.type === "inform") {
+    return { ok: true, action };
+  }
+
+  return { ok: true, action };
+}
+
 function resolveActionInstanceId(action, { candidateInstanceIds = null, triggerInstanceId = null, sourceLabel = "Agent" } = {}) {
   const candidateIds = Array.from(new Set((candidateInstanceIds || []).filter((id) => state.instancesById.has(id))));
 
@@ -2931,15 +3148,10 @@ function resolveActionInstanceId(action, { candidateInstanceIds = null, triggerI
     ? getInternalInstanceIdByLabel(action.instanceLabel)
     : null;
 
-  const explicitInstanceId =
-    explicitInstanceIdByLabel || (
-      (action?.instanceId && state.instancesById.has(action.instanceId))
-        ? action.instanceId
-        : null
-    );
+  const explicitInstanceId = explicitInstanceIdByLabel || ((action?.instanceId && state.instancesById.has(action.instanceId)) ? action.instanceId : null);
 
-  if (action?.instanceLabel && !explicitInstanceIdByLabel && typeof log === "function") {
-    log(sourceLabel + ": Unbekanntes instanceLabel '" + action.instanceLabel + "' in Action-Output.");
+  if (action?.instanceLabel && !explicitInstanceIdByLabel) {
+    logRuntimeNotice("skipped_action", sourceLabel + ": Unbekanntes instanceLabel '" + action.instanceLabel + "' in Action-Output.");
   }
 
   const ownerInstanceIds = Array.from(new Set([
@@ -2949,7 +3161,7 @@ function resolveActionInstanceId(action, { candidateInstanceIds = null, triggerI
   ].filter(Boolean)));
 
   if (ownerInstanceIds.length > 1) {
-    log(sourceLabel + ": Action referenziert Sticky Notes aus mehreren Instanzen – übersprungen.");
+    logRuntimeNotice("skipped_action", sourceLabel + ": Action referenziert Sticky Notes aus mehreren Instanzen – übersprungen.");
     return null;
   }
 
@@ -2967,7 +3179,8 @@ function resolveActionInstanceId(action, { candidateInstanceIds = null, triggerI
   const preferredInstanceId = ownerInstanceId || explicitInstanceId || null;
   if (preferredInstanceId) {
     if (candidateIds.length > 0 && !candidateIds.includes(preferredInstanceId)) {
-      log(
+      logRuntimeNotice(
+        "skipped_action",
         sourceLabel + ": Abgeleitete Ziel-Instanz " +
         (getInstanceLabelByInternalId(preferredInstanceId) || preferredInstanceId) +
         " liegt außerhalb des erlaubten Zielsets – Action übersprungen."
@@ -2977,14 +3190,8 @@ function resolveActionInstanceId(action, { candidateInstanceIds = null, triggerI
     return preferredInstanceId;
   }
 
-  if (candidateIds.length === 1) {
-    return candidateIds[0];
-  }
-
-  if (triggerInstanceId && candidateIds.includes(triggerInstanceId)) {
-    return triggerInstanceId;
-  }
-
+  if (candidateIds.length === 1) return candidateIds[0];
+  if (triggerInstanceId && candidateIds.includes(triggerInstanceId)) return triggerInstanceId;
   return null;
 }
 
@@ -3011,8 +3218,7 @@ async function applyResolvedAgentActions(actions, { candidateInstanceIds, trigge
 
     if (!action) {
       skippedCount++;
-      log(sourceLabel + ": Unbekanntes oder nicht unterstütztes Action-Schema – übersprungen.");
-      log(rawAction);
+      logRuntimeNotice("skipped_action", sourceLabel + ": Unbekanntes oder nicht unterstütztes Action-Schema – übersprungen.", rawAction);
       continue;
     }
 
@@ -3025,31 +3231,18 @@ async function applyResolvedAgentActions(actions, { candidateInstanceIds, trigge
       };
     }
 
+    const validation = validateNormalizedAction(action);
+    if (!validation.ok) {
+      skippedCount++;
+      logRuntimeNotice("skipped_action", sourceLabel + ": " + validation.message + " – übersprungen.", rawAction);
+      continue;
+    }
+    action = validation.action || action;
+
     if (action.type === "inform") {
       infoCount++;
       log(sourceLabel + " info:");
       log(action.message || "(keine Nachricht)");
-      continue;
-    }
-
-    if ((action.type === "move_sticky" || action.type === "delete_sticky") && !action.stickyId) {
-      skippedCount++;
-      log(sourceLabel + ": Action ohne stickyId – übersprungen.");
-      log(rawAction);
-      continue;
-    }
-
-    if (action.type === "create_sticky" && !action.text) {
-      skippedCount++;
-      log(sourceLabel + ": create_sticky ohne text – übersprungen.");
-      log(rawAction);
-      continue;
-    }
-
-    if (action.type === "create_connector" && (!action.fromStickyId || !action.toStickyId)) {
-      skippedCount++;
-      log(sourceLabel + ": create_connector ohne fromStickyId/toStickyId – übersprungen.");
-      log(rawAction);
       continue;
     }
 
@@ -3061,8 +3254,7 @@ async function applyResolvedAgentActions(actions, { candidateInstanceIds, trigge
 
     if (!targetInstanceId) {
       skippedCount++;
-      log(sourceLabel + ": Keine Ziel-Instanz für Action ableitbar – übersprungen.");
-      log(rawAction);
+      logRuntimeNotice("skipped_action", sourceLabel + ": Keine Ziel-Instanz für Action ableitbar – übersprungen.", rawAction);
       continue;
     }
 
@@ -3076,20 +3268,20 @@ async function applyResolvedAgentActions(actions, { candidateInstanceIds, trigge
   }
 
   for (const [instanceId, instanceActions] of grouped.entries()) {
-    log(
-      sourceLabel + ": Wende " + instanceActions.length + " Action(s) auf Instanz " +
-      (getInstanceLabelByInternalId(instanceId) || instanceId) + " an."
-    );
+    log(sourceLabel + ": Wende " + instanceActions.length + " Action(s) auf Instanz " + (getInstanceLabelByInternalId(instanceId) || instanceId) + " an.");
     const executionStats = await applyAgentActionsToInstance(instanceId, instanceActions);
     mergeActionExecutionStats(aggregatedExecutionStats, executionStats);
   }
 
+  const totalSkippedCount = skippedCount + Number(aggregatedExecutionStats.skippedActionCount || 0);
+
   return {
     appliedCount,
-    skippedCount,
+    skippedCount: totalSkippedCount,
     infoCount,
     targetedInstanceCount: grouped.size,
-    ...aggregatedExecutionStats
+    ...aggregatedExecutionStats,
+    skippedActionCount: totalSkippedCount
   };
 }
 
@@ -3116,107 +3308,113 @@ async function runGlobalAgent(triggerInstanceId, userText, options = {}) {
 
   if (!apiKey) {
     const msg = "Bitte OpenAI API Key eingeben (Global Agent).";
-    log(msg);
+    logRuntimeNotice("precondition", msg);
     if (IS_HEADLESS) await notifyRuntime(msg, { level: "error" });
-    return;
+    return buildRunFailureResult("precondition", msg);
   }
 
-  log(
-    "Starte globalen Agenten-Run, Trigger-Instanz: " +
-    (getInstanceLabelByInternalId(triggerInstanceId) || triggerInstanceId || "(keine)") +
-    (triggerContext?.triggerKey ? (" | Trigger: " + triggerContext.triggerKey) : "")
-  );
-
-  const { liveCatalog } = await refreshBoardState();
-  const stateById = await computeInstanceStatesById(liveCatalog);
-
-  const baseBoardCatalog = Catalog.buildBoardCatalogSummary(state.instancesById, {
-    mode: "global",
-    hasGlobalBaseline: state.hasGlobalBaseline
-  });
-
-  let activeInstanceIds = [];
-  if (forceTargetSet) {
-    activeInstanceIds = forcedInstanceIds.slice();
-  } else {
-    activeInstanceIds = (baseBoardCatalog.instances || [])
-      .filter((entry) => entry.isActive)
-      .map((entry) => getInternalInstanceIdByLabel(entry.instanceLabel))
-      .filter((id) => state.instancesById.has(id));
+  const runLock = tryAcquireAgentRunLock(sourceLabel);
+  if (!runLock) {
+    return buildRunFailureResult("run_locked", sourceLabel + ": Ein Agent-Run läuft bereits.");
   }
-
-  const activeInstanceLabels = getInstanceLabelsFromIds(activeInstanceIds);
-  const forcedLabelSet = new Set(activeInstanceLabels);
-  const boardCatalog = forceTargetSet
-    ? {
-        instances: (baseBoardCatalog.instances || []).map((entry) => ({
-          ...entry,
-          isActive: forcedLabelSet.has(entry.instanceLabel)
-        }))
-      }
-    : baseBoardCatalog;
-
-  if (forceTargetSet && !activeInstanceIds.length) {
-    log(sourceLabel + ": Keine gültigen Ziel-Instanzen für den globalen Exercise-Lauf gefunden.");
-    return;
-  }
-
-  const activeCanvasStates = Object.create(null);
-  const activeInstanceChangesSinceLastAgent = Object.create(null);
-
-  for (const id of activeInstanceIds) {
-    const st = stateById[id];
-    const instance = state.instancesById.get(id) || null;
-    const instanceLabel = instance?.instanceLabel || null;
-    if (!st?.classification || !instanceLabel) continue;
-
-    const payload = Catalog.buildPromptPayloadFromClassification(st.classification, {
-      useAliases: true,
-      aliasState: state.aliasState,
-      log
-    });
-    if (payload) activeCanvasStates[instanceLabel] = payload;
-
-    if (!state.hasGlobalBaseline || !st?.diff) {
-      activeInstanceChangesSinceLastAgent[instanceLabel] = null;
-    } else {
-      activeInstanceChangesSinceLastAgent[instanceLabel] = Catalog.aliasDiffForActiveInstance(st.diff, state.aliasState);
-    }
-  }
-
-  const memoryPayload = buildMemoryInjectionPayload();
-  const baseUserPayload = {
-    triggerInstanceLabel: getInstanceLabelByInternalId(triggerInstanceId) || null,
-    hasBaseline: state.hasGlobalBaseline,
-    boardCatalog,
-    activeInstanceLabels,
-    activeCanvasStates,
-    activeInstanceChangesSinceLastAgent,
-    memoryState: memoryPayload.memoryState,
-    recentMemoryLogEntries: memoryPayload.recentMemoryLogEntries,
-    hint: buildPayloadMappingHint({
-      scopeLabel: "im aktuellen Lauf relevanten Instanzen",
-      labelListKey: "activeInstanceLabels",
-      mentionArea: true
-    })
-  };
-
-  const composedPrompt = composePromptForRun({
-    runMode,
-    triggerContext,
-    baseSystemPrompt: DT_GLOBAL_SYSTEM_PROMPT,
-    involvedCanvasTypeIds: getInvolvedCanvasTypeIdsFromInstanceIds(activeInstanceIds),
-    baseUserPayload,
-    userQuestion: finalUserText,
-    promptRuntimeOverride
-  });
-
-  const exerciseInfo = composedPrompt.exerciseContext?.exercisePackLabel
-    ? (" | Exercise: " + composedPrompt.exerciseContext.exercisePackLabel + " / " + (composedPrompt.exerciseContext.currentStepLabel || "kein Schritt"))
-    : "";
-  log(sourceLabel + "-Kontext" + exerciseInfo + ". Ziel-Canvas: " + (activeInstanceLabels.join(", ") || "(keine)"));
 
   try {
+    log(
+      "Starte globalen Agenten-Run, Trigger-Instanz: " +
+      (getInstanceLabelByInternalId(triggerInstanceId) || triggerInstanceId || "(keine)") +
+      (triggerContext?.triggerKey ? (" | Trigger: " + triggerContext.triggerKey) : "")
+    );
+
+    const { liveCatalog } = await refreshBoardState();
+    const stateById = await computeInstanceStatesById(liveCatalog);
+
+    const baseBoardCatalog = Catalog.buildBoardCatalogSummary(state.instancesById, {
+      mode: "global",
+      hasGlobalBaseline: state.hasGlobalBaseline
+    });
+
+    let activeInstanceIds = [];
+    if (forceTargetSet) {
+      activeInstanceIds = forcedInstanceIds.slice();
+    } else {
+      activeInstanceIds = (baseBoardCatalog.instances || [])
+        .filter((entry) => entry.isActive)
+        .map((entry) => getInternalInstanceIdByLabel(entry.instanceLabel))
+        .filter((id) => state.instancesById.has(id));
+    }
+
+    const activeInstanceLabels = getInstanceLabelsFromIds(activeInstanceIds);
+    const forcedLabelSet = new Set(activeInstanceLabels);
+    const boardCatalog = forceTargetSet
+      ? {
+          instances: (baseBoardCatalog.instances || []).map((entry) => ({
+            ...entry,
+            isActive: forcedLabelSet.has(entry.instanceLabel)
+          }))
+        }
+      : baseBoardCatalog;
+
+    if (forceTargetSet && !activeInstanceIds.length) {
+      const msg = sourceLabel + ": Keine gültigen Ziel-Instanzen für den globalen Exercise-Lauf gefunden.";
+      logRuntimeNotice("precondition", msg);
+      return buildRunFailureResult("precondition", msg);
+    }
+
+    const activeCanvasStates = Object.create(null);
+    const activeInstanceChangesSinceLastAgent = Object.create(null);
+
+    for (const id of activeInstanceIds) {
+      const st = stateById[id];
+      const instance = state.instancesById.get(id) || null;
+      const instanceLabel = instance?.instanceLabel || null;
+      if (!st?.classification || !instanceLabel) continue;
+
+      const payload = Catalog.buildPromptPayloadFromClassification(st.classification, {
+        useAliases: true,
+        aliasState: state.aliasState,
+        log
+      });
+      if (payload) activeCanvasStates[instanceLabel] = payload;
+
+      if (!state.hasGlobalBaseline || !st?.diff) {
+        activeInstanceChangesSinceLastAgent[instanceLabel] = null;
+      } else {
+        activeInstanceChangesSinceLastAgent[instanceLabel] = Catalog.aliasDiffForActiveInstance(st.diff, state.aliasState);
+      }
+    }
+
+    const memoryPayload = buildMemoryInjectionPayload();
+    const baseUserPayload = {
+      triggerInstanceLabel: getInstanceLabelByInternalId(triggerInstanceId) || null,
+      hasBaseline: state.hasGlobalBaseline,
+      boardCatalog,
+      activeInstanceLabels,
+      activeCanvasStates,
+      activeInstanceChangesSinceLastAgent,
+      memoryState: memoryPayload.memoryState,
+      recentMemoryLogEntries: memoryPayload.recentMemoryLogEntries,
+      hint: buildPayloadMappingHint({
+        scopeLabel: "im aktuellen Lauf relevanten Instanzen",
+        labelListKey: "activeInstanceLabels",
+        mentionArea: true
+      })
+    };
+
+    const composedPrompt = composePromptForRun({
+      runMode,
+      triggerContext,
+      baseSystemPrompt: DT_GLOBAL_SYSTEM_PROMPT,
+      involvedCanvasTypeIds: getInvolvedCanvasTypeIdsFromInstanceIds(activeInstanceIds),
+      baseUserPayload,
+      userQuestion: finalUserText,
+      promptRuntimeOverride
+    });
+
+    const exerciseInfo = composedPrompt.exerciseContext?.exercisePackLabel
+      ? (" | Exercise: " + composedPrompt.exerciseContext.exercisePackLabel + " / " + (composedPrompt.exerciseContext.currentStepLabel || "kein Schritt"))
+      : "";
+    log(sourceLabel + "-Kontext" + exerciseInfo + ". Ziel-Canvas: " + (activeInstanceLabels.join(", ") || "(keine)"));
+
     log("Sende " + sourceLabel + "-Request an OpenAI ...");
     const structuredResult = await OpenAI.callOpenAIAgentStructured({
       apiKey,
@@ -3226,15 +3424,16 @@ async function runGlobalAgent(triggerInstanceId, userText, options = {}) {
     });
 
     if (structuredResult.refusal) {
-      log(sourceLabel + ": Modell verweigert die Antwort: " + structuredResult.refusal);
-      return;
+      const msg = sourceLabel + ": Modell verweigert die Antwort: " + structuredResult.refusal;
+      logRuntimeNotice("model_refusal", msg);
+      return buildRunFailureResult("model_refusal", msg, { refusal: structuredResult.refusal });
     }
 
     const agentObj = structuredResult.parsed;
     if (!agentObj) {
-      log(sourceLabel + ": Antwort ist kein valides strukturiertes JSON. Rohantwort:");
-      log(structuredResult.outputText || "(keine output_text-Antwort)");
-      return;
+      const msg = sourceLabel + ": Antwort ist kein valides strukturiertes JSON.";
+      logRuntimeNotice("invalid_json", msg, structuredResult.outputText || "(keine output_text-Antwort)");
+      return buildRunFailureResult("invalid_json", msg, { rawOutputText: structuredResult.outputText || null });
     }
 
     const { feedback, recommendations, evaluation } = normalizeAgentExerciseArtifacts(agentObj, triggerContext, sourceLabel);
@@ -3327,7 +3526,17 @@ async function runGlobalAgent(triggerInstanceId, userText, options = {}) {
       }
     }
 
+    return buildRunSuccessResult({
+      sourceLabel,
+      targetInstanceLabels: activeInstanceLabels,
+      actionResult,
+      baselineUpdated: updateGlobalBaseline
+    });
   } catch (e) {
-    log("Exception beim globalen Agent-Run: " + e.message);
+    const msg = "Exception beim globalen Agent-Run: " + formatRuntimeErrorMessage(e);
+    logRuntimeNotice("fatal", msg, e?.stack || null);
+    return buildRunFailureResult("fatal", msg, { error: e });
+  } finally {
+    releaseAgentRunLock(runLock);
   }
 }

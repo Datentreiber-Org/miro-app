@@ -54,9 +54,18 @@ export function normalizeConnectorDirection(rawAction) {
   };
 }
 
-export function makeCanonicalStickyPairKey(a, b) {
+export function makeDirectedConnectorKey(fromStickyId, toStickyId) {
+  if (!fromStickyId || !toStickyId) return null;
+  return String(fromStickyId) + "->" + String(toStickyId);
+}
+
+export function makeUndirectedConnectorKey(a, b) {
   if (!a || !b) return null;
   return [String(a), String(b)].sort().join("<->");
+}
+
+export function makeCanonicalStickyPairKey(a, b) {
+  return makeUndirectedConnectorKey(a, b);
 }
 
 export function canonicalizeAgentActionType(rawType) {

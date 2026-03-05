@@ -5,6 +5,7 @@ export function createEmptyActionExecutionStats() {
     deletedStickyCount: 0,
     createdConnectorCount: 0,
     failedActionCount: 0,
+    skippedActionCount: 0,
     executedMutationCount: 0
   };
 }
@@ -16,6 +17,7 @@ export function mergeActionExecutionStats(target, addition) {
   target.deletedStickyCount += Number(addition.deletedStickyCount || 0);
   target.createdConnectorCount += Number(addition.createdConnectorCount || 0);
   target.failedActionCount += Number(addition.failedActionCount || 0);
+  target.skippedActionCount += Number(addition.skippedActionCount || 0);
   target.executedMutationCount += Number(addition.executedMutationCount || 0);
   return target;
 }
@@ -29,7 +31,7 @@ export function summarizeAppliedActions(actionResult) {
     deletedStickyCount: Number(src.deletedStickyCount || 0),
     createdConnectorCount: Number(src.createdConnectorCount || 0),
     failedActionCount: Number(src.failedActionCount || 0),
-    skippedActionCount: Number(src.skippedCount || 0),
+    skippedActionCount: Number((src.skippedActionCount ?? src.skippedCount) || 0),
     infoCount: Number(src.infoCount || 0),
     targetedInstanceCount: Number(src.targetedInstanceCount || 0),
     executedMutationCount: Number(src.executedMutationCount || 0),
