@@ -1,16 +1,14 @@
 import {
   DT_SHAPE_META_KEY_FLOW_CONTROL,
-  DT_FLOW_CONTROL_LAYOUT
-} from "../config.js?v=20260303-flowbatch1";
+  DT_FLOW_CONTROL_LAYOUT,
+  DT_FLOW_CONTROL_STATE_STYLES
+} from "../config.js?v=20260306-batch45";
 
 import { ensureMiroReady, getBoard } from "./sdk.js?v=20260305-batch05";
 import { asTrimmedString } from "./helpers.js?v=20260305-batch05";
 import { getItemById } from "./items.js?v=20260305-batch05";
-import { computeTemplateGeometry } from "./instances.js?v=20260305-batch05";
+import { computeTemplateGeometry } from "./instances.js?v=20260305-batch31";
 
-// --------------------------------------------------------------------
-// Flow-control metadata and shape helpers
-// --------------------------------------------------------------------
 function normalizeFlowControlMeta(rawMeta) {
   const src = (rawMeta && typeof rawMeta === "object") ? rawMeta : {};
   return {
@@ -18,6 +16,25 @@ function normalizeFlowControlMeta(rawMeta) {
     kind: "flow_control",
     flowId: asTrimmedString(src.flowId),
     controlId: asTrimmedString(src.controlId)
+  };
+}
+
+function normalizeFlowControlState(value) {
+  const normalized = asTrimmedString(value) || "disabled";
+  return ["active", "disabled", "done"].includes(normalized) ? normalized : "disabled";
+}
+
+export function getFlowControlStyleForState(state) {
+  const normalizedState = normalizeFlowControlState(state);
+  const cfg = DT_FLOW_CONTROL_STATE_STYLES[normalizedState] || DT_FLOW_CONTROL_STATE_STYLES.disabled;
+  return {
+    fillColor: cfg.fillColor,
+    borderColor: cfg.borderColor,
+    borderWidth: 2,
+    color: cfg.textColor,
+    fontSize: 14,
+    textAlign: "center",
+    textAlignVertical: "middle"
   };
 }
 
@@ -89,7 +106,7 @@ export async function computeSuggestedFlowControlPosition(instance, { offsetInde
   };
 }
 
-export async function createFlowControlShape({ label, x, y, frameId = null, width = DT_FLOW_CONTROL_LAYOUT.widthPx, height = DT_FLOW_CONTROL_LAYOUT.heightPx }, log) {
+export async function createFlowControlShape({ label, x, y, width = DT_FLOW_CONTROL_LAYOUT.widthPx, height = DT_FLOW_CONTROL_LAYOUT.heightPx, state = "disabled" }, log) {
   await ensureMiroReady(log);
   const board = getBoard();
   if (!board?.createShape) throw new Error("miro.board.createShape nicht verfügbar");
@@ -101,28 +118,29 @@ export async function createFlowControlShape({ label, x, y, frameId = null, widt
     y,
     width,
     height,
-    style: {
-      fillColor: "#e0f2fe",
-      borderColor: "#0369a1",
-      borderWidth: 2,
-      color: "#0f172a",
-      fontSize: 14,
-      textAlign: "center",
-      textAlignVertical: "middle"
-    }
+    style: getFlowControlStyleForState(state)
   });
 
-  if (frameId) {
-    try {
-      const frame = await getItemById(frameId, log);
-      if (frame?.type === "frame" && typeof frame.add === "function") {
-        await frame.add(shape);
-        await frame.sync();
-      }
-    } catch (e) {
-      if (typeof log === "function") log("Konnte Flow-Control-Shape nicht dem Frame hinzufügen: " + e.message);
-    }
-  }
-
   return shape;
+}
+
+export async function syncFlowControlShapeAppearance(itemOrId, { label = null, state = null } = {}, log) {
+  await ensureMiroReady(log);
+  const item = typeof itemOrId === "object" && itemOrId
+    ? itemOrId
+    : (itemOrId ? await getItemById(itemOrId, log) : null);
+
+  if (!item?.sync) return null;
+
+  const normalizedLabel = asTrimmedString(label);
+  if (normalizedLabel) item.content = normalizedLabel;
+
+  const nextState = normalizeFlowControlState(state);
+  item.style = {
+    ...(item.style || {}),
+    ...getFlowControlStyleForState(nextState)
+  };
+
+  await item.sync();
+  return item;
 }

@@ -2,7 +2,7 @@ import {
   DT_DEFAULT_FEEDBACK_FRAME_NAME,
   DT_FEEDBACK_TEXT_LAYOUT,
   DT_TEXT_META_KEY_FEEDBACK
-} from "../config.js?v=20260303-flowbatch1";
+} from "../config.js?v=20260306-batch45";
 
 import { isFiniteNumber } from "../utils.js?v=20260301-step11-hotfix2";
 import { ensureMiroReady, getBoard } from "./sdk.js?v=20260305-batch05";
@@ -90,14 +90,16 @@ function buildEvaluationHtml(evaluation) {
   return parts.join("");
 }
 
-export function buildFeedbackTextContent({ counter, triggerContext, feedback, recommendations, evaluation, exercisePack, currentStep }) {
+export function buildFeedbackTextContent({ counter, triggerContext, feedback, flowControlDirectives, evaluation, exercisePack, currentStep }) {
   const title = createFeedbackTitle(counter, triggerContext, exercisePack, currentStep, feedback);
   const summary = asTrimmedString(feedback?.summary);
   const sections = Array.isArray(feedback?.sections) ? feedback.sections : [];
-  const recommendedNextTrigger = asTrimmedString(recommendations?.recommendedNextTrigger);
-  const recommendedNextStepId = asTrimmedString(recommendations?.recommendedNextStepId);
-  const recommendationReason = asTrimmedString(recommendations?.reason);
-  const advanceStepSuggested = recommendations?.advanceStepSuggested === true;
+  const unlockRunProfileIds = Array.isArray(flowControlDirectives?.unlockRunProfileIds)
+    ? flowControlDirectives.unlockRunProfileIds.map((value) => asTrimmedString(value)).filter(Boolean)
+    : [];
+  const completeRunProfileIds = Array.isArray(flowControlDirectives?.completeRunProfileIds)
+    ? flowControlDirectives.completeRunProfileIds.map((value) => asTrimmedString(value)).filter(Boolean)
+    : [];
 
   const chunks = [`<p><strong>${escapeHtml(title)}</strong></p>`];
 
@@ -109,13 +111,15 @@ export function buildFeedbackTextContent({ counter, triggerContext, feedback, re
     chunks.push(buildBulletSection(asTrimmedString(section?.heading), section?.bullets));
   }
 
-  const recommendationBullets = [];
-  if (recommendedNextTrigger) recommendationBullets.push(`Empfohlener nächster Trigger: ${recommendedNextTrigger}`);
-  if (recommendedNextStepId) recommendationBullets.push(`Empfohlener nächster Schritt: ${recommendedNextStepId}`);
-  if (advanceStepSuggested) recommendationBullets.push("Step-Wechsel empfohlen: ja");
-  if (recommendationReason) recommendationBullets.push(`Begründung: ${recommendationReason}`);
-  if (recommendationBullets.length) {
-    chunks.push(buildBulletSection("Empfehlungen", recommendationBullets));
+  const flowDirectiveBullets = [];
+  for (const runProfileId of unlockRunProfileIds) {
+    flowDirectiveBullets.push(`Button freischalten: ${runProfileId}`);
+  }
+  for (const runProfileId of completeRunProfileIds) {
+    flowDirectiveBullets.push(`Button erledigt markieren: ${runProfileId}`);
+  }
+  if (flowDirectiveBullets.length) {
+    chunks.push(buildBulletSection("Button-Freischaltungen", flowDirectiveBullets));
   }
 
   const evaluationHtml = buildEvaluationHtml(evaluation);
@@ -306,7 +310,7 @@ export async function renderFeedbackTextForRun({
   runtime,
   triggerContext,
   feedback,
-  recommendations,
+  flowControlDirectives,
   evaluation,
   exercisePack,
   currentStep,
@@ -326,7 +330,7 @@ export async function renderFeedbackTextForRun({
     counter: nextCounter,
     triggerContext,
     feedback,
-    recommendations,
+    flowControlDirectives,
     evaluation,
     exercisePack,
     currentStep

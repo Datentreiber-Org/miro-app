@@ -8,19 +8,19 @@ import {
   DT_RUN_STATE_STALE_AFTER_MS,
   DT_RUN_STATUS_LAYOUT,
   STICKY_LAYOUT
-} from "./config.js?v=20260305-batch4";
+} from "./config.js?v=20260306-batch45";
 
 import { createLogger, stripHtml, extractUnderlinedText, isFiniteNumber } from "./utils.js?v=20260301-step11-hotfix2";
 
-import * as Board from "./miro/board.js?v=20260305-batch4";
+import * as Board from "./miro/board.js?v=20260306-batch45";
 import * as Catalog from "./domain/catalog.js?v=20260305-batch4";
-import * as OpenAI from "./ai/openai.js?v=20260305-schemafix2";
+import * as OpenAI from "./ai/openai.js?v=20260306-batch45";
 import * as Memory from "./runtime/memory.js?v=20260301-step11-hotfix2";
-import * as Exercises from "./exercises/registry.js?v=20260304-editorial15";
-import * as ExerciseLibrary from "./exercises/library.js?v=20260304-editorial15";
-import * as PromptComposer from "./prompt/composer.js?v=20260305-batch06";
-import * as ExerciseEngine from "./runtime/exercise-engine.js?v=20260304-editorial15";
-import * as BoardFlow from "./runtime/board-flow.js?v=20260303-flowbatch1";
+import * as Exercises from "./exercises/registry.js?v=20260306-batch45";
+import * as ExerciseLibrary from "./exercises/library.js?v=20260306-batch45";
+import * as PromptComposer from "./prompt/composer.js?v=20260306-batch45";
+import * as ExerciseEngine from "./runtime/exercise-engine.js?v=20260306-batch45";
+import * as BoardFlow from "./runtime/board-flow.js?v=20260306-batch45";
 import * as PanelBridge from "./runtime/panel-bridge.js?v=20260305-schemafix2";
 import { buildPayloadMappingHint } from "./app/payload-hints.js?v=20260305-batch06";
 import { getInsertWidthPxForCanvasType, computeTemplateInsertPosition } from "./app/template-insertion.js?v=20260305-batch05";
@@ -867,9 +867,15 @@ function renderRecommendationStatus() {
   const lastTriggerKey = state.exerciseRuntime?.lastTriggerKey || null;
   const lastTriggerSource = state.exerciseRuntime?.lastTriggerSource || null;
   const lastTriggerAt = state.exerciseRuntime?.lastTriggerAt || null;
-  const recommendedNextTrigger = state.exerciseRuntime?.recommendedNextTrigger || null;
-  const recommendedNextStepId = state.exerciseRuntime?.recommendedNextStepId || null;
-  const recommendationReason = state.exerciseRuntime?.recommendationReason || null;
+  const lastUnlocked = Array.isArray(state.exerciseRuntime?.lastFlowDirectiveUnlockRunProfileIds)
+    ? state.exerciseRuntime.lastFlowDirectiveUnlockRunProfileIds.filter(Boolean)
+    : [];
+  const lastCompleted = Array.isArray(state.exerciseRuntime?.lastFlowDirectiveCompleteRunProfileIds)
+    ? state.exerciseRuntime.lastFlowDirectiveCompleteRunProfileIds.filter(Boolean)
+    : [];
+  const lastDirectiveAt = state.exerciseRuntime?.lastFlowDirectiveAt || null;
+  const lastActiveAnchorInstanceId = state.exerciseRuntime?.lastActiveAnchorInstanceId || null;
+  const lastActivePackTemplateId = state.exerciseRuntime?.lastActivePackTemplateId || null;
   const feedbackCounter = Number(state.exerciseRuntime?.feedbackTextCounter || 0);
   const lastFeedbackIds = Array.isArray(state.exerciseRuntime?.lastFeedbackTextIds)
     ? state.exerciseRuntime.lastFeedbackTextIds.filter(Boolean)
@@ -877,10 +883,12 @@ function renderRecommendationStatus() {
 
   lines.push("Letzter Trigger: " + (lastTriggerKey ? `${lastTriggerKey} (${lastTriggerSource || "system"})` : "noch keiner"));
   if (lastTriggerAt) lines.push("Letzter Trigger-Zeitpunkt: " + lastTriggerAt);
-  lines.push("Empfohlener nächster Trigger: " + (recommendedNextTrigger || "keine Empfehlung"));
-  lines.push("Empfohlener nächster Schritt: " + (recommendedNextStepId || "keine Empfehlung"));
-  lines.push("Step-Wechsel empfohlen: " + (state.exerciseRuntime?.advanceStepSuggested ? "ja" : "nein"));
-  if (recommendationReason) lines.push("Begründung: " + recommendationReason);
+  lines.push("Zuletzt freigeschaltete Buttons: " + (lastUnlocked.join(", ") || "keine"));
+  lines.push("Zuletzt erledigte Buttons: " + (lastCompleted.join(", ") || "keine"));
+  if (lastDirectiveAt) lines.push("Letzte Button-Aktion: " + lastDirectiveAt);
+  if (lastActivePackTemplateId || lastActiveAnchorInstanceId) {
+    lines.push("Letzter Flow-Anchor: " + [lastActivePackTemplateId || null, getInstanceLabelByInternalId(lastActiveAnchorInstanceId) || lastActiveAnchorInstanceId || null].filter(Boolean).join(" · "));
+  }
   lines.push("Feedback-Texte erzeugt: " + feedbackCounter);
   if (lastFeedbackIds.length) lines.push("Letzte Feedback-Textitems: " + lastFeedbackIds.join(", "));
 
@@ -897,8 +905,7 @@ function renderExerciseActionButtons() {
         step: currentStep,
         source,
         lastTriggerKey: state.exerciseRuntime?.lastTriggerKey,
-        memoryStepStatus: getCurrentMemoryStepStatus(),
-        recommendedNextStepId: state.exerciseRuntime?.recommendedNextStepId
+        memoryStepStatus: getCurrentMemoryStepStatus()
       })
     : null;
   const hasExerciseContext = !!pack && !!currentStep;
@@ -1113,7 +1120,62 @@ function renderFlowAuthoringControls({ forceLabelSync = false } = {}) {
 async function loadBoardFlows() {
   const flows = await Board.listBoardFlows(log);
   state.boardFlowsById = new Map(flows.map((flow) => [flow.id, flow]));
+  await syncAllBoardFlowVisuals();
   renderFlowAuthoringStatus();
+}
+
+function getRunProfileSortOrder(runProfileId) {
+  const sortOrder = ExerciseLibrary.getRunProfileById(runProfileId)?.sortOrder;
+  return Number.isFinite(Number(sortOrder)) ? Number(sortOrder) : Number.MAX_SAFE_INTEGER;
+}
+
+function sortFlowControlsForDisplay(controls) {
+  return (Array.isArray(controls) ? controls : [])
+    .slice()
+    .sort((a, b) => (
+      getRunProfileSortOrder(a?.runProfileId) - getRunProfileSortOrder(b?.runProfileId) ||
+      String(a?.label || a?.id || "").localeCompare(String(b?.label || b?.id || ""), undefined, { sensitivity: "base" })
+    ));
+}
+
+async function syncBoardFlowVisuals(flow, { reflow = false } = {}) {
+  if (!flow?.id) return flow;
+
+  const orderedControls = sortFlowControlsForDisplay(Object.values(flow.controls || {}));
+  const anchorInstance = flow.anchorInstanceId ? state.instancesById.get(flow.anchorInstanceId) : null;
+
+  if (reflow && anchorInstance) {
+    for (let index = 0; index < orderedControls.length; index += 1) {
+      const control = orderedControls[index];
+      if (!control?.itemId) continue;
+      try {
+        const position = await Board.computeSuggestedFlowControlPosition(anchorInstance, { offsetIndex: index }, log);
+        await Board.moveItemByIdToBoardCoords(control.itemId, position.x, position.y, log);
+      } catch (e) {
+        log("WARNUNG: Flow-Control-Layout konnte nicht aktualisiert werden: " + e.message);
+      }
+    }
+  }
+
+  for (const control of orderedControls) {
+    if (!control?.itemId) continue;
+    try {
+      await Board.syncFlowControlShapeAppearance(control.itemId, {
+        label: control.label,
+        state: control.state
+      }, log);
+    } catch (e) {
+      log("WARNUNG: Flow-Control-Darstellung konnte nicht synchronisiert werden: " + e.message);
+    }
+  }
+
+  return flow;
+}
+
+async function syncAllBoardFlowVisuals() {
+  for (const flow of state.boardFlowsById.values()) {
+    await syncBoardFlowVisuals(flow, { reflow: false });
+  }
 }
 
 function buildFlowId(packTemplateId, anchorInstanceId) {
@@ -1125,6 +1187,13 @@ function buildFlowControlId(stepId, runProfileId) {
   return [stepId || "step", runProfileId || "profile", Date.now().toString(36), Math.random().toString(36).slice(2, 7)].join(":");
 }
 
+function getSelectedExercisePackTemplateId() {
+  const packTemplateId = typeof getSelectedExercisePack()?.packTemplateId === "string"
+    ? getSelectedExercisePack().packTemplateId.trim()
+    : "";
+  return packTemplateId || null;
+}
+
 function getExistingBoardFlowForPack(packTemplateId, anchorInstanceId) {
   for (const flow of state.boardFlowsById.values()) {
     if (flow?.packTemplateId === packTemplateId && flow?.anchorInstanceId === anchorInstanceId) {
@@ -1134,9 +1203,10 @@ function getExistingBoardFlowForPack(packTemplateId, anchorInstanceId) {
   return null;
 }
 
-async function saveBoardFlowAndCache(flow) {
+async function saveBoardFlowAndCache(flow, { reflow = false } = {}) {
   const saved = await Board.saveBoardFlow(flow, log);
   state.boardFlowsById.set(saved.id, saved);
+  await syncBoardFlowVisuals(saved, { reflow });
   renderFlowAuthoringStatus();
   return saved;
 }
@@ -1157,6 +1227,254 @@ async function findOrCreateBoardFlowForPack(packTemplateId, anchorInstanceId) {
     anchorInstanceId
   });
   return await saveBoardFlowAndCache(flow);
+}
+
+function getLastActiveAnchorInstanceIdForPack(packTemplateId) {
+  const normalizedPackTemplateId = pickFirstNonEmptyString(packTemplateId);
+  const lastPackTemplateId = pickFirstNonEmptyString(state.exerciseRuntime?.lastActivePackTemplateId);
+  const lastAnchorInstanceId = pickFirstNonEmptyString(state.exerciseRuntime?.lastActiveAnchorInstanceId);
+  if (!normalizedPackTemplateId || !lastAnchorInstanceId) return null;
+  if (normalizedPackTemplateId !== lastPackTemplateId) return null;
+  return state.instancesById.has(lastAnchorInstanceId) ? lastAnchorInstanceId : null;
+}
+
+function buildFlowControlCatalogForPackTemplate(packTemplate) {
+  if (!packTemplate?.id) return [];
+  return ExerciseLibrary.listRunProfilesForPack(packTemplate.id)
+    .map((runProfile) => {
+      const stepTemplate = ExerciseLibrary.getStepTemplateForPack(packTemplate.id, runProfile?.stepTemplateId);
+      return {
+        runProfileId: runProfile?.id || null,
+        label: runProfile?.label || null,
+        stepId: runProfile?.stepTemplateId || null,
+        stepLabel: stepTemplate?.label || runProfile?.stepTemplateId || null,
+        scopeType: runProfile?.defaultScopeType || null,
+        summary: runProfile?.summary || null
+      };
+    })
+    .filter((entry) => !!entry.runProfileId);
+}
+
+function buildBoardFlowStateForPrompt(flow) {
+  if (!flow?.id) return null;
+  const currentStep = BoardFlow.getFlowStep(flow, flow.runtime?.currentStepId);
+  return {
+    flowId: flow.id,
+    anchorInstanceLabel: getInstanceLabelByInternalId(flow.anchorInstanceId) || null,
+    currentStepId: flow.runtime?.currentStepId || null,
+    currentStepLabel: currentStep?.label || null,
+    controls: sortFlowControlsForDisplay(Object.values(flow.controls || {})).map((control) => ({
+      runProfileId: control.runProfileId || null,
+      label: control.label || null,
+      stepId: control.stepId || null,
+      state: control.state || "disabled"
+    }))
+  };
+}
+
+function resolveFlowPromptContext({ promptRuntimeOverride = null, targetInstanceIds = [] } = {}) {
+  const runtime = (promptRuntimeOverride && typeof promptRuntimeOverride === "object") ? promptRuntimeOverride : null;
+  const packTemplate = runtime?.packTemplate || ExerciseLibrary.getPackTemplateById(getSelectedExercisePackTemplateId());
+  const packTemplateId = packTemplate?.id || null;
+
+  let anchorInstanceId = pickFirstNonEmptyString(runtime?.controlContext?.anchorInstanceId, runtime?.anchorInstanceId);
+  if (anchorInstanceId && !state.instancesById.has(anchorInstanceId)) anchorInstanceId = null;
+  if (!anchorInstanceId && Array.isArray(targetInstanceIds) && targetInstanceIds.length === 1 && state.instancesById.has(targetInstanceIds[0])) {
+    anchorInstanceId = targetInstanceIds[0];
+  }
+  if (!anchorInstanceId) {
+    anchorInstanceId = getLastActiveAnchorInstanceIdForPack(packTemplateId);
+  }
+
+  const flow = packTemplateId && anchorInstanceId
+    ? getExistingBoardFlowForPack(packTemplateId, anchorInstanceId)
+    : null;
+
+  return {
+    packTemplate,
+    packTemplateId,
+    anchorInstanceId,
+    flow,
+    flowControlCatalog: buildFlowControlCatalogForPackTemplate(packTemplate),
+    boardFlowState: flow ? buildBoardFlowStateForPrompt(flow) : null
+  };
+}
+
+function buildFlowScopeForRunProfile(runProfile, anchorInstanceId) {
+  return runProfile?.defaultScopeType === "global"
+    ? { type: "global" }
+    : { type: "fixed_instances", instanceIds: anchorInstanceId ? [anchorInstanceId] : [] };
+}
+
+async function createBoardFlowControlForRunProfile({ flow, anchorInstanceId, runProfile, label = null, scope = null } = {}) {
+  if (!flow?.id || !anchorInstanceId || !runProfile?.id || !runProfile?.stepTemplateId) {
+    throw new Error("Flow-Control kann nicht erzeugt werden: Flow, Anchor oder Run Profile fehlen.");
+  }
+
+  const stepTemplate = ExerciseLibrary.getStepTemplateForPack(flow.packTemplateId, runProfile.stepTemplateId);
+  if (!stepTemplate?.id) {
+    throw new Error("Step Template für Run Profile nicht gefunden: " + runProfile.id);
+  }
+
+  const orderedControls = sortFlowControlsForDisplay(Object.values(flow.controls || {}));
+  const position = await Board.computeSuggestedFlowControlPosition(state.instancesById.get(anchorInstanceId), { offsetIndex: orderedControls.length }, log);
+  const nextLabel = pickFirstNonEmptyString(label, runProfile.label, "Flow Control");
+  const shape = await Board.createFlowControlShape({
+    label: nextLabel,
+    x: position.x,
+    y: position.y,
+    width: position.width,
+    height: position.height,
+    state: "disabled"
+  }, log);
+
+  const controlId = buildFlowControlId(stepTemplate.id, runProfile.id);
+  const control = BoardFlow.createFlowControlRecord({
+    id: controlId,
+    itemId: shape.id,
+    label: nextLabel,
+    runProfileId: runProfile.id,
+    stepId: stepTemplate.id,
+    anchorInstanceId,
+    scope: scope || buildFlowScopeForRunProfile(runProfile, anchorInstanceId),
+    state: "disabled"
+  });
+
+  const nextFlow = BoardFlow.upsertFlowControl(flow, control);
+  await Board.writeFlowControlMeta(shape, {
+    flowId: nextFlow.id,
+    controlId
+  }, log);
+  return nextFlow;
+}
+
+async function ensureFlowControlsForRunProfiles({ flow, anchorInstanceId, runProfileIds = [] } = {}) {
+  let nextFlow = flow;
+  const createdRunProfileIds = [];
+  const skippedRunProfileIds = [];
+
+  for (const runProfileId of Array.from(new Set((runProfileIds || []).filter(Boolean)))) {
+    if (BoardFlow.findFlowControlsByRunProfileId(nextFlow, runProfileId).length) continue;
+
+    const runProfile = ExerciseLibrary.getRunProfileById(runProfileId);
+    if (!runProfile || runProfile.packTemplateId !== nextFlow.packTemplateId) {
+      skippedRunProfileIds.push(runProfileId);
+      continue;
+    }
+
+    try {
+      nextFlow = await createBoardFlowControlForRunProfile({
+        flow: nextFlow,
+        anchorInstanceId,
+        runProfile
+      });
+      createdRunProfileIds.push(runProfileId);
+    } catch (e) {
+      skippedRunProfileIds.push(runProfileId);
+      log("WARNUNG: Board Flow Control konnte nicht automatisch erzeugt werden: " + runProfileId + " – " + e.message);
+    }
+  }
+
+  return { flow: nextFlow, createdRunProfileIds, skippedRunProfileIds };
+}
+
+async function applyFlowControlDirectivesAfterAgentRun({
+  flowControlDirectives = null,
+  promptRuntimeOverride = null,
+  targetInstanceIds = [],
+  sourceLabel = "Agent"
+} = {}) {
+  const directives = ExerciseEngine.normalizeFlowControlDirectivesBlock(flowControlDirectives);
+  const flowContext = resolveFlowPromptContext({ promptRuntimeOverride, targetInstanceIds });
+  const result = {
+    flowControlDirectives: directives ? { unlockRunProfileIds: [], completeRunProfileIds: [] } : null,
+    activeAnchorContext: flowContext.packTemplateId && flowContext.anchorInstanceId
+      ? { packTemplateId: flowContext.packTemplateId, anchorInstanceId: flowContext.anchorInstanceId }
+      : null,
+    createdRunProfileIds: [],
+    skippedRunProfileIds: []
+  };
+
+  if (!directives) {
+    return result;
+  }
+
+  const packTemplateId = flowContext.packTemplateId;
+  if (!packTemplateId) {
+    log("WARNUNG: Flow-Control-Directives konnten nicht angewendet werden – kein Pack Template aktiv.");
+    return result;
+  }
+
+  const validUnlockRunProfileIds = [];
+  const validCompleteRunProfileIds = [];
+
+  for (const runProfileId of directives.unlockRunProfileIds || []) {
+    const runProfile = ExerciseLibrary.getRunProfileById(runProfileId);
+    if (!runProfile || runProfile.packTemplateId !== packTemplateId) {
+      result.skippedRunProfileIds.push(runProfileId);
+      log("WARNUNG: Unbekannte oder unpassende unlockRunProfileId übersprungen: " + runProfileId);
+      continue;
+    }
+    validUnlockRunProfileIds.push(runProfileId);
+  }
+
+  for (const runProfileId of directives.completeRunProfileIds || []) {
+    const runProfile = ExerciseLibrary.getRunProfileById(runProfileId);
+    if (!runProfile || runProfile.packTemplateId !== packTemplateId) {
+      result.skippedRunProfileIds.push(runProfileId);
+      log("WARNUNG: Unbekannte oder unpassende completeRunProfileId übersprungen: " + runProfileId);
+      continue;
+    }
+    validCompleteRunProfileIds.push(runProfileId);
+  }
+
+  result.flowControlDirectives = {
+    unlockRunProfileIds: validUnlockRunProfileIds.slice(),
+    completeRunProfileIds: validCompleteRunProfileIds.slice()
+  };
+
+  let flow = flowContext.flow || null;
+  const needsControlCreation = validUnlockRunProfileIds.some((runProfileId) => !flow || !BoardFlow.findFlowControlsByRunProfileId(flow, runProfileId).length);
+
+  if ((!flow || needsControlCreation) && !flowContext.anchorInstanceId) {
+    log("WARNUNG: Flow-Control-Directives konnten ohne eindeutigen Anchor nicht vollständig umgesetzt werden.");
+    return result;
+  }
+
+  if (!flow && flowContext.anchorInstanceId) {
+    flow = await findOrCreateBoardFlowForPack(packTemplateId, flowContext.anchorInstanceId);
+  }
+
+  if (!flow) {
+    return result;
+  }
+
+  if (validUnlockRunProfileIds.length && flowContext.anchorInstanceId) {
+    const ensured = await ensureFlowControlsForRunProfiles({
+      flow,
+      anchorInstanceId: flowContext.anchorInstanceId,
+      runProfileIds: validUnlockRunProfileIds
+    });
+    flow = ensured.flow;
+    result.createdRunProfileIds.push(...ensured.createdRunProfileIds);
+    result.skippedRunProfileIds.push(...ensured.skippedRunProfileIds);
+  }
+
+  flow = BoardFlow.applyFlowControlDirectives(flow, {
+    unlockRunProfileIds: validUnlockRunProfileIds,
+    completeRunProfileIds: validCompleteRunProfileIds
+  });
+  flow = await saveBoardFlowAndCache(flow, { reflow: result.createdRunProfileIds.length > 0 });
+
+  if (result.createdRunProfileIds.length || validUnlockRunProfileIds.length || validCompleteRunProfileIds.length) {
+    log(
+      sourceLabel + ": Button-Zustände aktualisiert. Freigeschaltet=" + (validUnlockRunProfileIds.join(", ") || "keine") +
+      ", erledigt=" + (validCompleteRunProfileIds.join(", ") || "keine") +
+      (result.createdRunProfileIds.length ? (", neu erzeugt=" + result.createdRunProfileIds.join(", ")) : "") + "."
+    );
+  }
+
+  return result;
 }
 
 async function resolveAuthoringScopeFromCurrentSelection(packTemplate, requestedScopeType) {
@@ -1198,38 +1516,16 @@ async function createFlowControlFromAdmin() {
   try {
     const { anchorInstanceId, scope } = await resolveAuthoringScopeFromCurrentSelection(packTemplate, flowScopeTypeEl?.value || runProfile.defaultScopeType);
     let flow = await findOrCreateBoardFlowForPack(packTemplate.id, anchorInstanceId);
-
-    const existingControls = BoardFlow.listFlowControlsForStep(flow, stepTemplate.id).filter((control) => control.anchorInstanceId === anchorInstanceId);
-    const position = await Board.computeSuggestedFlowControlPosition(state.instancesById.get(anchorInstanceId), { offsetIndex: existingControls.length }, log);
-    const label = ((flowControlLabelEl?.value || "").trim()) || runProfile.label || "Flow Control";
-    const shape = await Board.createFlowControlShape({
-      label,
-      x: position.x,
-      y: position.y,
-      width: position.width,
-      height: position.height
-    }, log);
-
-    const controlId = buildFlowControlId(stepTemplate.id, runProfile.id);
-    const control = BoardFlow.createFlowControlRecord({
-      id: controlId,
-      itemId: shape.id,
-      label,
-      runProfileId: runProfile.id,
-      stepId: stepTemplate.id,
+    flow = await createBoardFlowControlForRunProfile({
+      flow,
       anchorInstanceId,
-      scope,
-      state: stepTemplate.id === flow.runtime?.currentStepId ? "active" : "disabled"
+      runProfile,
+      label: ((flowControlLabelEl?.value || "").trim()) || runProfile.label || "Flow Control",
+      scope
     });
+    flow = await saveBoardFlowAndCache(flow, { reflow: true });
 
-    flow = BoardFlow.upsertFlowControl(flow, control);
-    flow = await saveBoardFlowAndCache(flow);
-    await Board.writeFlowControlMeta(shape, {
-      flowId: flow.id,
-      controlId
-    }, log);
-
-    log("Board Flow Control erzeugt: '" + label + "' für " + (getInstanceLabelByInternalId(anchorInstanceId) || anchorInstanceId) + " | Scope=" + control.scope.type + ".");
+    log("Board Flow Control erzeugt: '" + (((flowControlLabelEl?.value || "").trim()) || runProfile.label || "Flow Control") + "' für " + (getInstanceLabelByInternalId(anchorInstanceId) || anchorInstanceId) + " | Scope=" + scope.type + ".");
     renderFlowAuthoringControls();
   } catch (e) {
     log("Board Flow: Control konnte nicht erzeugt werden – " + e.message);
@@ -1267,6 +1563,7 @@ async function resolveSelectedFlowControl(items) {
   const flow = state.boardFlowsById.get(meta.flowId) || (await Board.loadBoardFlow(meta.flowId, log));
   if (!flow) return null;
   state.boardFlowsById.set(flow.id, flow);
+  await syncBoardFlowVisuals(flow);
 
   const control = BoardFlow.findFlowControlByItemId(flow, item.id) || flow.controls?.[meta.controlId] || null;
   if (!control) return null;
@@ -1301,6 +1598,8 @@ function buildPromptRuntimeFromFlow(flow, control, runProfile, flowStep, packTem
       flowId: flow?.id || null,
       controlId: control?.id || null,
       controlLabel: control?.label || null,
+      runProfileId: runProfile?.id || null,
+      anchorInstanceId: flow?.anchorInstanceId || control?.anchorInstanceId || null,
       scopeType: control?.scope?.type || null,
       targetInstanceLabels
     }
@@ -1503,10 +1802,9 @@ async function onExercisePackChange() {
     lastTriggerKey: null,
     lastTriggerSource: null,
     lastTriggerAt: null,
-    recommendedNextTrigger: Exercises.getDefaultEnterTrigger(selectedPack, nextStepId) || null,
-    recommendedNextStepId: null,
-    advanceStepSuggested: false,
-    recommendationReason: null
+    lastFlowDirectiveUnlockRunProfileIds: [],
+    lastFlowDirectiveCompleteRunProfileIds: [],
+    lastFlowDirectiveAt: null
   });
 
   renderCanvasTypePicker();
@@ -1525,16 +1823,11 @@ async function onExerciseStepChange() {
 
   const requestedStepId = exerciseStepEl?.value || null;
   const validStepId = Exercises.getExerciseStep(pack, requestedStepId)?.id || Exercises.getDefaultStepId(pack);
-  const defaultEnterTrigger = Exercises.getDefaultEnterTrigger(pack, validStepId);
-
   await persistExerciseRuntime({
     currentStepId: validStepId,
-    recommendedNextTrigger: defaultEnterTrigger || null,
-    recommendedNextStepId: null,
-    advanceStepSuggested: false,
-    recommendationReason: defaultEnterTrigger
-      ? "Dieser Schritt definiert einen Standard-Enter-Trigger."
-      : null
+    lastFlowDirectiveUnlockRunProfileIds: [],
+    lastFlowDirectiveCompleteRunProfileIds: [],
+    lastFlowDirectiveAt: null
   });
   renderExerciseControls();
 
@@ -1697,8 +1990,7 @@ async function advanceExerciseStep() {
     step: currentStep,
     source,
     lastTriggerKey: state.exerciseRuntime?.lastTriggerKey,
-    memoryStepStatus: getCurrentMemoryStepStatus(),
-    recommendedNextStepId: state.exerciseRuntime?.recommendedNextStepId
+    memoryStepStatus: getCurrentMemoryStepStatus()
   });
 
   if (!transition) {
@@ -1712,16 +2004,11 @@ async function advanceExerciseStep() {
     return;
   }
 
-  const defaultEnterTrigger = Exercises.getDefaultEnterTrigger(pack, nextStep.id);
-
   await persistExerciseRuntime({
     currentStepId: nextStep.id,
-    recommendedNextTrigger: defaultEnterTrigger || null,
-    recommendedNextStepId: null,
-    advanceStepSuggested: false,
-    recommendationReason: defaultEnterTrigger
-      ? "Dieser Schritt definiert einen Standard-Enter-Trigger."
-      : null
+    lastFlowDirectiveUnlockRunProfileIds: [],
+    lastFlowDirectiveCompleteRunProfileIds: [],
+    lastFlowDirectiveAt: null
   });
   renderExerciseControls();
 
@@ -2063,23 +2350,24 @@ function normalizeAgentExerciseArtifacts(agentObj, triggerContext, sourceLabel =
     fallbackTitle: buildFeedbackFallbackTitle(triggerContext, sourceLabel),
     fallbackSummary
   });
-  const recommendations = ExerciseEngine.normalizeRecommendationsBlock(agentObj?.recommendations);
+  const flowControlDirectives = ExerciseEngine.normalizeFlowControlDirectivesBlock(agentObj?.flowControlDirectives);
   const evaluation = ExerciseEngine.normalizeEvaluationBlock(agentObj?.evaluation);
 
   if (triggerContext?.intent === "grade" && !evaluation) {
     log("WARNUNG: Grade-Trigger ohne evaluation im Agent-Output.");
   }
 
-  return { feedback, recommendations, evaluation };
+  return { feedback, flowControlDirectives, evaluation };
 }
 
 async function persistExerciseRuntimeAfterAgentRun({
   triggerContext = null,
   feedback = null,
-  recommendations = null,
+  flowControlDirectives = null,
   evaluation = null,
   exercisePack = null,
-  currentStep = null
+  currentStep = null,
+  activeAnchorContext = null
 } = {}) {
   if (!triggerContext) return null;
 
@@ -2087,11 +2375,15 @@ async function persistExerciseRuntimeAfterAgentRun({
     lastTriggerKey: triggerContext.triggerKey || null,
     lastTriggerSource: triggerContext.source || null,
     lastTriggerAt: new Date().toISOString(),
-    recommendedNextTrigger: recommendations?.recommendedNextTrigger || null,
-    recommendedNextStepId: recommendations?.recommendedNextStepId || null,
-    advanceStepSuggested: recommendations?.advanceStepSuggested === true,
-    recommendationReason: recommendations?.reason || null
+    lastFlowDirectiveUnlockRunProfileIds: Array.isArray(flowControlDirectives?.unlockRunProfileIds) ? flowControlDirectives.unlockRunProfileIds.slice() : [],
+    lastFlowDirectiveCompleteRunProfileIds: Array.isArray(flowControlDirectives?.completeRunProfileIds) ? flowControlDirectives.completeRunProfileIds.slice() : [],
+    lastFlowDirectiveAt: (flowControlDirectives?.unlockRunProfileIds?.length || flowControlDirectives?.completeRunProfileIds?.length) ? new Date().toISOString() : null
   };
+
+  if (activeAnchorContext?.packTemplateId && activeAnchorContext?.anchorInstanceId) {
+    runtimePatch.lastActivePackTemplateId = activeAnchorContext.packTemplateId;
+    runtimePatch.lastActiveAnchorInstanceId = activeAnchorContext.anchorInstanceId;
+  }
 
   let feedbackRenderResult = null;
   if (triggerContext.feedbackPolicy === "text" || triggerContext.feedbackPolicy === "both") {
@@ -2101,7 +2393,7 @@ async function persistExerciseRuntimeAfterAgentRun({
         runtime: state.exerciseRuntime,
         triggerContext,
         feedback,
-        recommendations,
+        flowControlDirectives,
         evaluation,
         exercisePack,
         currentStep,
@@ -3211,6 +3503,10 @@ async function runAgentForSelectedInstances(selectedInstanceIds, options = {}) {
     const boardCatalog = buildBoardCatalogForSelectedInstances(resolvedActiveIds);
     const memoryPayload = buildMemoryInjectionPayload();
     const expectedSignatureSnapshot = buildSignatureSnapshot(stateById, resolvedActiveIds);
+    const flowPromptContext = resolveFlowPromptContext({
+      promptRuntimeOverride,
+      targetInstanceIds: resolvedActiveIds
+    });
 
     const baseUserPayload = {
       activeInstanceLabel: singleLabel,
@@ -3221,6 +3517,8 @@ async function runAgentForSelectedInstances(selectedInstanceIds, options = {}) {
       activeInstanceChangesSinceLastAgent,
       memoryState: memoryPayload.memoryState,
       recentMemoryLogEntries: memoryPayload.recentMemoryLogEntries,
+      flowControlCatalog: flowPromptContext.flowControlCatalog,
+      boardFlowState: flowPromptContext.boardFlowState,
       hint: buildPayloadMappingHint({
         scopeLabel: "selektierten Instanzen",
         labelListKey: "selectedInstanceLabels"
@@ -3284,7 +3582,7 @@ async function runAgentForSelectedInstances(selectedInstanceIds, options = {}) {
       }
     }
 
-    const { feedback, recommendations, evaluation } = normalizeAgentExerciseArtifacts(agentObj, triggerContext, sourceLabel);
+    const { feedback, flowControlDirectives, evaluation } = normalizeAgentExerciseArtifacts(agentObj, triggerContext, sourceLabel);
 
     log(sourceLabel + " analysis:");
     log(agentObj.analysis || "(keine analysis)");
@@ -3334,14 +3632,24 @@ async function runAgentForSelectedInstances(selectedInstanceIds, options = {}) {
       userRequest: userText
     }, actionResult);
 
+    const flowDirectiveResult = triggerContext
+      ? await applyFlowControlDirectivesAfterAgentRun({
+          flowControlDirectives,
+          promptRuntimeOverride,
+          targetInstanceIds: resolvedActiveIds,
+          sourceLabel
+        })
+      : null;
+
     if (triggerContext) {
       const feedbackRenderResult = await persistExerciseRuntimeAfterAgentRun({
         triggerContext,
         feedback,
-        recommendations,
+        flowControlDirectives: flowDirectiveResult?.flowControlDirectives || flowControlDirectives,
         evaluation,
         exercisePack: promptRuntimeOverride?.packTemplate || getSelectedExercisePack(),
-        currentStep: promptRuntimeOverride?.flowStep || getCurrentExerciseStep()
+        currentStep: promptRuntimeOverride?.flowStep || getCurrentExerciseStep(),
+        activeAnchorContext: flowDirectiveResult?.activeAnchorContext || null
       });
 
       if (feedbackRenderResult?.textItemIds?.length) {
@@ -3695,6 +4003,10 @@ async function runGlobalAgent(triggerInstanceId, userText, options = {}) {
 
     const memoryPayload = buildMemoryInjectionPayload();
     const expectedSignatureSnapshot = buildSignatureSnapshot(stateById, activeInstanceIds);
+    const flowPromptContext = resolveFlowPromptContext({
+      promptRuntimeOverride,
+      targetInstanceIds: activeInstanceIds
+    });
     const baseUserPayload = {
       triggerInstanceLabel: getInstanceLabelByInternalId(triggerInstanceId) || null,
       hasBaseline: state.hasGlobalBaseline,
@@ -3704,6 +4016,8 @@ async function runGlobalAgent(triggerInstanceId, userText, options = {}) {
       activeInstanceChangesSinceLastAgent,
       memoryState: memoryPayload.memoryState,
       recentMemoryLogEntries: memoryPayload.recentMemoryLogEntries,
+      flowControlCatalog: flowPromptContext.flowControlCatalog,
+      boardFlowState: flowPromptContext.boardFlowState,
       hint: buildPayloadMappingHint({
         scopeLabel: "im aktuellen Lauf relevanten Instanzen",
         labelListKey: "activeInstanceLabels",
@@ -3761,7 +4075,7 @@ async function runGlobalAgent(triggerInstanceId, userText, options = {}) {
       }
     }
 
-    const { feedback, recommendations, evaluation } = normalizeAgentExerciseArtifacts(agentObj, triggerContext, sourceLabel);
+    const { feedback, flowControlDirectives, evaluation } = normalizeAgentExerciseArtifacts(agentObj, triggerContext, sourceLabel);
 
     log(sourceLabel + " analysis:");
     log(agentObj.analysis || "(keine analysis)");
@@ -3836,14 +4150,24 @@ async function runGlobalAgent(triggerInstanceId, userText, options = {}) {
       userRequest: finalUserText
     }, actionResult);
 
+    const flowDirectiveResult = triggerContext
+      ? await applyFlowControlDirectivesAfterAgentRun({
+          flowControlDirectives,
+          promptRuntimeOverride,
+          targetInstanceIds: activeInstanceIds,
+          sourceLabel
+        })
+      : null;
+
     if (triggerContext) {
       const feedbackRenderResult = await persistExerciseRuntimeAfterAgentRun({
         triggerContext,
         feedback,
-        recommendations,
+        flowControlDirectives: flowDirectiveResult?.flowControlDirectives || flowControlDirectives,
         evaluation,
         exercisePack: promptRuntimeOverride?.packTemplate || getSelectedExercisePack(),
-        currentStep: promptRuntimeOverride?.flowStep || getCurrentExerciseStep()
+        currentStep: promptRuntimeOverride?.flowStep || getCurrentExerciseStep(),
+        activeAnchorContext: flowDirectiveResult?.activeAnchorContext || null
       });
 
       if (feedbackRenderResult?.textItemIds?.length) {

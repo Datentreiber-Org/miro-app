@@ -14,9 +14,9 @@ import {
   DT_DEFAULT_FEEDBACK_CHANNEL,
   DT_DEFAULT_APP_ADMIN_POLICY,
   DT_MEMORY_RECENT_LOG_LIMIT
-} from "../config.js?v=20260305-batch4";
+} from "../config.js?v=20260306-batch45";
 
-import { normalizeBoardFlow } from "../runtime/board-flow.js?v=20260303-flowbatch1";
+import { normalizeBoardFlow } from "../runtime/board-flow.js?v=20260306-batch45";
 import { ensureMiroReady, getBoard } from "./sdk.js?v=20260305-batch05";
 import { compareItemIdsAsc, normalizePositiveInt, asTrimmedString } from "./helpers.js?v=20260305-batch05";
 
@@ -242,10 +242,11 @@ export function normalizeExerciseRuntime(rawRuntime) {
     lastTriggerKey: asTrimmedString(src.lastTriggerKey),
     lastTriggerSource: asTrimmedString(src.lastTriggerSource),
     lastTriggerAt: asTrimmedString(src.lastTriggerAt),
-    recommendedNextTrigger: asTrimmedString(src.recommendedNextTrigger),
-    recommendedNextStepId: asTrimmedString(src.recommendedNextStepId),
-    advanceStepSuggested: src.advanceStepSuggested === true,
-    recommendationReason: asTrimmedString(src.recommendationReason),
+    lastFlowDirectiveUnlockRunProfileIds: uniqueIds(Array.isArray(src.lastFlowDirectiveUnlockRunProfileIds) ? src.lastFlowDirectiveUnlockRunProfileIds : []),
+    lastFlowDirectiveCompleteRunProfileIds: uniqueIds(Array.isArray(src.lastFlowDirectiveCompleteRunProfileIds) ? src.lastFlowDirectiveCompleteRunProfileIds : []),
+    lastFlowDirectiveAt: asTrimmedString(src.lastFlowDirectiveAt),
+    lastActiveAnchorInstanceId: asTrimmedString(src.lastActiveAnchorInstanceId),
+    lastActivePackTemplateId: asTrimmedString(src.lastActivePackTemplateId),
     feedbackTextCounter: normalizePositiveInt(src.feedbackTextCounter) || 0,
     lastFeedbackTextIds: Array.from(new Set((Array.isArray(src.lastFeedbackTextIds) ? src.lastFeedbackTextIds : [])
       .map((value) => value == null ? null : String(value))

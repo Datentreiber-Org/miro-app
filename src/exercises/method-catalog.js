@@ -3,7 +3,7 @@ import {
   DT_DEFAULT_FEEDBACK_CHANNEL,
   DT_DEFAULT_FEEDBACK_FRAME_NAME,
   DT_TRIGGER_KEYS
-} from "../config.js?v=20260304-editorial15";
+} from "../config.js?v=20260306-batch45";
 
 function asNonEmptyString(value) {
   if (typeof value !== "string") return null;
@@ -101,6 +101,7 @@ function buildExercisePackProjection(packDef) {
     version: Number.isFinite(Number(packDef?.version)) ? Number(packDef.version) : 1,
     description: asNonEmptyString(packDef?.description),
     boardMode: asNonEmptyString(packDef?.boardMode) || "exercise",
+    packTemplateId: asNonEmptyString(packDef?.packTemplateId),
     allowedCanvasTypes: normalizeUniqueStrings(packDef?.allowedCanvasTypeIds),
     defaultCanvasTypeId: asNonEmptyString(packDef?.defaultCanvasTypeId),
     defaultStepId: asNonEmptyString(packDef?.defaultStepId),
@@ -712,7 +713,7 @@ const RAW_METHOD_CATALOG = deepFreeze({
               "requiresSelection": true,
               "mutationPolicy": "minimal",
               "feedbackPolicy": "text",
-              "prompt": "Hinweismodus für den Schritt \"User Perspective First\":\n- Gib möglichst wenig invasive Unterstützung.\n- Formuliere knappe Hinweise, was auf der rechten Seite noch fehlt oder zu vage ist.\n- Nutze Board-Mutationen nur in Ausnahmefällen; bevorzuge feedback und recommendations.",
+              "prompt": "Hinweismodus für den Schritt \"User Perspective First\":\n- Gib möglichst wenig invasive Unterstützung.\n- Formuliere knappe Hinweise, was auf der rechten Seite noch fehlt oder zu vage ist.\n- Nutze Board-Mutationen nur in Ausnahmefällen; bevorzuge feedback. Nutze flowControlDirectives nur sparsam, wenn didaktisch ein weiterer Button freigeschaltet oder als erledigt markiert werden soll.",
               "flowControl": {
                 "id": "analytics.fit.step1.hint",
                 "label": "Hinweis zur User Perspective",
@@ -768,7 +769,7 @@ const RAW_METHOD_CATALOG = deepFreeze({
               "requiresSelection": true,
               "mutationPolicy": "none",
               "feedbackPolicy": "text",
-              "prompt": "Coachmodus für den Schritt \"User Perspective First\":\n- Coache die selektierten Canvas-Instanzen, wie die rechte Seite sinnvoll ausgefüllt werden soll.\n- Erkläre konkret, was in User & Situation, Objectives & Results, Decisions & Actions, User Gains und User Pains gehört.\n- Nutze vorhandene Stickies als Ausgangspunkt.\n- actions sollen normalerweise leer bleiben.\n- Liefere starkes feedback und recommendations in Richtung selection.check oder selection.hint.",
+              "prompt": "Coachmodus für den Schritt \"User Perspective First\":\n- Coache die selektierten Canvas-Instanzen, wie die rechte Seite sinnvoll ausgefüllt werden soll.\n- Erkläre konkret, was in User & Situation, Objectives & Results, Decisions & Actions, User Gains und User Pains gehört.\n- Nutze vorhandene Stickies als Ausgangspunkt.\n- actions sollen normalerweise leer bleiben.\n- Liefere starkes feedback. Nutze flowControlDirectives nur dann, wenn didaktisch ein weiterer Button freigeschaltet oder als erledigt markiert werden soll.",
               "flowControl": {
                 "id": "analytics.fit.step1.coach",
                 "label": "User Perspective coachen",
@@ -794,7 +795,7 @@ const RAW_METHOD_CATALOG = deepFreeze({
               "requiresSelection": true,
               "mutationPolicy": "none",
               "feedbackPolicy": "text",
-              "prompt": "Bewertungsmodus für den Schritt \"User Perspective First\":\n- Bewerte die rechte Seite anhand der Kriterien User Clarity, Objective Quality, Decision/Action Quality, Pain/Gain Quality und Area Correctness.\n- Führe keine oder praktisch keine Board-Mutationen aus.\n- Liefere zusätzlich eine evaluation mit Rubrik.\n- Setze advanceStepSuggested nur dann auf true, wenn die rechte Seite tragfähig genug ist, um daraus die Lösungsperspektive abzuleiten.",
+              "prompt": "Bewertungsmodus für den Schritt \"User Perspective First\":\n- Bewerte die rechte Seite anhand der Kriterien User Clarity, Objective Quality, Decision/Action Quality, Pain/Gain Quality und Area Correctness.\n- Führe keine oder praktisch keine Board-Mutationen aus.\n- Liefere zusätzlich eine evaluation mit Rubrik.\n- Wenn die rechte Seite tragfähig genug ist, kannst du den passenden nächsten Button per flowControlDirectives freischalten.",
               "flowControl": null
             },
             "global.check": {
@@ -814,7 +815,7 @@ const RAW_METHOD_CATALOG = deepFreeze({
               "requiresSelection": false,
               "mutationPolicy": "minimal",
               "feedbackPolicy": "text",
-              "prompt": "Globaler Hinweismodus für den Schritt \"User Perspective First\":\n- Gib globale Hinweise, welche Aspekte der Nutzerperspektive typischerweise noch fehlen oder unscharf sind.\n- Bevorzuge feedback und recommendations; handle Board-Mutationen sehr sparsam.",
+              "prompt": "Globaler Hinweismodus für den Schritt \"User Perspective First\":\n- Gib globale Hinweise, welche Aspekte der Nutzerperspektive typischerweise noch fehlen oder unscharf sind.\n- Bevorzuge feedback; nutze flowControlDirectives nur sparsam und handle Board-Mutationen sehr zurückhaltend.",
               "flowControl": null
             },
             "global.autocorrect": {
@@ -937,7 +938,7 @@ const RAW_METHOD_CATALOG = deepFreeze({
               "requiresSelection": true,
               "mutationPolicy": "minimal",
               "feedbackPolicy": "text",
-              "prompt": "Hinweismodus für den Schritt \"Solution Perspective\":\n- Gib präzise Hinweise, wie die linke Seite aus der rechten Seite abgeleitet werden sollte.\n- Board-Mutationen nur in Ausnahmefällen; bevorzuge feedback und recommendations.",
+              "prompt": "Hinweismodus für den Schritt \"Solution Perspective\":\n- Gib präzise Hinweise, wie die linke Seite aus der rechten Seite abgeleitet werden sollte.\n- Board-Mutationen nur in Ausnahmefällen; bevorzuge feedback. Nutze flowControlDirectives nur sparsam.",
               "flowControl": {
                 "id": "analytics.fit.step2.hint",
                 "label": "Hinweis zur Solution Perspective",
@@ -1019,7 +1020,7 @@ const RAW_METHOD_CATALOG = deepFreeze({
               "requiresSelection": true,
               "mutationPolicy": "none",
               "feedbackPolicy": "text",
-              "prompt": "Bewertungsmodus für den Schritt \"Solution Perspective\":\n- Bewerte die linke Seite anhand der Kriterien Solution Relevance, Information Quality, Function Usefulness, Benefit Strength und Cross-Side Traceability.\n- Führe keine oder praktisch keine Board-Mutationen aus.\n- Liefere zusätzlich eine evaluation mit Rubrik.\n- Setze advanceStepSuggested nur dann auf true, wenn die Lösungsperspektive tragfähig genug ist, um den Problem-Solution-Fit explizit zu verdichten.",
+              "prompt": "Bewertungsmodus für den Schritt \"Solution Perspective\":\n- Bewerte die linke Seite anhand der Kriterien Solution Relevance, Information Quality, Function Usefulness, Benefit Strength und Cross-Side Traceability.\n- Führe keine oder praktisch keine Board-Mutationen aus.\n- Liefere zusätzlich eine evaluation mit Rubrik.\n- Wenn die Lösungsperspektive tragfähig genug ist, kannst du den passenden nächsten Button per flowControlDirectives freischalten.",
               "flowControl": null
             },
             "global.check": {
@@ -1173,7 +1174,7 @@ const RAW_METHOD_CATALOG = deepFreeze({
               "requiresSelection": true,
               "mutationPolicy": "limited",
               "feedbackPolicy": "text",
-              "prompt": "Synthesemodus für den Schritt \"Fit Check & Synthesis\":\n- Verdichte die selektierte Instanz oder die selektierten Instanzen und mache den Problem-Solution-Fit sichtbar.\n- Formuliere pro Instanz 1 bis 3 knappe Fit-Aussagen für das Feld Check.\n- In diesem Trigger darfst du begrenzte Mutationen durchführen: bis zu drei neue Sticky Notes im Feld Check und sinnvolle ergänzende Connectoren.\n- Nimm keine große Restrukturierung des restlichen Canvas vor.\n- Liefere feedback, das die Verdichtung erklärt, und recommendations, ob global.review, global.synthesize oder der Abschluss sinnvoll ist.",
+              "prompt": "Synthesemodus für den Schritt \"Fit Check & Synthesis\":\n- Verdichte die selektierte Instanz oder die selektierten Instanzen und mache den Problem-Solution-Fit sichtbar.\n- Formuliere pro Instanz 1 bis 3 knappe Fit-Aussagen für das Feld Check.\n- In diesem Trigger darfst du begrenzte Mutationen durchführen: bis zu drei neue Sticky Notes im Feld Check und sinnvolle ergänzende Connectoren.\n- Nimm keine große Restrukturierung des restlichen Canvas vor.\n- Liefere feedback, das die Verdichtung erklärt. Nutze flowControlDirectives nur dann, wenn didaktisch weitere Buttons freigeschaltet oder als erledigt markiert werden sollen.",
               "flowControl": {
                 "id": "analytics.fit.step3.synthesize",
                 "label": "Fit Check synthetisieren",
@@ -1358,7 +1359,8 @@ for (const [packId, packDef] of Object.entries(RAW_METHOD_CATALOG.packs || {})) 
         feedbackPolicy: runProfile.feedbackPolicy,
         defaultScopeType: runProfile.defaultScopeType,
         allowedActions: Object.freeze(runProfile.allowedActions),
-        uiHint: runProfile.uiHint
+        uiHint: runProfile.uiHint,
+        sortOrder: runProfile.sortOrder
       });
       runProfiles[finalProfile.id] = finalProfile;
       packRunProfiles.push(runProfile);

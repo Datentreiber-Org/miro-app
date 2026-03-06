@@ -1,4 +1,4 @@
-import { OPENAI_ENDPOINT } from "../config.js?v=20260305-schemafix2";
+import { OPENAI_ENDPOINT } from "../config.js?v=20260306-batch45";
 
 function nullableStringSchema(description = "") {
   return {
@@ -79,11 +79,9 @@ const AGENT_RESPONSE_JSON_SCHEMA = strictObjectSchema({
         })
       }
     }),
-    recommendations: strictObjectSchema({
-      recommendedNextTrigger: nullableStringSchema("Optionaler nächster Trigger-Key."),
-      recommendedNextStepId: nullableStringSchema("Optionaler nächster Step im aktuellen Pack/Flow."),
-      advanceStepSuggested: { type: "boolean" },
-      reason: nullableStringSchema("Kurze Begründung der Empfehlung.")
+    flowControlDirectives: strictObjectSchema({
+      unlockRunProfileIds: { type: "array", items: { type: "string" }, description: "Run-Profile-IDs von Buttons, die freigeschaltet werden sollen." },
+      completeRunProfileIds: { type: "array", items: { type: "string" }, description: "Run-Profile-IDs von Buttons, die als erledigt markiert werden sollen." }
     }),
     evaluation: strictObjectSchema({
       score: nullableNumberSchema("Optionaler numerischer Score."),

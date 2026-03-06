@@ -24,14 +24,14 @@ export {
   normalizeBoardRunState,
   loadBoardRunState,
   saveBoardRunState
-} from "./storage.js?v=20260305-batch4";
+} from "./storage.js?v=20260306-batch45";
 
 export {
   buildFeedbackTextContent,
   ensureFeedbackFrame,
   listFeedbackTextItemsInFrame,
   renderFeedbackTextForRun
-} from "./feedback.js?v=20260305-batch05";
+} from "./feedback.js?v=20260306-batch45";
 
 export {
   getSelection,
@@ -55,8 +55,9 @@ export {
   writeFlowControlMeta,
   removeFlowControlMeta,
   computeSuggestedFlowControlPosition,
-  createFlowControlShape
-} from "./flow-controls.js?v=20260305-batch06";
+  createFlowControlShape,
+  syncFlowControlShapeAppearance
+} from "./flow-controls.js?v=20260306-batch45";
 
 export {
   computeTemplateGeometry,

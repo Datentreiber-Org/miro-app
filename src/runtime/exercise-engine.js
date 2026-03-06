@@ -319,22 +319,18 @@ export function normalizeFeedbackBlock(rawFeedback, { fallbackTitle = null, fall
   };
 }
 
-export function normalizeRecommendationsBlock(rawRecommendations) {
-  const src = (rawRecommendations && typeof rawRecommendations === "object") ? rawRecommendations : {};
-  const recommendedNextTrigger = normalizeTriggerKey(src.recommendedNextTrigger);
-  const recommendedNextStepId = asNonEmptyString(src.recommendedNextStepId);
-  const advanceStepSuggested = normalizeBoolean(src.advanceStepSuggested, false);
-  const reason = asNonEmptyString(src.reason);
+export function normalizeFlowControlDirectivesBlock(rawDirectives) {
+  const src = (rawDirectives && typeof rawDirectives === "object") ? rawDirectives : {};
+  const unlockRunProfileIds = normalizeUniqueStrings(src.unlockRunProfileIds || []);
+  const completeRunProfileIds = normalizeUniqueStrings(src.completeRunProfileIds || []);
 
-  if (!recommendedNextTrigger && !recommendedNextStepId && !advanceStepSuggested && !reason) {
+  if (!unlockRunProfileIds.length && !completeRunProfileIds.length) {
     return null;
   }
 
   return {
-    recommendedNextTrigger,
-    recommendedNextStepId,
-    advanceStepSuggested,
-    reason: reason || null
+    unlockRunProfileIds,
+    completeRunProfileIds
   };
 }
 
@@ -407,16 +403,10 @@ export function resolveNextTransition({
   step = null,
   source = "user",
   lastTriggerKey = null,
-  memoryStepStatus = null,
-  recommendedNextStepId = null
+  memoryStepStatus = null
 } = {}) {
   const transitions = listStepTransitions(step || pack);
   if (!transitions.length) return null;
-
-  const preferred = recommendedNextStepId ? resolveNamedTransition(step || pack, recommendedNextStepId) : null;
-  if (preferred && isTransitionAllowed({ transition: preferred, source, lastTriggerKey, memoryStepStatus })) {
-    return preferred;
-  }
 
   for (const transition of transitions) {
     if (transition.policy !== "manual") continue;

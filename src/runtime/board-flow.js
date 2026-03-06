@@ -55,7 +55,10 @@ function normalizeFlowRuntime(rawRuntime, fallbackStepId = null) {
     currentStepId: asNonEmptyString(src.currentStepId) || asNonEmptyString(fallbackStepId),
     status: asNonEmptyString(src.status) || "active",
     lastTriggeredControlId: asNonEmptyString(src.lastTriggeredControlId),
-    lastTriggeredAt: asNonEmptyString(src.lastTriggeredAt)
+    lastTriggeredAt: asNonEmptyString(src.lastTriggeredAt),
+    unlockedRunProfileIds: uniqueStrings(src.unlockedRunProfileIds),
+    doneRunProfileIds: uniqueStrings(src.doneRunProfileIds),
+    lastDirectiveAt: asNonEmptyString(src.lastDirectiveAt)
   };
 }
 
@@ -112,7 +115,10 @@ export function createBoardFlowFromPackTemplate(packTemplate, overrides = {}) {
       currentStepId: asNonEmptyString(overrides.currentStepId) || firstStepId,
       status: "active",
       lastTriggeredControlId: null,
-      lastTriggeredAt: null
+      lastTriggeredAt: null,
+      unlockedRunProfileIds: [],
+      doneRunProfileIds: [],
+      lastDirectiveAt: null
     },
     createdAt: asNonEmptyString(overrides.createdAt) || new Date().toISOString(),
     updatedAt: new Date().toISOString()
@@ -149,6 +155,13 @@ export function listFlowControlsForStep(flow, stepId) {
   return Object.values(normalized.controls).filter((control) => control.stepId === wanted);
 }
 
+export function findFlowControlsByRunProfileId(flow, runProfileId) {
+  const normalized = normalizeBoardFlow(flow);
+  const wanted = asNonEmptyString(runProfileId);
+  if (!wanted) return [];
+  return Object.values(normalized.controls).filter((control) => control.runProfileId === wanted);
+}
+
 export function findFlowControlByItemId(flow, itemId) {
   const normalized = normalizeBoardFlow(flow);
   const wanted = itemId == null ? null : String(itemId);
@@ -159,14 +172,21 @@ export function findFlowControlByItemId(flow, itemId) {
 export function syncFlowControlStatesWithCurrentStep(flow) {
   const normalized = (flow && flow.version === 1) ? { ...flow } : normalizeBoardFlow(flow);
   const currentStepId = asNonEmptyString(normalized?.runtime?.currentStepId);
+  const unlockedRunProfileIds = new Set(uniqueStrings(normalized?.runtime?.unlockedRunProfileIds));
+  const doneRunProfileIds = new Set(uniqueStrings(normalized?.runtime?.doneRunProfileIds));
   const controls = {};
 
   for (const [controlId, rawControl] of Object.entries((normalized?.controls && typeof normalized.controls === "object") ? normalized.controls : {})) {
     const control = normalizeFlowControl({ id: controlId, ...rawControl });
-    let nextState = control.state;
-    if (nextState !== "done") {
-      nextState = control.stepId && currentStepId && control.stepId === currentStepId ? "active" : "disabled";
+    let nextState = "disabled";
+    if (control.runProfileId && doneRunProfileIds.has(control.runProfileId)) {
+      nextState = "done";
+    } else if (control.runProfileId && unlockedRunProfileIds.has(control.runProfileId)) {
+      nextState = "active";
+    } else if (control.stepId && currentStepId && control.stepId === currentStepId) {
+      nextState = "active";
     }
+
     controls[control.id] = {
       ...control,
       state: nextState
@@ -175,6 +195,7 @@ export function syncFlowControlStatesWithCurrentStep(flow) {
 
   return {
     ...normalized,
+    runtime: normalizeFlowRuntime(normalized?.runtime, currentStepId),
     controls
   };
 }
@@ -215,6 +236,36 @@ export function setFlowCurrentStep(flow, stepId) {
       currentStepId: nextStep.id,
       lastTriggeredControlId: normalized.runtime?.lastTriggeredControlId || null,
       lastTriggeredAt: normalized.runtime?.lastTriggeredAt || null
+    },
+    updatedAt: new Date().toISOString()
+  });
+}
+
+export function applyFlowControlDirectives(flow, directives = {}) {
+  const normalized = normalizeBoardFlow(flow);
+  const unlockRunProfileIds = uniqueStrings(directives.unlockRunProfileIds || []);
+  const completeRunProfileIds = uniqueStrings(directives.completeRunProfileIds || []);
+  const nextUnlocked = new Set(uniqueStrings(normalized?.runtime?.unlockedRunProfileIds || []));
+  const nextDone = new Set(uniqueStrings(normalized?.runtime?.doneRunProfileIds || []));
+
+  for (const runProfileId of unlockRunProfileIds) {
+    if (!runProfileId) continue;
+    if (!nextDone.has(runProfileId)) nextUnlocked.add(runProfileId);
+  }
+
+  for (const runProfileId of completeRunProfileIds) {
+    if (!runProfileId) continue;
+    nextDone.add(runProfileId);
+    nextUnlocked.delete(runProfileId);
+  }
+
+  return syncFlowControlStatesWithCurrentStep({
+    ...normalized,
+    runtime: {
+      ...normalized.runtime,
+      unlockedRunProfileIds: Array.from(nextUnlocked),
+      doneRunProfileIds: Array.from(nextDone),
+      lastDirectiveAt: new Date().toISOString()
     },
     updatedAt: new Date().toISOString()
   });

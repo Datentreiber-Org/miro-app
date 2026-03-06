@@ -102,6 +102,24 @@ export const DT_FLOW_CONTROL_LAYOUT = Object.freeze({
   offsetFromCanvasBottomPx: 120
 });
 
+export const DT_FLOW_CONTROL_STATE_STYLES = Object.freeze({
+  active: Object.freeze({
+    fillColor: "#22c55e",
+    borderColor: "#15803d",
+    textColor: "#052e16"
+  }),
+  disabled: Object.freeze({
+    fillColor: "#facc15",
+    borderColor: "#ca8a04",
+    textColor: "#422006"
+  }),
+  done: Object.freeze({
+    fillColor: "#166534",
+    borderColor: "#14532d",
+    textColor: "#ecfdf5"
+  })
+});
+
 export const DT_RUN_STATUS_LAYOUT = Object.freeze({
   widthPx: 240,
   heightPx: 64,
@@ -328,9 +346,11 @@ Wenn exerciseContext vorhanden ist, ist er verbindlich:
 - Halte dich an exerciseContext.allowedActions. Erfinde keine Action-Typen außerhalb des Vertrags.
 - Für Exercise-Läufe ist feedback Pflicht. Feedback ist die sichtbare Erklärung für Nutzer und Facilitators.
 - feedback.title enthält niemals eine Nummerierung; die Nummerierung und Platzierung im Feedback-Frame übernimmt die App.
-- recommendations sind Empfehlungen, keine technischen Befehle. Nutze sie, um den sinnvoll nächsten Trigger oder Schritt vorzuschlagen.
+- flowControlDirectives sind app-seitige Freischaltungen für Board-Buttons. Nutze sie sparsam und nur dann, wenn didaktisch sinnvoll ein weiterer Button freigeschaltet oder als erledigt markiert werden soll.
+- Verwende in flowControlDirectives ausschließlich runProfileIds aus flowControlCatalog.
+- Wenn flowControlCatalog oder boardFlowState fehlen, lasse flowControlDirectives leer.
 - Wenn exerciseContext.triggerKey auf ".grade" endet, ist evaluation Pflicht.
-- Wenn du keinen sinnvollen nächsten Trigger oder Schritt empfehlen willst, setze die Felder in recommendations auf null/false.`.trim();
+- Wenn keine Button-Freischaltung oder Erledigung nötig ist, setze beide Arrays in flowControlDirectives auf [].`.trim();
 }
 
 function buildActionReferenceRulesBlock({ instanceLabelRule = null } = {}) {
@@ -373,7 +393,7 @@ ${buildExerciseContextBindingBlock()}
 Antworte ausschließlich mit einem JSON-Objekt in diesem Format:
 - Gib niemals Markdown, keine Code-Fences und keine Vor- oder Nachbemerkungen aus.
 - Der API-Call erzwingt zusätzlich ein JSON-Schema. Deshalb müssen alle Top-Level-Felder immer vorhanden sein.
-- Wenn recommendations oder evaluation inhaltlich leer sind, liefere dennoch das Objekt mit leeren Strings/null-Werten und leeren Arrays gemäß Schema.
+- Wenn flowControlDirectives oder evaluation inhaltlich leer sind, liefere dennoch das Objekt mit leeren Arrays bzw. null/leer gemäß Schema.
 {
 
   "analysis": "kurze Erklärung in natürlicher Sprache",
@@ -404,11 +424,9 @@ Antworte ausschließlich mit einem JSON-Objekt in diesem Format:
       }
     ]
   },
-  "recommendations": {
-    "recommendedNextTrigger": "selection.hint",
-    "recommendedNextStepId": null,
-    "advanceStepSuggested": false,
-    "reason": "Kurze Begründung für die Empfehlung."
+  "flowControlDirectives": {
+    "unlockRunProfileIds": ["analytics.fit.step1.hint"],
+    "completeRunProfileIds": []
   },
   "evaluation": {
     "score": 72,
@@ -430,10 +448,11 @@ Regeln für feedback:
 - sections ist optional, aber empfohlen.
 - Wenn exerciseContext.feedbackPolicy = panel, bleibt feedback dennoch Pflicht; die App entscheidet über die Darstellung.
 
-Regeln für recommendations:
-- recommendedNextTrigger muss, wenn gesetzt, einer gültigen Trigger-Sprache folgen, z.B. selection.check oder global.synthesize.
-- recommendedNextStepId muss, wenn gesetzt, einem realen Schritt im aktuellen Exercise Pack entsprechen.
-- advanceStepSuggested ist nur eine Empfehlung und keine Ausführungsanweisung.
+Regeln für flowControlDirectives:
+- unlockRunProfileIds und completeRunProfileIds enthalten ausschließlich runProfileIds aus flowControlCatalog.
+- unlockRunProfileIds schaltet vorhandene Buttons frei; fehlende Buttons darf die App im passenden Anchor-Kontext erzeugen.
+- completeRunProfileIds markiert vorhandene Buttons als erledigt.
+- Nutze flowControlDirectives nur sparsam und nur dann, wenn dies didaktisch wirklich sinnvoll ist.
 
 Regeln für evaluation:
 - evaluation ist optional, außer bei Triggern vom Typ *.grade.
@@ -450,7 +469,7 @@ Regeln für memoryEntry:
 - Falls du keine Board-Mutationen vorschlägst, setze actions auf ein leeres Array [], liefere aber trotzdem analysis, memoryEntry und feedback.
 
 Zusatz für ${modeLabel}:
-- recommendations und evaluation dürfen niemals die eigentliche Board-Manipulation ersetzen; actions, memoryEntry und feedback bleiben gleichwertige Bestandteile des Outputs.`.trim();
+- flowControlDirectives und evaluation dürfen niemals die eigentliche Board-Manipulation ersetzen; actions, memoryEntry und feedback bleiben gleichwertige Bestandteile des Outputs.`.trim();
 }
 
 function buildSelectionSystemPrompt() {
@@ -462,6 +481,8 @@ Du siehst:
 - ein aktuelles Gedächtnisobjekt unter memoryState
 - eine kleine Verlaufsliste jüngerer Gedächtniseinträge unter recentMemoryLogEntries
 - optional einen Übungs-/Trainingskontext unter exerciseContext.
+- optional einen kleinen Button-Katalog unter flowControlCatalog sowie den aktuellen Board-Button-Zustand unter boardFlowState.
+- optional einen kleinen Button-Katalog unter flowControlCatalog sowie den aktuellen Board-Button-Zustand unter boardFlowState.
 
 Die genaue fachliche Bedeutung der Canvas-Instanzen wird in nachgelagerten Canvas-Typ-Kontextblöcken erklärt. Verlasse dich nicht auf stillschweigendes Vorwissen über einen bestimmten Canvas-Typ.
 
@@ -509,6 +530,7 @@ Du siehst:
 - ein aktuelles Gedächtnisobjekt unter memoryState
 - eine kleine Verlaufsliste jüngerer Gedächtniseinträge unter recentMemoryLogEntries
 - optional einen Übungs-/Trainingskontext unter exerciseContext.
+- optional einen kleinen Button-Katalog unter flowControlCatalog sowie den aktuellen Board-Button-Zustand unter boardFlowState.
 
 Analysiere die Gesamtsituation auf dem Board, schlage sinnvolle nächste Schritte vor und formuliere bei Bedarf Board-Aktionen als JSON.
 Dabei sind Sticky Notes, Connectoren, memoryEntry und feedback gleichwertige Bestandteile der Aufgabe.
