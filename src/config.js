@@ -28,7 +28,7 @@ Verwende für area bzw. targetArea ausschließlich diese Area-Keys:
 - middle = Box 2 (Mitte)
 - right = Box 3 (rechts)
 Sticky Notes müssen inhaltlich sinnvoll diesen Bereichen zugeordnet werden.
-Wenn Beziehungen zwischen Stickies bestehen, sollen Connectoren so geplant werden, dass die inhaltliche Einheit lesbar bleibt.`.trim()
+Plane Connectoren nur dann, wenn eine konkrete fachliche Beziehung explizit sichtbar gemacht werden soll. Bloße thematische Nähe, Brainstorm-Sammlungen oder Cluster sind kein automatischer Grund für Connectoren.`.trim()
   },
   [ANALYTICS_AI_USE_CASE_TEMPLATE_ID]: {
     canvasTypeId: ANALYTICS_AI_USE_CASE_TEMPLATE_ID,
@@ -39,7 +39,7 @@ Wenn Beziehungen zwischen Stickies bestehen, sollen Connectoren so geplant werde
     insertWidthPx: 2000,
     promptContext: `
 Dieser Canvas-Typ ist das Analytics & AI Use Case Canvas.
-Ziel dieses Canvas ist es, einen Analytics- oder KI-Anwendungsfall konsequent aus einer realen Nutzer- und Entscheidungssituation herzuleiten.
+Ziel dieses Canvas ist es, einen Analytics- oder KI-Anwendungsfall aus einer konkreten Nutzerrolle, ihrer Situation, ihren Zielen, Entscheidungen, Handlungen, Pains und Gains herzuleiten und erst danach eine passende Lösung zu gestalten.
 
 Verwende für area bzw. targetArea ausschließlich diese Area-Keys:
 - 2_user_and_situation = User & Situation: konkrete Nutzerrolle oder Nutzergruppe, Auslöser, Arbeitssituation, Kontext, Job to be done.
@@ -53,14 +53,23 @@ Verwende für area bzw. targetArea ausschließlich diese Area-Keys:
 - 7_benefits = Benefits: resultierende Vorteile der Lösung, die Pains reduzieren, Gains verstärken oder zu besseren Ergebnissen und Zielen beitragen.
 - 8_check = Check: kurze Verdichtungen zum Problem-Solution-Fit.
 
-Fachliche Arbeitslogik dieses Canvas:
-- Arbeite grundsätzlich erst rechts, dann links und zuletzt das Feld 8_check.
-- Gute Inhalte sind konkret, atomar und area-genau; eine Sticky Note sollte möglichst nur eine klare Aussage enthalten.
-- Entscheidungen und Handlungen sind der methodische Drehpunkt: Informationen und Funktionen sind nur dann wertvoll, wenn sie Entscheidungen oder Handlungen tatsächlich verbessern.
-- Nutze als Leitlinie die Kette 6a_information → 4_decisions_and_actions → 3_objectives_and_results.
-- 7_benefits sind nur dann tragfähig, wenn sie aus der Lösung ableitbar sind und einen Bezug zu 5b_user_pains, 5a_user_gains, 3_objectives_and_results oder Objectives haben.
-- Vermeide zu frühe Technologiediskussionen, Systemarchitekturen oder generische KI-Floskeln ohne Bezug zur Nutzerarbeit.
-- Connectoren sind sinnvoll, wenn klare semantische Beziehungen lesbar gemacht werden, insbesondere zwischen 6a_information und 4_decisions_and_actions sowie zwischen 7_benefits und den adressierten 5b_user_pains, 5a_user_gains oder 3_objectives_and_results.
+Didaktische Grundlogik dieses Canvas:
+- Arbeite nicht als Vollgraph, sondern in Arbeitsmodi: zuerst sammeln, dann strukturieren, dann ableiten, dann prüfen und verdichten.
+- Rechte Seite zuerst: User & Situation → Objectives & Results → Decisions & Actions → User Gains / User Pains.
+- Linke Seite danach: Solutions → Information / Functions → Benefits.
+- Das Feld 8_check kommt zuletzt und verdichtet nur bereits erarbeiteten Fit.
+- Gute Inhalte sind konkret, atomar, überprüfbar und area-genau; eine Sticky Note sollte möglichst nur eine klare Aussage enthalten.
+
+Connector-Policy für dieses Canvas:
+- Plane Connectoren sparsam und nur bei expliziter methodischer Relation, nicht bei bloßer thematischer Nähe.
+- 2_user_and_situation: normalerweise keine Connectoren.
+- 3_objectives_and_results: nur wenige Driver-Tree-Kanten, typischerweise Result → Objective.
+- 4_decisions_and_actions: nur wenige Workflow- oder Feedback-Loop-Kanten zwischen real zusammenhängenden Entscheidungen/Handlungen und ggf. zu Results.
+- 5a_user_gains und 5b_user_pains: standardmäßig Sammel- oder Brainstorm-Bereiche; Gains und Pains bleiben normalerweise unverbunden.
+- 6_solutions: alternative Lösungsideen bleiben zunächst unverbunden; bloße Varianten werden nicht automatisch vernetzt.
+- 6a_information und 6b_functions: Connectoren nur, wenn eine konkrete Information oder Funktion eine konkrete Entscheidung oder Handlung verbessert.
+- 7_benefits: Connectoren nur selektiv, wenn ein Benefit klar von Information/Funktion ableitbar ist oder einen bestimmten Pain, Gain, Result, Objective oder eine Action adressiert.
+- 8_check: keine Graph-Explosion; lieber wenige validierte Fit-Ketten oder knappe Verdichtungen.
 
 Qualitätskriterien:
 - Lieber konkrete, überprüfbare Formulierungen als abstrakte Schlagworte.
@@ -68,6 +77,9 @@ Qualitätskriterien:
 - 4_decisions_and_actions beschreibt Verhalten oder Auswahlhandlungen, nicht Features.
 - 5a_user_gains ist nicht dasselbe wie 7_benefits: Gains kommen aus Nutzersicht, Benefits aus der Lösungsperspektive.
 - 5b_user_pains ist nicht dasselbe wie 3_objectives_and_results: Pains beschreiben Probleme oder Friktionen, Objectives/Results beschreiben Zielzustände.
+- Entscheidungen und Handlungen sind der methodische Drehpunkt: Informationen und Funktionen sind nur dann wertvoll, wenn sie Entscheidungen oder Handlungen tatsächlich verbessern.
+- Vermeide zu frühe Technologiediskussionen, Systemarchitekturen oder generische KI-Floskeln ohne Bezug zur Nutzerarbeit.
+- Nicht jede Sticky Note braucht einen eingehenden oder ausgehenden Connector. Unverbundene Stickies sind korrekt, wenn sie Sammlung, Alternative oder Beobachtung repräsentieren.
 
 Didaktischer Reifegrad:
 - Wenn die relevante Seite des Canvas leer oder fast leer ist, wechsle von harter Bewertung zu aktivierender Anleitung: erkläre einen sinnvollen Einstieg, schlage eine Reihenfolge vor und gib konkrete Formulierungsanstöße.
@@ -431,6 +443,9 @@ function buildConnectorRulesBlock({ forbidAltNames = false } = {}) {
     '- fromStickyId und toStickyId müssen bestehende Sticky-IDs oder refId-Werte aus derselben Antwort sein.',
     '- directed=true = Pfeil von fromStickyId nach toStickyId.',
     '- directed=false = Verbindung ohne Pfeil.',
+    '- Nutze create_connector nur für explizite Relationslogik: Beitrag, Ursache/Wirkung, Ablauf/Reihenfolge, Unterstützung, Feedback-Loop oder validierte Fit-/Traceability-Beziehung.',
+    '- Erzeuge keine Connectoren nur wegen gleicher Area, gleicher Farbe, thematischer Nähe, Clusterzugehörigkeit, Brainstorm-Sammlung oder alternativer Varianten.',
+    '- Nicht jede Sticky Note braucht einen Connector. Bevorzuge wenige, gut lesbare Kanten statt dichten Netzen.',
     '- Wenn neue Stickies verbunden werden sollen, gib zuerst create_sticky und danach create_connector aus.'
   ];
 
@@ -541,16 +556,19 @@ Du siehst:
 
 Die genaue fachliche Bedeutung der Canvas-Instanzen wird in nachgelagerten Canvas-Typ-Kontextblöcken erklärt. Verlasse dich nicht auf stillschweigendes Vorwissen über einen bestimmten Canvas-Typ.
 
-Deine Aufgabe besteht aus vier gleichwertigen Teilen:
+Deine Aufgabe besteht aus vier koordinierten Teilen:
 1) sinnvolle Sticky Notes planen, verschieben, ergänzen oder löschen,
-2) semantische Beziehungen zwischen Sticky Notes als sichtbare Connectoren auf dem Board planen,
+2) nur dann semantische Beziehungen zwischen Sticky Notes als sichtbare Connectoren auf dem Board planen, wenn sie methodisch wirklich nötig sind,
 3) den semantischen Arbeitsschritt dieses Laufs als memoryEntry verdichten,
 4) ein verständliches feedback für Menschen erzeugen.
 
-Standardregel:
-- Sobald aus der Nutzeranfrage, dem Canvas-Kontext oder dem Exercise-Kontext ableitbar ist, dass Sticky Notes zusammengehören, voneinander abhängen, in Beziehung stehen oder als gemeinsame Einheit gelesen werden sollen, musst du dafür Connectoren einplanen.
-- Beispiele für solche Beziehungen sind u.a.: "gehört zu", "hängt von ... ab", "führt zu", "unterstützt", "ist Teil von", "steht im Zusammenhang mit".
-- Wenn mehrere getrennte Gruppen erzeugt werden, verbinde nur die Stickies innerhalb derselben Gruppe. Verbinde verschiedene Gruppen nur dann miteinander, wenn der aktuelle Kontext das ausdrücklich verlangt.
+Standardregel für Connectoren:
+- Plane Connectoren nicht automatisch.
+- Eine gemeinsame Area, Farbe, thematische Nähe, Clusterzugehörigkeit, Brainstorm-Sammlung, Alternativsammlung oder das bloße Gefühl "das gehört zusammen" reicht nicht aus.
+- Plane Connectoren nur dann, wenn eine explizite methodische Relation sichtbar gemacht werden soll, z. B. Beitrag, Ursache/Wirkung, Ablauf/Reihenfolge, Unterstützung einer Entscheidung/Handlung, Feedback-Loop oder validierter Problem-Solution-Fit.
+- Nicht jede Sticky Note braucht einen eingehenden oder ausgehenden Connector. Unverbundene Stickies sind korrekt, wenn sie Sammlung, Alternative, Beobachtung oder Hypothese repräsentieren.
+- Wenn mehrere getrennte Gruppen erzeugt werden, verbinde nur die Stickies innerhalb derselben klaren Relationsgruppe. Verbinde verschiedene Gruppen nur dann miteinander, wenn der aktuelle Kontext das ausdrücklich verlangt.
+- Bevorzuge wenige, lesbare Kanten statt dichten Netzen.
 
 ${buildActionReferenceRulesBlock({
   instanceLabelRule: 'Wenn activeCanvasStates mehr als eine Instanz enthält, muss jede mutierende Action zusätzlich ein Feld "instanceLabel" enthalten. Der Wert muss exakt einem Label aus selectedInstanceLabels bzw. den Schlüsseln von activeCanvasStates entsprechen.'
@@ -588,11 +606,15 @@ Du siehst:
 - optional einen kleinen Button-Katalog unter flowControlCatalog sowie den aktuellen Board-Button-Zustand unter boardFlowState.
 
 Analysiere die Gesamtsituation auf dem Board, schlage sinnvolle nächste Schritte vor und formuliere bei Bedarf Board-Aktionen als JSON.
-Dabei sind Sticky Notes, Connectoren, memoryEntry und feedback gleichwertige Bestandteile der Aufgabe.
+Dabei sind Sticky Notes, Connectoren, memoryEntry und feedback koordinierte Bestandteile der Aufgabe; Connectoren bleiben dabei optional und nie Selbstzweck.
 
-Standardregel:
-- Wenn die Nutzeranfrage oder der aktuelle Kontext erkennen lassen, dass Sticky Notes zusammengehören, in Relation stehen oder als gemeinsame Einheit dargestellt werden sollen, musst du dafür Connectoren einplanen.
-- Verbinde nur die logisch zusammengehörigen Stickies. Erzeuge keine Verbindungen zwischen unabhängigen Gruppen oder Instanzen, außer die Anfrage verlangt es ausdrücklich.
+Standardregel für Connectoren:
+- Plane Connectoren nicht automatisch.
+- Eine gemeinsame Area, Farbe, thematische Nähe, Clusterzugehörigkeit, Brainstorm-Sammlung, Alternativsammlung oder das bloße Gefühl "das gehört zusammen" reicht nicht aus.
+- Plane Connectoren nur dann, wenn eine explizite methodische Relation sichtbar gemacht werden soll, z. B. Beitrag, Ursache/Wirkung, Ablauf/Reihenfolge, Unterstützung, Feedback-Loop oder validierter Problem-Solution-Fit.
+- Nicht jede Sticky Note braucht einen eingehenden oder ausgehenden Connector. Unverbundene Stickies sind korrekt, wenn sie Sammlung, Alternative oder Beobachtung repräsentieren.
+- Verbinde nur die logisch zusammengehörigen Stickies innerhalb derselben klaren Relationsgruppe. Erzeuge keine Verbindungen zwischen unabhängigen Gruppen oder Instanzen, außer die Anfrage verlangt es ausdrücklich.
+- Bevorzuge wenige, lesbare Kanten statt dichten Netzen.
 
 ${buildActionReferenceRulesBlock({
   instanceLabelRule: 'Jede mutierende Action muss genau eine Ziel-Instanz angeben. Verwende dafür das Feld "instanceLabel" und nur Werte, die als Labels in activeInstanceLabels bzw. als Schlüssel in activeCanvasStates vorhanden sind.'

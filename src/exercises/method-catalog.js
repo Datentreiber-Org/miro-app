@@ -1446,14 +1446,522 @@ const RAW_METHOD_CATALOG = deepFreeze({
   }
 });
 
-export const METHOD_CATALOG = RAW_METHOD_CATALOG;
+function setPromptModuleText(pack, moduleId, patch = {}) {
+  const moduleDef = pack?.promptModules?.[moduleId];
+  if (!moduleDef || typeof moduleDef !== "object") return;
+  if (typeof patch.label === "string") moduleDef.label = patch.label;
+  if (typeof patch.summary === "string") moduleDef.summary = patch.summary;
+  if (typeof patch.prompt === "string") moduleDef.prompt = patch.prompt;
+}
+
+function setStepFields(pack, stepId, patch = {}) {
+  const stepDef = pack?.steps?.[stepId];
+  if (!stepDef || typeof stepDef !== "object") return;
+  if (typeof patch.label === "string") stepDef.label = patch.label;
+  if (typeof patch.visibleInstruction === "string") stepDef.visibleInstruction = patch.visibleInstruction;
+  if (typeof patch.flowInstruction === "string") stepDef.flowInstruction = patch.flowInstruction;
+  if (typeof patch.flowSummary === "string") stepDef.flowSummary = patch.flowSummary;
+}
+
+function setTriggerPrompt(pack, stepId, triggerKey, prompt) {
+  const trigger = pack?.steps?.[stepId]?.triggerProfiles?.[triggerKey];
+  if (!trigger || typeof trigger !== "object" || typeof prompt !== "string") return;
+  trigger.prompt = prompt;
+}
+
+function applyAnalyticsUseCaseBatch7Patch(catalog) {
+  const pack = catalog?.packs?.["analytics-ai-usecase-fit-sprint-v1"];
+  if (!pack || typeof pack !== "object") return catalog;
+
+  pack.description = `Geführte Miniübung auf dem Analytics & AI Use Case Canvas, die erst Nutzerkontext sammelt und strukturiert, daraus selektiv eine Lösung ableitet und den Problem-Solution-Fit erst am Ende verdichtet.`;
+  pack.packTemplateDescription = `Geführte Übung für das Analytics & AI Use Case Canvas mit Sammel-, Struktur-, Ableitungs- und Fit-Logik statt pauschaler Vollvernetzung.`;
+
+  pack.exerciseGlobalPrompt = `Auf diesem Board läuft die Übung "Use Case Fit Sprint" auf dem Canvas "Analytics & AI Use Case".
+
+Übergeordnetes Ziel:
+- Entwickle einen Analytics- oder KI-Anwendungsfall konsequent aus einer realen Nutzer- und Entscheidungssituation.
+- Baue zuerst einen belastbaren Problemraum auf, leite daraus selektiv eine Lösungsperspektive ab und verdichte den Problem-Solution-Fit erst am Ende im Feld Check.
+
+Didaktische Arbeitslogik:
+- Arbeite in vier Modi: sammeln, strukturieren, ableiten, prüfen und verdichten.
+- Step 1 baut die Nutzerperspektive in dieser Reihenfolge auf: User & Situation → Objectives & Results → Decisions & Actions → User Gains / User Pains.
+- Step 2 arbeitet die Lösungsperspektive aus: zuerst Solution-Varianten oder Lösungsideen, dann Information und Functions, danach Benefits.
+- Step 3 prüft nur dann Fit und verdichtet im Feld Check, wenn genug Substanz vorhanden ist.
+
+Connector-Leitregeln:
+- Connectoren sind sparsam, optional und nur für explizite methodische Relationen gedacht.
+- Sammlungen, Brainstorms, Varianten und Cluster bleiben standardmäßig unverbunden.
+- Objectives & Results dürfen als kleiner Driver Tree strukturiert werden.
+- Decisions & Actions dürfen als kleiner Workflow mit einzelnen Feedback-Loops strukturiert werden.
+- Gains & Pains bleiben standardmäßig unverbunden.
+- Information, Functions und Benefits werden nur selektiv verbunden, wenn eine konkrete Ableitungs- oder Fit-Beziehung explizit ist.
+
+Qualitätskriterien:
+- Arbeite präzise, atomar, area-genau und anschlussfähig an vorhandene Inhalte.
+- Erfinde keine unnötigen Systemarchitekturen oder generischen KI-Floskeln.
+- Nicht jede Sticky Note braucht einen Connector; unverbundene Stickies sind in diesem Canvas oft korrekt.`;
+
+  pack.packTemplateGlobalPrompt = `Auf diesem Board läuft die Übung "Use Case Fit Sprint" auf dem Canvas "Analytics & AI Use Case".
+
+Übergeordnetes Ziel:
+- Entwickle einen Analytics- oder KI-Anwendungsfall konsequent aus einer realen Nutzer- und Entscheidungssituation.
+- Arbeite zuerst die Nutzerperspektive tragfähig aus, leite daraus die Lösungsperspektive ab und verdichte den Problem-Solution-Fit erst am Ende im Feld Check.
+
+Didaktische Leitidee dieses Packs:
+- Step 1 baut den Problemraum über vier Arbeitsmodi auf: User & Situation klären, Objectives & Results strukturieren, Decisions & Actions strukturieren, Gains & Pains sammeln.
+- Step 2 leitet daraus eine belastbare Lösungsperspektive ab: erst Solution-Varianten oder Lösungsideen, dann Information und Functions, danach Benefits.
+- Step 3 prüft und verdichtet den Problem-Solution-Fit, aber nur dann, wenn genug Substanz vorhanden ist.
+- Wenn ein Canvas oder Teilbereich noch leer ist, soll der Agent nicht nur Mängel melden, sondern didaktisch erklären, wie man fachlich sinnvoll startet.
+- In Hint-Modi soll der Agent konkrete nächste Schritte und Formulierungsanstöße geben.
+- In Coach-Modi soll der Agent mit Leitfragen arbeiten und genau einen sinnvollen Mikroschritt vorschlagen.
+- In Review-Modi soll der Agent Stärken, Risiken, fehlende Voraussetzungen, Over-Connecting und Konsistenzprobleme klar benennen.
+- In Synthesis-Modi soll der Agent nur verdichten, nicht künstlich Fit erfinden.
+
+Methodische Regeln:
+- Brainstorming zuerst, Strukturierung zweitens, Ableitung drittens, Fit-Check und Verdichtung zuletzt.
+- Die rechte Seite beschreibt die Nutzerperspektive: User & Situation, Objectives & Results, Decisions & Actions, User Gains, User Pains.
+- Die linke Seite beschreibt die Lösungsperspektive: Solutions, Information, Functions, Benefits.
+- Das Feld Check verdichtet den Problem-Solution-Fit.
+- Nutze Connectoren nur dort, wo Beziehungen methodisch klar, konkret und lesbar sind.
+- Gains und Pains sind standardmäßig Sammelbereiche, nicht Ketten.
+- Alternative Solutions sind standardmäßig Varianten, nicht automatisch vernetzte Bausteine.
+- Vermeide reine Technologiebehauptungen ohne Bezug zur Nutzerarbeit.
+- Arbeite präzise, atomar, area-genau und immer passend zum Reifegrad des aktuellen Canvas.`;
+
+  setPromptModuleText(pack, "analytics.fit.shared.method_guardrails", {
+    summary: "Hält den Agenten auf Tutorial-, Canvas- und Arbeitslogik-Kurs und bremst unnötige Vernetzung.",
+    prompt: `Arbeite methodisch sauber auf dem Analytics & AI Use Case Canvas:
+- Bleibe immer im Scope der ausgewählten Instanzen und des aktiven Schritts.
+- Behandle jede Sticky Note möglichst als eine atomare Aussage; vermeide Sammel-Stickies mit mehreren Gedanken.
+- Bleibe auf Use-Case-Ebene und erfinde keine unnötigen technischen Architekturen, Toollisten oder KI-Floskeln ohne Bezug zur Nutzerarbeit.
+- Arbeite in der Logik sammeln → strukturieren → ableiten → prüfen/verdichten.
+- Respektiere die Area-Semantik des Canvas: mische nicht Nutzerperspektive, Lösungsperspektive und Fit-Aussagen unkontrolliert.
+- Nutze Connectoren nur dort, wo eine explizite methodische Beziehung klar, lesbar und nützlich ist.
+- Gleiche Area, thematische Nähe, Clusterzugehörigkeit oder Brainstorming reichen nicht als Connector-Grund.
+- Gains/Pains und alternative Solutions sind standardmäßig Sammlungen, keine Ketten.
+- Arbeite anschlussfähig an vorhandenen Inhalten statt das Board vollständig neu zu erfinden.
+- Wenn Inhalte noch unreif sind, benenne Lücken präzise und erkläre den nächsten sinnvollen Arbeitsschritt statt pauschal nur Mängel festzustellen.`
+  });
+
+  setPromptModuleText(pack, "analytics.fit.shared.check_style", {
+    summary: "Strukturierter Prüfmodus mit Fokus auf Reifegrad, richtigen Arbeitsmodus und klaren nächsten Schritten.",
+    prompt: `Prüfmodus:
+- Prüfe strukturiert auf Vollständigkeit, Präzision, Fehlplatzierungen, Doppelungen, Unklarheiten, Over-Connecting und logische Brüche.
+- Prüfe auch, ob der aktuelle Bereich im richtigen Arbeitsmodus bearbeitet wird: Sammlung, Strukturierung, Ableitung oder Verdichtung.
+- Gib im feedback möglichst klar an: was bereits tragfähig ist, was fehlt, was unklar oder zu generisch ist und was als nächstes verbessert werden sollte.
+- Wenn Board-Mutationen in diesem Trigger erlaubt sind, nimm nur offensichtliche, risikoarme Korrekturen vor.
+- Wenn der relevante Bereich noch leer oder sehr unreif ist, wechsle von strenger Bewertung zu didaktischer Aktivierung: erkläre, womit man sinnvoll beginnen sollte, statt nur Leere zu protokollieren.`
+  });
+
+  setPromptModuleText(pack, "analytics.fit.shared.hint_style", {
+    summary: "Kurzer, anschlussfähiger Hinweisstil mit nächstem Mikroschritt statt Vollrundumschlag.",
+    prompt: `Hinweisstil:
+- Sei knapp, freundlich und konkret, aber nicht zu vage.
+- Priorisiere die nächsten 1 bis 3 sinnvollen Arbeitsschritte statt einen Vollrundumschlag zu geben.
+- Wenn Material vorhanden ist, knüpfe explizit an dieses Material an.
+- Wenn der relevante Bereich leer ist, gib eine sinnvolle Startreihenfolge und konkrete Formulierungsanstöße oder Satzanfänge.
+- Dränge nicht auf Connectoren, wenn der aktuelle Arbeitsmodus eher Sammlung oder Brainstorming ist.
+- Erzeuge normalerweise keine oder nur minimale Board-Mutationen; der Mehrwert soll vor allem im feedback liegen.`
+  });
+
+  setPromptModuleText(pack, "analytics.fit.shared.coach_style", {
+    summary: "Sokratischer, motivierender Coaching-Stil mit Leitfragen und genau einem Mikroschritt.",
+    prompt: `Coaching-Stil:
+- Formuliere eher coachend als bewertend.
+- Gib 3 bis 5 konkrete Leitfragen oder Reflexionsimpulse, die direkt zum aktiven Schritt passen.
+- Ergänze genau einen klaren Mikroschritt, mit dem der Nutzer sofort weitermachen kann.
+- Liefere keine vollständig ausformulierte Komplettlösung, wenn nicht ausdrücklich darum gebeten wird.
+- Wenn das Canvas leer ist, nutze Kick-off-Fragen und erkläre, warum ein bestimmter Einstieg fachlich sinnvoll ist.
+- Nutze Connectoren im Coaching höchstens als Ausnahme und nur dann, wenn der nächste Mikroschritt wirklich eine explizite Relation sichtbar machen soll.`
+  });
+
+  setPromptModuleText(pack, "analytics.fit.shared.review_style", {
+    summary: "Qualitativer Review mit Fokus auf Konsistenz, Reifegrad, Over-Connecting und Risiken statt auf Mutation.",
+    prompt: `Review-Stil:
+- Führe einen qualitativen Review durch, nicht bloß eine Checkliste.
+- Benenne möglichst klar Stärken, Schwächen, Widersprüche, fehlende Voraussetzungen, Over-Connecting und Risiken.
+- Wenn der Reifegrad noch zu niedrig für einen belastbaren Review ist, sage das explizit und erkläre, welche Vorarbeit zuerst fehlt.
+- Werte unverbundene Gains/Pains oder alternative Solutions nicht automatisch als Fehler.
+- Nimm standardmäßig keine Board-Mutationen vor; der Mehrwert liegt in Diagnose, Einordnung und Empfehlungen.`
+  });
+
+  setPromptModuleText(pack, "analytics.fit.shared.synthesis_style", {
+    summary: "Verdichtet nur dann, wenn genug Substanz vorhanden ist; neue Kanten bleiben selten und streng begründet.",
+    prompt: `Synthese-Stil:
+- Verdichte vorhandene Inhalte in knappe, belastbare Fit-Aussagen.
+- Erfinde keinen Problem-Solution-Fit, wenn der Canvas noch zu leer oder zu widersprüchlich ist.
+- Wenn die Vorarbeit noch nicht reicht, benenne präzise, was vor der Synthese zuerst geklärt werden muss.
+- Wenn Mutationen erlaubt sind, beschränke sie auf kleine, gezielte Ergänzungen im Feld Check und höchstens wenige, klar begründete Connectoren.
+- Nutze Check-Aussagen lieber für Verdichtung als zusätzliche Kanten ohne klaren Prüfwert.`
+  });
+
+  setPromptModuleText(pack, "analytics.fit.step1.focus_user_perspective", {
+    summary: "Konzentriert den Agenten auf die rechte Seite als Kombination aus Sammlung und selektiver Strukturierung.",
+    prompt: `Schrittfokus "User Perspective First":
+- Arbeite ausschließlich oder nahezu ausschließlich auf der rechten Seite des Canvas.
+- Gute Reihenfolge für die Nutzerperspektive: zuerst User & Situation, dann Objectives & Results, danach Decisions & Actions und anschließend User Pains sowie User Gains.
+- User & Situation ist ein Klärungs- und Fokussierungsmodus: Wer genau arbeitet in welcher Situation an welcher Aufgabe? Hier sind Connectoren normalerweise nicht nötig.
+- Objectives & Results ist ein Strukturmodus: Outcomes und messbare Ergebnisse dürfen als kleiner Driver Tree mit wenigen Result → Objective-Kanten sichtbar gemacht werden.
+- Decisions & Actions ist ein Strukturmodus: reale Entscheidungen oder Handlungen dürfen als kleiner Workflow mit wenigen klaren Ablauf- oder Feedback-Loop-Kanten sichtbar gemacht werden.
+- User Pains und User Gains sind ein Sammelmodus aus Nutzersicht. Sie sollen nahe an passenden blauen Stickies stehen, bleiben aber standardmäßig unverbunden.
+- Lenke die Aufmerksamkeit noch nicht auf Solutions, Functions oder Benefits, solange die Nutzerperspektive nicht tragfähig ist.`
+  });
+
+  setPromptModuleText(pack, "analytics.fit.step1.bootstrap_empty_user_perspective", {
+    summary: "Hilft bei leerem oder fast leerem Step 1 mit tutorial-naher Startreihenfolge und Formulierungsanstößen.",
+    prompt: `Wenn die rechte Seite des Canvas leer oder fast leer ist:
+- Behandle die Situation als fachlichen Kick-off und nicht als bloßen Mangelbericht.
+- Erkläre kurz, warum der sinnvollste Einstieg über User & Situation und anschließend Objectives & Results läuft.
+- Gib eine klare Startreihenfolge für die ersten Stickies vor:
+  1) User & Situation,
+  2) Objectives & Results,
+  3) Decisions & Actions,
+  4) User Pains und User Gains.
+- Gib konkrete Formulierungsanstöße oder Satzanfänge, z. B.:
+  - User & Situation: "<Rolle> muss in <Situation/Kontext> ..."
+  - Objectives & Results: "Ziel ist ..., messbar daran, dass ..."
+  - Decisions & Actions: "<Rolle> entscheidet, ob ..." oder "<Rolle> führt heute ... aus"
+  - User Pains: "Schwierig ist derzeit ..., weil ..."
+  - User Gains: "Hilfreich wäre für den Nutzer ..., damit ..."
+- Ermutige dazu, Gains und Pains zunächst als Sammlung zu behandeln und noch nicht künstlich miteinander zu verdrahten.
+- Wenn der Trigger ein Hint oder Coach ist, gib lieber gute Startimpulse als fertige Inhalte.`
+  });
+
+  setPromptModuleText(pack, "analytics.fit.step2.focus_solution_perspective", {
+    summary: "Lenkt den Agenten auf die linke Seite als Ableitung aus dem Problemraum statt als Vollverdrahtung.",
+    prompt: `Schrittfokus "Solution Perspective":
+- Arbeite schwerpunktmäßig auf der linken Seite des Canvas.
+- Gute Reihenfolge für die Lösungsperspektive: zuerst Solutions als Varianten oder grobe Lösungsideen, danach Information und Functions, anschließend Benefits.
+- Prüfe oder erläutere, ob Solutions, Information, Functions und Benefits nachvollziehbar aus der Nutzerperspektive abgeleitet werden.
+- Solutions können zunächst alternative Varianten sein und bleiben standardmäßig unverbunden, solange keine konkrete Auswahl- oder Ableitungsbeziehung sichtbar gemacht werden soll.
+- Information beschreibt Inhalte, Signale oder Erkenntnisse; Functions beschreiben Mechanismen oder Fähigkeiten; Solutions beschreiben die Lösungsidee als Ganzes.
+- Leite Information und Functions aus konkreten Decisions & Actions sowie aus kritischen Pains und Gains ab.
+- Verbinde Information oder Functions nur dann, wenn eine konkrete Entscheidung oder Handlung dadurch verbessert wird.
+- Benefits müssen einen plausiblen Bezug zu User Pains, User Gains, Objectives & Results oder Decisions & Actions haben und werden nur selektiv verbunden.
+- Vermeide generische Aussagen wie "KI-Tool", "Dashboard" oder "Automatisierung", wenn nicht klar ist, welche Information, welche Funktion und welcher Nutzen dahinter steckt.`
+  });
+
+  setPromptModuleText(pack, "analytics.fit.step2.bootstrap_empty_solution_perspective", {
+    summary: "Hilft bei leerer linker Seite oder unreifer rechter Seite mit tutorial-naher Ableitungsdidaktik.",
+    prompt: `Wenn die linke Seite noch leer oder sehr unreif ist:
+- Prüfe zuerst knapp, ob die rechte Seite bereits genug Substanz für sinnvolle Ableitungen hat.
+- Wenn die rechte Seite noch zu schwach ist, erkläre offen, welche Teile der Nutzerperspektive zuerst präzisiert werden müssen, bevor gute Lösungen ableitbar sind.
+- Wenn die rechte Seite brauchbar ist, führe didaktisch in die Ableitung ein:
+  1) Solutions als 1 bis 3 Varianten oder grobe Lösungsideen sammeln,
+  2) Information ableiten: "Um Entscheidung/Aktion X besser auszuführen, braucht der Nutzer ...",
+  3) Functions ableiten: "Die Lösung sollte den Nutzer dabei unterstützen, indem ...",
+  4) Benefits formulieren: "Dadurch sinkt/steigt/verbessert sich ...".
+- Alternative Solutions müssen nicht miteinander verbunden werden.
+- Gib lieber 2 bis 4 gute Ableitungsanstöße als eine große, komplett ausformulierte Lösungsarchitektur.`
+  });
+
+  setPromptModuleText(pack, "analytics.fit.step3.focus_fit_review", {
+    summary: "Bewertet Problem-Solution-Fit über wenige belastbare Fit-Ketten statt über Gesamtvernetzung.",
+    prompt: `Schrittfokus "Fit Check & Synthesis" im Review:
+- Prüfe, ob eine nachvollziehbare Kette von User & Situation über Objectives & Results und Decisions & Actions hin zu Solutions, Information, Functions und Benefits erkennbar ist.
+- Achte besonders auf fehlende Ableitungen, unbegründete Benefits, solutionistische Sprünge, Over-Connecting und unklare Ziel- oder Ergebnislogik.
+- Ein guter Review verlangt keine Vollvernetzung. Wichtiger sind wenige belastbare Fit-Ketten als ein dichtes Netz.
+- Prüfe selektiv, welche Benefits klar einen Pain, Gain, Result, Objective oder eine Action adressieren.
+- Wenn mehrere Instanzen betrachtet werden, arbeite pro Instanz klar getrennt und vergleiche erst danach Muster.`
+  });
+
+  setPromptModuleText(pack, "analytics.fit.step3.bootstrap_incomplete_fit", {
+    summary: "Verhindert verfrühte Fit-Bewertungen bei unvollständigem Canvas und routet gezielt zurück in Step 1 oder Step 2.",
+    prompt: `Wenn die rechte oder linke Seite noch zu leer, zu allgemein oder zu widersprüchlich ist:
+- Täusche keinen belastbaren Fit Check vor.
+- Benenne stattdessen präzise, welche Vorbedingungen noch fehlen.
+- Gib an, ob eher Step 1 oder Step 2 weiterbearbeitet werden sollte und welcher Arbeitsmodus dort fehlt: Sammlung, Strukturierung oder Ableitung.
+- Wenn der Problemraum noch unklar ist, route zurück zu User & Situation, Objectives & Results, Decisions & Actions oder Gains/Pains.
+- Wenn die Lösungsperspektive noch zu schwach ist, route zurück zu Solutions, Information, Functions oder Benefits.
+- Empfiehl als nächsten sinnvollen Trigger möglichst konkret check, hint oder coach auf dem passenden Schritt, statt schon eine Abschlussbewertung zu liefern.`
+  });
+
+  setPromptModuleText(pack, "analytics.fit.step3.focus_fit_synthesis", {
+    summary: "Verdichtet den Fit in kurze Check-Aussagen und ergänzt nur wenige validierte Fit-Kanten.",
+    prompt: `Schrittfokus "Fit Check & Synthesis" in der Synthese:
+- Verdichte pro betrachteter Instanz den Problem-Solution-Fit in 1 bis 3 kurze Aussagen für das Feld Check.
+- Gute Check-Aussagen machen sichtbar, welche Information oder Funktion welche Entscheidung oder Handlung verbessert und warum dies zu besseren Ergebnissen, geringeren Pains oder stärkeren Gains führt.
+- Nutze das Feld Check nicht für lange Erklärungen oder neue lose Ideen, sondern für knappe Verdichtungen des bereits erarbeiteten Kerns.
+- Ergänze höchstens wenige validierte Connectoren, wenn sie den Kern-Fit lesbarer machen; vermeide neue Graphnetze.`
+  });
+
+  setPromptModuleText(pack, "analytics.fit.global.focus_cross_instance_review", {
+    summary: "Vergleicht mehrere Instanzen auf Reifegrad, Arbeitsmodus, Over-Connecting und wiederkehrende Qualitätsmuster.",
+    prompt: `Globaler Vergleichsmodus:
+- Vergleiche die betrachteten Instanzen im Gesamtzusammenhang.
+- Erkenne wiederkehrende Muster: z. B. zu vage Nutzerbeschreibungen, zu schwach strukturierte Objectives & Results, unklare Decisions & Actions, Benefits ohne Ableitung oder Over-Connecting.
+- Hebe Unterschiede im Reifegrad hervor: Welche Instanzen sind bereits belastbar, welche sind noch im Sammelmodus, welche springen zu schnell in Lösungen und welche verdichten zu früh Fit?
+- Gib dem feedback eine nützliche Aggregation, damit Teams sehen, welche Qualitätsmuster sich über mehrere Boards hinweg wiederholen.`
+  });
+
+  setStepFields(pack, "step1_user_perspective", {
+    visibleInstruction: `Arbeite zuerst die Nutzerperspektive aus: User & Situation klären, Objectives & Results strukturieren, Decisions & Actions skizzieren und anschließend Gains & Pains sammeln.`,
+    flowInstruction: `Arbeite zuerst die rechte Seite aus: Beginne mit User & Situation, strukturiere danach Objectives & Results, skizziere Decisions & Actions und ergänze anschließend Gains & Pains als Nutzersammlung.`,
+    flowSummary: `Zuerst den Problemraum sammeln und strukturieren: User & Situation klären, Objectives/Results als kleinen Driver Tree, Decisions/Actions als kleinen Workflow, Gains/Pains als Sammlung. Noch nicht in Lösungen springen.`
+  });
+
+  setStepFields(pack, "step2_solution_perspective", {
+    visibleInstruction: `Leite nun aus der Nutzerperspektive die Lösungsperspektive ab: erst Lösungsideen sammeln, dann Information und Functions konkretisieren und daraus Benefits ableiten.`,
+    flowInstruction: `Leite nun aus der Nutzerperspektive die linke Seite ab: Welche Solution-Varianten sind denkbar, welche Information würde Entscheidungen oder Handlungen verbessern, welche Functions machen das nutzbar und welche Benefits entstehen daraus?`,
+    flowSummary: `Die Lösungsperspektive soll selektiv aus dem Problemraum folgen: Varianten sammeln, Information/Functions ableiten, Benefits begründen und nur wenige explizite Relationen sichtbar machen.`
+  });
+
+  setStepFields(pack, "step3_fit_check_and_synthesis", {
+    visibleInstruction: `Prüfe jetzt den Problem-Solution-Fit, verdichte ihn im Feld Check und ergänze nur wenige validierte Fit-Beziehungen.`,
+    flowInstruction: `Prüfe jetzt, ob Nutzerperspektive und Lösungsperspektive konsistent zusammenpassen. Erst wenn genug Substanz vorhanden ist, verdichte den Problem-Solution-Fit im Feld Check und ergänze höchstens wenige validierte Fit-Kanten.`,
+    flowSummary: `Konsistenz, Reifegrad und Problem-Solution-Fit prüfen und nur dann verdichten, wenn die Vorarbeit tragfähig genug ist. Wenige belastbare Fit-Ketten sind wichtiger als Vollvernetzung.`
+  });
+
+  setTriggerPrompt(pack, "step1_user_perspective", "selection.check", `Prüfmodus für den Schritt "User Perspective First":
+- Fokus ausschließlich auf der rechten Seite des Canvas.
+- Prüfe die tutorial-nahe Reihenfolge und Arbeitsmodi: User & Situation klären, Objectives & Results strukturieren, Decisions & Actions strukturieren, Gains & Pains sammeln.
+- Prüfe, ob User & Situation konkret genug sind.
+- Prüfe, ob Objectives & Results als gewünschte Ziele oder erwartete Ergebnisse formuliert sind und ob ein kleiner Driver Tree mit wenigen Result → Objective-Kanten sinnvoll wäre.
+- Prüfe, ob Decisions & Actions echte Entscheidungen oder Handlungen beschreiben und ob ein kleiner Workflow mit wenigen Kanten sinnvoll wäre.
+- Prüfe, ob User Gains und User Pains plausibel aus Nutzersicht formuliert sind und nicht künstlich miteinander verkettet wurden.
+- Prüfe Fehlplatzierungen und verschiebe nur dann, wenn die Korrektur eindeutig und unstrittig ist.
+- Liefere feedback mit tragfähigen Punkten, Lücken, Unklarheiten, Fehlplatzierungen und möglichem Over-Connecting.`);
+
+  setTriggerPrompt(pack, "step1_user_perspective", "selection.hint", `Hinweismodus für den Schritt "User Perspective First":
+- Gib möglichst wenig invasive Unterstützung.
+- Formuliere knappe Hinweise, was auf der rechten Seite noch fehlt oder zu vage ist.
+- Priorisiere den nächsten sinnvollen Arbeitsmodus: erst User & Situation, dann Objectives & Results, dann Decisions & Actions, dann Gains/Pains.
+- Dränge nicht auf Connectoren, wenn der aktuelle Bedarf eher Sammlung oder Brainstorming ist.
+- Nutze Board-Mutationen nur in Ausnahmefällen; bevorzuge feedback. Nutze flowControlDirectives nur sparsam, wenn didaktisch ein weiterer Button freigeschaltet oder als erledigt markiert werden soll.`);
+
+  setTriggerPrompt(pack, "step1_user_perspective", "selection.autocorrect", `Autokorrekturmodus für den Schritt "User Perspective First":
+- Korrigiere aktiv die rechte Seite des Canvas.
+- Verschiebe eindeutig falsch platzierte Sticky Notes in die passende Area der Nutzerperspektive.
+- Ergänze nur klar notwendige Sticky Notes, um offensichtliche Lücken zu schließen.
+- Entferne nur leere, redundante oder doppelte Inhalte.
+- Entwickle in diesem Schritt noch keine vollständige linke Lösungsperspektive.
+- Ergänze Connectoren nur dort, wo eine explizite Strukturbeziehung wirklich fehlt: wenige Result → Objective-Kanten oder wenige Workflow-Kanten in Decisions & Actions.
+- Ergänze standardmäßig keine Connectoren in User & Situation, Gains oder Pains.
+- Wenn vorhandene Connectoren bereits zu dicht wirken, benenne das im feedback statt weitere hinzuzufügen.
+- Erkläre in feedback, welche Korrekturen vorgenommen wurden und ob die Instanz für den nächsten Schritt tragfähig ist.`);
+
+  setTriggerPrompt(pack, "step1_user_perspective", "selection.review", `Reviewmodus für den Schritt "User Perspective First":
+- Beurteile die Qualität, Lesbarkeit und methodische Sauberkeit der rechten Seite.
+- Prüfe, ob Sammlung und Strukturierung an den richtigen Stellen passieren und ob Gains/Pains nicht fälschlich als Vollgraph behandelt werden.
+- Nimm standardmäßig keine Board-Mutationen vor.
+- Gib präzises feedback zu Vollständigkeit, Spezifität, Reifegrad und möglichem Over-Connecting.`);
+
+  setTriggerPrompt(pack, "step1_user_perspective", "selection.synthesize", `Synthesemodus für den Schritt "User Perspective First":
+- Verdichte, welche Nutzer, Ziele, Ergebnisse, Entscheidungen, Gains und Pains bereits sichtbar sind.
+- Mache sichtbar, welche Teile schon gesammelt sind und welche bereits strukturiert wurden.
+- Fokus auf Einsichten und Muster, nicht auf Mutationen oder zusätzliche Connectoren.`);
+
+  setTriggerPrompt(pack, "step1_user_perspective", "selection.coach", `Coachmodus für den Schritt "User Perspective First":
+- Coache die selektierten Canvas-Instanzen, wie die rechte Seite sinnvoll ausgefüllt werden soll.
+- Erkläre konkret, was in User & Situation, Objectives & Results, Decisions & Actions, User Gains und User Pains gehört.
+- Nutze vorhandene Stickies als Ausgangspunkt und schlage genau einen sinnvollen Mikroschritt vor.
+- Mache klar, dass Gains/Pains zunächst gesammelt und nicht automatisch verbunden werden.
+- actions sollen normalerweise leer bleiben.
+- Liefere starkes feedback. Nutze flowControlDirectives nur dann, wenn didaktisch ein weiterer Button freigeschaltet oder als erledigt markiert werden soll.`);
+
+  setTriggerPrompt(pack, "step1_user_perspective", "selection.grade", `Bewertungsmodus für den Schritt "User Perspective First":
+- Bewerte die rechte Seite anhand der Kriterien User Clarity, Objective/Result Quality, Decision/Action Quality, Pain/Gain Quality, Area Correctness und sparsame Strukturierung.
+- Führe keine oder praktisch keine Board-Mutationen aus.
+- Liefere zusätzlich eine evaluation mit Rubrik.
+- Werte fehlende Vollvernetzung nicht negativ, solange der Arbeitsmodus stimmt.
+- Wenn die rechte Seite tragfähig genug ist, kannst du den passenden nächsten Button per flowControlDirectives freischalten.`);
+
+  setTriggerPrompt(pack, "step1_user_perspective", "global.check", `Globaler Prüfmodus für den Schritt "User Perspective First":
+- Prüfe über alle relevanten Instanzen hinweg, ob Nutzerperspektiven konsistent, konkret und methodisch tragfähig sind.
+- Hebe globale Lücken, wiederkehrende Fehlplatzierungen, fehlende Strukturierung und Over-Connecting hervor.`);
+
+  setTriggerPrompt(pack, "step1_user_perspective", "global.hint", `Globaler Hinweismodus für den Schritt "User Perspective First":
+- Gib globale Hinweise, welche Aspekte der Nutzerperspektive typischerweise noch fehlen oder unscharf sind.
+- Priorisiere den nächsten Arbeitsmodus je Instanz: User & Situation, Objectives & Results, Decisions & Actions oder Gains/Pains.
+- Bevorzuge feedback; nutze flowControlDirectives nur sparsam und handle Board-Mutationen sehr zurückhaltend.`);
+
+  setTriggerPrompt(pack, "step1_user_perspective", "global.autocorrect", `Globaler Autokorrekturmodus für den Schritt "User Perspective First":
+- Korrigiere über alle relevanten Instanzen hinweg nur eindeutige Fehlplatzierungen oder Lücken auf der rechten Seite.
+- Entwickle noch keine vollständige linke Lösungsperspektive.
+- Ergänze Connectoren global nur dort, wo klare Driver-Tree- oder Workflow-Lücken bestehen; Gains/Pains bleiben standardmäßig unverbunden.`);
+
+  setTriggerPrompt(pack, "step1_user_perspective", "global.review", `Globaler Reviewmodus für den Schritt "User Perspective First":
+- Führe einen qualitativen Gesamt-Review über die Nutzerperspektiven aller relevanten Instanzen durch.
+- Fokus: Reifegrad, Präzision, Arbeitsmodus, sparsame Strukturierung und Vergleichbarkeit.`);
+
+  setTriggerPrompt(pack, "step1_user_perspective", "global.synthesize", `Globaler Synthesemodus für den Schritt "User Perspective First":
+- Verdichte über alle relevanten Instanzen hinweg die wichtigsten Nutzerziele, Results, Pains, Gains und Handlungsmuster.
+- Keine Standard-Mutationen; Fokus auf Muster, Arbeitsmodi und Erkenntnisse.`);
+
+  setTriggerPrompt(pack, "step1_user_perspective", "global.coach", `Globaler Coachmodus für den Schritt "User Perspective First":
+- Gib dem Team eine klare übergreifende Anleitung, wie es die Nutzerperspektive weiter schärfen soll.
+- Mache deutlich, in welchem Arbeitsmodus die Teams jeweils hängen: Sammlung, Strukturierung oder beides.`);
+
+  setTriggerPrompt(pack, "step1_user_perspective", "global.grade", `Globaler Bewertungsmodus für den Schritt "User Perspective First":
+- Bewerte die Gesamtqualität der Nutzerperspektive über alle relevanten Instanzen.
+- Berücksichtige dabei User Clarity, Objective/Result Quality, Decision/Action Quality, Pain/Gain Quality, Area Correctness und angemessene Sparsamkeit bei Connectoren.
+- Liefere zusätzlich eine evaluation mit Rubrik.`);
+
+  setTriggerPrompt(pack, "step2_solution_perspective", "selection.check", `Prüfmodus für den Schritt "Solution Perspective":
+- Fokus auf der linken Seite des Canvas.
+- Prüfe, ob Solutions, Information, Functions und Benefits nachvollziehbar aus der Nutzerperspektive abgeleitet sind.
+- Prüfe, ob Solutions zunächst als Varianten oder grobe Lösungsideen gesammelt und nicht unnötig miteinander vernetzt wurden.
+- Prüfe, ob Information konkrete Entscheidungen oder Handlungen verbessert.
+- Prüfe, ob Functions reale Entscheidungen oder Handlungen unterstützen.
+- Prüfe, ob Benefits Pains reduzieren, Gains verstärken oder zu Ergebnissen und Zielen beitragen.
+- Ergänze Connectoren nur dort, wo Beziehungen klar ableitbar sind, insbesondere Information → Decisions & Actions, Functions → Decisions & Actions oder selektiv Benefit → adressierter Pain/Gain/Result/Objective/Action.
+- Liefere feedback zu Relevanz, Ableitungslogik, Traceability und möglichem Over-Connecting.`);
+
+  setTriggerPrompt(pack, "step2_solution_perspective", "selection.hint", `Hinweismodus für den Schritt "Solution Perspective":
+- Gib präzise Hinweise, wie die linke Seite aus der rechten Seite abgeleitet werden sollte.
+- Priorisiere die nächste sinnvolle Teilaufgabe: Solution-Varianten sammeln, Information ableiten, Functions ableiten oder Benefits formulieren.
+- Board-Mutationen nur in Ausnahmefällen; bevorzuge feedback. Nutze flowControlDirectives nur sparsam.
+- Dränge nicht auf Connectoren, solange Varianten oder lose Lösungsideen erst gesammelt werden.`);
+
+  setTriggerPrompt(pack, "step2_solution_perspective", "selection.autocorrect", `Autokorrekturmodus für den Schritt "Solution Perspective":
+- Korrigiere aktiv die linke Seite des Canvas.
+- Verschiebe fehlplatzierte Inhalte in Solutions, Information, Functions oder Benefits.
+- Ergänze nur klar notwendige Sticky Notes, um offensichtliche Lücken zu schließen.
+- Ergänze Connectoren nur dort, wo eine konkrete Ableitungs- oder Unterstützungsbeziehung klar fehlt.
+- Verbinde alternative Solutions standardmäßig nicht miteinander.
+- Bleibe auf Use-Case-Ebene und erfinde keine komplexen Systemarchitekturen.
+- Wenn vorhandene Connectoren bereits zu dicht wirken, benenne das im feedback statt weitere hinzuzufügen.
+- Erkläre in feedback, welche Korrekturen du vorgenommen hast und ob der Fit-Check-Schritt sinnvoll ist.`);
+
+  setTriggerPrompt(pack, "step2_solution_perspective", "selection.review", `Reviewmodus für den Schritt "Solution Perspective":
+- Beurteile die Relevanz, Präzision und Nutzennähe der Lösungsperspektive.
+- Prüfe, ob die linke Seite wirklich aus dem Problemraum abgeleitet ist und nicht zu früh in generische Technologie springt.
+- Nimm standardmäßig keine Board-Mutationen vor.`);
+
+  setTriggerPrompt(pack, "step2_solution_perspective", "selection.synthesize", `Synthesemodus für den Schritt "Solution Perspective":
+- Verdichte, welche Lösungsmuster, Informationsbedarfe, Funktionen und Benefits bereits sichtbar sind.
+- Hebe hervor, welche Ableitungsketten bereits belastbar sind und wo Benefits noch zu lose bleiben.
+- Fokus auf übergreifende Einsichten, nicht auf Mutationen oder zusätzliche Connectoren.`);
+
+  setTriggerPrompt(pack, "step2_solution_perspective", "selection.coach", `Coachmodus für den Schritt "Solution Perspective":
+- Erkläre klar den Unterschied zwischen Solutions, Information, Functions und Benefits.
+- Hilf dabei, aus Decisions & Actions sinnvolle Information und Functions und aus Pains/Gains tragfähige Benefits abzuleiten.
+- Nutze vorhandene Stickies als Ausgangspunkt und schlage genau einen sinnvollen Mikroschritt vor.
+- actions sollen normalerweise leer bleiben.`);
+
+  setTriggerPrompt(pack, "step2_solution_perspective", "selection.grade", `Bewertungsmodus für den Schritt "Solution Perspective":
+- Bewerte die linke Seite anhand der Kriterien Solution Relevance, Information Quality, Function Usefulness, Benefit Strength, Cross-Side Traceability und sparsame Connector-Nutzung.
+- Führe keine oder praktisch keine Board-Mutationen aus.
+- Liefere zusätzlich eine evaluation mit Rubrik.
+- Werte fehlende Vollvernetzung nicht negativ, solange die wichtigsten Ableitungsketten plausibel sind.
+- Wenn die Lösungsperspektive tragfähig genug ist, kannst du den passenden nächsten Button per flowControlDirectives freischalten.`);
+
+  setTriggerPrompt(pack, "step2_solution_perspective", "global.check", `Globaler Prüfmodus für den Schritt "Solution Perspective":
+- Prüfe über alle relevanten Instanzen hinweg, ob die Lösungsperspektiven nachvollziehbar aus der Nutzerperspektive abgeleitet sind.
+- Benenne, wo Varianten sauber gesammelt sind, wo Information/Functions fehlen und wo Benefits ohne klare Ableitung bleiben.`);
+
+  setTriggerPrompt(pack, "step2_solution_perspective", "global.hint", `Globaler Hinweismodus für den Schritt "Solution Perspective":
+- Gib globale Hinweise zu fehlenden Solution-Varianten, Informationsbedarfen, vagen Funktionen und schwachen Benefits.
+- Mache deutlich, auf welcher Teilaufgabe die Teams als Nächstes arbeiten sollten.`);
+
+  setTriggerPrompt(pack, "step2_solution_perspective", "global.autocorrect", `Globaler Autokorrekturmodus für den Schritt "Solution Perspective":
+- Korrigiere selektionsunabhängig über alle relevanten Instanzen hinweg eindeutige Probleme der linken Seite.
+- Ergänze Connectoren nur dort, wo klare Ableitungs- oder Unterstützungsbeziehungen fehlen; vermeide globale Vollvernetzung.`);
+
+  setTriggerPrompt(pack, "step2_solution_perspective", "global.review", `Globaler Reviewmodus für den Schritt "Solution Perspective":
+- Führe einen qualitativen Gesamt-Review über alle relevanten Lösungsperspektiven durch.
+- Fokus: Relevanz, Lesbarkeit, Ableitung aus der Nutzerperspektive, Variantendenken und sparsame Traceability.`);
+
+  setTriggerPrompt(pack, "step2_solution_perspective", "global.synthesize", `Globaler Synthesemodus für den Schritt "Solution Perspective":
+- Verdichte die wichtigsten Lösungs-, Informations-, Funktions- und Benefit-Muster über alle relevanten Instanzen hinweg.
+- Hebe hervor, welche Ableitungslogiken sich wiederholen und wo Benefits oder Funktionen noch zu generisch bleiben.`);
+
+  setTriggerPrompt(pack, "step2_solution_perspective", "global.coach", `Globaler Coachmodus für den Schritt "Solution Perspective":
+- Gib dem Team eine klare Anleitung für die nächste übergreifende Ausarbeitung der Lösungsperspektive.
+- Sage, ob zuerst Varianten, Information, Functions oder Benefits vertieft werden sollten.`);
+
+  setTriggerPrompt(pack, "step2_solution_perspective", "global.grade", `Globaler Bewertungsmodus für den Schritt "Solution Perspective":
+- Bewerte die Gesamtqualität der Lösungsperspektiven über alle relevanten Instanzen.
+- Berücksichtige Relevanz, Informationsqualität, Funktionsnutzwert, Benefit-Stärke, Cross-Side Traceability und sparsame Connector-Nutzung.
+- Liefere zusätzlich eine evaluation mit Rubrik.`);
+
+  setTriggerPrompt(pack, "step3_fit_check_and_synthesis", "selection.check", `Prüfmodus für den Schritt "Fit Check & Synthesis":
+- Prüfe die Konsistenz zwischen rechter und linker Seite.
+- Prüfe, ob Benefits tatsächlich Pains reduzieren, Gains verstärken oder Entscheidungen, Handlungen, Ergebnisse und Ziele unterstützen.
+- Prüfe über wenige belastbare Fit-Ketten statt über Vollvernetzung.
+- Das Feld Check dient der Verdichtung des Problem-Solution-Fit und nicht dem Aufbau eines zweiten Graphen.`);
+
+  setTriggerPrompt(pack, "step3_fit_check_and_synthesis", "selection.hint", `Hinweismodus für den Schritt "Fit Check & Synthesis":
+- Gib knappe Hinweise, wie der Problem-Solution-Fit klarer und belastbarer formuliert werden kann.
+- Zeige lieber, welche 1 bis 3 Fit-Ketten tragfähig sind oder noch fehlen, statt neue Vernetzung zu fordern.`);
+
+  setTriggerPrompt(pack, "step3_fit_check_and_synthesis", "selection.autocorrect", `Autokorrekturmodus für den Schritt "Fit Check & Synthesis":
+- Korrigiere aktiv klare Inkonsistenzen zwischen rechter und linker Seite.
+- Ergänze bei Bedarf kleine Präzisierungen im Check-Feld und höchstens wenige, eindeutige Fit-Connectoren.
+- Keine große Restrukturierung des Canvas und keine künstliche Vollvernetzung.`);
+
+  setTriggerPrompt(pack, "step3_fit_check_and_synthesis", "selection.review", `Reviewmodus für den Schritt "Fit Check & Synthesis":
+- Führe einen qualitativen Review des Problem-Solution-Fit durch.
+- Prüfe, welche Benefits belastbar adressiert sind, wo Fit nur behauptet wird und wo noch Vorarbeit aus Step 1 oder Step 2 fehlt.
+- Nimm standardmäßig keine Board-Mutationen vor.`);
+
+  setTriggerPrompt(pack, "step3_fit_check_and_synthesis", "selection.synthesize", `Synthesemodus für den Schritt "Fit Check & Synthesis":
+- Verdichte die selektierte Instanz oder die selektierten Instanzen und mache den Problem-Solution-Fit sichtbar.
+- Formuliere pro Instanz 1 bis 3 knappe Fit-Aussagen für das Feld Check.
+- In diesem Trigger darfst du begrenzte Mutationen durchführen: bis zu drei neue Sticky Notes im Feld Check und höchstens wenige validierte ergänzende Connectoren.
+- Nimm keine große Restrukturierung des restlichen Canvas vor.
+- Liefere feedback, das die Verdichtung erklärt. Nutze flowControlDirectives nur dann, wenn didaktisch weitere Buttons freigeschaltet oder als erledigt markiert werden sollen.`);
+
+  setTriggerPrompt(pack, "step3_fit_check_and_synthesis", "selection.coach", `Coachmodus für den Schritt "Fit Check & Synthesis":
+- Erkläre, wie aus Nutzerperspektive und Lösungsperspektive belastbare Fit-Aussagen im Feld Check formuliert werden.
+- Hilf dem Team, wenige belastbare Fit-Ketten zu erkennen statt alles miteinander zu verbinden.
+- actions sollen normalerweise leer bleiben.`);
+
+  setTriggerPrompt(pack, "step3_fit_check_and_synthesis", "selection.grade", `Bewertungsmodus für den Schritt "Fit Check & Synthesis":
+- Bewerte den Problem-Solution-Fit anhand der Kriterien Fit Clarity, Fit Evidence, Consistency, Actionability und Overall Coherence.
+- Berücksichtige dabei, ob die Fit-Logik über wenige belastbare Ketten statt über künstliche Vollvernetzung gezeigt wird.
+- Führe keine oder praktisch keine Board-Mutationen aus.
+- Liefere zusätzlich eine evaluation mit Rubrik.`);
+
+  setTriggerPrompt(pack, "step3_fit_check_and_synthesis", "global.check", `Globaler Prüfmodus für den Schritt "Fit Check & Synthesis":
+- Prüfe über alle aktiven Instanzen hinweg, wo Problem-Solution-Fit bereits klar ist und wo noch Schwächen bestehen.
+- Hebe hervor, wo Teams belastbare Fit-Ketten zeigen und wo sie entweder zu früh verdichten oder zu stark vernetzen.`);
+
+  setTriggerPrompt(pack, "step3_fit_check_and_synthesis", "global.hint", `Globaler Hinweismodus für den Schritt "Fit Check & Synthesis":
+- Gib globale Hinweise, wo Fit-Aussagen fehlen oder die Konsistenz noch nicht überzeugend ist.
+- Zeige, ob eher Step 1 oder Step 2 weiter vertieft werden sollte, bevor weiter verdichtet wird.`);
+
+  setTriggerPrompt(pack, "step3_fit_check_and_synthesis", "global.autocorrect", `Globaler Autokorrekturmodus für den Schritt "Fit Check & Synthesis":
+- Korrigiere nur klare globale Inkonsistenzen oder fehlende Verdichtungen mit Bedacht.
+- Ergänze höchstens wenige validierte Fit-Kanten und vermeide globale Vollvernetzung.`);
+
+  setTriggerPrompt(pack, "step3_fit_check_and_synthesis", "global.review", `Globaler Reviewmodus für den Schritt "Fit Check & Synthesis":
+- Prüfe alle aktiven Instanzen dieses Exercise Packs im Zusammenhang.
+- Ziel ist ein qualitativer Gesamt-Review: Welche Instanzen haben einen klaren Problem-Solution-Fit, wo sind Nutzerperspektiven zu vage, wo sind Lösungen zu allgemein oder nicht ausreichend an Entscheidungen und Handlungen gekoppelt, wo wird zu früh verdichtet und wo zeigt sich Over-Connecting?
+- Dieser Trigger dient primär Analyse und feedback; nimm normalerweise keine oder nur minimale Board-Mutationen vor.`);
+
+  setTriggerPrompt(pack, "step3_fit_check_and_synthesis", "global.synthesize", `Globaler Synthesemodus für den Schritt "Fit Check & Synthesis":
+- Verdichte alle aktiven Instanzen dieses Exercise Packs zu einer übergreifenden Synthese.
+- Suche nach wiederkehrenden Nutzerzielen, Pains, Entscheidungs- und Handlungsmustern, Informations- und Funktionsmustern, Benefits und Fit-Lücken.
+- Hebe hervor, welche Fit-Ketten sich über mehrere Instanzen wiederholen und wo Boards eher unter- oder überstrukturiert sind.
+- Dieser Trigger dient primär der übergreifenden Zusammenfassung und dem feedback, nicht der massiven Board-Manipulation.`);
+
+  setTriggerPrompt(pack, "step3_fit_check_and_synthesis", "global.coach", `Globaler Coachmodus für den Schritt "Fit Check & Synthesis":
+- Gib dem Team eine klare Anleitung, ob es vertiefen, korrigieren oder abschließen sollte.
+- Sage, ob zuerst Problemraum, Lösungsperspektive oder Check-Verdichtung reifer gemacht werden muss.`);
+
+  setTriggerPrompt(pack, "step3_fit_check_and_synthesis", "global.grade", `Globaler Bewertungsmodus für den Schritt "Fit Check & Synthesis":
+- Bewerte die Gesamtqualität des Problem-Solution-Fit über alle relevanten Instanzen.
+- Berücksichtige dabei Fit Clarity, Fit Evidence, Consistency, Actionability, Overall Coherence und angemessene Sparsamkeit bei Connectoren.
+- Liefere zusätzlich eine evaluation mit Rubrik.`);
+
+  return catalog;
+}
+
+function createBatch7MethodCatalog(rawCatalog) {
+  const cloned = cloneJson(rawCatalog);
+  applyAnalyticsUseCaseBatch7Patch(cloned);
+  return deepFreeze(cloned);
+}
+
+export const METHOD_CATALOG = createBatch7MethodCatalog(RAW_METHOD_CATALOG);
 
 const exercisePacks = {};
 const packTemplates = {};
 const runProfiles = {};
 const promptModules = {};
 
-for (const [packId, packDef] of Object.entries(RAW_METHOD_CATALOG.packs || {})) {
+for (const [packId, packDef] of Object.entries(METHOD_CATALOG.packs || {})) {
   const exercisePack = buildExercisePackProjection({ exercisePackId: packId, ...cloneJson(packDef) });
   if (exercisePack?.id) {
     exercisePacks[exercisePack.id] = exercisePack;

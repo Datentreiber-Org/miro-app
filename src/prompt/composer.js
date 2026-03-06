@@ -40,6 +40,76 @@ function getCanvasTypeDisplayName(templateCatalog, canvasTypeId) {
   return asNonEmptyString(cfg?.displayName) || asNonEmptyString(cfg?.agentLabelPrefix) || canvasTypeId || null;
 }
 
+const ANALYTICS_AI_USE_CASE_CANVAS_TYPE_ID = "datentreiber-analytics-ai-use-case";
+
+function resolvePromptStepId({ currentStep = null, flowStep = null, exerciseContext = null } = {}) {
+  return asNonEmptyString(flowStep?.id)
+    || asNonEmptyString(currentStep?.id)
+    || asNonEmptyString(exerciseContext?.currentStepId)
+    || null;
+}
+
+function buildConnectorPermissionAddendum(exerciseContext) {
+  const hasAllowedActionsArray = Array.isArray(exerciseContext?.allowedActions);
+  const allowedActions = normalizeUniqueStrings(exerciseContext?.allowedActions || []);
+  const mutationPolicy = asNonEmptyString(exerciseContext?.mutationPolicy);
+
+  if (mutationPolicy === "none" || (hasAllowedActionsArray && !allowedActions.includes("create_connector"))) {
+    return "- In diesem Run sind Connector-Mutationen nicht freigegeben oder nicht der richtige Schwerpunkt. Gib deshalb keine create_connector-Actions aus; benenne nötige Relationen höchstens im feedback.";
+  }
+
+  return null;
+}
+
+function buildConnectorPolicyBlock({
+  involvedCanvasTypeIds = [],
+  exerciseContext = null,
+  currentStep = null,
+  flowStep = null
+} = {}) {
+  const lines = [
+    "Zentrale Connector-Policy:",
+    "- Connectoren sind sparsame, methodische Beziehungen und niemals Default-Dekoration.",
+    "- Plane Connectoren nur, wenn eine explizite Relation sichtbar werden soll: Beitrag, Ursache/Wirkung, Ablauf/Reihenfolge, Unterstützung, Feedback-Loop oder validierte Fit-/Traceability-Beziehung.",
+    "- Plane KEINE Connectoren nur wegen gleicher Area, gleicher Farbe, thematischer Nähe, Clusterzugehörigkeit, Brainstorm-Sammlung, Alternativsammlung oder räumlicher Nähe.",
+    "- Nicht jede Sticky Note braucht einen Connector. Unverbundene Stickies sind korrekt, wenn sie Sammlung, Alternative, Beobachtung oder Hypothese repräsentieren.",
+    "- Bevorzuge wenige, gut lesbare Kanten statt dichten Netzen."
+  ];
+
+  const permissionAddendum = buildConnectorPermissionAddendum(exerciseContext);
+  if (permissionAddendum) {
+    lines.push(permissionAddendum);
+  }
+
+  const canvasTypeIds = new Set(normalizeUniqueStrings(involvedCanvasTypeIds));
+  if (!canvasTypeIds.has(ANALYTICS_AI_USE_CASE_CANVAS_TYPE_ID)) {
+    return lines.join("\n");
+  }
+
+  const stepId = resolvePromptStepId({ currentStep, flowStep, exerciseContext });
+  lines.push("Connector-Policy für Analytics & AI Use Case:");
+  lines.push("- 2_user_and_situation bleibt normalerweise unverbunden.");
+  lines.push("- 3_objectives_and_results darf als kleiner Driver Tree strukturiert werden: bevorzugt Result → Objective, nicht als Vollgraph.");
+  lines.push("- 4_decisions_and_actions darf als kleiner Workflow mit wenigen klaren Ablauf- oder Feedback-Loop-Kanten strukturiert werden.");
+  lines.push("- 5a_user_gains und 5b_user_pains sind standardmäßig Sammel- oder Brainstorm-Bereiche; Gains und Pains bleiben normalerweise unverbunden.");
+  lines.push("- 6_solutions sammelt zunächst Varianten; alternative Lösungsideen werden nicht automatisch miteinander verbunden.");
+  lines.push("- 6a_information und 6b_functions werden nur dann verbunden, wenn eine konkrete Information oder Funktion eine konkrete Entscheidung oder Handlung verbessert.");
+  lines.push("- 7_benefits werden nur selektiv verbunden, wenn ein Benefit klar auf Information/Funktion zurückgeht oder einen bestimmten Pain, Gain, Result, Objective oder eine Action adressiert.");
+  lines.push("- 8_check dient der Verdichtung; vermeide dort Graph-Explosionen und bevorzuge wenige validierte Fit-Ketten oder knappe Check-Aussagen.");
+
+  if (stepId === "step1_user_perspective") {
+    lines.push("- In Step 1 dominiert zuerst Sammlung und Strukturierung der Nutzerperspektive: User & Situation → Objectives & Results → Decisions & Actions → Gains/Pains.");
+    lines.push("- Gains/Pains werden in diesem Schritt standardmäßig NICHT verkettet. User & Situation bleibt meist ebenfalls unverbunden.");
+  } else if (stepId === "step2_solution_perspective") {
+    lines.push("- In Step 2 dominiert Ableitung statt Vollverdrahtung: erst Solution-Varianten oder Lösungsideen, dann Information und Functions, danach Benefits.");
+    lines.push("- Verbinde nur dort, wo die linke Seite eine konkrete Entscheidung, Handlung oder einen klar benannten Benefit stützt.");
+  } else if (stepId === "step3_fit_check_and_synthesis") {
+    lines.push("- In Step 3 dominiert Validierung und Verdichtung statt neue Strukturierung.");
+    lines.push("- Füge nur wenige validierte Fit-Kanten hinzu. Lieber eine knappe Check-Aussage als zusätzliche Kanten ohne klare Prüflogik.");
+  }
+
+  return lines.join("\n");
+}
 
 export function buildOutputLanguageBlock(displayLanguage, { questionMode = false } = {}) {
   const normalizedLanguage = normalizeUiLanguage(displayLanguage);
@@ -344,6 +414,16 @@ export function composePrompt({
     runProfile,
     controlContext
   });
+
+  const connectorPolicyBlock = buildConnectorPolicyBlock({
+    involvedCanvasTypeIds,
+    exerciseContext: rawExerciseContext,
+    currentStep,
+    flowStep
+  });
+  if (connectorPolicyBlock) {
+    systemBlocks.push(connectorPolicyBlock);
+  }
 
   const normalizedAdminOverrideText = asNonEmptyString(adminOverrideText);
   const exerciseContext = normalizedAdminOverrideText
