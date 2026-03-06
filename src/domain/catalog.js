@@ -1,4 +1,4 @@
-import { TEMPLATE_ID, DT_CANVAS_DEFS } from "../config.js?v=20260305-batch06";
+import { TEMPLATE_ID, DT_CANVAS_DEFS } from "../config.js?v=20260305-batch4";
 import {
   stripHtml,
   isFiniteNumber,
@@ -11,7 +11,7 @@ import {
   buildInstanceGeometryIndex,
   resolveBoardCoords,
   findInstanceByPoint
-} from "../miro/board.js?v=20260305-batch31";
+} from "../miro/board.js?v=20260305-batch4";
 
 // --------------------------------------------------------------------
 // Canvas Definitions / Region Mapping

@@ -9,15 +9,16 @@ import {
   DT_STORAGE_KEY_EXERCISE_RUNTIME,
   DT_STORAGE_KEY_BOARD_FLOW_INDEX,
   DT_STORAGE_KEY_BOARD_FLOW_PREFIX,
+  DT_STORAGE_KEY_RUN_STATE,
   DT_DEFAULT_FEEDBACK_FRAME_NAME,
   DT_DEFAULT_FEEDBACK_CHANNEL,
   DT_DEFAULT_APP_ADMIN_POLICY,
   DT_MEMORY_RECENT_LOG_LIMIT
-} from "../config.js?v=20260305-batch06";
+} from "../config.js?v=20260305-batch4";
 
 import { normalizeBoardFlow } from "../runtime/board-flow.js?v=20260303-flowbatch1";
 import { ensureMiroReady, getBoard } from "./sdk.js?v=20260305-batch05";
-import { compareItemIdsAsc, normalizePositiveInt } from "./helpers.js?v=20260305-batch05";
+import { compareItemIdsAsc, normalizePositiveInt, asTrimmedString } from "./helpers.js?v=20260305-batch05";
 
 // --------------------------------------------------------------------
 // Storage, board config, baseline, memory and exercise runtime
@@ -40,11 +41,6 @@ function uniqueIds(ids) {
   return Array.from(new Set((ids || []).filter(Boolean)));
 }
 
-function asTrimmedString(value) {
-  if (typeof value !== "string") return null;
-  const trimmed = value.trim();
-  return trimmed || null;
-}
 
 function boardFlowKey(flowId) {
   return DT_STORAGE_KEY_BOARD_FLOW_PREFIX + String(flowId);
@@ -58,6 +54,67 @@ function normalizeFlowControlMeta(rawMeta) {
     flowId: asTrimmedString(src.flowId),
     controlId: asTrimmedString(src.controlId)
   };
+}
+
+function normalizeRunStateStatus(value) {
+  const normalized = asTrimmedString(value);
+  if (!normalized) return null;
+  return ["running", "completed", "failed", "conflicted", "aborted"].includes(normalized)
+    ? normalized
+    : null;
+}
+
+export function normalizeBoardRunState(rawState) {
+  const src = (rawState && typeof rawState === "object") ? rawState : {};
+  return {
+    version: 1,
+    runId: asTrimmedString(src.runId),
+    status: normalizeRunStateStatus(src.status),
+    startedAt: asTrimmedString(src.startedAt),
+    actor: asTrimmedString(src.actor),
+    targetInstanceIds: uniqueIds(Array.isArray(src.targetInstanceIds) ? src.targetInstanceIds : []),
+    statusItemIds: uniqueIds(Array.isArray(src.statusItemIds) ? src.statusItemIds : []),
+    message: asTrimmedString(src.message),
+    finishedAt: asTrimmedString(src.finishedAt),
+    updatedAt: asTrimmedString(src.updatedAt)
+  };
+}
+
+export async function loadBoardRunState(log) {
+  await ensureMiroReady(log);
+  const col = getStorageCollection();
+  if (!col) return null;
+
+  try {
+    const raw = await col.get(DT_STORAGE_KEY_RUN_STATE);
+    const normalized = normalizeBoardRunState(raw);
+    return normalized.runId ? normalized : null;
+  } catch (e) {
+    if (typeof log === "function") log("Fehler beim Laden des Board-Run-State: " + e.message);
+    return null;
+  }
+}
+
+export async function saveBoardRunState(runState, log) {
+  await ensureMiroReady(log);
+
+  const normalized = normalizeBoardRunState({
+    ...(runState && typeof runState === "object" ? runState : {}),
+    updatedAt: new Date().toISOString()
+  });
+
+  if (!normalized.runId) return null;
+
+  const col = getStorageCollection();
+  if (!col) return normalized;
+
+  try {
+    await col.set(DT_STORAGE_KEY_RUN_STATE, normalized);
+  } catch (e) {
+    if (typeof log === "function") log("Fehler beim Speichern des Board-Run-State: " + e.message);
+  }
+
+  return normalized;
 }
 
 async function loadBoardFlowIndex(log) {

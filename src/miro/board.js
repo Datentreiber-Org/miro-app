@@ -20,8 +20,11 @@ export {
   appendMemoryLogEntry,
   loadBoardFlow,
   saveBoardFlow,
-  listBoardFlows
-} from "./storage.js?v=20260305-batch31";
+  listBoardFlows,
+  normalizeBoardRunState,
+  loadBoardRunState,
+  saveBoardRunState
+} from "./storage.js?v=20260305-batch4";
 
 export {
   buildFeedbackTextContent,

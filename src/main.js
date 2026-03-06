@@ -5,13 +5,15 @@ import {
   DT_PROMPT_CATALOG,
   DT_GLOBAL_SYSTEM_PROMPT,
   DT_MEMORY_RECENT_LOG_LIMIT,
+  DT_RUN_STATE_STALE_AFTER_MS,
+  DT_RUN_STATUS_LAYOUT,
   STICKY_LAYOUT
-} from "./config.js?v=20260305-batch06";
+} from "./config.js?v=20260305-batch4";
 
 import { createLogger, stripHtml, extractUnderlinedText, isFiniteNumber } from "./utils.js?v=20260301-step11-hotfix2";
 
-import * as Board from "./miro/board.js?v=20260305-batch31";
-import * as Catalog from "./domain/catalog.js?v=20260305-batch31";
+import * as Board from "./miro/board.js?v=20260305-batch4";
+import * as Catalog from "./domain/catalog.js?v=20260305-batch4";
 import * as OpenAI from "./ai/openai.js?v=20260305-schemafix2";
 import * as Memory from "./runtime/memory.js?v=20260301-step11-hotfix2";
 import * as Exercises from "./exercises/registry.js?v=20260304-editorial15";
@@ -166,7 +168,7 @@ function logRuntimeNotice(kind, message, details = null) {
   const normalizedKind = (typeof kind === "string" && kind.trim()) ? kind.trim() : "info";
   const severity = ["fatal", "invalid_json", "action_failed"].includes(normalizedKind)
     ? "FEHLER"
-    : (["skipped_action", "run_locked", "model_refusal", "precondition"].includes(normalizedKind) ? "WARNUNG" : "INFO");
+    : (["skipped_action", "run_locked", "model_refusal", "precondition", "stale_state_conflict"].includes(normalizedKind) ? "WARNUNG" : "INFO");
 
   log(severity + " [" + normalizedKind + "] " + message);
   if (details !== null && details !== undefined) {
@@ -251,6 +253,262 @@ function releaseAgentRunLock(lockToken) {
   state.activeAgentRunLabel = null;
   state.activeAgentRunStartedAt = 0;
   setManagedAgentRunButtonsDisabled(false);
+}
+
+function buildBoardRunId() {
+  return "run-" + Date.now().toString(36) + "-" + Math.floor(Math.random() * 1e9).toString(36);
+}
+
+function normalizeTargetInstanceIds(ids) {
+  return Array.from(new Set((ids || []).filter((id) => state.instancesById.has(id))));
+}
+
+function isBoardRunStateStale(runState) {
+  if (!runState || runState.status !== "running") return false;
+  const startedAtMs = Date.parse(runState.startedAt || "");
+  if (!Number.isFinite(startedAtMs)) return false;
+  return (Date.now() - startedAtMs) > DT_RUN_STATE_STALE_AFTER_MS;
+}
+
+async function resolveCurrentRunActor() {
+  try {
+    const board = Board.getBoard();
+    if (typeof board?.getUserInfo === "function") {
+      const userInfo = await board.getUserInfo();
+      const userId = (typeof userInfo?.id === "string" && userInfo.id.trim()) ? userInfo.id.trim() : null;
+      const displayName = pickFirstNonEmptyString(userInfo?.name, userInfo?.displayName, userInfo?.userName);
+      if (displayName && userId) return displayName + " (" + userId + ")";
+      if (displayName) return displayName;
+      if (userId) return userId;
+    }
+  } catch (_) {}
+
+  return IS_HEADLESS ? "headless-runtime" : "panel-runtime";
+}
+
+function buildBusyIndicatorContent(sourceLabel) {
+  return "<p><strong>AI arbeitet …</strong><br>" + String(sourceLabel || "Agent") + "</p>";
+}
+
+async function removeRunStatusItems(itemIds) {
+  const normalizedIds = Array.from(new Set((itemIds || []).filter(Boolean)));
+  for (const itemId of normalizedIds) {
+    try {
+      await Board.removeItemById(itemId, log);
+    } catch (_) {}
+  }
+}
+
+async function createRunStatusItems(instanceIds, sourceLabel, runId) {
+  const normalizedIds = normalizeTargetInstanceIds(instanceIds);
+  if (!normalizedIds.length) return [];
+
+  const board = Board.getBoard();
+  if (!board?.createShape) return [];
+
+  const createdIds = [];
+  const content = buildBusyIndicatorContent(sourceLabel);
+
+  for (const instanceId of normalizedIds) {
+    const instance = state.instancesById.get(instanceId);
+    if (!instance) continue;
+
+    let geom = null;
+    try {
+      geom = await Board.computeTemplateGeometry(instance, log);
+    } catch (_) {}
+    if (!geom) continue;
+
+    const shapeX = geom.x;
+    const shapeY = geom.y - geom.height / 2 + DT_RUN_STATUS_LAYOUT.offsetFromCanvasTopPx;
+
+    try {
+      const shape = await board.createShape({
+        content,
+        shape: "round_rectangle",
+        x: shapeX,
+        y: shapeY,
+        width: DT_RUN_STATUS_LAYOUT.widthPx,
+        height: DT_RUN_STATUS_LAYOUT.heightPx,
+        style: {
+          fillColor: "#fef3c7",
+          borderColor: "#d97706",
+          borderWidth: 2,
+          color: "#111827",
+          fontSize: 14,
+          textAlign: "center",
+          textAlignVertical: "middle"
+        }
+      });
+
+      if (shape?.id) createdIds.push(String(shape.id));
+    } catch (e) {
+      log("WARNUNG: Busy-Signal konnte für Instanz " + (instance.instanceLabel || instanceId) + " nicht erstellt werden: " + e.message);
+    }
+  }
+
+  return createdIds;
+}
+
+function formatExistingBoardRunMessage(sourceLabel, runState) {
+  const actor = runState?.actor || "unbekannter Actor";
+  const startedAt = runState?.startedAt ? new Date(runState.startedAt).toLocaleTimeString() : "unbekannt";
+  return (sourceLabel || "Agent") + ": Ein anderer AI-Run läuft bereits (Actor: " + actor + ", Start: " + startedAt + ").";
+}
+
+async function acquireBoardSoftLock({ sourceLabel, targetInstanceIds }) {
+  const current = await Board.loadBoardRunState(log);
+  if (current?.status === "running" && !isBoardRunStateStale(current)) {
+    return { ok: false, current };
+  }
+
+  if (current?.status === "running" && isBoardRunStateStale(current)) {
+    await removeRunStatusItems(current.statusItemIds || []);
+    log("WARNUNG: Veralteter Board-Run-State wird ersetzt (runId=" + (current.runId || "(leer)") + ").");
+  }
+
+  const token = {
+    runId: buildBoardRunId(),
+    sourceLabel: sourceLabel || "Agent",
+    startedAt: new Date().toISOString(),
+    actor: await resolveCurrentRunActor(),
+    targetInstanceIds: normalizeTargetInstanceIds(targetInstanceIds),
+    statusItemIds: []
+  };
+
+  await Board.saveBoardRunState({
+    runId: token.runId,
+    status: "running",
+    startedAt: token.startedAt,
+    actor: token.actor,
+    targetInstanceIds: token.targetInstanceIds,
+    statusItemIds: token.statusItemIds,
+    message: null,
+    finishedAt: null
+  }, log);
+
+  const confirmed = await Board.loadBoardRunState(log);
+  if (confirmed?.runId && confirmed.runId !== token.runId && confirmed.status === "running") {
+    return { ok: false, current: confirmed };
+  }
+
+  return { ok: true, token };
+}
+
+async function syncBoardSoftLock(token, { targetInstanceIds = null, statusItemIds = null } = {}) {
+  if (!token?.runId) return null;
+
+  if (targetInstanceIds) token.targetInstanceIds = normalizeTargetInstanceIds(targetInstanceIds);
+  if (statusItemIds) token.statusItemIds = Array.from(new Set((statusItemIds || []).filter(Boolean)));
+
+  return await Board.saveBoardRunState({
+    runId: token.runId,
+    status: "running",
+    startedAt: token.startedAt,
+    actor: token.actor,
+    targetInstanceIds: token.targetInstanceIds,
+    statusItemIds: token.statusItemIds,
+    message: null,
+    finishedAt: null
+  }, log);
+}
+
+async function finalizeBoardSoftLock(token, { status = "completed", message = null } = {}) {
+  if (!token?.runId) return;
+
+  await removeRunStatusItems(token.statusItemIds || []);
+  token.statusItemIds = [];
+
+  const current = await Board.loadBoardRunState(log);
+  if (current?.runId && current.runId !== token.runId) return;
+
+  await Board.saveBoardRunState({
+    runId: token.runId,
+    status,
+    startedAt: token.startedAt,
+    actor: token.actor,
+    targetInstanceIds: token.targetInstanceIds,
+    statusItemIds: [],
+    message: message || null,
+    finishedAt: new Date().toISOString()
+  }, log);
+
+  const notificationMessage = message || (status === "completed"
+    ? (token.sourceLabel || "Agent") + ": abgeschlossen."
+    : (token.sourceLabel || "Agent") + ": beendet.");
+
+  const notificationLevel = status === "completed"
+    ? "info"
+    : ((status === "conflicted" || status === "aborted") ? "warning" : "error");
+
+  await notifyRuntime(notificationMessage, { level: notificationLevel });
+}
+
+function buildSignatureSnapshot(stateById, instanceIds) {
+  const snapshot = new Map();
+  for (const instanceId of normalizeTargetInstanceIds(instanceIds)) {
+    const stateEntry = stateById?.[instanceId] || null;
+    snapshot.set(instanceId, stateEntry?.signature?.stateHash || null);
+  }
+  return snapshot;
+}
+
+function hasMutatingActions(actions) {
+  return Array.isArray(actions) && actions.some((action) => {
+    const normalized = normalizeAgentAction(action);
+    return normalized && normalized.type !== "inform";
+  });
+}
+
+function formatConflictMessage(sourceLabel, conflicts) {
+  const labels = Array.from(new Set((conflicts || []).map((entry) => entry?.instanceLabel).filter(Boolean)));
+  const suffix = labels.length ? (": " + labels.join(", ")) : ".";
+  return (sourceLabel || "Agent") + ": Board-Zustand hat sich seit dem Prompt geändert. Action-Apply wird ohne Partial-Apply abgebrochen" + suffix;
+}
+
+async function performPreApplyConflictCheck(expectedSignatureSnapshot, sourceLabel) {
+  const entries = Array.from(expectedSignatureSnapshot?.entries?.() || []);
+  if (!entries.length) return { ok: true };
+
+  await ensureInstancesScanned();
+  const { liveCatalog } = await refreshBoardState();
+  const currentStateById = await computeInstanceStatesById(liveCatalog);
+  const conflicts = [];
+
+  for (const [instanceId, expectedHash] of entries) {
+    const currentState = currentStateById[instanceId] || null;
+    const currentHash = currentState?.signature?.stateHash || null;
+    if (!currentState) {
+      conflicts.push({
+        instanceId,
+        instanceLabel: getInstanceLabelByInternalId(instanceId) || instanceId,
+        expectedHash,
+        currentHash: null,
+        reason: "missing_instance"
+      });
+      continue;
+    }
+
+    if (currentHash !== expectedHash) {
+      conflicts.push({
+        instanceId,
+        instanceLabel: getInstanceLabelByInternalId(instanceId) || instanceId,
+        expectedHash,
+        currentHash,
+        reason: "signature_changed"
+      });
+    }
+  }
+
+  if (conflicts.length) {
+    return {
+      ok: false,
+      message: formatConflictMessage(sourceLabel, conflicts),
+      conflicts
+    };
+  }
+
+  return { ok: true, currentStateById };
 }
 
 // --------------------------------------------------------------------
@@ -1113,10 +1371,6 @@ async function runAgentFromFlowControl(flow, control, selectedItem) {
   await saveBoardFlowAndCache(nextFlow);
 
   log("Board Flow Trigger: '" + sourceLabel + "' → " + runProfile.triggerKey + " | Ziele: " + (targetInstanceLabels.join(", ") || "(keine)"));
-  if (IS_HEADLESS) {
-    await notifyRuntime("AI Flow startet: " + sourceLabel, { level: "info" });
-  }
-
   try {
     const runResult = runProfile.triggerKey.startsWith("global.")
       ? await runGlobalAgent(null, getCurrentUserQuestion(), {
@@ -1138,17 +1392,10 @@ async function runAgentFromFlowControl(flow, control, selectedItem) {
 
     if (!runResult?.ok) {
       const msg = "Board Flow: Trigger '" + sourceLabel + "' fehlgeschlagen – " + formatRunFailure(runResult);
-      logRuntimeNotice(runResult?.errorType === "model_refusal" ? "model_refusal" : "fatal", msg);
-      if (IS_HEADLESS) {
-        const notifyLevel = ["model_refusal", "precondition", "run_locked"].includes(runResult?.errorType) ? "warning" : "error";
-        await notifyRuntime(msg, { level: notifyLevel });
-      }
+      logRuntimeNotice(["model_refusal", "precondition", "run_locked", "stale_state_conflict"].includes(runResult?.errorType) ? runResult.errorType : "fatal", msg);
       return runResult;
     }
 
-    if (IS_HEADLESS) {
-      await notifyRuntime("AI Flow abgeschlossen: " + sourceLabel, { level: "info" });
-    }
     return runResult;
   } catch (error) {
     const msg = "Board Flow: Trigger '" + sourceLabel + "' fehlgeschlagen – " + formatRuntimeErrorMessage(error);
@@ -2892,7 +3139,25 @@ async function runAgentForSelectedInstances(selectedInstanceIds, options = {}) {
     return buildRunFailureResult("run_locked", sourceLabel + ": Ein Agent-Run läuft bereits.");
   }
 
+  let boardRunToken = null;
+  let finalBoardRunStatus = "failed";
+  let finalBoardRunMessage = null;
+
   try {
+    const boardRunStart = await acquireBoardSoftLock({
+      sourceLabel,
+      targetInstanceIds: normalizedSelectedIds
+    });
+
+    if (!boardRunStart.ok) {
+      const msg = formatExistingBoardRunMessage(sourceLabel, boardRunStart.current);
+      logRuntimeNotice("run_locked", msg);
+      await notifyRuntime(msg, { level: "warning" });
+      return buildRunFailureResult("run_locked", msg, { currentRunState: boardRunStart.current || null });
+    }
+
+    boardRunToken = boardRunStart.token;
+
     const promptCfg = getPromptConfigForSelectedInstances(normalizedSelectedIds);
 
     const { liveCatalog } = await refreshBoardState();
@@ -2925,15 +3190,27 @@ async function runAgentForSelectedInstances(selectedInstanceIds, options = {}) {
     if (!resolvedActiveLabels.length) {
       const msg = sourceLabel + ": Konnte für die selektierten Canvas keine Zustandsdaten aufbauen.";
       logRuntimeNotice("precondition", msg);
+      finalBoardRunStatus = "aborted";
+      finalBoardRunMessage = msg;
       return buildRunFailureResult("precondition", msg);
     }
 
     const resolvedActiveIds = resolvedActiveLabels
       .map((label) => getInternalInstanceIdByLabel(label))
       .filter((id) => state.instancesById.has(id));
+
+    boardRunToken.targetInstanceIds = resolvedActiveIds.slice();
+    boardRunToken.statusItemIds = await createRunStatusItems(resolvedActiveIds, sourceLabel, boardRunToken.runId);
+    await syncBoardSoftLock(boardRunToken, {
+      targetInstanceIds: resolvedActiveIds,
+      statusItemIds: boardRunToken.statusItemIds
+    });
+    await notifyRuntime("AI arbeitet: " + sourceLabel, { level: "info" });
+
     const singleLabel = resolvedActiveLabels.length === 1 ? resolvedActiveLabels[0] : null;
     const boardCatalog = buildBoardCatalogForSelectedInstances(resolvedActiveIds);
     const memoryPayload = buildMemoryInjectionPayload();
+    const expectedSignatureSnapshot = buildSignatureSnapshot(stateById, resolvedActiveIds);
 
     const baseUserPayload = {
       activeInstanceLabel: singleLabel,
@@ -2983,6 +3260,8 @@ async function runAgentForSelectedInstances(selectedInstanceIds, options = {}) {
     if (structuredResult.refusal) {
       const msg = sourceLabel + ": Modell verweigert die Antwort: " + structuredResult.refusal;
       logRuntimeNotice("model_refusal", msg);
+      finalBoardRunStatus = "aborted";
+      finalBoardRunMessage = msg;
       return buildRunFailureResult("model_refusal", msg, { refusal: structuredResult.refusal });
     }
 
@@ -2990,7 +3269,19 @@ async function runAgentForSelectedInstances(selectedInstanceIds, options = {}) {
     if (!agentObj) {
       const msg = sourceLabel + ": Antwort ist kein valides strukturiertes JSON.";
       logRuntimeNotice("invalid_json", msg, structuredResult.outputText || "(keine output_text-Antwort)");
+      finalBoardRunStatus = "aborted";
+      finalBoardRunMessage = msg;
       return buildRunFailureResult("invalid_json", msg, { rawOutputText: structuredResult.outputText || null });
+    }
+
+    if (hasMutatingActions(agentObj.actions)) {
+      const conflictCheck = await performPreApplyConflictCheck(expectedSignatureSnapshot, sourceLabel);
+      if (!conflictCheck.ok) {
+        logRuntimeNotice("stale_state_conflict", conflictCheck.message, conflictCheck.conflicts);
+        finalBoardRunStatus = "conflicted";
+        finalBoardRunMessage = conflictCheck.message;
+        return buildRunFailureResult("stale_state_conflict", conflictCheck.message, { conflicts: conflictCheck.conflicts });
+      }
     }
 
     const { feedback, recommendations, evaluation } = normalizeAgentExerciseArtifacts(agentObj, triggerContext, sourceLabel);
@@ -3058,6 +3349,9 @@ async function runAgentForSelectedInstances(selectedInstanceIds, options = {}) {
       }
     }
 
+    finalBoardRunStatus = "completed";
+    finalBoardRunMessage = sourceLabel + ": abgeschlossen.";
+
     return buildRunSuccessResult({
       sourceLabel,
       targetInstanceLabels: resolvedActiveLabels,
@@ -3066,8 +3360,16 @@ async function runAgentForSelectedInstances(selectedInstanceIds, options = {}) {
   } catch (e) {
     const msg = "Exception beim " + sourceLabel + "-Run: " + formatRuntimeErrorMessage(e);
     logRuntimeNotice("fatal", msg, e?.stack || null);
+    finalBoardRunStatus = "failed";
+    finalBoardRunMessage = msg;
     return buildRunFailureResult("fatal", msg, { error: e });
   } finally {
+    if (boardRunToken) {
+      await finalizeBoardSoftLock(boardRunToken, {
+        status: finalBoardRunStatus,
+        message: finalBoardRunMessage
+      });
+    }
     releaseAgentRunLock(runLock);
   }
 }
@@ -3294,12 +3596,34 @@ async function runGlobalAgent(triggerInstanceId, userText, options = {}) {
     return buildRunFailureResult("run_locked", sourceLabel + ": Ein Agent-Run läuft bereits.");
   }
 
+  let boardRunToken = null;
+  let finalBoardRunStatus = "failed";
+  let finalBoardRunMessage = null;
+
   try {
     log(
       "Starte globalen Agenten-Run, Trigger-Instanz: " +
       (getInstanceLabelByInternalId(triggerInstanceId) || triggerInstanceId || "(keine)") +
       (triggerContext?.triggerKey ? (" | Trigger: " + triggerContext.triggerKey) : "")
     );
+
+    const preliminaryTargetIds = forceTargetSet
+      ? forcedInstanceIds.slice()
+      : Array.from(state.instancesById.keys());
+
+    const boardRunStart = await acquireBoardSoftLock({
+      sourceLabel,
+      targetInstanceIds: preliminaryTargetIds
+    });
+
+    if (!boardRunStart.ok) {
+      const msg = formatExistingBoardRunMessage(sourceLabel, boardRunStart.current);
+      logRuntimeNotice("run_locked", msg);
+      await notifyRuntime(msg, { level: "warning" });
+      return buildRunFailureResult("run_locked", msg, { currentRunState: boardRunStart.current || null });
+    }
+
+    boardRunToken = boardRunStart.token;
 
     const { liveCatalog } = await refreshBoardState();
     const stateById = await computeInstanceStatesById(liveCatalog);
@@ -3333,8 +3657,18 @@ async function runGlobalAgent(triggerInstanceId, userText, options = {}) {
     if (forceTargetSet && !activeInstanceIds.length) {
       const msg = sourceLabel + ": Keine gültigen Ziel-Instanzen für den globalen Exercise-Lauf gefunden.";
       logRuntimeNotice("precondition", msg);
+      finalBoardRunStatus = "aborted";
+      finalBoardRunMessage = msg;
       return buildRunFailureResult("precondition", msg);
     }
+
+    boardRunToken.targetInstanceIds = activeInstanceIds.slice();
+    boardRunToken.statusItemIds = await createRunStatusItems(activeInstanceIds, sourceLabel, boardRunToken.runId);
+    await syncBoardSoftLock(boardRunToken, {
+      targetInstanceIds: activeInstanceIds,
+      statusItemIds: boardRunToken.statusItemIds
+    });
+    await notifyRuntime("AI arbeitet: " + sourceLabel, { level: "info" });
 
     const activeCanvasStates = Object.create(null);
     const activeInstanceChangesSinceLastAgent = Object.create(null);
@@ -3360,6 +3694,7 @@ async function runGlobalAgent(triggerInstanceId, userText, options = {}) {
     }
 
     const memoryPayload = buildMemoryInjectionPayload();
+    const expectedSignatureSnapshot = buildSignatureSnapshot(stateById, activeInstanceIds);
     const baseUserPayload = {
       triggerInstanceLabel: getInstanceLabelByInternalId(triggerInstanceId) || null,
       hasBaseline: state.hasGlobalBaseline,
@@ -3402,6 +3737,8 @@ async function runGlobalAgent(triggerInstanceId, userText, options = {}) {
     if (structuredResult.refusal) {
       const msg = sourceLabel + ": Modell verweigert die Antwort: " + structuredResult.refusal;
       logRuntimeNotice("model_refusal", msg);
+      finalBoardRunStatus = "aborted";
+      finalBoardRunMessage = msg;
       return buildRunFailureResult("model_refusal", msg, { refusal: structuredResult.refusal });
     }
 
@@ -3409,7 +3746,19 @@ async function runGlobalAgent(triggerInstanceId, userText, options = {}) {
     if (!agentObj) {
       const msg = sourceLabel + ": Antwort ist kein valides strukturiertes JSON.";
       logRuntimeNotice("invalid_json", msg, structuredResult.outputText || "(keine output_text-Antwort)");
+      finalBoardRunStatus = "aborted";
+      finalBoardRunMessage = msg;
       return buildRunFailureResult("invalid_json", msg, { rawOutputText: structuredResult.outputText || null });
+    }
+
+    if (hasMutatingActions(agentObj.actions)) {
+      const conflictCheck = await performPreApplyConflictCheck(expectedSignatureSnapshot, sourceLabel);
+      if (!conflictCheck.ok) {
+        logRuntimeNotice("stale_state_conflict", conflictCheck.message, conflictCheck.conflicts);
+        finalBoardRunStatus = "conflicted";
+        finalBoardRunMessage = conflictCheck.message;
+        return buildRunFailureResult("stale_state_conflict", conflictCheck.message, { conflicts: conflictCheck.conflicts });
+      }
     }
 
     const { feedback, recommendations, evaluation } = normalizeAgentExerciseArtifacts(agentObj, triggerContext, sourceLabel);
@@ -3502,6 +3851,9 @@ async function runGlobalAgent(triggerInstanceId, userText, options = {}) {
       }
     }
 
+    finalBoardRunStatus = "completed";
+    finalBoardRunMessage = sourceLabel + ": abgeschlossen.";
+
     return buildRunSuccessResult({
       sourceLabel,
       targetInstanceLabels: activeInstanceLabels,
@@ -3511,8 +3863,16 @@ async function runGlobalAgent(triggerInstanceId, userText, options = {}) {
   } catch (e) {
     const msg = "Exception beim globalen Agent-Run: " + formatRuntimeErrorMessage(e);
     logRuntimeNotice("fatal", msg, e?.stack || null);
+    finalBoardRunStatus = "failed";
+    finalBoardRunMessage = msg;
     return buildRunFailureResult("fatal", msg, { error: e });
   } finally {
+    if (boardRunToken) {
+      await finalizeBoardSoftLock(boardRunToken, {
+        status: finalBoardRunStatus,
+        message: finalBoardRunMessage
+      });
+    }
     releaseAgentRunLock(runLock);
   }
 }
