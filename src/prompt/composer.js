@@ -3,8 +3,8 @@ import {
   getDefaultCanvasTypeIdForPack,
   getPackDefaults,
   getStepTriggerConfig
-} from "../exercises/registry.js?v=20260301-step11-hotfix2";
-import { parseTriggerKey } from "../runtime/exercise-engine.js?v=20260303-flowbatch1";
+} from "../exercises/registry.js?v=20260307-batch5";
+import { parseTriggerKey } from "../runtime/exercise-engine.js?v=20260307-batch5";
 
 function asNonEmptyString(value) {
   if (typeof value !== "string") return null;
@@ -203,7 +203,6 @@ export function buildExerciseContext({
       mutationPolicy: triggerContext?.mutationPolicy || asNonEmptyString(runProfile?.mutationPolicy) || null,
       feedbackPolicy: triggerContext?.feedbackPolicy || asNonEmptyString(runProfile?.feedbackPolicy) || asNonEmptyString(boardConfig?.feedbackChannelDefault) || null,
       requiresSelection: !!triggerContext?.requiresSelection,
-      feedbackFrameName: asNonEmptyString(boardConfig?.feedbackFrameName),
       userMayChangePack: false,
       userMayChangeStep: false,
       packTemplateId: asNonEmptyString(packTemplate?.id),
@@ -239,7 +238,6 @@ export function buildExerciseContext({
       mutationPolicy: triggerContext?.mutationPolicy || null,
       feedbackPolicy: triggerContext?.feedbackPolicy || asNonEmptyString(boardConfig?.feedbackChannelDefault) || packDefaults.feedbackChannel,
       requiresSelection: !!triggerContext?.requiresSelection,
-      feedbackFrameName: asNonEmptyString(boardConfig?.feedbackFrameName) || packDefaults.feedbackFrameName,
       userMayChangePack: !!boardConfig?.userMayChangePack,
       userMayChangeStep: !!boardConfig?.userMayChangeStep
     };
@@ -274,7 +272,6 @@ export function buildExerciseContext({
     mutationPolicy: triggerContext?.mutationPolicy || null,
     feedbackPolicy: triggerContext?.feedbackPolicy || packDefaults.feedbackChannel,
     requiresSelection: !!triggerContext?.requiresSelection,
-    feedbackFrameName: asNonEmptyString(boardConfig?.feedbackFrameName) || packDefaults.feedbackFrameName,
     userMayChangePack: !!boardConfig?.userMayChangePack,
     userMayChangeStep: !!boardConfig?.userMayChangeStep
   };

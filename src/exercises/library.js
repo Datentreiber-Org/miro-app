@@ -10,4 +10,4 @@ export {
   getRunProfileById,
   getPromptModuleById,
   getPromptModulesByIds
-} from "./method-catalog.js?v=20260305-batch2";
+} from "./method-catalog.js?v=20260307-batch5";

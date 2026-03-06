@@ -1,9 +1,8 @@
 import {
   DT_DEFAULT_APP_ADMIN_POLICY,
   DT_DEFAULT_FEEDBACK_CHANNEL,
-  DT_DEFAULT_FEEDBACK_FRAME_NAME,
   DT_TRIGGER_KEYS
-} from "../config.js?v=20260306-batch45";
+} from "../config.js?v=20260307-batch5";
 
 function asNonEmptyString(value) {
   if (typeof value !== "string") return null;
@@ -106,7 +105,6 @@ function buildExercisePackProjection(packDef) {
     defaultCanvasTypeId: asNonEmptyString(packDef?.defaultCanvasTypeId),
     defaultStepId: asNonEmptyString(packDef?.defaultStepId),
     defaults: Object.freeze({
-      feedbackFrameName: asNonEmptyString(packDef?.defaults?.feedbackFrameName) || DT_DEFAULT_FEEDBACK_FRAME_NAME,
       feedbackChannel: asNonEmptyString(packDef?.defaults?.feedbackChannel) || DT_DEFAULT_FEEDBACK_CHANNEL,
       userMayChangePack: packDef?.defaults?.userMayChangePack === true,
       userMayChangeStep: packDef?.defaults?.userMayChangeStep === true,
@@ -196,7 +194,6 @@ const RAW_METHOD_CATALOG = deepFreeze({
       "defaultCanvasTypeId": "datentreiber-3boxes",
       "defaultStepId": "collect_personas",
       "defaults": {
-        "feedbackFrameName": "AI Coach Output",
         "feedbackChannel": "text",
         "userMayChangePack": false,
         "userMayChangeStep": false,
@@ -550,7 +547,6 @@ const RAW_METHOD_CATALOG = deepFreeze({
       "defaultCanvasTypeId": "datentreiber-analytics-ai-use-case",
       "defaultStepId": "step1_user_perspective",
       "defaults": {
-        "feedbackFrameName": "AI Coach Output",
         "feedbackChannel": "text",
         "userMayChangePack": false,
         "userMayChangeStep": false,
@@ -1397,7 +1393,6 @@ export function getPackDefaults(packOrId) {
   const defaults = (pack?.defaults && typeof pack.defaults === "object") ? pack.defaults : {};
 
   return {
-    feedbackFrameName: asNonEmptyString(defaults.feedbackFrameName) || DT_DEFAULT_FEEDBACK_FRAME_NAME,
     feedbackChannel: asNonEmptyString(defaults.feedbackChannel) || DT_DEFAULT_FEEDBACK_CHANNEL,
     userMayChangePack: defaults.userMayChangePack === true,
     userMayChangeStep: defaults.userMayChangeStep === true,

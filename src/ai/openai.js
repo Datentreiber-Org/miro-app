@@ -1,4 +1,4 @@
-import { OPENAI_ENDPOINT } from "../config.js?v=20260306-batch45";
+import { OPENAI_ENDPOINT } from "../config.js?v=20260307-batch5";
 
 function nullableStringSchema(description = "") {
   return {
@@ -96,6 +96,10 @@ const AGENT_RESPONSE_JSON_SCHEMA = strictObjectSchema({
         })
       }
     })
+});
+
+const QUESTION_RESPONSE_JSON_SCHEMA = strictObjectSchema({
+  answer: { type: "string", description: "Direkte Antwort auf die Nutzerfrage zum Canvas." }
 });
 
 function buildMessageInput(systemPrompt, userText) {
@@ -276,6 +280,44 @@ export async function callOpenAIAgentStructured({
       description: "Strukturierter Agenten-Output für die Datentreiber Miro-App.",
       strict: true,
       schema: AGENT_RESPONSE_JSON_SCHEMA
+    }
+  };
+
+  const data = await performResponsesRequest({ apiKey, body, endpoint });
+  const refusal = extractRefusalFromResponse(data);
+  const outputText = extractOutputTextFromResponse(data);
+  const parsed = outputText ? (parseJsonFromModelOutput(outputText) || null) : null;
+
+  return {
+    rawResponse: data,
+    refusal,
+    outputText,
+    parsed
+  };
+}
+
+export function getQuestionResponseJsonSchema() {
+  return QUESTION_RESPONSE_JSON_SCHEMA;
+}
+
+export async function callOpenAIQuestionStructured({
+  apiKey,
+  model,
+  systemPrompt,
+  userText,
+  endpoint = OPENAI_ENDPOINT,
+  reasoningEffort = "none",
+  verbosity = "medium"
+}) {
+  const body = buildBaseRequestBody({ model, systemPrompt, userText, reasoningEffort });
+  body.text = {
+    verbosity,
+    format: {
+      type: "json_schema",
+      name: "dt_question_response",
+      description: "Direkte Antwort auf eine Nutzerfrage zu einer Canvas-Instanz.",
+      strict: true,
+      schema: QUESTION_RESPONSE_JSON_SCHEMA
     }
   };
 

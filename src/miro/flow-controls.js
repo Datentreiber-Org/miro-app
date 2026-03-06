@@ -2,12 +2,12 @@ import {
   DT_SHAPE_META_KEY_FLOW_CONTROL,
   DT_FLOW_CONTROL_LAYOUT,
   DT_FLOW_CONTROL_STATE_STYLES
-} from "../config.js?v=20260306-batch45";
+} from "../config.js?v=20260307-batch5";
 
-import { ensureMiroReady, getBoard } from "./sdk.js?v=20260305-batch05";
+import { ensureMiroReady, getBoard } from "./sdk.js?v=20260307-batch5";
 import { asTrimmedString } from "./helpers.js?v=20260305-batch05";
 import { getItemById } from "./items.js?v=20260305-batch05";
-import { computeTemplateGeometry } from "./instances.js?v=20260305-batch31";
+import { computeTemplateGeometry } from "./instances.js?v=20260307-batch5";
 
 function normalizeFlowControlMeta(rawMeta) {
   const src = (rawMeta && typeof rawMeta === "object") ? rawMeta : {};

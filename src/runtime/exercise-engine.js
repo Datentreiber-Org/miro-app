@@ -4,13 +4,13 @@ import {
   DT_TRIGGER_SOURCES,
   DT_FEEDBACK_CHANNELS,
   DT_MUTATION_POLICIES
-} from "../config.js?v=20260303-flowbatch1";
+} from "../config.js?v=20260307-batch5";
 import {
   getPackDefaults,
   getStepTriggerConfig,
   listStepTransitions,
   resolveNamedTransition
-} from "../exercises/registry.js?v=20260301-step11-hotfix2";
+} from "../exercises/registry.js?v=20260307-batch5";
 
 function asNonEmptyString(value) {
   if (typeof value !== "string") return null;

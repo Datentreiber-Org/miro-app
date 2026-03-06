@@ -90,6 +90,7 @@ export const DT_STORAGE_KEY_BOARD_FLOW_INDEX = "dt-board-flow-index-v1";
 export const DT_STORAGE_KEY_BOARD_FLOW_PREFIX = "dt-board-flow-v1:";
 export const DT_STORAGE_KEY_RUN_STATE = "dt-run-state-v1";
 export const DT_SHAPE_META_KEY_FLOW_CONTROL = "dt-flow-control-v1";
+export const DT_SHAPE_META_KEY_CHAT_INTERFACE = "dt-chat-interface-v1";
 export const DT_MEMORY_RECENT_LOG_LIMIT = 5;
 export const DT_RUN_STATE_STALE_AFTER_MS = 15 * 60 * 1000;
 
@@ -119,6 +120,75 @@ export const DT_FLOW_CONTROL_STATE_STYLES = Object.freeze({
     textColor: "#ecfdf5"
   })
 });
+
+
+export const DT_CHAT_INTERFACE_LAYOUT = Object.freeze({
+  outerGapXPx: 160,
+  columnGapXPx: 88,
+  submitGapYPx: 44,
+  outputWidthPerCanvasHeight: 0.54,
+  inputWidthPerOutputWidth: 0.9,
+  inputHeightPerOutputHeight: 0.52,
+  submitWidthPerInputWidth: 0.72,
+  submitHeightPx: 88,
+  minOutputWidthPx: 420,
+  maxOutputWidthPx: 720,
+  minInputWidthPx: 360,
+  maxInputWidthPx: 640,
+  minSubmitWidthPx: 220,
+  maxSubmitWidthPx: 340
+});
+
+export const DT_CHAT_INTERFACE_STYLES = Object.freeze({
+  input: Object.freeze({
+    fillColor: "#dfe8e4",
+    borderColor: "#7c8a86",
+    textColor: "#111827",
+    fontSize: 18,
+    textAlign: "left",
+    textAlignVertical: "top",
+    borderWidth: 2
+  }),
+  output: Object.freeze({
+    fillColor: "#e9e8f5",
+    borderColor: "#8b89a7",
+    textColor: "#111827",
+    fontSize: 18,
+    textAlign: "left",
+    textAlignVertical: "top",
+    borderWidth: 2
+  }),
+  submit: Object.freeze({
+    fillColor: "#9ed0f2",
+    borderColor: "#5a9ecb",
+    textColor: "#111827",
+    fontSize: 22,
+    textAlign: "center",
+    textAlignVertical: "middle",
+    borderWidth: 2
+  })
+});
+
+export const DT_CHAT_INTERFACE_PLACEHOLDERS = Object.freeze({
+  input: "Frage hier eingeben …",
+  output: "Agentenantwort erscheint hier.",
+  submit: "Submit"
+});
+
+export const DT_QUESTION_SYSTEM_PROMPT = `
+Du bist ein hilfreicher Canvas-Assistent für Miro-Workshops.
+Beantworte allgemeine Fragen zur zugehörigen Canvas-Instanz klar, knapp und verständlich.
+Nutze den Board-Katalog nur als Überblick, aber stütze deine Antwort inhaltlich primär auf activeCanvasState der zugehörigen Instanz.
+Führe keine Board-Aktionen aus.
+Plane keine Mutationen.
+Schalte keine Buttons frei.
+Schreibe kein memoryEntry.
+Antworte ausschließlich mit einem JSON-Objekt dieses Formats:
+{
+  "answer": "..."
+}
+Gib niemals Markdown, keine Code-Fences und keine Vor- oder Nachbemerkungen aus.
+`.trim();
 
 export const DT_RUN_STATUS_LAYOUT = Object.freeze({
   widthPx: 240,
@@ -153,23 +223,8 @@ export const DT_TRIGGER_DEFAULTS = Object.freeze({
   "global.grade":           { scope: "global",    intent: "grade",        requiresSelection: false, mutationPolicy: "none",    feedbackPolicy: "text" }
 });
 
-export const DT_DEFAULT_FEEDBACK_FRAME_NAME = "AI Coach Output";
 export const DT_DEFAULT_FEEDBACK_CHANNEL = "text";
 export const DT_DEFAULT_APP_ADMIN_POLICY = "ui_toggle";
-export const DT_TEXT_META_KEY_FEEDBACK = "dt-feedback-text-v1";
-
-export const DT_FEEDBACK_TEXT_LAYOUT = {
-  frameWidthPx: 2400,
-  frameHeightPx: 1600,
-  framePaddingXPx: 48,
-  framePaddingYPx: 48,
-  itemWidthPx: 480,
-  itemMinHeightPx: 240,
-  gapXPx: 32,
-  gapYPx: 32,
-  maxColumns: 4,
-  counterPadLength: 3
-};
 
 // Canvas-Definitions (Polygon-basiert, normalisiert 0..1)
 export const DT_CANVAS_DEFS = {
@@ -345,7 +400,7 @@ Wenn exerciseContext vorhanden ist, ist er verbindlich:
 - exerciseContext.triggerIntent, exerciseContext.mutationPolicy und exerciseContext.feedbackPolicy sind verbindliche Ausführungsrichtlinien.
 - Halte dich an exerciseContext.allowedActions. Erfinde keine Action-Typen außerhalb des Vertrags.
 - Für Exercise-Läufe ist feedback Pflicht. Feedback ist die sichtbare Erklärung für Nutzer und Facilitators.
-- feedback.title enthält niemals eine Nummerierung; die Nummerierung und Platzierung im Feedback-Frame übernimmt die App.
+- feedback.title enthält niemals eine Nummerierung; die App rendert die sichtbare Antwort selbst in die instanzgebundene Ausgabebox.
 - flowControlDirectives sind app-seitige Freischaltungen für Board-Buttons. Nutze sie sparsam und nur dann, wenn didaktisch sinnvoll ein weiterer Button freigeschaltet oder als erledigt markiert werden soll.
 - Verwende in flowControlDirectives ausschließlich runProfileIds aus flowControlCatalog.
 - Wenn flowControlCatalog oder boardFlowState fehlen, lasse flowControlDirectives leer.
@@ -412,7 +467,7 @@ Antworte ausschließlich mit einem JSON-Objekt in diesem Format:
   },
   "feedback": {
     "title": "Kurzer Titel ohne Nummerierung",
-    "summary": "Kurzfassung für das Board-Feedback",
+    "summary": "Kurzfassung für die sichtbare Antwortbox",
     "sections": [
       {
         "heading": "Beobachtungen",

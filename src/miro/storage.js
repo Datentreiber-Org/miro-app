@@ -10,14 +10,13 @@ import {
   DT_STORAGE_KEY_BOARD_FLOW_INDEX,
   DT_STORAGE_KEY_BOARD_FLOW_PREFIX,
   DT_STORAGE_KEY_RUN_STATE,
-  DT_DEFAULT_FEEDBACK_FRAME_NAME,
   DT_DEFAULT_FEEDBACK_CHANNEL,
   DT_DEFAULT_APP_ADMIN_POLICY,
   DT_MEMORY_RECENT_LOG_LIMIT
-} from "../config.js?v=20260306-batch45";
+} from "../config.js?v=20260307-batch5";
 
-import { normalizeBoardFlow } from "../runtime/board-flow.js?v=20260306-batch45";
-import { ensureMiroReady, getBoard } from "./sdk.js?v=20260305-batch05";
+import { normalizeBoardFlow } from "../runtime/board-flow.js?v=20260307-batch5";
+import { ensureMiroReady, getBoard } from "./sdk.js?v=20260307-batch5";
 import { compareItemIdsAsc, normalizePositiveInt, asTrimmedString } from "./helpers.js?v=20260305-batch05";
 
 // --------------------------------------------------------------------
@@ -212,7 +211,6 @@ export function normalizeBoardConfig(rawConfig, { defaultCanvasTypeId = null } =
   let boardMode = normalizeBoardMode(src.boardMode);
   if (exercisePackId) boardMode = "exercise";
 
-  const feedbackFrameName = asTrimmedString(src.feedbackFrameName) || DT_DEFAULT_FEEDBACK_FRAME_NAME;
   const feedbackChannelDefault = asTrimmedString(src.feedbackChannelDefault) || DT_DEFAULT_FEEDBACK_CHANNEL;
   const appAdminPolicy = asTrimmedString(src.appAdminPolicy) || DT_DEFAULT_APP_ADMIN_POLICY;
   const appAdminUserIds = Array.from(new Set((Array.isArray(src.appAdminUserIds) ? src.appAdminUserIds : [])
@@ -224,7 +222,6 @@ export function normalizeBoardConfig(rawConfig, { defaultCanvasTypeId = null } =
     boardMode,
     exercisePackId: exercisePackId || null,
     defaultCanvasTypeId: normalizedDefaultCanvasTypeId || null,
-    feedbackFrameName,
     feedbackChannelDefault,
     userMayChangePack: src.userMayChangePack === true,
     userMayChangeStep: src.userMayChangeStep === true,
@@ -247,10 +244,6 @@ export function normalizeExerciseRuntime(rawRuntime) {
     lastFlowDirectiveAt: asTrimmedString(src.lastFlowDirectiveAt),
     lastActiveAnchorInstanceId: asTrimmedString(src.lastActiveAnchorInstanceId),
     lastActivePackTemplateId: asTrimmedString(src.lastActivePackTemplateId),
-    feedbackTextCounter: normalizePositiveInt(src.feedbackTextCounter) || 0,
-    lastFeedbackTextIds: Array.from(new Set((Array.isArray(src.lastFeedbackTextIds) ? src.lastFeedbackTextIds : [])
-      .map((value) => value == null ? null : String(value))
-      .filter(Boolean))),
     lastUpdatedAt: asTrimmedString(src.lastUpdatedAt)
   };
 }

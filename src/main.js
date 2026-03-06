@@ -7,20 +7,22 @@ import {
   DT_MEMORY_RECENT_LOG_LIMIT,
   DT_RUN_STATE_STALE_AFTER_MS,
   DT_RUN_STATUS_LAYOUT,
+  DT_QUESTION_SYSTEM_PROMPT,
+  DT_CHAT_INTERFACE_PLACEHOLDERS,
   STICKY_LAYOUT
-} from "./config.js?v=20260306-batch45";
+} from "./config.js?v=20260307-batch5";
 
 import { createLogger, stripHtml, extractUnderlinedText, isFiniteNumber } from "./utils.js?v=20260301-step11-hotfix2";
 
-import * as Board from "./miro/board.js?v=20260306-batch45";
-import * as Catalog from "./domain/catalog.js?v=20260305-batch4";
-import * as OpenAI from "./ai/openai.js?v=20260306-batch45";
+import * as Board from "./miro/board.js?v=20260307-batch5";
+import * as Catalog from "./domain/catalog.js?v=20260307-batch5";
+import * as OpenAI from "./ai/openai.js?v=20260307-batch5";
 import * as Memory from "./runtime/memory.js?v=20260301-step11-hotfix2";
-import * as Exercises from "./exercises/registry.js?v=20260306-batch45";
-import * as ExerciseLibrary from "./exercises/library.js?v=20260306-batch45";
-import * as PromptComposer from "./prompt/composer.js?v=20260306-batch45";
-import * as ExerciseEngine from "./runtime/exercise-engine.js?v=20260306-batch45";
-import * as BoardFlow from "./runtime/board-flow.js?v=20260306-batch45";
+import * as Exercises from "./exercises/registry.js?v=20260307-batch5";
+import * as ExerciseLibrary from "./exercises/library.js?v=20260307-batch5";
+import * as PromptComposer from "./prompt/composer.js?v=20260307-batch5";
+import * as ExerciseEngine from "./runtime/exercise-engine.js?v=20260307-batch5";
+import * as BoardFlow from "./runtime/board-flow.js?v=20260307-batch5";
 import * as PanelBridge from "./runtime/panel-bridge.js?v=20260305-schemafix2";
 import { buildPayloadMappingHint } from "./app/payload-hints.js?v=20260305-batch06";
 import { getInsertWidthPxForCanvasType, computeTemplateInsertPosition } from "./app/template-insertion.js?v=20260305-batch05";
@@ -205,7 +207,6 @@ function getManagedAgentRunButtons() {
     btnExerciseReviewEl,
     btnExerciseCoachEl,
     document.getElementById("btn-agent-selection"),
-    document.getElementById("btn-global-agent"),
     document.getElementById("btn-openai-classic")
   ].filter(Boolean);
 }
@@ -686,7 +687,6 @@ function shouldPanelHandleFlowControls() {
 function buildBoardConfigPatchForPack(pack) {
   const defaults = Exercises.getPackDefaults(pack);
   return {
-    feedbackFrameName: defaults.feedbackFrameName,
     feedbackChannelDefault: defaults.feedbackChannel,
     userMayChangePack: defaults.userMayChangePack,
     userMayChangeStep: defaults.userMayChangeStep,
@@ -827,15 +827,13 @@ function renderExerciseContextStatus() {
   const pack = getSelectedExercisePack();
   const currentStep = getCurrentExerciseStep(pack);
   const selectedCanvasType = getCanvasTypeEntry(getSelectedCanvasTypeId());
-  const feedbackFrameName = state.boardConfig?.feedbackFrameName || "AI Coach Output";
 
   if (exerciseContextStatusEl) {
     const lines = [
       "Board-Modus: " + getCurrentBoardMode(),
       "Exercise Pack: " + (pack ? pack.label : "keins (generischer Agentenmodus)"),
       "Aktueller Schritt: " + (currentStep?.label || "kein Schritt aktiv"),
-      "Standard-Canvas-Typ: " + (selectedCanvasType?.displayName || getSelectedCanvasTypeId()),
-      "Feedback-Frame: " + feedbackFrameName
+      "Standard-Canvas-Typ: " + (selectedCanvasType?.displayName || getSelectedCanvasTypeId())
     ];
     exerciseContextStatusEl.textContent = lines.join("\n");
   }
@@ -876,10 +874,6 @@ function renderRecommendationStatus() {
   const lastDirectiveAt = state.exerciseRuntime?.lastFlowDirectiveAt || null;
   const lastActiveAnchorInstanceId = state.exerciseRuntime?.lastActiveAnchorInstanceId || null;
   const lastActivePackTemplateId = state.exerciseRuntime?.lastActivePackTemplateId || null;
-  const feedbackCounter = Number(state.exerciseRuntime?.feedbackTextCounter || 0);
-  const lastFeedbackIds = Array.isArray(state.exerciseRuntime?.lastFeedbackTextIds)
-    ? state.exerciseRuntime.lastFeedbackTextIds.filter(Boolean)
-    : [];
 
   lines.push("Letzter Trigger: " + (lastTriggerKey ? `${lastTriggerKey} (${lastTriggerSource || "system"})` : "noch keiner"));
   if (lastTriggerAt) lines.push("Letzter Trigger-Zeitpunkt: " + lastTriggerAt);
@@ -889,8 +883,6 @@ function renderRecommendationStatus() {
   if (lastActivePackTemplateId || lastActiveAnchorInstanceId) {
     lines.push("Letzter Flow-Anchor: " + [lastActivePackTemplateId || null, getInstanceLabelByInternalId(lastActiveAnchorInstanceId) || lastActiveAnchorInstanceId || null].filter(Boolean).join(" · "));
   }
-  lines.push("Feedback-Texte erzeugt: " + feedbackCounter);
-  if (lastFeedbackIds.length) lines.push("Letzte Feedback-Textitems: " + lastFeedbackIds.join(", "));
 
   exerciseRecommendationStatusEl.textContent = lines.join("\n");
 }
@@ -1229,15 +1221,6 @@ async function findOrCreateBoardFlowForPack(packTemplateId, anchorInstanceId) {
   return await saveBoardFlowAndCache(flow);
 }
 
-function getLastActiveAnchorInstanceIdForPack(packTemplateId) {
-  const normalizedPackTemplateId = pickFirstNonEmptyString(packTemplateId);
-  const lastPackTemplateId = pickFirstNonEmptyString(state.exerciseRuntime?.lastActivePackTemplateId);
-  const lastAnchorInstanceId = pickFirstNonEmptyString(state.exerciseRuntime?.lastActiveAnchorInstanceId);
-  if (!normalizedPackTemplateId || !lastAnchorInstanceId) return null;
-  if (normalizedPackTemplateId !== lastPackTemplateId) return null;
-  return state.instancesById.has(lastAnchorInstanceId) ? lastAnchorInstanceId : null;
-}
-
 function buildFlowControlCatalogForPackTemplate(packTemplate) {
   if (!packTemplate?.id) return [];
   return ExerciseLibrary.listRunProfilesForPack(packTemplate.id)
@@ -1282,10 +1265,6 @@ function resolveFlowPromptContext({ promptRuntimeOverride = null, targetInstance
   if (!anchorInstanceId && Array.isArray(targetInstanceIds) && targetInstanceIds.length === 1 && state.instancesById.has(targetInstanceIds[0])) {
     anchorInstanceId = targetInstanceIds[0];
   }
-  if (!anchorInstanceId) {
-    anchorInstanceId = getLastActiveAnchorInstanceIdForPack(packTemplateId);
-  }
-
   const flow = packTemplateId && anchorInstanceId
     ? getExistingBoardFlowForPack(packTemplateId, anchorInstanceId)
     : null;
@@ -1731,7 +1710,6 @@ async function loadBoardExerciseState() {
     ...normalizedBoardConfig,
     boardMode: normalizedPackId ? "exercise" : "generic",
     exercisePackId: normalizedPackId || null,
-    feedbackFrameName: normalizedBoardConfig.feedbackFrameName || packDefaults.feedbackFrameName,
     feedbackChannelDefault: normalizedBoardConfig.feedbackChannelDefault || packDefaults.feedbackChannel,
     userMayChangePack: normalizedBoardConfig.userMayChangePack === true ? true : packDefaults.userMayChangePack,
     userMayChangeStep: normalizedBoardConfig.userMayChangeStep === true ? true : packDefaults.userMayChangeStep,
@@ -2125,7 +2103,6 @@ function initPanelButtons() {
 
   document.getElementById("btn-insert-template")?.addEventListener("click", insertTemplateImage);
   document.getElementById("btn-agent-selection")?.addEventListener("click", runAgentForCurrentSelection);
-  document.getElementById("btn-global-agent")?.addEventListener("click", () => runGlobalAgent(null, getPanelUserText()));
   document.getElementById("btn-cluster-panel")?.addEventListener("click", clusterSelectionFromPanel);
   document.getElementById("btn-classify-debug")?.addEventListener("click", () => classifyStickies({ silent: false }));
   document.getElementById("btn-openai-classic")?.addEventListener("click", callOpenAIClassic);
@@ -2137,7 +2114,6 @@ function initPanelButtons() {
   window.dtClusterSelection = clusterSelectionFromPanel;
   window.dtRunAgentForCurrentSelection = runAgentForCurrentSelection;
   window.dtRunAgentForInstance = runAgentForInstance;
-  window.dtRunGlobalAgent = runGlobalAgent;
   window.dtRunExerciseCheck = runExerciseCheck;
   window.dtRunExerciseHint = runExerciseHint;
   window.dtRunExerciseAutocorrect = runExerciseAutocorrect;
@@ -2362,11 +2338,7 @@ function normalizeAgentExerciseArtifacts(agentObj, triggerContext, sourceLabel =
 
 async function persistExerciseRuntimeAfterAgentRun({
   triggerContext = null,
-  feedback = null,
   flowControlDirectives = null,
-  evaluation = null,
-  exercisePack = null,
-  currentStep = null,
   activeAnchorContext = null
 } = {}) {
   if (!triggerContext) return null;
@@ -2385,35 +2357,9 @@ async function persistExerciseRuntimeAfterAgentRun({
     runtimePatch.lastActiveAnchorInstanceId = activeAnchorContext.anchorInstanceId;
   }
 
-  let feedbackRenderResult = null;
-  if (triggerContext.feedbackPolicy === "text" || triggerContext.feedbackPolicy === "both") {
-    try {
-      feedbackRenderResult = await Board.renderFeedbackTextForRun({
-        boardConfig: state.boardConfig,
-        runtime: state.exerciseRuntime,
-        triggerContext,
-        feedback,
-        flowControlDirectives,
-        evaluation,
-        exercisePack,
-        currentStep,
-        log
-      });
-    } catch (e) {
-      log("WARNUNG: Feedback-Text konnte nicht gerendert werden: " + e.message);
-    }
-  }
-
-  if (feedbackRenderResult) {
-    runtimePatch.feedbackTextCounter = feedbackRenderResult.counter;
-    runtimePatch.lastFeedbackTextIds = Array.isArray(feedbackRenderResult.textItemIds)
-      ? feedbackRenderResult.textItemIds.filter(Boolean)
-      : [];
-  }
-
   await persistExerciseRuntime(runtimePatch);
   renderExerciseControls();
-  return feedbackRenderResult;
+  return null;
 }
 
 async function ensureInstancesScanned(force = false) {
@@ -2486,6 +2432,11 @@ async function resolveSelectionToInstanceIds(items) {
       continue;
     }
 
+    const chatMeta = await Board.readChatInterfaceMeta(item, log);
+    if (chatMeta?.instanceId) {
+      addInstanceId(chatMeta.instanceId);
+      continue;
+    }
 
     if (item.type === "connector") {
       const fromOwner = item.start?.item ? (state.stickyOwnerCache?.get(item.start.item) || null) : null;
@@ -2595,6 +2546,19 @@ async function onSelectionUpdate(event) {
   if (state.handlingSelection || state.flowControlRunLock || state.agentRunLock) return;
   const items = event?.items || [];
 
+  const chatSelection = await resolveSelectedChatSubmit(items);
+  if (chatSelection) {
+    const headlessShouldRun = shouldHeadlessHandleFlowControls();
+    const panelShouldRun = shouldPanelHandleFlowControls();
+
+    if (headlessShouldRun || panelShouldRun) {
+      await executeSelectedChatSubmit(chatSelection, items);
+    } else {
+      await refreshSelectionStatusFromItems(items);
+    }
+    return;
+  }
+
   const controlSelection = await resolveSelectedFlowControl(items);
   if (controlSelection) {
     const headlessShouldRun = shouldHeadlessHandleFlowControls();
@@ -2683,7 +2647,8 @@ async function insertTemplateImage() {
       instancesById: state.instancesById,
       hasGlobalBaseline: state.hasGlobalBaseline,
       canvasTypeId: selectedCanvasTypeId,
-      log
+      log,
+      createChatInterface: true
     });
     rebuildInstancesByLabelIndex();
 
@@ -3369,6 +3334,263 @@ function buildBoardCatalogForSelectedInstances(selectedInstanceIds) {
   };
 }
 
+
+function normalizeComparableChatText(value) {
+  return String(value || "")
+    .replace(/<[^>]*>/g, " ")
+    .replace(/[…]/g, "...")
+    .replace(/\s+/g, " ")
+    .trim()
+    .toLowerCase();
+}
+
+function normalizeChatQuestionText(rawContent) {
+  const plain = stripHtml(rawContent || "")
+    .replace(/\u00a0/g, " ")
+    .replace(/\r/g, "")
+    .replace(/[ \t]+\n/g, "\n")
+    .replace(/\n[ \t]+/g, "\n")
+    .trim();
+  if (!plain) return "";
+
+  const normalized = normalizeComparableChatText(plain);
+  const inputPlaceholder = normalizeComparableChatText(DT_CHAT_INTERFACE_PLACEHOLDERS.input);
+  const submitPlaceholder = normalizeComparableChatText(DT_CHAT_INTERFACE_PLACEHOLDERS.submit);
+  const outputPlaceholder = normalizeComparableChatText(DT_CHAT_INTERFACE_PLACEHOLDERS.output);
+  if (normalized === inputPlaceholder || normalized === submitPlaceholder || normalized === outputPlaceholder) {
+    return "";
+  }
+
+  return plain;
+}
+
+function resolveResponseTargetInstanceId({ promptRuntimeOverride = null, targetInstanceIds = [], triggerInstanceId = null } = {}) {
+  const runtime = (promptRuntimeOverride && typeof promptRuntimeOverride === "object") ? promptRuntimeOverride : null;
+  const explicitAnchor = pickFirstNonEmptyString(runtime?.controlContext?.anchorInstanceId, runtime?.anchorInstanceId, triggerInstanceId);
+  if (explicitAnchor && state.instancesById.has(explicitAnchor)) return explicitAnchor;
+
+  const normalizedTargets = normalizeTargetInstanceIds(targetInstanceIds);
+  if (normalizedTargets.length === 1) return normalizedTargets[0];
+  return null;
+}
+
+function buildQuestionSystemPromptForInstance(instanceId) {
+  const instance = state.instancesById.get(instanceId) || null;
+  const canvasTypeId = instance?.canvasTypeId || null;
+  const templateCfg = canvasTypeId ? DT_TEMPLATE_CATALOG[canvasTypeId] : null;
+  const promptBlocks = [DT_QUESTION_SYSTEM_PROMPT];
+
+  if (typeof templateCfg?.promptContext === "string" && templateCfg.promptContext.trim()) {
+    const displayName = templateCfg.displayName || templateCfg.agentLabelPrefix || canvasTypeId || "Canvas";
+    promptBlocks.push(`Canvas-Typ-Kontext (${displayName}):\n${templateCfg.promptContext.trim()}`);
+  }
+
+  return promptBlocks.filter(Boolean).join("\n\n");
+}
+
+async function renderAgentResponseToInstanceOutput({
+  instanceId = null,
+  feedback = null,
+  flowControlDirectives = null,
+  evaluation = null,
+  sourceLabel = "Agent"
+} = {}) {
+  const targetInstanceId = pickFirstNonEmptyString(instanceId);
+  if (!targetInstanceId) return null;
+
+  const instance = state.instancesById.get(targetInstanceId);
+  if (!instance) return null;
+  if (!Board.hasCompleteChatInterfaceShapeIds(instance.chatInterface)) {
+    log("WARNUNG: Keine vollständige Ausgabebox für Instanz " + (instance.instanceLabel || targetInstanceId) + ". " + sourceLabel + "-Antwort wird nicht auf dem Board gerendert.");
+    return null;
+  }
+
+  const content = Board.buildAgentFeedbackContent({
+    feedback,
+    flowControlDirectives,
+    evaluation
+  });
+
+  const outputItem = await Board.writeChatOutputContent(instance.chatInterface, content, log);
+  return {
+    instanceId: targetInstanceId,
+    instanceLabel: instance.instanceLabel || targetInstanceId,
+    outputShapeId: outputItem?.id ? String(outputItem.id) : instance.chatInterface.outputShapeId || null
+  };
+}
+
+async function buildQuestionUserPayloadForInstance(instanceId, userQuestion) {
+  const instance = state.instancesById.get(instanceId);
+  if (!instance) return null;
+
+  const { liveCatalog } = await refreshBoardState();
+  const stateById = await computeInstanceStatesById(liveCatalog);
+  const instanceState = stateById[instanceId] || null;
+
+  if (!instanceState?.promptPayload) {
+    return null;
+  }
+
+  return {
+    activeInstanceLabel: instance.instanceLabel || null,
+    boardCatalog: Catalog.buildBoardCatalogSummary(state.instancesById, {
+      mode: "generic",
+      activeInstanceId: instanceId,
+      hasGlobalBaseline: state.hasGlobalBaseline
+    }),
+    activeCanvasState: instanceState.promptPayload,
+    instanceMeta: {
+      instanceId: instance.instanceId || null,
+      instanceLabel: instance.instanceLabel || null,
+      canvasTypeId: instance.canvasTypeId || null,
+      canvasTypeLabel: instance.canvasTypeLabel || null,
+      imageId: instance.imageId || null
+    },
+    userQuestion: userQuestion || ""
+  };
+}
+
+async function runQuestionCallForInstance(instanceId, rawQuestionText, { sourceLabel = "Frage" } = {}) {
+  const questionText = normalizeChatQuestionText(rawQuestionText);
+  if (!questionText) {
+    const msg = sourceLabel + ": Die Eingabebox ist leer.";
+    logRuntimeNotice("precondition", msg);
+    return buildRunFailureResult("precondition", msg);
+  }
+
+  const instance = state.instancesById.get(instanceId);
+  if (!instance) {
+    const msg = sourceLabel + ": Zielinstanz konnte nicht gefunden werden.";
+    logRuntimeNotice("precondition", msg);
+    return buildRunFailureResult("precondition", msg);
+  }
+
+  if (!Board.hasCompleteChatInterfaceShapeIds(instance.chatInterface)) {
+    const msg = sourceLabel + ": Chat-Interface der Instanz ist unvollständig.";
+    logRuntimeNotice("precondition", msg);
+    return buildRunFailureResult("precondition", msg);
+  }
+
+  const apiKey = getApiKey();
+  const model = getModel();
+  if (!apiKey) {
+    const msg = sourceLabel + ": Kein OpenAI API Key vorhanden.";
+    logRuntimeNotice("precondition", msg);
+    return buildRunFailureResult("precondition", msg);
+  }
+
+  const runLock = tryAcquireAgentRunLock(sourceLabel);
+  if (!runLock) {
+    return buildRunFailureResult("run_locked", sourceLabel + ": Ein Agent-Run läuft bereits.");
+  }
+
+  let boardRunToken = null;
+  let finalBoardRunStatus = "failed";
+  let finalBoardRunMessage = sourceLabel + ": fehlgeschlagen.";
+
+  try {
+    const boardRunStart = await acquireBoardSoftLock({
+      sourceLabel,
+      targetInstanceIds: [instanceId]
+    });
+    if (!boardRunStart.ok) {
+      const msg = formatExistingBoardRunMessage(sourceLabel, boardRunStart.current);
+      logRuntimeNotice("run_locked", msg);
+      return buildRunFailureResult("run_locked", msg, { currentRunState: boardRunStart.current || null });
+    }
+
+    boardRunToken = boardRunStart.token;
+    boardRunToken.statusItemIds = await createRunStatusItems([instanceId], sourceLabel, boardRunToken.runId);
+    await syncBoardSoftLock(boardRunToken, { statusItemIds: boardRunToken.statusItemIds });
+
+    const userPayload = await buildQuestionUserPayloadForInstance(instanceId, questionText);
+    if (!userPayload) {
+      const msg = sourceLabel + ": Konnte keinen Instanzkontext für den Frage-Call aufbauen.";
+      logRuntimeNotice("precondition", msg);
+      finalBoardRunStatus = "aborted";
+      finalBoardRunMessage = msg;
+      return buildRunFailureResult("precondition", msg);
+    }
+
+    const systemPrompt = buildQuestionSystemPromptForInstance(instanceId);
+    const structuredResult = await OpenAI.callOpenAIQuestionStructured({
+      apiKey,
+      model,
+      systemPrompt,
+      userText: JSON.stringify(userPayload, null, 2)
+    });
+
+    if (structuredResult.refusal) {
+      const msg = sourceLabel + ": Modell verweigert die Antwort: " + structuredResult.refusal;
+      logRuntimeNotice("model_refusal", msg);
+      finalBoardRunStatus = "aborted";
+      finalBoardRunMessage = msg;
+      return buildRunFailureResult("model_refusal", msg, { refusal: structuredResult.refusal });
+    }
+
+    const answer = pickFirstNonEmptyString(structuredResult.parsed?.answer, structuredResult.outputText);
+    if (!answer) {
+      const msg = sourceLabel + ": Antwort ist kein valides strukturiertes JSON.";
+      logRuntimeNotice("invalid_json", msg, structuredResult.outputText || "(keine output_text-Antwort)");
+      finalBoardRunStatus = "aborted";
+      finalBoardRunMessage = msg;
+      return buildRunFailureResult("invalid_json", msg, { rawOutputText: structuredResult.outputText || null });
+    }
+
+    const outputHtml = Board.buildQuestionAnswerContent({ answer });
+    await Board.writeChatOutputContent(instance.chatInterface, outputHtml, log);
+    log(sourceLabel + ": Antwort in die Ausgabebox von " + (instance.instanceLabel || instanceId) + " geschrieben.");
+
+    finalBoardRunStatus = "completed";
+    finalBoardRunMessage = sourceLabel + ": abgeschlossen.";
+    return buildRunSuccessResult({
+      sourceLabel,
+      targetInstanceLabels: [instance.instanceLabel || instanceId],
+      answer
+    });
+  } catch (e) {
+    const msg = "Exception beim " + sourceLabel + "-Call: " + formatRuntimeErrorMessage(e);
+    logRuntimeNotice("fatal", msg, e?.stack || null);
+    finalBoardRunStatus = "failed";
+    finalBoardRunMessage = msg;
+    return buildRunFailureResult("fatal", msg, { error: e });
+  } finally {
+    if (boardRunToken) {
+      await finalizeBoardSoftLock(boardRunToken, {
+        status: finalBoardRunStatus,
+        message: finalBoardRunMessage
+      });
+    }
+    releaseAgentRunLock(runLock);
+  }
+}
+
+async function resolveSelectedChatSubmit(items) {
+  const list = Array.isArray(items) ? items : [];
+  if (list.length !== 1) return null;
+
+  const item = list[0];
+  const meta = await Board.readChatInterfaceMeta(item, log);
+  if (!meta || meta.role !== "submit") return null;
+
+  const instance = meta.instanceId ? state.instancesById.get(meta.instanceId) : null;
+  if (!instance) return null;
+  return { item, meta, instance };
+}
+
+async function executeSelectedChatSubmit(chatSelection, items) {
+  if (!chatSelection?.instance) {
+    await refreshSelectionStatusFromItems(items);
+    return;
+  }
+
+  const rawInputContent = await Board.readChatInputContent(chatSelection.instance.chatInterface, log);
+  await runQuestionCallForInstance(chatSelection.instance.instanceId, rawInputContent, {
+    sourceLabel: "Canvas-Frage"
+  });
+  await refreshSelectionStatusFromItems(items);
+}
+
 function getPromptConfigForSelectedInstances(selectedInstanceIds) {
   const firstId = Array.isArray(selectedInstanceIds) && selectedInstanceIds.length ? selectedInstanceIds[0] : null;
   const firstInst = firstId ? state.instancesById.get(firstId) : null;
@@ -3641,20 +3863,29 @@ async function runAgentForSelectedInstances(selectedInstanceIds, options = {}) {
         })
       : null;
 
+    const appliedFlowControlDirectives = flowDirectiveResult?.flowControlDirectives || flowControlDirectives;
+    const responseRenderResult = await renderAgentResponseToInstanceOutput({
+      instanceId: resolveResponseTargetInstanceId({
+        promptRuntimeOverride,
+        targetInstanceIds: resolvedActiveIds,
+        triggerInstanceId: resolvedActiveIds.length === 1 ? resolvedActiveIds[0] : null
+      }),
+      feedback,
+      flowControlDirectives: appliedFlowControlDirectives,
+      evaluation,
+      sourceLabel
+    });
+
     if (triggerContext) {
-      const feedbackRenderResult = await persistExerciseRuntimeAfterAgentRun({
+      await persistExerciseRuntimeAfterAgentRun({
         triggerContext,
-        feedback,
-        flowControlDirectives: flowDirectiveResult?.flowControlDirectives || flowControlDirectives,
-        evaluation,
-        exercisePack: promptRuntimeOverride?.packTemplate || getSelectedExercisePack(),
-        currentStep: promptRuntimeOverride?.flowStep || getCurrentExerciseStep(),
+        flowControlDirectives: appliedFlowControlDirectives,
         activeAnchorContext: flowDirectiveResult?.activeAnchorContext || null
       });
+    }
 
-      if (feedbackRenderResult?.textItemIds?.length) {
-        log(sourceLabel + ": Feedback-Text erzeugt in Frame '" + (feedbackRenderResult.frameTitle || state.boardConfig?.feedbackFrameName || "AI Coach Output") + "' – Item(s): " + feedbackRenderResult.textItemIds.join(", ") + ".");
-      }
+    if (responseRenderResult?.outputShapeId) {
+      log(sourceLabel + ": Antwort in Ausgabebox von '" + responseRenderResult.instanceLabel + "' geschrieben (Shape " + responseRenderResult.outputShapeId + ").");
     }
 
     finalBoardRunStatus = "completed";
@@ -4159,20 +4390,29 @@ async function runGlobalAgent(triggerInstanceId, userText, options = {}) {
         })
       : null;
 
+    const appliedFlowControlDirectives = flowDirectiveResult?.flowControlDirectives || flowControlDirectives;
+    const responseRenderResult = await renderAgentResponseToInstanceOutput({
+      instanceId: resolveResponseTargetInstanceId({
+        promptRuntimeOverride,
+        targetInstanceIds: activeInstanceIds,
+        triggerInstanceId
+      }),
+      feedback,
+      flowControlDirectives: appliedFlowControlDirectives,
+      evaluation,
+      sourceLabel
+    });
+
     if (triggerContext) {
-      const feedbackRenderResult = await persistExerciseRuntimeAfterAgentRun({
+      await persistExerciseRuntimeAfterAgentRun({
         triggerContext,
-        feedback,
-        flowControlDirectives: flowDirectiveResult?.flowControlDirectives || flowControlDirectives,
-        evaluation,
-        exercisePack: promptRuntimeOverride?.packTemplate || getSelectedExercisePack(),
-        currentStep: promptRuntimeOverride?.flowStep || getCurrentExerciseStep(),
+        flowControlDirectives: appliedFlowControlDirectives,
         activeAnchorContext: flowDirectiveResult?.activeAnchorContext || null
       });
+    }
 
-      if (feedbackRenderResult?.textItemIds?.length) {
-        log(sourceLabel + ": Feedback-Text erzeugt in Frame '" + (feedbackRenderResult.frameTitle || state.boardConfig?.feedbackFrameName || "AI Coach Output") + "' – Item(s): " + feedbackRenderResult.textItemIds.join(", ") + ".");
-      }
+    if (responseRenderResult?.outputShapeId) {
+      log(sourceLabel + ": Antwort in Ausgabebox von '" + responseRenderResult.instanceLabel + "' geschrieben (Shape " + responseRenderResult.outputShapeId + ").");
     }
 
     finalBoardRunStatus = "completed";

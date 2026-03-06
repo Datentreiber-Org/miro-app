@@ -1,6 +1,6 @@
-import { DT_IMAGE_META_KEY_INSTANCE } from "../config.js?v=20260303-flowbatch1";
+import { DT_IMAGE_META_KEY_INSTANCE } from "../config.js?v=20260307-batch5";
 import { isFiniteNumber } from "../utils.js?v=20260301-step11-hotfix2";
-import { ensureMiroReady, getBoard } from "./sdk.js?v=20260305-batch05";
+import { ensureMiroReady, getBoard } from "./sdk.js?v=20260307-batch5";
 import {
   compareItemIdsAsc,
   normalizePositiveInt,
@@ -10,13 +10,23 @@ import {
 } from "./helpers.js?v=20260305-batch05";
 import { getItemById, resolveBoardCoords } from "./items.js?v=20260305-batch05";
 import {
+  normalizeChatInterfaceShapeIds,
+  hasCompleteChatInterfaceShapeIds,
+  createChatInterfaceForInstance,
+  removeChatInterfaceShapes
+} from "./chat-interface.js?v=20260307-batch5";
+import {
   loadBaselineSignatureForImageId,
   removeBaselineSignatureForImageId
-} from "./storage.js?v=20260305-batch31";
+} from "./storage.js?v=20260307-batch5";
 
 // --------------------------------------------------------------------
 // Template instance registration, geometry and scan/rebind logic
 // --------------------------------------------------------------------
+function normalizeCanvasInstanceChatInterface(rawShapeIds) {
+  return normalizeChatInterfaceShapeIds(rawShapeIds);
+}
+
 function normalizeCanvasInstanceMeta(rawMeta, templateCatalog, defaultTemplateId = null) {
   const src = (rawMeta && typeof rawMeta === "object") ? rawMeta : {};
   const canvasTypeId = typeof src.canvasTypeId === "string" && src.canvasTypeId.trim()
@@ -27,12 +37,14 @@ function normalizeCanvasInstanceMeta(rawMeta, templateCatalog, defaultTemplateId
     ? formatInstanceLabel(templateCatalog, canvasTypeId, instanceSerial, defaultTemplateId)
     : null;
   const instanceLabel = expectedLabel || (typeof src.instanceLabel === "string" && src.instanceLabel.trim() ? src.instanceLabel.trim() : null);
+  const chatInterface = normalizeCanvasInstanceChatInterface(src.chatInterface);
 
   return {
-    version: 1,
+    version: 2,
     canvasTypeId,
     instanceSerial,
-    instanceLabel
+    instanceLabel,
+    chatInterface
   };
 }
 
@@ -92,6 +104,7 @@ async function ensureReadableInstanceLabelsForImages(images, templateCatalog, de
       originalCanvasTypeId: meta.canvasTypeId || null,
       originalInstanceSerial: normalizePositiveInt(meta.instanceSerial),
       originalInstanceLabel: typeof meta.instanceLabel === "string" && meta.instanceLabel.trim() ? meta.instanceLabel.trim() : null,
+      originalChatInterface: normalizeCanvasInstanceChatInterface(meta.chatInterface),
       canvasTypeId,
       instanceSerial: normalizePositiveInt(meta.instanceSerial),
       instanceLabel: typeof meta.instanceLabel === "string" && meta.instanceLabel.trim() ? meta.instanceLabel.trim() : null
@@ -154,10 +167,11 @@ async function ensureReadableInstanceLabelsForImages(images, templateCatalog, de
 
       if (needsWrite) {
         await writeCanvasInstanceMeta(record.image, {
-          version: 1,
+          version: 2,
           canvasTypeId,
           instanceSerial: record.instanceSerial,
-          instanceLabel: record.instanceLabel
+          instanceLabel: record.instanceLabel,
+          chatInterface: normalizeCanvasInstanceChatInterface(record.originalChatInterface || null)
         }, templateCatalog, defaultTemplateId, log);
       }
     }
@@ -271,7 +285,8 @@ export async function registerInstanceFromImage(image, {
   instancesById,
   hasGlobalBaseline,
   canvasTypeId = null,
-  log
+  log,
+  createChatInterface = false
 }) {
   await ensureMiroReady(log);
 
@@ -294,17 +309,19 @@ export async function registerInstanceFromImage(image, {
     instanceSerial = computeNextInstanceSerial(instancesById, detectedCanvasTypeId);
     instanceLabel = formatInstanceLabel(templateCatalog, detectedCanvasTypeId, instanceSerial, defaultTemplateId);
     meta = await writeCanvasInstanceMeta(image, {
-      version: 1,
+      version: 2,
       canvasTypeId: detectedCanvasTypeId,
       instanceSerial,
-      instanceLabel
+      instanceLabel,
+      chatInterface: meta.chatInterface
     }, templateCatalog, defaultTemplateId, log);
   } else if (meta.canvasTypeId !== detectedCanvasTypeId || meta.instanceLabel !== instanceLabel) {
     meta = await writeCanvasInstanceMeta(image, {
-      version: 1,
+      version: 2,
       canvasTypeId: detectedCanvasTypeId,
       instanceSerial,
-      instanceLabel
+      instanceLabel,
+      chatInterface: meta.chatInterface
     }, templateCatalog, defaultTemplateId, log);
   }
 
@@ -321,6 +338,7 @@ export async function registerInstanceFromImage(image, {
     instance.instanceSerial = instanceSerial;
     instance.instanceLabel = instanceLabel;
     instance.instanceId = internalInstanceId;
+    instance.chatInterface = normalizeCanvasInstanceChatInterface(meta.chatInterface);
     instance.lastGeometry = { x: image.x, y: image.y, width: image.width, height: image.height };
 
     if (previousInstanceId && previousInstanceId !== internalInstanceId) {
@@ -330,6 +348,24 @@ export async function registerInstanceFromImage(image, {
       instancesById.set(internalInstanceId, instance);
     }
 
+
+    if (createChatInterface && !hasCompleteChatInterfaceShapeIds(instance.chatInterface)) {
+      try {
+        const shapeIds = await createChatInterfaceForInstance(instance, log);
+        instance.chatInterface = normalizeCanvasInstanceChatInterface(shapeIds);
+        await writeCanvasInstanceMeta(image, {
+          version: 2,
+          canvasTypeId: detectedCanvasTypeId,
+          instanceSerial,
+          instanceLabel,
+          chatInterface: instance.chatInterface
+        }, templateCatalog, defaultTemplateId, log);
+      } catch (e) {
+        if (typeof log === "function") {
+          log("WARNUNG: Chat-Interface konnte für Instanz " + (instance.instanceLabel || instance.instanceId) + " nicht erstellt werden: " + e.message);
+        }
+      }
+    }
 
     if (hasGlobalBaseline && !instance.baselineSignatureLoaded) {
       instance.baselineSignature = await loadBaselineSignatureForImageId(image.id, log);
@@ -346,6 +382,7 @@ export async function registerInstanceFromImage(image, {
     instanceSerial,
     instanceLabel,
     imageId: image.id,
+    chatInterface: normalizeCanvasInstanceChatInterface(meta.chatInterface),
     title: image.title || "Canvas",
     lastGeometry: { x: image.x, y: image.y, width: image.width, height: image.height },
 
@@ -372,6 +409,24 @@ export async function registerInstanceFromImage(image, {
     log("Neue Canvas-Instanz registriert: " + instance.instanceLabel + " (Bild-ID " + image.id + ")");
   }
 
+  if (createChatInterface && !hasCompleteChatInterfaceShapeIds(instance.chatInterface)) {
+    try {
+      const shapeIds = await createChatInterfaceForInstance(instance, log);
+      instance.chatInterface = normalizeCanvasInstanceChatInterface(shapeIds);
+      await writeCanvasInstanceMeta(image, {
+        version: 2,
+        canvasTypeId: detectedCanvasTypeId,
+        instanceSerial,
+        instanceLabel,
+        chatInterface: instance.chatInterface
+      }, templateCatalog, defaultTemplateId, log);
+    } catch (e) {
+      if (typeof log === "function") {
+        log("WARNUNG: Chat-Interface konnte für Instanz " + (instance.instanceLabel || instance.instanceId) + " nicht erstellt werden: " + e.message);
+      }
+    }
+  }
+
   if (hasGlobalBaseline && !instance.baselineSignatureLoaded) {
     instance.baselineSignature = await loadBaselineSignatureForImageId(image.id, log);
     instance.baselineSignatureLoaded = true;
@@ -386,7 +441,8 @@ export async function scanTemplateInstances({
   instancesByImageId,
   instancesById,
   hasGlobalBaseline,
-  log
+  log,
+  createChatInterface = false
 }) {
   await ensureMiroReady(log);
 
@@ -417,7 +473,8 @@ export async function scanTemplateInstances({
         instancesById,
         hasGlobalBaseline,
         canvasTypeId,
-        log
+        log,
+        createChatInterface: false
       });
     }
   }
@@ -436,6 +493,9 @@ export async function scanTemplateInstances({
     instancesByImageId.delete(imageId);
     if (inst) {
       instancesById.delete(inst.instanceId);
+      if (hasCompleteChatInterfaceShapeIds(inst.chatInterface)) {
+        await removeChatInterfaceShapes(inst.chatInterface, log);
+      }
       if (typeof log === "function") {
         log("Canvas-Instanz entfernt (Template-Bild gelöscht): " + (inst.instanceLabel || inst.instanceId) + " (Bild-ID " + imageId + ")");
       }
