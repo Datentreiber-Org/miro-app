@@ -297,3 +297,28 @@ export function setFlowControlState(flow, controlId, nextState) {
     updatedAt: new Date().toISOString()
   };
 }
+
+export function forceFlowControlActive(flow, controlId) {
+  const normalized = normalizeBoardFlow(flow);
+  const wanted = asNonEmptyString(controlId);
+  const control = wanted ? normalized.controls?.[wanted] : null;
+  if (!control) return normalized;
+  if (!control.runProfileId) return normalized;
+
+  const unlockedRunProfileIds = new Set(uniqueStrings(normalized?.runtime?.unlockedRunProfileIds || []));
+  const doneRunProfileIds = new Set(uniqueStrings(normalized?.runtime?.doneRunProfileIds || []));
+
+  doneRunProfileIds.delete(control.runProfileId);
+  unlockedRunProfileIds.add(control.runProfileId);
+
+  return syncFlowControlStatesWithCurrentStep({
+    ...normalized,
+    runtime: {
+      ...normalized.runtime,
+      unlockedRunProfileIds: Array.from(unlockedRunProfileIds),
+      doneRunProfileIds: Array.from(doneRunProfileIds),
+      lastDirectiveAt: new Date().toISOString()
+    },
+    updatedAt: new Date().toISOString()
+  });
+}

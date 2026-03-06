@@ -122,6 +122,7 @@ const flowControlLabelEl = document.getElementById("flow-control-label");
 const flowAuthoringStatusEl = document.getElementById("flow-authoring-status");
 const btnFlowCreateControlEl = document.getElementById("btn-flow-create-control");
 const btnFlowSetCurrentStepEl = document.getElementById("btn-flow-set-current-step");
+const btnFlowActivateSelectedControlEl = document.getElementById("btn-flow-activate-selected-control");
 const exerciseActionHelpEl = document.getElementById("exercise-action-help");
 const btnExerciseCheckEl = document.getElementById("btn-exercise-check");
 const btnExerciseHintEl = document.getElementById("btn-exercise-hint");
@@ -129,6 +130,7 @@ const btnExerciseAutocorrectEl = document.getElementById("btn-exercise-autocorre
 const btnExerciseReviewEl = document.getElementById("btn-exercise-review");
 const btnExerciseCoachEl = document.getElementById("btn-exercise-coach");
 const btnExerciseNextStepEl = document.getElementById("btn-exercise-next-step");
+const btnMemoryClearAdminEl = document.getElementById("btn-memory-clear-admin");
 const RUNTIME_CONTEXT = window.__DT_RUNTIME_CONTEXT === "headless" ? "headless" : "panel";
 const IS_HEADLESS = RUNTIME_CONTEXT === "headless";
 const log = logEl
@@ -137,6 +139,30 @@ const log = logEl
       const text = (typeof msg === "string") ? msg : JSON.stringify(msg, null, 2);
       console.log("[DT][" + RUNTIME_CONTEXT + "] " + text);
     };
+
+const DT_CLUSTER_SESSION_BRIDGE_KEY = "dt-cluster-session-v1::" + String(document.referrer || window.location.href || "default");
+const DT_CLUSTER_CUSTOM_ACTION_EVENT = "cluster-stickies";
+const DT_BATCH65_STATIC_LABELS = {
+  "btn-flow-activate-selected-control": {
+    de: "Selektierten Button aktiv setzen",
+    en: "Activate selected button"
+  },
+  "btn-memory-clear-admin": {
+    de: "Memory löschen",
+    en: "Clear memory"
+  }
+};
+const DT_CLUSTER_CUSTOM_ACTION_UI = {
+  label: {
+    de: "Stickies clustern",
+    en: "Cluster stickies"
+  },
+  description: {
+    de: "Clustert ausgewählte Sticky Notes mit der Datentreiber-Logik.",
+    en: "Cluster selected sticky notes with the Datentreiber logic."
+  },
+  icon: "chat-two"
+};
 
 (function initialLog() {
   if (logEl) {
@@ -585,6 +611,16 @@ function getCanvasTypeDisplayName(canvasTypeId, fallback = null, lang = getCurre
   return translateTextKeyOrFallback(key, fallbackText, lang);
 }
 
+function applyBatch65UiLabels(lang = getCurrentDisplayLanguage()) {
+  const normalizedLang = normalizeUiLanguage(lang);
+  for (const [id, localized] of Object.entries(DT_BATCH65_STATIC_LABELS)) {
+    const el = document.getElementById(id);
+    if (!el) continue;
+    const nextText = localized?.[normalizedLang] || localized?.de || localized?.en || "";
+    if (nextText) el.textContent = nextText;
+  }
+}
+
 function applyStaticUiLanguage(lang = getCurrentDisplayLanguage()) {
   if (typeof document !== "undefined") {
     document.documentElement.lang = normalizeUiLanguage(lang);
@@ -606,6 +642,8 @@ function applyStaticUiLanguage(lang = getCurrentDisplayLanguage()) {
   if (boardLanguageEl) {
     boardLanguageEl.value = normalizeUiLanguage(lang);
   }
+
+  applyBatch65UiLabels(lang);
 }
 
 async function syncBoardChromeLanguage(lang = getCurrentDisplayLanguage()) {
@@ -822,6 +860,144 @@ async function notifyRuntime(message, { level = "info" } = {}) {
       await notifications.showInfo(message);
     }
   } catch (_) {}
+}
+
+function normalizeClusterSessionBridgePayload(rawPayload) {
+  const src = (rawPayload && typeof rawPayload === "object") ? rawPayload : {};
+  const assignments = Array.isArray(src.assignments)
+    ? src.assignments.map((entry) => {
+        if (Array.isArray(entry)) return [String(entry[0] || "").trim(), typeof entry[1] === "string" ? entry[1].trim() : ""];
+        if (entry && typeof entry === "object") return [String(entry.stickyId || "").trim(), typeof entry.clusterName === "string" ? entry.clusterName.trim() : ""];
+        return ["", ""];
+      }).filter(([stickyId, clusterName]) => !!stickyId && !!clusterName)
+    : [];
+
+  const counters = Array.isArray(src.counters)
+    ? src.counters.map((entry) => {
+        if (Array.isArray(entry)) return [String(entry[0] || "").trim(), Number(entry[1])];
+        if (entry && typeof entry === "object") return [String(entry.instanceId || "").trim(), Number(entry.count)];
+        return ["", Number.NaN];
+      }).filter(([instanceId, count]) => !!instanceId && Number.isInteger(count) && count >= 0)
+    : [];
+
+  return {
+    version: 1,
+    updatedAt: (typeof src.updatedAt === "string" && src.updatedAt.trim()) ? src.updatedAt.trim() : null,
+    assignments,
+    counters
+  };
+}
+
+function readClusterSessionBridgePayload() {
+  try {
+    if (typeof window === "undefined" || !window.sessionStorage) return null;
+    const rawValue = window.sessionStorage.getItem(DT_CLUSTER_SESSION_BRIDGE_KEY);
+    if (!rawValue) return null;
+    return normalizeClusterSessionBridgePayload(JSON.parse(rawValue));
+  } catch (_) {
+    return null;
+  }
+}
+
+function restoreClusterSessionStateFromBridge() {
+  const payload = readClusterSessionBridgePayload();
+  if (!payload) return false;
+
+  state.clusterAssignments = new Map(payload.assignments || []);
+  state.clusterCounterByInstanceId = new Map(payload.counters || []);
+  return true;
+}
+
+function persistClusterSessionStateToBridge() {
+  try {
+    if (typeof window === "undefined" || !window.sessionStorage) return false;
+    const payload = normalizeClusterSessionBridgePayload({
+      version: 1,
+      updatedAt: new Date().toISOString(),
+      assignments: Array.from(state.clusterAssignments.entries()),
+      counters: Array.from(state.clusterCounterByInstanceId.entries())
+    });
+    window.sessionStorage.setItem(DT_CLUSTER_SESSION_BRIDGE_KEY, JSON.stringify(payload));
+    return true;
+  } catch (_) {
+    return false;
+  }
+}
+
+function bindClusterSessionBridge() {
+  if (typeof window === "undefined" || window.__DT_CLUSTER_SESSION_BRIDGE_BOUND__) return;
+
+  window.addEventListener("storage", (event) => {
+    if (event?.key !== DT_CLUSTER_SESSION_BRIDGE_KEY) return;
+    restoreClusterSessionStateFromBridge();
+  });
+
+  window.__DT_CLUSTER_SESSION_BRIDGE_BOUND__ = true;
+}
+
+async function registerHeadlessClusterCustomAction() {
+  if (!IS_HEADLESS || window.__DT_CLUSTER_CUSTOM_ACTION_REGISTERED__) return;
+
+  const board = Board.getBoard();
+  if (!board?.ui?.on || !board?.experimental?.action?.register) {
+    log("Hinweis: Miro Custom Actions sind in dieser Runtime nicht verfügbar.");
+    return;
+  }
+
+  try {
+    await board.ui.on(`custom:${DT_CLUSTER_CUSTOM_ACTION_EVENT}`, async (payload) => {
+      const selectedItems = Array.isArray(payload)
+        ? payload
+        : (Array.isArray(payload?.items) ? payload.items : []);
+      const stickyIds = selectedItems
+        .filter((item) => item?.type === "sticky_note" && item?.id)
+        .map((item) => item.id);
+
+      if (!stickyIds.length) {
+        const lang = getCurrentDisplayLanguage();
+        const msg = lang === "de" ? "Keine Sticky Notes ausgewählt." : "No sticky notes selected.";
+        log(msg);
+        await notifyRuntime(msg, { level: "warning" });
+        return;
+      }
+
+      const result = await clusterSelectionWithIds(stickyIds, null);
+      if (!result?.ok) {
+        const lang = getCurrentDisplayLanguage();
+        const fallback = lang === "de" ? "Clustern fehlgeschlagen." : "Clustering failed.";
+        await notifyRuntime(result?.message || fallback, { level: result?.warning ? "warning" : "error" });
+        return;
+      }
+
+      const lang = getCurrentDisplayLanguage();
+      const msg = lang === "de"
+        ? `Cluster '${result.clusterName}' gesetzt (${result.count} Stickies).`
+        : `Cluster '${result.clusterName}' set (${result.count} stickies).`;
+      await notifyRuntime(msg, { level: "info" });
+    });
+
+    await board.experimental.action.register({
+      event: DT_CLUSTER_CUSTOM_ACTION_EVENT,
+      ui: {
+        label: DT_CLUSTER_CUSTOM_ACTION_UI.label,
+        icon: DT_CLUSTER_CUSTOM_ACTION_UI.icon,
+        description: DT_CLUSTER_CUSTOM_ACTION_UI.description
+      },
+      scope: "local",
+      selection: "multi",
+      predicate: {
+        type: "sticky_note"
+      },
+      contexts: {
+        item: {}
+      }
+    });
+
+    window.__DT_CLUSTER_CUSTOM_ACTION_REGISTERED__ = true;
+    log("Custom Action registriert: Stickies clustern.");
+  } catch (error) {
+    log("Hinweis: Cluster-Kontextaktion konnte nicht registriert werden – " + formatRuntimeErrorMessage(error));
+  }
 }
 
 function shouldHeadlessHandleFlowControls() {
@@ -1719,6 +1895,59 @@ async function setCurrentFlowStepFromAdmin() {
   }
 }
 
+async function activateSelectedFlowControlFromAdmin() {
+  if (state.panelMode !== "admin") {
+    log("Board Flow: Diese Admin-Aktion ist nur im Admin-Modus verfügbar.");
+    return;
+  }
+
+  const selection = await Board.getSelection(log).catch(() => []);
+  const controlSelection = await resolveSelectedFlowControl(selection || []);
+  if (!controlSelection) {
+    log("Board Flow: Bitte genau einen platzierten Flow-Button selektieren.");
+    return;
+  }
+
+  const control = controlSelection.control;
+  if (!control?.runProfileId) {
+    log("Board Flow: Der selektierte Button hat keine runProfileId und kann nicht fachlich aktiviert werden.");
+    return;
+  }
+
+  if (control.state === "active") {
+    log("Board Flow: Der selektierte Button ist bereits aktiv.");
+    return;
+  }
+
+  let nextFlow = BoardFlow.forceFlowControlActive(controlSelection.flow, control.id);
+  nextFlow = await saveBoardFlowAndCache(nextFlow);
+  const nextControl = BoardFlow.findFlowControlByItemId(nextFlow, controlSelection.item.id) || nextFlow.controls?.[control.id] || control;
+
+  log("Board Flow: Button aktiv gesetzt: '" + (nextControl?.label || control.label || control.id) + "' in " + (nextFlow.label || nextFlow.id) + ".");
+  renderFlowAuthoringControls();
+  await refreshSelectionStatusFromItems(selection || []);
+}
+
+async function clearMemoryFromAdmin() {
+  if (state.panelMode !== "admin") {
+    log("Memory-Reset: Diese Aktion ist nur im Admin-Modus verfügbar.");
+    return;
+  }
+
+  if (state.agentRunLock || state.flowControlRunLock) {
+    log("Memory-Reset: Während eines laufenden Agent- oder Flow-Runs gesperrt.");
+    return;
+  }
+
+  await Board.clearMemoryState(log);
+  const removedLogEntries = await Board.clearMemoryLog(log);
+  state.memoryState = Memory.createEmptyMemoryState();
+  state.memoryLog = [];
+  renderExerciseControls();
+
+  log("Memory gelöscht: kumulativer Memory-State geleert, entfernte Log-Einträge=" + removedLogEntries + ".");
+}
+
 async function resolveSelectedFlowControl(items) {
   const list = Array.isArray(items) ? items : [];
   if (list.length !== 1) return null;
@@ -1727,7 +1956,8 @@ async function resolveSelectedFlowControl(items) {
   const meta = await Board.readFlowControlMeta(item, log);
   if (!meta) return null;
 
-  const flow = state.boardFlowsById.get(meta.flowId) || (await Board.loadBoardFlow(meta.flowId, log));
+  const persistedFlow = await Board.loadBoardFlow(meta.flowId, log).catch(() => null);
+  const flow = persistedFlow || state.boardFlowsById.get(meta.flowId) || null;
   if (!flow) return null;
   state.boardFlowsById.set(flow.id, flow);
   await syncBoardFlowVisuals(flow);
@@ -2290,9 +2520,11 @@ function initPanelButtons() {
   btnExerciseNextStepEl?.addEventListener("click", advanceExerciseStep);
   btnFlowCreateControlEl?.addEventListener("click", createFlowControlFromAdmin);
   btnFlowSetCurrentStepEl?.addEventListener("click", setCurrentFlowStepFromAdmin);
+  btnFlowActivateSelectedControlEl?.addEventListener("click", activateSelectedFlowControlFromAdmin);
 
   document.getElementById("btn-insert-template")?.addEventListener("click", insertTemplateImage);
   document.getElementById("btn-agent-selection")?.addEventListener("click", runAgentForCurrentSelection);
+  btnMemoryClearAdminEl?.addEventListener("click", clearMemoryFromAdmin);
   document.getElementById("btn-cluster-panel")?.addEventListener("click", clusterSelectionFromPanel);
   document.getElementById("btn-classify-debug")?.addEventListener("click", () => classifyStickies({ silent: false }));
   document.getElementById("btn-openai-classic")?.addEventListener("click", callOpenAIClassic);
@@ -2313,6 +2545,8 @@ function initPanelButtons() {
   window.dtAdvanceExerciseStep = advanceExerciseStep;
   window.dtCreateFlowControl = createFlowControlFromAdmin;
   window.dtSetFlowStep = setCurrentFlowStepFromAdmin;
+  window.dtActivateSelectedFlowControl = activateSelectedFlowControlFromAdmin;
+  window.dtClearMemory = clearMemoryFromAdmin;
 
   renderPanelMode();
 }
@@ -2323,6 +2557,8 @@ if (!IS_HEADLESS) initPanelButtons();
 // --------------------------------------------------------------------
 (async function boot() {
   await Board.ensureMiroReady(log);
+  bindClusterSessionBridge();
+  restoreClusterSessionStateFromBridge();
   log("Runtime-Kontext: " + RUNTIME_CONTEXT);
   await afterMiroReady();
 })().catch((e) => {
@@ -2345,6 +2581,7 @@ async function afterMiroReady() {
   await loadBoardExerciseState();
   await loadBoardFlows();
   renderFlowAuthoringControls({ forceLabelSync: true });
+  await registerHeadlessClusterCustomAction();
 
   // UI selection events
   await Board.registerSelectionUpdateHandler(onSelectionUpdate, log);
@@ -2401,7 +2638,10 @@ function getInstanceLabelsFromIds(instanceIds) {
 
 async function loadMemoryRuntimeState() {
   state.memoryState = Memory.normalizeMemoryState(await Board.loadMemoryState(log));
-  state.memoryLog = Memory.normalizeMemoryLog(await Board.loadMemoryLog(log));
+  state.memoryLog = Memory.getRecentMemoryEntries(
+    Memory.normalizeMemoryLog(await Board.loadMemoryLog(log)),
+    DT_MEMORY_RECENT_LOG_LIMIT
+  );
 }
 
 function buildMemoryInjectionPayload() {
@@ -2869,6 +3109,7 @@ async function clusterSelectionFromPanel() {
 }
 
 async function clusterSelectionWithIds(stickyIdsOrNull, expectedInstanceIdOrNull) {
+  restoreClusterSessionStateFromBridge();
   await Board.ensureMiroReady(log);
   await ensureInstancesScanned();
 
@@ -2883,15 +3124,15 @@ async function clusterSelectionWithIds(stickyIdsOrNull, expectedInstanceIdOrNull
   }
 
   if (!stickyNotes.length) {
-    log("Keine Sticky Notes ausgewählt.");
-    return;
+    const message = "Keine Sticky Notes ausgewählt.";
+    log(message);
+    return { ok: false, warning: true, message };
   }
 
   const geomEntries = await Board.buildInstanceGeometryIndex(state.instancesById, log);
 
   const byInstance = Object.create(null);
   const outside = [];
-
 
   const parentGeomCache = new Map();
 
@@ -2918,19 +3159,22 @@ async function clusterSelectionWithIds(stickyIdsOrNull, expectedInstanceIdOrNull
 
   const instanceIds = Object.keys(byInstance);
   if (instanceIds.length === 0) {
-    log("Keine der ausgewählten Stickies liegt über einem Canvas.");
-    return;
+    const message = "Keine der ausgewählten Stickies liegt über einem Canvas.";
+    log(message);
+    return { ok: false, warning: true, message };
   }
   if (instanceIds.length > 1) {
-    log("Auswahl enthält Stickies aus mehreren Instanzen. Bitte nur eine Instanz clustern.");
-    return;
+    const message = "Auswahl enthält Stickies aus mehreren Instanzen. Bitte nur eine Instanz clustern.";
+    log(message);
+    return { ok: false, warning: true, message };
   }
 
   const instanceId = instanceIds[0];
 
   if (expectedInstanceIdOrNull && instanceId !== expectedInstanceIdOrNull) {
-    log("Cluster-Button gehört zu einer anderen Instanz als die Sticky-Auswahl.");
-    return;
+    const message = "Cluster-Button gehört zu einer anderen Instanz als die Sticky-Auswahl.";
+    log(message);
+    return { ok: false, warning: true, message };
   }
 
   const notesInInstance = byInstance[instanceId];
@@ -2949,26 +3193,33 @@ async function clusterSelectionWithIds(stickyIdsOrNull, expectedInstanceIdOrNull
   if (headerSticky) {
     const candidate = stripHtml(headerSticky.content).trim();
     if (!candidate) {
-      log("Unterstrichener Sticky ist leer. Bitte lesbaren Namen unterstreichen.");
-      return;
+      const message = "Unterstrichener Sticky ist leer. Bitte lesbaren Namen unterstreichen.";
+      log(message);
+      return { ok: false, warning: true, message };
     }
     clusterName = candidate;
   } else {
-    const count = (state.clusterCounterByInstanceId.get(instanceId) || 0) + 1;
-    state.clusterCounterByInstanceId.set(instanceId, count);
-    clusterName = "Cluster " + count;
+    const countSeed = (state.clusterCounterByInstanceId.get(instanceId) || 0) + 1;
+    state.clusterCounterByInstanceId.set(instanceId, countSeed);
+    clusterName = "Cluster " + countSeed;
   }
 
   for (const s of notesInInstance) state.clusterAssignments.set(s.id, clusterName);
   for (const s of outside) state.clusterAssignments.set(s.id, clusterName);
 
-  log("Cluster '" + clusterName + "' gesetzt für " + (notesInInstance.length + outside.length) + " Stickies (Session-State).");
+  persistClusterSessionStateToBridge();
+  await refreshBoardState();
+
+  const count = notesInInstance.length + outside.length;
+  log("Cluster '" + clusterName + "' gesetzt für " + count + " Stickies (Session-State).");
+  return { ok: true, clusterName, count, instanceId };
 }
 
 // --------------------------------------------------------------------
 // Live catalog refresh
 // --------------------------------------------------------------------
 async function refreshBoardState() {
+  restoreClusterSessionStateFromBridge();
   await Board.ensureMiroReady(log);
   await ensureInstancesScanned();
 

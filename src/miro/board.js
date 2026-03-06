@@ -14,6 +14,8 @@ export {
   removeBaselineSignatureForImageId,
   loadMemoryState,
   saveMemoryState,
+  clearMemoryState,
+  clearMemoryLog,
   loadExerciseRuntime,
   saveExerciseRuntime,
   loadMemoryLog,

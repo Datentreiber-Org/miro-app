@@ -620,6 +620,40 @@ export async function saveMemoryState(memoryState, log) {
   }
 }
 
+export async function clearMemoryState(log) {
+  await ensureMiroReady(log);
+
+  const col = getStorageCollection();
+  if (!col) return false;
+
+  try {
+    await col.remove(DT_STORAGE_KEY_MEMORY_STATE);
+    return true;
+  } catch (e) {
+    if (typeof log === "function") log("Fehler beim Löschen des Memory-State: " + e.message);
+    return false;
+  }
+}
+
+export async function clearMemoryLog(log) {
+  await ensureMiroReady(log);
+
+  const col = getStorageCollection();
+  if (!col) return 0;
+
+  try {
+    const entryIds = await loadMemoryLogIndex(log);
+    if (entryIds.length) {
+      await Promise.all(entryIds.map((entryId) => col.remove(memoryLogEntryKey(entryId)).catch(() => undefined)));
+    }
+    await col.remove(DT_STORAGE_KEY_MEMORY_LOG_INDEX).catch(() => undefined);
+    return entryIds.length;
+  } catch (e) {
+    if (typeof log === "function") log("Fehler beim Löschen des Memory-Logs: " + e.message);
+    return 0;
+  }
+}
+
 export async function loadExerciseRuntime(log) {
   await ensureMiroReady(log);
 
