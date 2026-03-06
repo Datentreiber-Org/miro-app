@@ -4,6 +4,7 @@ import {
   DT_FLOW_CONTROL_STATE_STYLES
 } from "../config.js?v=20260307-batch5";
 
+import { normalizeUiLanguage, t } from "../i18n/index.js?v=20260306-batch6";
 import { ensureMiroReady, getBoard } from "./sdk.js?v=20260307-batch5";
 import { asTrimmedString } from "./helpers.js?v=20260305-batch05";
 import { getItemById } from "./items.js?v=20260305-batch05";
@@ -106,13 +107,13 @@ export async function computeSuggestedFlowControlPosition(instance, { offsetInde
   };
 }
 
-export async function createFlowControlShape({ label, x, y, width = DT_FLOW_CONTROL_LAYOUT.widthPx, height = DT_FLOW_CONTROL_LAYOUT.heightPx, state = "disabled" }, log) {
+export async function createFlowControlShape({ label, x, y, width = DT_FLOW_CONTROL_LAYOUT.widthPx, height = DT_FLOW_CONTROL_LAYOUT.heightPx, state = "disabled", lang = "de" }, log) {
   await ensureMiroReady(log);
   const board = getBoard();
   if (!board?.createShape) throw new Error("miro.board.createShape nicht verfügbar");
 
   const shape = await board.createShape({
-    content: asTrimmedString(label) || "Flow Control",
+    content: asTrimmedString(label) || t("flow.defaultControlLabel", normalizeUiLanguage(lang)),
     shape: "round_rectangle",
     x,
     y,
@@ -124,7 +125,7 @@ export async function createFlowControlShape({ label, x, y, width = DT_FLOW_CONT
   return shape;
 }
 
-export async function syncFlowControlShapeAppearance(itemOrId, { label = null, state = null } = {}, log) {
+export async function syncFlowControlShapeAppearance(itemOrId, { label = null, state = null, lang = "de" } = {}, log) {
   await ensureMiroReady(log);
   const item = typeof itemOrId === "object" && itemOrId
     ? itemOrId
@@ -132,7 +133,7 @@ export async function syncFlowControlShapeAppearance(itemOrId, { label = null, s
 
   if (!item?.sync) return null;
 
-  const normalizedLabel = asTrimmedString(label);
+  const normalizedLabel = asTrimmedString(label) || t("flow.defaultControlLabel", normalizeUiLanguage(lang));
   if (normalizedLabel) item.content = normalizedLabel;
 
   const nextState = normalizeFlowControlState(state);

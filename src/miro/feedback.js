@@ -1,4 +1,5 @@
 import { asTrimmedString } from "./helpers.js?v=20260305-batch05";
+import { normalizeUiLanguage, t } from "../i18n/index.js?v=20260306-batch6";
 
 function escapeHtml(text) {
   return String(text ?? "")
@@ -24,7 +25,8 @@ function buildBulletSection(heading, bullets) {
   return `${headingHtml}<ul>${bulletsHtml}</ul>`;
 }
 
-function buildEvaluationHtml(evaluation) {
+function buildEvaluationHtml(evaluation, lang = "de") {
+  const uiLang = normalizeUiLanguage(lang);
   if (!evaluation || typeof evaluation !== "object") return "";
 
   const parts = [];
@@ -38,7 +40,7 @@ function buildEvaluationHtml(evaluation) {
     if (scale) scoreParts.push(scale);
     const summary = [scoreParts.join(" / ") || null, verdict || null].filter(Boolean).join(" – ");
     if (summary) {
-      parts.push(`<p><strong>Bewertung</strong><br>${escapeHtml(summary)}</p>`);
+      parts.push(`<p><strong>${escapeHtml(t("feedback.heading.evaluation", uiLang))}</strong><br>${escapeHtml(summary)}</p>`);
     }
   }
 
@@ -57,14 +59,15 @@ function buildEvaluationHtml(evaluation) {
       .filter(Boolean);
 
     if (bullets.length) {
-      parts.push(buildBulletSection("Rubrik", bullets));
+      parts.push(buildBulletSection(t("feedback.heading.rubric", uiLang), bullets));
     }
   }
 
   return parts.join("");
 }
 
-function buildDirectiveBullets(flowControlDirectives) {
+function buildDirectiveBullets(flowControlDirectives, lang = "de") {
+  const uiLang = normalizeUiLanguage(lang);
   const bullets = [];
   const unlockRunProfileIds = Array.isArray(flowControlDirectives?.unlockRunProfileIds)
     ? flowControlDirectives.unlockRunProfileIds.map((value) => asTrimmedString(value)).filter(Boolean)
@@ -74,16 +77,17 @@ function buildDirectiveBullets(flowControlDirectives) {
     : [];
 
   for (const runProfileId of unlockRunProfileIds) {
-    bullets.push(`Button freischalten: ${runProfileId}`);
+    bullets.push(t("feedback.flowAction.unlock", uiLang, { runProfileId }));
   }
   for (const runProfileId of completeRunProfileIds) {
-    bullets.push(`Button erledigt markieren: ${runProfileId}`);
+    bullets.push(t("feedback.flowAction.complete", uiLang, { runProfileId }));
   }
 
   return bullets;
 }
 
-export function buildAgentFeedbackContent({ feedback, flowControlDirectives, evaluation } = {}) {
+export function buildAgentFeedbackContent({ feedback, flowControlDirectives, evaluation, lang = "de" } = {}) {
+  const uiLang = normalizeUiLanguage(lang);
   const title = asTrimmedString(feedback?.title);
   const summary = asTrimmedString(feedback?.summary);
   const sections = Array.isArray(feedback?.sections) ? feedback.sections : [];
@@ -96,20 +100,21 @@ export function buildAgentFeedbackContent({ feedback, flowControlDirectives, eva
     chunks.push(buildBulletSection(asTrimmedString(section?.heading), section?.bullets));
   }
 
-  const directiveBullets = buildDirectiveBullets(flowControlDirectives);
+  const directiveBullets = buildDirectiveBullets(flowControlDirectives, uiLang);
   if (directiveBullets.length) {
-    chunks.push(buildBulletSection("Button-Aktionen", directiveBullets));
+    chunks.push(buildBulletSection(t("feedback.heading.flowActions", uiLang), directiveBullets));
   }
 
-  const evaluationHtml = buildEvaluationHtml(evaluation);
+  const evaluationHtml = buildEvaluationHtml(evaluation, uiLang);
   if (evaluationHtml) chunks.push(evaluationHtml);
 
   const html = chunks.filter(Boolean).join("");
-  return html || `<p>${escapeHtml("Keine Agentenantwort verfügbar.")}</p>`;
+  return html || `<p>${escapeHtml(t("feedback.noAgentResponse", uiLang))}</p>`;
 }
 
-export function buildQuestionAnswerContent({ answer } = {}) {
-  const text = asTrimmedString(answer) || "Keine Antwort verfügbar.";
+export function buildQuestionAnswerContent({ answer, lang = "de" } = {}) {
+  const uiLang = normalizeUiLanguage(lang);
+  const text = asTrimmedString(answer) || t("feedback.noAnswer", uiLang);
   const paragraphs = text
     .split(/\n{2,}/)
     .map((part) => part.trim())

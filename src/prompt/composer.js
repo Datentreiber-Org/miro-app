@@ -3,8 +3,9 @@ import {
   getDefaultCanvasTypeIdForPack,
   getPackDefaults,
   getStepTriggerConfig
-} from "../exercises/registry.js?v=20260307-batch5";
-import { parseTriggerKey } from "../runtime/exercise-engine.js?v=20260307-batch5";
+} from "../exercises/registry.js?v=20260306-batch6";
+import { parseTriggerKey } from "../runtime/exercise-engine.js?v=20260306-batch6";
+import { normalizeUiLanguage } from "../i18n/index.js?v=20260306-batch6";
 
 function asNonEmptyString(value) {
   if (typeof value !== "string") return null;
@@ -37,6 +38,26 @@ function sanitizeRunMode(value) {
 function getCanvasTypeDisplayName(templateCatalog, canvasTypeId) {
   const cfg = templateCatalog?.[canvasTypeId] || null;
   return asNonEmptyString(cfg?.displayName) || asNonEmptyString(cfg?.agentLabelPrefix) || canvasTypeId || null;
+}
+
+
+export function buildOutputLanguageBlock(displayLanguage, { questionMode = false } = {}) {
+  const normalizedLanguage = normalizeUiLanguage(displayLanguage);
+  const languageLabel = normalizedLanguage === "en" ? "English" : "Deutsch";
+  const lines = [
+    "Sprachvorgabe für sichtbare Ausgabe:",
+    `- Formuliere alle sichtbaren Inhalte in ${languageLabel}.`
+  ];
+
+  if (questionMode) {
+    lines.push('- Das betrifft insbesondere das Feld answer.');
+  } else {
+    lines.push("- Das betrifft analysis, feedback, answer, evaluation und alle neu erzeugten Sticky-Texte.");
+    lines.push("- Technische Felder bleiben unverändert: triggerKey, area, targetArea, instanceLabel, runProfileIds, stepId.");
+    lines.push("- memoryEntry.stepStatus bleibt ein technischer Statuswert und wird nicht lokalisiert.");
+  }
+
+  return lines.join("\n");
 }
 
 const ADMIN_OVERRIDE_ALLOWED_ACTIONS = Object.freeze([
@@ -212,7 +233,8 @@ export function buildExerciseContext({
       controlId: asNonEmptyString(controlContext?.controlId),
       controlLabel: asNonEmptyString(controlContext?.controlLabel),
       scopeType: asNonEmptyString(controlContext?.scopeType),
-      targetInstanceLabels: normalizeUniqueStrings(controlContext?.targetInstanceLabels || triggerContext?.targetInstanceLabels || [])
+      targetInstanceLabels: normalizeUniqueStrings(controlContext?.targetInstanceLabels || triggerContext?.targetInstanceLabels || []),
+      displayLanguage: normalizeUiLanguage(boardConfig?.displayLanguage)
     };
   }
 
@@ -239,7 +261,8 @@ export function buildExerciseContext({
       feedbackPolicy: triggerContext?.feedbackPolicy || asNonEmptyString(boardConfig?.feedbackChannelDefault) || packDefaults.feedbackChannel,
       requiresSelection: !!triggerContext?.requiresSelection,
       userMayChangePack: !!boardConfig?.userMayChangePack,
-      userMayChangeStep: !!boardConfig?.userMayChangeStep
+      userMayChangeStep: !!boardConfig?.userMayChangeStep,
+      displayLanguage: normalizeUiLanguage(boardConfig?.displayLanguage)
     };
   }
 
@@ -273,7 +296,8 @@ export function buildExerciseContext({
     feedbackPolicy: triggerContext?.feedbackPolicy || packDefaults.feedbackChannel,
     requiresSelection: !!triggerContext?.requiresSelection,
     userMayChangePack: !!boardConfig?.userMayChangePack,
-    userMayChangeStep: !!boardConfig?.userMayChangeStep
+    userMayChangeStep: !!boardConfig?.userMayChangeStep,
+    displayLanguage: normalizeUiLanguage(boardConfig?.displayLanguage)
   };
 }
 
@@ -303,6 +327,7 @@ export function composePrompt({
   }
 
   systemBlocks.push(buildModePromptBlock(runMode, triggerContext));
+  systemBlocks.push(buildOutputLanguageBlock(boardConfig?.displayLanguage));
 
   for (const block of buildCanvasTypePromptBlocks(involvedCanvasTypeIds, templateCatalog)) {
     systemBlocks.push(block);

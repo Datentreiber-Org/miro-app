@@ -154,144 +154,152 @@
 </head>
 <body>
   <div id="app-root">
-  <h1>Datentreiber Canvas – Panel</h1>
+  <h1 data-i18n="panel.heading">Datentreiber Canvas – Panel</h1>
 
   <div class="row">
-    <label for="panel-mode">Panel-Modus</label>
+    <label for="panel-mode" data-i18n="panel.mode.label">Panel-Modus</label>
     <select id="panel-mode">
-      <option value="user">User-Modus</option>
-      <option value="admin">Admin-Modus</option>
+      <option value="user" data-i18n="panel.mode.user">User-Modus</option>
+      <option value="admin" data-i18n="panel.mode.admin">Admin-Modus</option>
     </select>
   </div>
 
-  <div id="panel-mode-status">Panel-Modus wird geladen ...</div>
+  <div id="panel-mode-status" data-i18n="panel.mode.status.admin">Panel-Modus wird geladen ...</div>
 
   <div class="row">
-    <label for="user-text">Frage / Aufgabe für den Agenten</label>
-    <textarea id="user-text" placeholder="Optionaler Zusatzauftrag für Check, Hint, Autocorrect oder generische Agentenläufe."></textarea>
+    <label for="board-language" data-i18n="board.language.label">App- und Boardsprache</label>
+    <select id="board-language">
+      <option value="de" data-i18n="board.language.option.de">Deutsch</option>
+      <option value="en" data-i18n="board.language.option.en">Englisch</option>
+    </select>
   </div>
 
-  <div id="exercise-context-status">Exercise-Kontext wird geladen ...</div>
-  <div id="exercise-step-instruction">Noch keine sichtbare Schrittanweisung geladen.</div>
-  <div id="exercise-recommendation-status">Noch keine Button-Freischaltungen gespeichert.</div>
-  <div id="selection-status">Selektion wird geladen ...</div>
+  <div class="row">
+    <label for="user-text" data-i18n="user.text.label">Frage / Aufgabe für den Agenten</label>
+    <textarea id="user-text" data-i18n-placeholder="user.text.placeholder" placeholder="Optionaler Zusatzauftrag für Check, Hint, Autocorrect oder generische Agentenläufe."></textarea>
+  </div>
+
+  <div id="exercise-context-status" data-i18n="status.exerciseContext.loading">Exercise-Kontext wird geladen ...</div>
+  <div id="exercise-step-instruction" data-i18n="status.exerciseInstruction.empty">Noch keine sichtbare Schrittanweisung geladen.</div>
+  <div id="exercise-recommendation-status" data-i18n="status.recommendation.empty">Noch keine Button-Freischaltungen gespeichert.</div>
+  <div id="selection-status" data-i18n="status.selection.loading">Selektion wird geladen ...</div>
 
   <div class="panel-section" id="user-actions-panel">
-    <div class="panel-section-title">Übungsaktionen</div>
+    <div class="panel-section-title" data-i18n="section.exerciseActions">Übungsaktionen</div>
     <div class="btn-row">
-      <button id="btn-exercise-check">Antworten prüfen</button>
-      <button id="btn-exercise-hint">Hinweis geben</button>
-      <button id="btn-exercise-autocorrect">Korrektur anwenden</button>
-      <button id="btn-exercise-review">Review</button>
-      <button id="btn-exercise-coach">Coach</button>
-      <button id="btn-exercise-next-step">Nächster Schritt</button>
+      <button id="btn-exercise-check" data-i18n="exercise.action.check">Antworten prüfen</button>
+      <button id="btn-exercise-hint" data-i18n="exercise.action.hint">Hinweis geben</button>
+      <button id="btn-exercise-autocorrect" data-i18n="exercise.action.autocorrect">Korrektur anwenden</button>
+      <button id="btn-exercise-review" data-i18n="exercise.action.review">Review</button>
+      <button id="btn-exercise-coach" data-i18n="exercise.action.coach">Coach</button>
+      <button id="btn-exercise-next-step" data-i18n="exercise.action.nextStep">Nächster Schritt</button>
     </div>
-    <div id="exercise-action-help" class="helper-text">
+    <div id="exercise-action-help" class="helper-text" data-i18n="exercise.action.help.default">
       Die Übungsaktionen arbeiten auf den aktuell selektierten Canvas-Instanzen. Ohne Selektion erscheint ein Warnhinweis im Log.
     </div>
   </div>
 
   <div class="panel-section" id="admin-panel">
-    <div class="panel-section-title">Admin-Steuerung</div>
+    <div class="panel-section-title" data-i18n="section.adminControl">Admin-Steuerung</div>
 
     <div class="row">
-      <label for="api-key">OpenAI API Key</label>
+      <label for="api-key" data-i18n="admin.apiKey.label">OpenAI API Key</label>
       <input type="password" id="api-key" placeholder="sk-..." />
     </div>
 
     <div class="row">
-      <label for="model">Modell</label>
+      <label for="model" data-i18n="admin.model.label">Modell</label>
       <select id="model">
         <option value="gpt-5.2">gpt-5.2</option>
       </select>
     </div>
 
     <div class="row">
-      <label for="canvas-type-picker">Canvas-Typ auswählen</label>
-      <div id="canvas-type-picker" class="canvas-picker">Canvas-Typen werden geladen ...</div>
+      <label for="canvas-type-picker" data-i18n="admin.canvasType.label">Canvas-Typ auswählen</label>
+      <div id="canvas-type-picker" class="canvas-picker" data-i18n="admin.canvasType.loading">Canvas-Typen werden geladen ...</div>
     </div>
 
     <div class="row">
-      <label for="exercise-pack">Exercise Pack</label>
+      <label for="exercise-pack" data-i18n="admin.exercisePack.label">Exercise Pack</label>
       <select id="exercise-pack">
-        <option value="">Kein Exercise Pack (generischer Modus)</option>
+        <option value="" data-i18n="admin.exercisePack.none">Kein Exercise Pack (generischer Modus)</option>
       </select>
     </div>
 
     <div class="row">
-      <label for="exercise-step">Aktueller Schritt</label>
+      <label for="exercise-step" data-i18n="admin.exerciseStep.label">Aktueller Schritt</label>
       <select id="exercise-step" disabled>
-        <option value="">Kein Exercise Pack aktiv</option>
+        <option value="" data-i18n="admin.exerciseStep.none">Kein Exercise Pack aktiv</option>
       </select>
     </div>
 
     <div class="row">
-      <label for="admin-override-text">Admin-Override (optional)</label>
-      <textarea id="admin-override-text" placeholder="Zusätzliche Admin-Anweisung, die in den Prompt Composer injiziert wird."></textarea>
+      <label for="admin-override-text" data-i18n="admin.override.label">Admin-Override (optional)</label>
+      <textarea id="admin-override-text" data-i18n-placeholder="admin.override.placeholder" placeholder="Zusätzliche Admin-Anweisung, die in den Prompt Composer injiziert wird."></textarea>
       <div class="btn-row">
-        <button id="btn-save-admin-override">Override speichern</button>
-        <button id="btn-clear-admin-override">Override leeren</button>
+        <button id="btn-save-admin-override" data-i18n="admin.override.save">Override speichern</button>
+        <button id="btn-clear-admin-override" data-i18n="admin.override.clear">Override leeren</button>
       </div>
-      <div class="helper-text">Der Admin-Override wird im Exercise-Runtime-State gespeichert und bei Agentenläufen zusätzlich in den Systemprompt injiziert.</div>
+      <div class="helper-text" data-i18n="admin.override.help">Der Admin-Override wird im Exercise-Runtime-State gespeichert und bei Agentenläufen zusätzlich in den Systemprompt injiziert.</div>
     </div>
 
     <div class="panel-section" id="flow-authoring-panel">
-      <div class="panel-section-title">Board Flow Controls</div>
-      <div class="helper-text">Selektiere eine oder mehrere Canvas-Instanzen auf dem Board. Die erste Instanz dient als visuelle Ankerposition für den Shape-Button; der Scope kann trotzdem mehrere Instanzen oder den globalen Board-Kontext abdecken.</div>
+      <div class="panel-section-title" data-i18n="section.flowControls">Board Flow Controls</div>
+      <div class="helper-text" data-i18n="flow.authoring.help">Selektiere eine oder mehrere Canvas-Instanzen auf dem Board. Die erste Instanz dient als visuelle Ankerposition für den Shape-Button; der Scope kann trotzdem mehrere Instanzen oder den globalen Board-Kontext abdecken.</div>
 
       <div class="row">
-        <label for="flow-pack-template">Pack Template</label>
+        <label for="flow-pack-template" data-i18n="flow.packTemplate.label">Pack Template</label>
         <select id="flow-pack-template"></select>
       </div>
 
       <div class="row">
-        <label for="flow-step-template">Step Template</label>
+        <label for="flow-step-template" data-i18n="flow.stepTemplate.label">Step Template</label>
         <select id="flow-step-template"></select>
       </div>
 
       <div class="row">
-        <label for="flow-run-profile">Run Profile</label>
+        <label for="flow-run-profile" data-i18n="flow.runProfile.label">Run Profile</label>
         <select id="flow-run-profile"></select>
       </div>
 
       <div class="row">
-        <label for="flow-scope-type">Scope</label>
+        <label for="flow-scope-type" data-i18n="flow.scope.label">Scope</label>
         <select id="flow-scope-type">
-          <option value="fixed_instances">Selektierte Instanzen</option>
-          <option value="global">Global (alle passenden Instanzen)</option>
+          <option value="fixed_instances" data-i18n="flow.scope.fixed">Selektierte Instanzen</option>
+          <option value="global" data-i18n="flow.scope.global">Global (alle passenden Instanzen)</option>
         </select>
       </div>
 
       <div class="row">
-        <label for="flow-control-label">Button-Label</label>
-        <input type="text" id="flow-control-label" placeholder="z. B. Prüfen" />
+        <label for="flow-control-label" data-i18n="flow.controlLabel.label">Button-Label</label>
+        <input type="text" id="flow-control-label" data-i18n-placeholder="flow.controlLabel.placeholder" placeholder="z. B. Prüfen" />
       </div>
 
       <div class="btn-row">
-        <button id="btn-flow-create-control">Control erzeugen</button>
-        <button id="btn-flow-set-current-step">Schritt aktiv setzen</button>
+        <button id="btn-flow-create-control" data-i18n="flow.createControl">Control erzeugen</button>
+        <button id="btn-flow-set-current-step" data-i18n="flow.setCurrentStep">Schritt aktiv setzen</button>
       </div>
-      <div id="flow-authoring-status" class="helper-text">Noch keine Flow-Information geladen.</div>
+      <div id="flow-authoring-status" class="helper-text" data-i18n="flow.authoring.status.empty">Noch keine Flow-Information geladen.</div>
     </div>
 
     <div class="btn-row">
-      <button id="btn-insert-template">Canvas einfügen</button>
+      <button id="btn-insert-template" data-i18n="button.insertTemplate">Canvas einfügen</button>
     </div>
 
     <div class="btn-row">
-      <button id="btn-agent-selection">Instanz-Agent (Selektion)</button>
+      <button id="btn-agent-selection" data-i18n="button.agentSelection">Instanz-Agent (Selektion)</button>
     </div>
 
     <div class="btn-row">
-      <button id="btn-cluster-panel">Auswahl clustern (Side-Panel)</button>
-      <button id="btn-classify-debug">Stickies klassifizieren (Debug)</button>
-      <button id="btn-openai-classic">Klassischer OpenAI-Call</button>
+      <button id="btn-cluster-panel" data-i18n="button.clusterPanel">Auswahl clustern (Side-Panel)</button>
+      <button id="btn-classify-debug" data-i18n="button.classifyDebug">Stickies klassifizieren (Debug)</button>
+      <button id="btn-openai-classic" data-i18n="button.openaiClassic">Klassischer OpenAI-Call</button>
     </div>
   </div>
 
   <pre id="log"></pre>
 
   </div>
-  <script type="module" src="./src/main.js?v=20260307-batch5"></script>
+  <script type="module" src="./src/main.js?v=20260306-batch6"></script>
 </body>
 </html>

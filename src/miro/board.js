@@ -24,12 +24,12 @@ export {
   normalizeBoardRunState,
   loadBoardRunState,
   saveBoardRunState
-} from "./storage.js?v=20260307-batch5";
+} from "./storage.js?v=20260306-batch6";
 
 export {
   buildAgentFeedbackContent,
   buildQuestionAnswerContent
-} from "./feedback.js?v=20260307-batch5";
+} from "./feedback.js?v=20260306-batch6";
 
 export {
   normalizeChatInterfaceShapeIds,
@@ -41,8 +41,12 @@ export {
   removeChatInterfaceShapes,
   getChatInterfaceItemByRole,
   readChatInputContent,
-  writeChatOutputContent
-} from "./chat-interface.js?v=20260307-batch5";
+  writeChatOutputContent,
+  getChatPlaceholderText,
+  getChatPlaceholderVariants,
+  isKnownChatPlaceholderContent,
+  syncChatPlaceholdersForLanguage
+} from "./chat-interface.js?v=20260306-batch6";
 
 export {
   getSelection,
@@ -68,7 +72,7 @@ export {
   computeSuggestedFlowControlPosition,
   createFlowControlShape,
   syncFlowControlShapeAppearance
-} from "./flow-controls.js?v=20260307-batch5";
+} from "./flow-controls.js?v=20260306-batch6";
 
 export {
   computeTemplateGeometry,
@@ -76,4 +80,4 @@ export {
   findInstanceByPoint,
   registerInstanceFromImage,
   scanTemplateInstances
-} from "./instances.js?v=20260307-batch5";
+} from "./instances.js?v=20260306-batch6";

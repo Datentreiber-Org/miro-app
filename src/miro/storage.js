@@ -15,7 +15,8 @@ import {
   DT_MEMORY_RECENT_LOG_LIMIT
 } from "../config.js?v=20260307-batch5";
 
-import { normalizeBoardFlow } from "../runtime/board-flow.js?v=20260307-batch5";
+import { normalizeBoardFlow } from "../runtime/board-flow.js?v=20260306-batch6";
+import { normalizeUiLanguage } from "../i18n/index.js?v=20260306-batch6";
 import { ensureMiroReady, getBoard } from "./sdk.js?v=20260307-batch5";
 import { compareItemIdsAsc, normalizePositiveInt, asTrimmedString } from "./helpers.js?v=20260305-batch05";
 
@@ -218,7 +219,7 @@ export function normalizeBoardConfig(rawConfig, { defaultCanvasTypeId = null } =
     .filter(Boolean)));
 
   return {
-    version: 1,
+    version: 2,
     boardMode,
     exercisePackId: exercisePackId || null,
     defaultCanvasTypeId: normalizedDefaultCanvasTypeId || null,
@@ -226,7 +227,8 @@ export function normalizeBoardConfig(rawConfig, { defaultCanvasTypeId = null } =
     userMayChangePack: src.userMayChangePack === true,
     userMayChangeStep: src.userMayChangeStep === true,
     appAdminPolicy,
-    appAdminUserIds
+    appAdminUserIds,
+    displayLanguage: normalizeUiLanguage(src.displayLanguage)
   };
 }
 
@@ -262,7 +264,7 @@ export async function isBoardAnchorItem(item, log) {
 
   try {
     const meta = await item.getMetadata(DT_ANCHOR_META_KEY_BOARD);
-    return !!(meta && typeof meta === "object" && meta.version === 1);
+    return !!(meta && typeof meta === "object" && (meta.version === 1 || meta.version === 2));
   } catch (_) {
     return false;
   }
@@ -287,7 +289,7 @@ async function listBoardAnchorItems(log) {
     if (!shape?.getMetadata) continue;
     try {
       const meta = await shape.getMetadata(DT_ANCHOR_META_KEY_BOARD);
-      if (meta && typeof meta === "object" && meta.version === 1) {
+      if (meta && typeof meta === "object" && (meta.version === 1 || meta.version === 2)) {
         anchors.push(shape);
       }
     } catch (_) {}

@@ -1,10 +1,10 @@
 import {
   DT_SHAPE_META_KEY_CHAT_INTERFACE,
   DT_CHAT_INTERFACE_LAYOUT,
-  DT_CHAT_INTERFACE_STYLES,
-  DT_CHAT_INTERFACE_PLACEHOLDERS
+  DT_CHAT_INTERFACE_STYLES
 } from "../config.js?v=20260307-batch5";
 
+import { normalizeUiLanguage, t, allLocaleVariants } from "../i18n/index.js?v=20260306-batch6";
 import { ensureMiroReady, getBoard } from "./sdk.js?v=20260305-batch05";
 import { asTrimmedString } from "./helpers.js?v=20260305-batch05";
 import { getItemById, removeItemById } from "./items.js?v=20260305-batch05";
@@ -62,14 +62,45 @@ function getShapeStyle(role) {
   };
 }
 
-function getInitialContent(role) {
-  if (role === "input") {
-    return `<p>${DT_CHAT_INTERFACE_PLACEHOLDERS.input}</p>`;
+function normalizeComparableChatText(rawText) {
+  return String(rawText || "")
+    .replace(/<[^>]*>/g, " ")
+    .replace(/[…]/g, "...")
+    .replace(/\s+/g, " ")
+    .trim()
+    .toLowerCase();
+}
+
+function getPlaceholderKeyForRole(role) {
+  return role === "input"
+    ? "chat.inputPlaceholder"
+    : (role === "submit" ? "chat.submit" : "chat.outputPlaceholder");
+}
+
+export function getChatPlaceholderText(role, lang = "de") {
+  const normalizedRole = normalizeChatRole(role) || "output";
+  return t(getPlaceholderKeyForRole(normalizedRole), normalizeUiLanguage(lang));
+}
+
+export function getChatPlaceholderVariants(role) {
+  return allLocaleVariants({
+    de: getChatPlaceholderText(role, "de"),
+    en: getChatPlaceholderText(role, "en")
+  });
+}
+
+export function isKnownChatPlaceholderContent(rawText, role) {
+  const comparable = normalizeComparableChatText(rawText);
+  if (!comparable) return false;
+  return getChatPlaceholderVariants(role).some((value) => normalizeComparableChatText(value) === comparable);
+}
+
+function getInitialContent(role, lang = "de") {
+  const normalizedRole = normalizeChatRole(role) || "output";
+  if (normalizedRole === "submit") {
+    return `<p><strong>${getChatPlaceholderText(normalizedRole, lang)}</strong></p>`;
   }
-  if (role === "submit") {
-    return `<p><strong>${DT_CHAT_INTERFACE_PLACEHOLDERS.submit}</strong></p>`;
-  }
-  return `<p>${DT_CHAT_INTERFACE_PLACEHOLDERS.output}</p>`;
+  return `<p>${getChatPlaceholderText(normalizedRole, lang)}</p>`;
 }
 
 export function computeChatInterfaceLayout(instance) {
@@ -148,13 +179,13 @@ export async function writeChatInterfaceMeta(itemOrId, meta, log) {
   return normalized;
 }
 
-async function createChatShape({ role, x, y, width, height }, log) {
+async function createChatShape({ role, x, y, width, height, lang = "de" }, log) {
   await ensureMiroReady(log);
   const board = getBoard();
   if (!board?.createShape) throw new Error("miro.board.createShape nicht verfügbar");
 
   return await board.createShape({
-    content: getInitialContent(role),
+    content: getInitialContent(role, lang),
     shape: "round_rectangle",
     x,
     y,
@@ -164,7 +195,7 @@ async function createChatShape({ role, x, y, width, height }, log) {
   });
 }
 
-export async function createChatInterfaceForInstance(instance, log) {
+export async function createChatInterfaceForInstance(instance, log, { lang = "de" } = {}) {
   await ensureMiroReady(log);
   if (!instance?.instanceId) throw new Error("Chat-Interface kann nicht erstellt werden: instanceId fehlt.");
 
@@ -173,9 +204,9 @@ export async function createChatInterfaceForInstance(instance, log) {
     throw new Error("Chat-Interface kann nicht erstellt werden: keine gültige Canvas-Geometrie.");
   }
 
-  const inputShape = await createChatShape({ role: "input", ...layout.input }, log);
-  const submitShape = await createChatShape({ role: "submit", ...layout.submit }, log);
-  const outputShape = await createChatShape({ role: "output", ...layout.output }, log);
+  const inputShape = await createChatShape({ role: "input", ...layout.input, lang }, log);
+  const submitShape = await createChatShape({ role: "submit", ...layout.submit, lang }, log);
+  const outputShape = await createChatShape({ role: "output", ...layout.output, lang }, log);
 
   await writeChatInterfaceMeta(inputShape, { instanceId: instance.instanceId, role: "input" }, log);
   await writeChatInterfaceMeta(submitShape, { instanceId: instance.instanceId, role: "submit" }, log);
@@ -213,6 +244,24 @@ export async function readChatInputContent(shapeIds, log) {
   const item = await getChatInterfaceItemByRole(shapeIds, "input", log);
   if (!item) return "";
   return typeof item.content === "string" ? item.content : "";
+}
+
+
+export async function syncChatPlaceholdersForLanguage(shapeIds, nextLang, log) {
+  const lang = normalizeUiLanguage(nextLang);
+
+  for (const role of ["input", "submit", "output"]) {
+    const item = await getChatInterfaceItemByRole(shapeIds, role, log);
+    if (!item?.sync) continue;
+    const rawContent = typeof item.content === "string" ? item.content : "";
+    if (!isKnownChatPlaceholderContent(rawContent, role)) continue;
+    item.content = getInitialContent(role, lang);
+    item.style = {
+      ...(item.style || {}),
+      ...getShapeStyle(role === "submit" ? "submit" : role)
+    };
+    await item.sync();
+  }
 }
 
 export async function writeChatOutputContent(shapeIds, content, log) {

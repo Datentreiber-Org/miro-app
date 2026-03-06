@@ -1,6 +1,6 @@
-import { DT_IMAGE_META_KEY_INSTANCE } from "../config.js?v=20260307-batch5";
+import { DT_IMAGE_META_KEY_INSTANCE } from "../config.js?v=20260306-batch6";
 import { isFiniteNumber } from "../utils.js?v=20260301-step11-hotfix2";
-import { ensureMiroReady, getBoard } from "./sdk.js?v=20260307-batch5";
+import { ensureMiroReady, getBoard } from "./sdk.js?v=20260306-batch6";
 import {
   compareItemIdsAsc,
   normalizePositiveInt,
@@ -14,11 +14,11 @@ import {
   hasCompleteChatInterfaceShapeIds,
   createChatInterfaceForInstance,
   removeChatInterfaceShapes
-} from "./chat-interface.js?v=20260307-batch5";
+} from "./chat-interface.js?v=20260306-batch6";
 import {
   loadBaselineSignatureForImageId,
   removeBaselineSignatureForImageId
-} from "./storage.js?v=20260307-batch5";
+} from "./storage.js?v=20260306-batch6";
 
 // --------------------------------------------------------------------
 // Template instance registration, geometry and scan/rebind logic
@@ -286,7 +286,8 @@ export async function registerInstanceFromImage(image, {
   hasGlobalBaseline,
   canvasTypeId = null,
   log,
-  createChatInterface = false
+  createChatInterface = false,
+  displayLanguage = "de"
 }) {
   await ensureMiroReady(log);
 
@@ -351,7 +352,7 @@ export async function registerInstanceFromImage(image, {
 
     if (createChatInterface && !hasCompleteChatInterfaceShapeIds(instance.chatInterface)) {
       try {
-        const shapeIds = await createChatInterfaceForInstance(instance, log);
+        const shapeIds = await createChatInterfaceForInstance(instance, log, { lang: displayLanguage });
         instance.chatInterface = normalizeCanvasInstanceChatInterface(shapeIds);
         await writeCanvasInstanceMeta(image, {
           version: 2,
@@ -411,7 +412,7 @@ export async function registerInstanceFromImage(image, {
 
   if (createChatInterface && !hasCompleteChatInterfaceShapeIds(instance.chatInterface)) {
     try {
-      const shapeIds = await createChatInterfaceForInstance(instance, log);
+      const shapeIds = await createChatInterfaceForInstance(instance, log, { lang: displayLanguage });
       instance.chatInterface = normalizeCanvasInstanceChatInterface(shapeIds);
       await writeCanvasInstanceMeta(image, {
         version: 2,

@@ -19,6 +19,11 @@ export function normalizeFlowScope(rawScope) {
   };
 }
 
+
+function normalizeFlowLabelMode(value) {
+  return asNonEmptyString(value) === "custom" ? "custom" : "auto";
+}
+
 export function normalizeFlowControl(rawControl) {
   const src = (rawControl && typeof rawControl === "object") ? rawControl : {};
   const state = asNonEmptyString(src.state) || "disabled";
@@ -26,6 +31,7 @@ export function normalizeFlowControl(rawControl) {
     id: asNonEmptyString(src.id),
     itemId: src.itemId == null ? null : String(src.itemId),
     label: asNonEmptyString(src.label),
+    labelMode: normalizeFlowLabelMode(src.labelMode),
     runProfileId: asNonEmptyString(src.runProfileId),
     stepId: asNonEmptyString(src.stepId),
     anchorInstanceId: asNonEmptyString(src.anchorInstanceId),
@@ -42,6 +48,7 @@ export function normalizeFlowStep(rawStep) {
   return {
     id: asNonEmptyString(src.id),
     label: asNonEmptyString(src.label),
+    labelMode: normalizeFlowLabelMode(src.labelMode),
     order: Number.isFinite(Number(src.order)) ? Number(src.order) : 0,
     instruction: asNonEmptyString(src.instruction),
     instructionOverride: asNonEmptyString(src.instructionOverride),
@@ -78,6 +85,7 @@ export function normalizeBoardFlow(rawFlow) {
     version: 1,
     id: asNonEmptyString(src.id),
     label: asNonEmptyString(src.label),
+    labelMode: normalizeFlowLabelMode(src.labelMode),
     packTemplateId: asNonEmptyString(src.packTemplateId),
     anchorInstanceId: asNonEmptyString(src.anchorInstanceId),
     steps,
@@ -130,6 +138,7 @@ export function createFlowControlRecord(payload = {}) {
     id: payload.id,
     itemId: payload.itemId,
     label: payload.label,
+    labelMode: payload.labelMode,
     runProfileId: payload.runProfileId,
     stepId: payload.stepId,
     anchorInstanceId: payload.anchorInstanceId,

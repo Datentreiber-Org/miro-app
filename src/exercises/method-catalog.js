@@ -4,6 +4,9 @@ import {
   DT_TRIGGER_KEYS
 } from "../config.js?v=20260307-batch5";
 
+import { METHOD_I18N_OVERRIDES } from "../i18n/catalog.js?v=20260306-batch6";
+import { normalizeUiLanguage, pickLocalized } from "../i18n/index.js?v=20260306-batch6";
+
 function asNonEmptyString(value) {
   if (typeof value !== "string") return null;
   const trimmed = value.trim();
@@ -43,6 +46,132 @@ function sortByLabel(items) {
 
 function cloneJson(value) {
   return JSON.parse(JSON.stringify(value));
+}
+
+function getMethodLanguage(options = null) {
+  return normalizeUiLanguage(options?.lang);
+}
+
+function getExercisePackOverride(packId) {
+  return METHOD_I18N_OVERRIDES.exercisePacks?.[packId] || null;
+}
+
+function getExerciseStepOverride(packId, stepId) {
+  return METHOD_I18N_OVERRIDES.steps?.[packId]?.[stepId] || null;
+}
+
+function getPackTemplateOverride(packTemplateId) {
+  return METHOD_I18N_OVERRIDES.packTemplates?.[packTemplateId] || null;
+}
+
+function getStepTemplateOverride(packTemplateId, stepId) {
+  return METHOD_I18N_OVERRIDES.stepTemplates?.[packTemplateId]?.[stepId] || null;
+}
+
+function getRunProfileOverride(runProfileId) {
+  return METHOD_I18N_OVERRIDES.runProfiles?.[runProfileId] || null;
+}
+
+function getPromptModuleOverride(moduleId) {
+  return METHOD_I18N_OVERRIDES.promptModules?.[moduleId] || null;
+}
+
+function applyLocalizedField(baseValue, localizedOverride, lang) {
+  if (!localizedOverride) return baseValue;
+  const resolved = pickLocalized(localizedOverride, lang);
+  return asNonEmptyString(resolved) || baseValue;
+}
+
+function localizeExerciseStepProjection(step, packId, lang = "de") {
+  const normalizedLang = normalizeUiLanguage(lang);
+  if (!step || normalizedLang === "de") return step;
+  const override = getExerciseStepOverride(packId, step.id);
+  if (!override) return step;
+  return Object.freeze({
+    ...step,
+    label: applyLocalizedField(step.label, override.label, normalizedLang),
+    visibleInstruction: applyLocalizedField(step.visibleInstruction, override.visibleInstruction, normalizedLang)
+  });
+}
+
+function localizeExercisePackProjection(pack, lang = "de") {
+  const normalizedLang = normalizeUiLanguage(lang);
+  if (!pack || normalizedLang === "de") return pack;
+  const override = getExercisePackOverride(pack.id);
+  if (!override) return pack;
+  return Object.freeze({
+    ...pack,
+    label: applyLocalizedField(pack.label, override.label, normalizedLang),
+    description: applyLocalizedField(pack.description, override.description, normalizedLang)
+  });
+}
+
+function localizePackTemplateProjection(packTemplate, lang = "de") {
+  const normalizedLang = normalizeUiLanguage(lang);
+  if (!packTemplate || normalizedLang === "de") return packTemplate;
+  const override = getPackTemplateOverride(packTemplate.id);
+  if (!override) return packTemplate;
+  return Object.freeze({
+    ...packTemplate,
+    label: applyLocalizedField(packTemplate.label, override.label, normalizedLang),
+    description: applyLocalizedField(packTemplate.description, override.description, normalizedLang)
+  });
+}
+
+function localizeStepTemplateProjection(stepTemplate, packTemplateId, lang = "de") {
+  const normalizedLang = normalizeUiLanguage(lang);
+  if (!stepTemplate || normalizedLang === "de") return stepTemplate;
+  const override = getStepTemplateOverride(packTemplateId, stepTemplate.id);
+  if (!override) return stepTemplate;
+  return Object.freeze({
+    ...stepTemplate,
+    label: applyLocalizedField(stepTemplate.label, override.label, normalizedLang),
+    instruction: applyLocalizedField(stepTemplate.instruction, override.instruction, normalizedLang),
+    summary: applyLocalizedField(stepTemplate.summary, override.summary, normalizedLang)
+  });
+}
+
+function localizeRunProfileProjection(runProfile, lang = "de") {
+  const normalizedLang = normalizeUiLanguage(lang);
+  if (!runProfile || normalizedLang === "de") return runProfile;
+  const override = getRunProfileOverride(runProfile.id);
+  if (!override) return runProfile;
+  return Object.freeze({
+    ...runProfile,
+    label: applyLocalizedField(runProfile.label, override.label, normalizedLang),
+    summary: applyLocalizedField(runProfile.summary, override.summary, normalizedLang),
+    uiHint: applyLocalizedField(runProfile.uiHint, override.uiHint, normalizedLang)
+  });
+}
+
+function localizePromptModuleProjection(moduleProjection, lang = "de") {
+  const normalizedLang = normalizeUiLanguage(lang);
+  if (!moduleProjection || normalizedLang === "de") return moduleProjection;
+  const override = getPromptModuleOverride(moduleProjection.id);
+  if (!override) return moduleProjection;
+  return Object.freeze({
+    ...moduleProjection,
+    label: applyLocalizedField(moduleProjection.label, override.label, normalizedLang),
+    summary: applyLocalizedField(moduleProjection.summary, override.summary, normalizedLang)
+  });
+}
+
+function getRawExercisePack(packOrId) {
+  if (typeof packOrId === "string") {
+    const normalizedId = normalizeExercisePackId(packOrId);
+    return normalizedId ? EXERCISE_PACKS[normalizedId] : null;
+  }
+  if (packOrId?.id && EXERCISE_PACKS[packOrId.id]) return EXERCISE_PACKS[packOrId.id];
+  return packOrId && typeof packOrId === "object" ? packOrId : null;
+}
+
+function getRawPackTemplate(packOrId) {
+  if (typeof packOrId === "string") {
+    const normalizedId = asNonEmptyString(packOrId);
+    return normalizedId && PACK_TEMPLATES[normalizedId] ? PACK_TEMPLATES[normalizedId] : null;
+  }
+  if (packOrId?.id && PACK_TEMPLATES[packOrId.id]) return PACK_TEMPLATES[packOrId.id];
+  return packOrId && typeof packOrId === "object" ? packOrId : null;
 }
 
 function normalizeTransitions(transitions) {
@@ -1379,17 +1508,19 @@ export function normalizeExercisePackId(value) {
   return id && EXERCISE_PACKS[id] ? id : null;
 }
 
-export function listExercisePacks() {
-  return sortByLabel(Object.values(EXERCISE_PACKS));
+export function listExercisePacks(options = {}) {
+  const lang = getMethodLanguage(options);
+  return sortByLabel(Object.values(EXERCISE_PACKS).map((pack) => localizeExercisePackProjection(pack, lang)));
 }
 
-export function getExercisePackById(id) {
+export function getExercisePackById(id, options = {}) {
   const normalizedId = normalizeExercisePackId(id);
-  return normalizedId ? EXERCISE_PACKS[normalizedId] : null;
+  const pack = normalizedId ? EXERCISE_PACKS[normalizedId] : null;
+  return localizeExercisePackProjection(pack, getMethodLanguage(options));
 }
 
 export function getPackDefaults(packOrId) {
-  const pack = typeof packOrId === "string" ? getExercisePackById(packOrId) : packOrId;
+  const pack = getRawExercisePack(packOrId);
   const defaults = (pack?.defaults && typeof pack.defaults === "object") ? pack.defaults : {};
 
   return {
@@ -1401,25 +1532,27 @@ export function getPackDefaults(packOrId) {
 }
 
 export function getAllowedCanvasTypesForPack(packOrId) {
-  const pack = typeof packOrId === "string" ? getExercisePackById(packOrId) : packOrId;
+  const pack = getRawExercisePack(packOrId);
   if (!pack || !Array.isArray(pack.allowedCanvasTypes)) return [];
   return normalizeUniqueStrings(pack.allowedCanvasTypes);
 }
 
 export function getDefaultCanvasTypeIdForPack(packOrId) {
-  const pack = typeof packOrId === "string" ? getExercisePackById(packOrId) : packOrId;
+  const pack = getRawExercisePack(packOrId);
   const explicit = asNonEmptyString(pack?.defaultCanvasTypeId);
   if (explicit) return explicit;
   const allowed = getAllowedCanvasTypesForPack(pack);
   return allowed[0] || null;
 }
 
-export function listExerciseSteps(packOrId) {
-  const pack = typeof packOrId === "string" ? getExercisePackById(packOrId) : packOrId;
+export function listExerciseSteps(packOrId, options = {}) {
+  const pack = getRawExercisePack(packOrId);
   if (!pack?.steps || typeof pack.steps !== "object") return [];
+  const lang = getMethodLanguage(options);
 
   return Object.values(pack.steps)
     .filter((step) => step && typeof step === "object" && asNonEmptyString(step.id))
+    .map((step) => localizeExerciseStepProjection(step, pack.id, lang))
     .slice()
     .sort((a, b) => {
       const aOrder = Number.isFinite(Number(a?.order)) ? Number(a.order) : Number.MAX_SAFE_INTEGER;
@@ -1429,24 +1562,26 @@ export function listExerciseSteps(packOrId) {
     });
 }
 
-export function getExerciseStep(packOrId, stepId) {
-  const pack = typeof packOrId === "string" ? getExercisePackById(packOrId) : packOrId;
+export function getExerciseStep(packOrId, stepId, options = {}) {
+  const pack = getRawExercisePack(packOrId);
   const normalizedStepId = asNonEmptyString(stepId);
   if (!pack || !normalizedStepId || !pack.steps || typeof pack.steps !== "object") return null;
   const step = pack.steps[normalizedStepId];
-  return step && typeof step === "object" ? step : null;
+  return step && typeof step === "object"
+    ? localizeExerciseStepProjection(step, pack.id, getMethodLanguage(options))
+    : null;
 }
 
 export function getDefaultStepId(packOrId) {
-  const pack = typeof packOrId === "string" ? getExercisePackById(packOrId) : packOrId;
+  const pack = getRawExercisePack(packOrId);
   const explicit = asNonEmptyString(pack?.defaultStepId);
   if (explicit && getExerciseStep(pack, explicit)) return explicit;
   const firstStep = listExerciseSteps(pack)[0];
   return firstStep?.id || null;
 }
 
-export function getNextExerciseStep(packOrId, currentStepId) {
-  const steps = listExerciseSteps(packOrId);
+export function getNextExerciseStep(packOrId, currentStepId, options = {}) {
+  const steps = listExerciseSteps(packOrId, options);
   if (!steps.length) return null;
 
   const normalizedCurrentStepId = asNonEmptyString(currentStepId);
@@ -1522,51 +1657,66 @@ export function resolveNamedTransition(packOrStep, stepIdOrToStepId, maybeToStep
   return transitions.find((transition) => transition.toStepId === wantedToStepId) || null;
 }
 
-export function listPackTemplates() {
-  return sortByLabel(Object.values(PACK_TEMPLATES));
+export function listPackTemplates(options = {}) {
+  const lang = getMethodLanguage(options);
+  return sortByLabel(Object.values(PACK_TEMPLATES).map((pack) => localizePackTemplateProjection(pack, lang)));
 }
 
-export function getPackTemplateById(id) {
+export function getPackTemplateById(id, options = {}) {
   const normalizedId = asNonEmptyString(id);
-  return normalizedId && PACK_TEMPLATES[normalizedId] ? PACK_TEMPLATES[normalizedId] : null;
+  const packTemplate = normalizedId && PACK_TEMPLATES[normalizedId] ? PACK_TEMPLATES[normalizedId] : null;
+  return localizePackTemplateProjection(packTemplate, getMethodLanguage(options));
 }
 
-export function listStepTemplatesForPack(packOrId) {
-  const pack = typeof packOrId === "string" ? getPackTemplateById(packOrId) : packOrId;
+export function listStepTemplatesForPack(packOrId, options = {}) {
+  const pack = getRawPackTemplate(packOrId);
   const steps = Object.values((pack?.stepTemplates && typeof pack.stepTemplates === "object") ? pack.stepTemplates : {});
-  return steps.slice().sort((a, b) => Number(a.order || 0) - Number(b.order || 0) || String(a.label || a.id).localeCompare(String(b.label || b.id), undefined, { sensitivity: "base" }));
+  const lang = getMethodLanguage(options);
+  return steps
+    .map((step) => localizeStepTemplateProjection(step, pack?.id || null, lang))
+    .slice()
+    .sort((a, b) => Number(a.order || 0) - Number(b.order || 0) || String(a.label || a.id).localeCompare(String(b.label || b.id), undefined, { sensitivity: "base" }));
 }
 
-export function getStepTemplateForPack(packOrId, stepId) {
-  const pack = typeof packOrId === "string" ? getPackTemplateById(packOrId) : packOrId;
+export function getStepTemplateForPack(packOrId, stepId, options = {}) {
+  const pack = getRawPackTemplate(packOrId);
   const normalizedStepId = asNonEmptyString(stepId);
   if (!pack || !normalizedStepId) return null;
-  return pack.stepTemplates?.[normalizedStepId] || null;
+  const stepTemplate = pack.stepTemplates?.[normalizedStepId] || null;
+  return localizeStepTemplateProjection(stepTemplate, pack.id, getMethodLanguage(options));
 }
 
 export function listRunProfilesForPack(packOrId, options = {}) {
-  const pack = typeof packOrId === "string" ? getPackTemplateById(packOrId) : packOrId;
+  const pack = getRawPackTemplate(packOrId);
   if (!pack) return [];
 
   const stepTemplateId = asNonEmptyString(options?.stepTemplateId);
+  const lang = getMethodLanguage(options);
   const profiles = normalizeUniqueStrings(pack.runProfileIds)
     .map((id) => RUN_PROFILES[id])
     .filter(Boolean)
-    .filter((profile) => !stepTemplateId || profile.stepTemplateId === stepTemplateId);
+    .filter((profile) => !stepTemplateId || profile.stepTemplateId === stepTemplateId)
+    .map((profile) => localizeRunProfileProjection(profile, lang));
 
   return profiles.slice().sort((a, b) => String(a.label || a.id).localeCompare(String(b.label || b.id), undefined, { sensitivity: "base" }));
 }
 
-export function getRunProfileById(id) {
+export function getRunProfileById(id, options = {}) {
   const normalizedId = asNonEmptyString(id);
-  return normalizedId && RUN_PROFILES[normalizedId] ? RUN_PROFILES[normalizedId] : null;
+  const profile = normalizedId && RUN_PROFILES[normalizedId] ? RUN_PROFILES[normalizedId] : null;
+  return localizeRunProfileProjection(profile, getMethodLanguage(options));
 }
 
-export function getPromptModuleById(id) {
+export function getPromptModuleById(id, options = {}) {
   const normalizedId = asNonEmptyString(id);
-  return normalizedId && PROMPT_MODULES[normalizedId] ? PROMPT_MODULES[normalizedId] : null;
+  const moduleProjection = normalizedId && PROMPT_MODULES[normalizedId] ? PROMPT_MODULES[normalizedId] : null;
+  return localizePromptModuleProjection(moduleProjection, getMethodLanguage(options));
 }
 
-export function getPromptModulesByIds(ids) {
-  return normalizeUniqueStrings(ids).map((id) => PROMPT_MODULES[id]).filter(Boolean);
+export function getPromptModulesByIds(ids, options = {}) {
+  const lang = getMethodLanguage(options);
+  return normalizeUniqueStrings(ids)
+    .map((id) => PROMPT_MODULES[id])
+    .filter(Boolean)
+    .map((moduleProjection) => localizePromptModuleProjection(moduleProjection, lang));
 }
