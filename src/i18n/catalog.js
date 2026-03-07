@@ -210,7 +210,7 @@ export const METHOD_I18N_OVERRIDES = Object.freeze({
       description: { en: "Guided persona exercise on the Datentreiber 3-Boxes canvas." }
     }),
     "analytics-ai-usecase-fit-sprint-v1": Object.freeze({
-      description: { en: "Guided mini exercise on the Analytics & AI Use Case canvas to build the user perspective, solution perspective, and problem-solution fit step by step." }
+      description: { en: "Guided single-canvas exercise on the Analytics & AI Use Case canvas with four didactic phases: Preparation & Focus, User Needs Analysis, Solution Design, and Fit Validation & Minimum Desired Product." }
     })
   }),
 
@@ -226,102 +226,133 @@ export const METHOD_I18N_OVERRIDES = Object.freeze({
       })
     }),
     "analytics-ai-usecase-fit-sprint-v1": Object.freeze({
+      "step0_preparation_and_focus": Object.freeze({
+        label: { en: "Preparation & Focus" },
+        visibleInstruction: { en: "Start with focus and scope: name the use case in the header, note critical assumptions or open questions in white, and consciously park side topics in Sorted out." },
+        flowInstruction: { en: "Start with focus and scope: define the concrete use case in the header, collect critical assumptions or open questions as white stickies, and consciously park side topics instead of jumping straight into users or solutions." },
+        flowSummary: { en: "Preparation phase before the real analysis: set the focus in the header, sharpen the scope, make open assumptions visible, and consciously park side topics." }
+      }),
       "step1_user_perspective": Object.freeze({
-        label: { en: "User Perspective First" },
-        visibleInstruction: { en: "Start by filling in the user perspective: User & Situation, Objectives & Results, Decisions & Actions, User Gains, and User Pains." },
-        flowInstruction: { en: "Work out the right-hand side first: start with User & Situation and Decisions & Actions, then add Objectives & Results as well as User Pains and User Gains." },
-        flowSummary: { en: "Build a solid problem space and a clear user and decision situation first. Do not jump to solutions yet." }
+        label: { en: "User Needs Analysis" },
+        visibleInstruction: { en: "Now build the user perspective: collect several plausible user roles, focus on one main user, make the situation concrete, structure Objectives & Results, structure Decisions & Actions, and attach Gains/Pains." },
+        flowInstruction: { en: "Build the problem space now: diverge and focus user roles, sharpen the situation, structure Objectives & Results as a small driver tree, sketch Decisions & Actions as a small workflow, and attach and prioritise Gains/Pains from the user perspective." },
+        flowSummary: { en: "Step 1 is divergence and convergence in the problem space: do not solve too early, but make user work, goals, results, decisions, actions, and critical gains/pains robust first." }
       }),
       "step2_solution_perspective": Object.freeze({
-        label: { en: "Solution Perspective" },
-        visibleInstruction: { en: "Now derive the solution perspective from the user perspective: Solutions, Information, Functions, and Benefits." },
-        flowInstruction: { en: "Now derive the left-hand side from the user perspective: What information would improve decisions or actions, which functions and solutions make that possible, and which benefits result from it?" },
-        flowSummary: { en: "The solution perspective should clearly follow from the user perspective rather than being generic or technology-driven." }
+        label: { en: "Solution Design" },
+        visibleInstruction: { en: "Now derive the solution perspective: collect several solution variants, choose one main variant, park alternatives on the right, derive Information and Functions from it, and only then formulate Benefits." },
+        flowInstruction: { en: "Develop the left-hand side from the problem space: collect and focus variants, derive Information and Functions from user work, and formulate concrete Benefits from them." },
+        flowSummary: { en: "Step 2 is divergence, selection, concretisation, and benefit derivation – not free technology choice and not full networking." }
       }),
       "step3_fit_check_and_synthesis": Object.freeze({
-        label: { en: "Fit Check & Synthesis" },
-        visibleInstruction: { en: "Condense the problem-solution fit in the Check field and test the consistency between the user and solution perspectives." },
-        flowInstruction: { en: "Check whether the user perspective and the solution perspective fit together consistently. Only condense the problem-solution fit in the Check field once enough substance is available." },
-        flowSummary: { en: "Assess consistency, maturity, and problem-solution fit, and only condense it when the groundwork is strong enough." }
+        label: { en: "Fit Validation & Minimum Desired Product" },
+        visibleInstruction: { en: "Validate the problem-solution fit now: test Benefits against the right-hand side, mark robust relations with checkmarks, thin out unvalidated content, and condense the core in the Check field." },
+        flowInstruction: { en: "Check which Benefits really address Gains, Pains, Objectives, Results, Decisions, or Actions. Mark robust relations, reduce the board to a Minimum Desired Product, and only then condense the core in the Check field." },
+        flowSummary: { en: "Step 3 validates, marks, reduces, and condenses. The goal is a Minimum Desired Product rather than the sum of all earlier ideas." }
       })
     })
   }),
 
   packTemplates: Object.freeze({
     "analytics-ai-usecase-fit-sprint-template-v1": Object.freeze({
-      description: { en: "Guided exercise for the Analytics & AI Use Case canvas with a didactic sequence from user perspective through solution perspective to fit check." }
+      description: { en: "Guided exercise for the Analytics & AI Use Case canvas with a four-phase didactic sequence from preparation through user needs analysis and solution design to fit validation and Minimum Desired Product." }
     })
   }),
 
   stepTemplates: Object.freeze({
     "analytics-ai-usecase-fit-sprint-template-v1": Object.freeze({
+      "step0_preparation_and_focus": Object.freeze({
+        label: { en: "Preparation & Focus" },
+        instruction: { en: "Start with focus and scope: define the concrete use case in the header, collect critical assumptions or open questions as white stickies, and consciously park side topics instead of jumping straight into users or solutions." },
+        summary: { en: "Preparation phase before the real analysis: set the focus in the header, sharpen the scope, make open assumptions visible, and consciously park side topics." }
+      }),
       "step1_user_perspective": Object.freeze({
-        label: { en: "User Perspective First" },
-        instruction: { en: "Work out the right-hand side first: start with User & Situation and Decisions & Actions, then add Objectives & Results as well as User Pains and User Gains." },
-        summary: { en: "Build a solid problem space and a clear user and decision situation first. Do not jump to solutions yet." }
+        label: { en: "User Needs Analysis" },
+        instruction: { en: "Build the problem space now: diverge and focus user roles, sharpen the situation, structure Objectives & Results as a small driver tree, sketch Decisions & Actions as a small workflow, and attach and prioritise Gains/Pains from the user perspective." },
+        summary: { en: "Step 1 is divergence and convergence in the problem space: do not solve too early, but make user work, goals, results, decisions, actions, and critical gains/pains robust first." }
       }),
       "step2_solution_perspective": Object.freeze({
-        label: { en: "Solution Perspective" },
-        instruction: { en: "Now derive the left-hand side from the user perspective: What information would improve decisions or actions, which functions and solutions make that possible, and which benefits result from it?" },
-        summary: { en: "The solution perspective should clearly follow from the user perspective rather than being generic or technology-driven." }
+        label: { en: "Solution Design" },
+        instruction: { en: "Develop the left-hand side from the problem space: collect and focus variants, derive Information and Functions from user work, and formulate concrete Benefits from them." },
+        summary: { en: "Step 2 is divergence, selection, concretisation, and benefit derivation – not free technology choice and not full networking." }
       }),
       "step3_fit_check_and_synthesis": Object.freeze({
-        label: { en: "Fit Check & Synthesis" },
-        instruction: { en: "Check whether the user perspective and the solution perspective fit together consistently. Only condense the problem-solution fit in the Check field once enough substance is available." },
-        summary: { en: "Assess consistency, maturity, and problem-solution fit, and only condense it when the groundwork is strong enough." }
+        label: { en: "Fit Validation & Minimum Desired Product" },
+        instruction: { en: "Check which Benefits really address Gains, Pains, Objectives, Results, Decisions, or Actions. Mark robust relations, reduce the board to a Minimum Desired Product, and only then condense the core in the Check field." },
+        summary: { en: "Step 3 validates, marks, reduces, and condenses. The goal is a Minimum Desired Product rather than the sum of all earlier ideas." }
       })
     })
   }),
 
   runProfiles: Object.freeze({
+    "analytics.fit.step0.check": Object.freeze({
+      label: { en: "Check focus" },
+      summary: { en: "Checks whether focus and scope are clear enough to start the user needs analysis." },
+      uiHint: { en: "Use this before moving from preparation into the user needs analysis." }
+    }),
+    "analytics.fit.step0.hint": Object.freeze({
+      label: { en: "Start preparation" },
+      summary: { en: "Helps teams begin with focus, scope, and open assumptions on this canvas." },
+      uiHint: { en: "A useful first button when a team is just starting on a blank canvas." }
+    }),
+    "analytics.fit.step0.coach": Object.freeze({
+      label: { en: "Coach focus" },
+      summary: { en: "Coaches focus, scope, and open assumptions with guiding questions and one micro-step." },
+      uiHint: { en: "Use this when participants need help narrowing the use case and surfacing assumptions." }
+    }),
     "analytics.fit.step1.check": Object.freeze({
-      label: { en: "Check user perspective" },
-      summary: { en: "Checks the right-hand side in a structured way for completeness, precision, and misplaced content, and helps with an empty canvas through sensible start guidance." },
-      uiHint: { en: "Use this profile when you want to review the first version of the user perspective or kick-start an empty canvas with subject-matter guidance." }
+      label: { en: "Check user needs analysis" },
+      summary: { en: "Checks whether the user needs analysis is focused and strong enough to serve as the basis for solution design." },
+      uiHint: { en: "Use this when the right-hand side already has substance and you want to know whether step 2 can start." }
     }),
     "analytics.fit.step1.hint": Object.freeze({
-      label: { en: "Hint for user perspective" },
-      summary: { en: "Provides concrete, usable hints for the right-hand side and offers a clear entry sequence when the canvas is empty." },
-      uiHint: { en: "A good help button for participants when they need a small but concrete next step." }
+      label: { en: "Start user needs analysis" },
+      summary: { en: "Provides the next sensible work step in the user needs analysis, including wording prompts." },
+      uiHint: { en: "Useful when a team is stuck in the problem space or needs a clear next move." }
     }),
     "analytics.fit.step1.coach": Object.freeze({
-      label: { en: "Coach user perspective" },
-      summary: { en: "Coaches the right-hand side with guiding questions, reflection prompts, and one clear micro-step." },
-      uiHint: { en: "Use this profile when participants need thinking and conversation prompts rather than just an assessment." }
+      label: { en: "Coach user needs analysis" },
+      summary: { en: "Coaches the user needs analysis with guiding questions and one micro-step." },
+      uiHint: { en: "Use this when participants should keep thinking for themselves instead of getting a ready-made answer." }
     }),
     "analytics.fit.step2.check": Object.freeze({
-      label: { en: "Check solution perspective" },
-      summary: { en: "Checks the left-hand side for derivation quality, user value, and clean distinctions between Information, Functions, Solutions, and Benefits." },
-      uiHint: { en: "Useful when the left-hand side is already filled in or should now be derived more deliberately from the right-hand side." }
+      label: { en: "Check solution design" },
+      summary: { en: "Checks whether the solution design is focused and cleanly derived from the user needs analysis." },
+      uiHint: { en: "Use this when the left-hand side has substance and you want to know whether fit validation can begin." }
     }),
     "analytics.fit.step2.hint": Object.freeze({
-      label: { en: "Hint for solution perspective" },
-      summary: { en: "Provides precise derivation hints for the left-hand side and explains how to move from decisions to information, functions, and benefits when the area is empty." },
-      uiHint: { en: "Well suited when the user perspective is already decent but the solution perspective has not yet been derived cleanly." }
+      label: { en: "Start solution design" },
+      summary: { en: "Provides the next sensible derivation step on the left-hand side." },
+      uiHint: { en: "Useful when the user needs analysis is already decent and the team now needs a clear next move on the solution side." }
     }),
     "analytics.fit.step2.coach": Object.freeze({
-      label: { en: "Coach solution perspective" },
-      summary: { en: "Coaches the derivation of the left-hand side with guiding questions instead of a finished solution sketch." },
-      uiHint: { en: "Use this profile when participants should arrive at strong derivations themselves instead of receiving a direct solution." }
+      label: { en: "Coach solution design" },
+      summary: { en: "Coaches variant choice and the derivation of Information, Functions, and Benefits." },
+      uiHint: { en: "Use this when participants should derive the left-hand side themselves instead of receiving a ready-made design." }
     }),
     "analytics.fit.step3.review": Object.freeze({
-      label: { en: "Review fit check" },
-      summary: { en: "Conducts a mature qualitative review of the problem-solution fit and explicitly treats incomplete boards as a preliminary stage rather than a finished assessment." },
-      uiHint: { en: "Useful when both sides are at least partly developed and you want to know how robust the fit already is." }
+      label: { en: "Validate fit" },
+      summary: { en: "Conducts a qualitative fit review and shows whether the canvas would already be handoff-ready or not." },
+      uiHint: { en: "Use this before you reduce or condense the board further." }
+    }),
+    "analytics.fit.step3.autocorrect": Object.freeze({
+      label: { en: "Prune to Minimum Desired Product" },
+      summary: { en: "Marks validated content, parks alternatives, and reduces the board to the smallest still-viable solution core." },
+      uiHint: { en: "Use this once the board has enough substance to validate and cut back to the robust core." }
     }),
     "analytics.fit.step3.synthesize": Object.freeze({
-      label: { en: "Synthesize fit check" },
-      summary: { en: "Condenses the content into the Check field only when enough substance exists; otherwise it names the missing prerequisites." },
-      uiHint: { en: "Use this only once the problem and solution perspectives are mature enough for real fit statements." }
+      label: { en: "Condense Check field" },
+      summary: { en: "Condenses the validated fit core into short statements in the Check field." },
+      uiHint: { en: "Use this only after validation and pruning, not as an early shortcut." }
     }),
     "analytics.fit.step3.coach": Object.freeze({
-      label: { en: "Coach fit check" },
-      summary: { en: "Coaches the assessment of problem-solution fit with guiding questions and points out missing prerequisites for later synthesis." },
-      uiHint: { en: "Useful when the fit should be reflected on together rather than judged harshly right away." }
+      label: { en: "Coach fit validation" },
+      summary: { en: "Coaches fit validation with guiding questions instead of jumping straight to judgement or condensation." },
+      uiHint: { en: "Useful when the team should validate relationships together before reducing or condensing." }
     }),
     "analytics.fit.global.review": Object.freeze({
-      label: { en: "Global review" },
-      summary: { en: "Compares multiple instances for maturity, patterns, strengths, and recurring weaknesses in the broader picture." },
+      label: { en: "Compare boards" },
+      summary: { en: "Compares multiple boards for fit maturity, Minimum Desired Product focus, and recurring quality patterns." },
       uiHint: { en: "Useful for a meta-review across multiple canvas instances or teams." }
     })
   }),

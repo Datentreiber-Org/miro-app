@@ -21,10 +21,10 @@ import * as Board from "./miro/board.js?v=20260308-batch76";
 import * as Catalog from "./domain/catalog.js?v=20260308-batch76";
 import * as OpenAI from "./ai/openai.js?v=20260307-batch75";
 import * as Memory from "./runtime/memory.js?v=20260301-step11-hotfix2";
-import * as Exercises from "./exercises/registry.js?v=20260306-batch6";
-import * as ExerciseLibrary from "./exercises/library.js?v=20260306-batch6";
-import * as PromptComposer from "./prompt/composer.js?v=20260307-batch75";
-import * as ExerciseEngine from "./runtime/exercise-engine.js?v=20260306-batch6";
+import * as Exercises from "./exercises/registry.js?v=20260307-batch8";
+import * as ExerciseLibrary from "./exercises/library.js?v=20260307-batch8";
+import * as PromptComposer from "./prompt/composer.js?v=20260307-batch8";
+import * as ExerciseEngine from "./runtime/exercise-engine.js?v=20260307-batch8";
 import * as BoardFlow from "./runtime/board-flow.js?v=20260306-batch6";
 import * as PanelBridge from "./runtime/panel-bridge.js?v=20260305-schemafix2";
 import { buildPayloadMappingHint } from "./app/payload-hints.js?v=20260305-batch06";
@@ -3958,95 +3958,125 @@ function resolveResponseTargetInstanceId({ promptRuntimeOverride = null, targetI
   return null;
 }
 
-function buildQuestionSystemPromptForInstance(instanceId) {
+function buildQuestionPromptRuntimeOverride(instanceId) {
   const lang = getCurrentDisplayLanguage();
   const instance = state.instancesById.get(instanceId) || null;
-  const canvasTypeId = instance?.canvasTypeId || null;
-  const templateCfg = canvasTypeId ? DT_TEMPLATE_CATALOG[canvasTypeId] : null;
-  const displayName = getCanvasTypeDisplayName(
-    canvasTypeId,
-    templateCfg?.displayName || templateCfg?.agentLabelPrefix || canvasTypeId || "Canvas",
-    lang
-  );
-
-  const promptBlocks = [
-    DT_QUESTION_SYSTEM_PROMPT,
-    PromptComposer.buildOutputLanguageBlock(lang, { questionMode: true })
-  ];
-
-  if (typeof templateCfg?.promptContext === "string" && templateCfg.promptContext.trim()) {
-    promptBlocks.push(`Canvas-Typ-Kontext (${displayName}):\n${templateCfg.promptContext.trim()}`);
+  if (!instance || getCurrentBoardMode() !== "exercise") {
+    return {
+      exercisePack: null,
+      packTemplate: null,
+      flowStep: null,
+      promptModules: []
+    };
   }
 
-  return promptBlocks.filter(Boolean).join("\n\n");
-}
+  const exercisePack = getSelectedExercisePack({ lang }) || null;
+  const packTemplateId = getSelectedExercisePackTemplateId();
+  const packTemplate = packTemplateId
+    ? ExerciseLibrary.getPackTemplateById(packTemplateId, { lang })
+    : null;
+  const currentStepId = exercisePack ? getCurrentExerciseStepId(exercisePack) : null;
+  const flowStep = packTemplate && currentStepId
+    ? ExerciseLibrary.getStepTemplateForPack(packTemplate.id, currentStepId, { lang })
+    : null;
+  const questionModuleIds = Array.isArray(flowStep?.questionModuleIds)
+    ? flowStep.questionModuleIds
+    : [];
+  const promptModules = ExerciseLibrary.getPromptModulesByIds(questionModuleIds, { lang });
 
-async function renderAgentResponseToInstanceOutput({
-  instanceId = null,
-  feedback = null,
-  flowControlDirectives = null,
-  evaluation = null,
-  sourceLabel = null
-} = {}) {
-  const lang = getCurrentDisplayLanguage();
-  const resolvedSourceLabel = pickFirstNonEmptyString(sourceLabel, t("busyIndicator.defaultSource", lang));
-  const targetInstanceId = pickFirstNonEmptyString(instanceId);
-  if (!targetInstanceId) return null;
-
-  const instance = state.instancesById.get(targetInstanceId);
-  if (!instance) return null;
-  if (!Board.hasCompleteChatInterfaceShapeIds(instance.chatInterface)) {
-    log(t("question.outputBoxMissing", lang, {
-      instanceLabel: instance.instanceLabel || targetInstanceId,
-      sourceLabel: resolvedSourceLabel
-    }));
-    return null;
-  }
-
-  const content = Board.buildAgentFeedbackContent({
-    feedback,
-    flowControlDirectives,
-    evaluation,
-    lang
-  });
-
-  const outputItem = await Board.writeChatOutputContent(instance.chatInterface, content, log);
   return {
-    instanceId: targetInstanceId,
-    instanceLabel: instance.instanceLabel || targetInstanceId,
-    outputShapeId: outputItem?.id ? String(outputItem.id) : instance.chatInterface.outputShapeId || null
+    exercisePack,
+    packTemplate,
+    flowStep,
+    promptModules
   };
 }
 
-async function buildQuestionUserPayloadForInstance(instanceId, userQuestion) {
-  const instance = state.instancesById.get(instanceId);
+async function buildQuestionPromptBundleForInstance(instanceId, userQuestion) {
+  const lang = getCurrentDisplayLanguage();
+  const instance = state.instancesById.get(instanceId) || null;
   if (!instance) return null;
 
   const { liveCatalog } = await refreshBoardState();
   const stateById = await computeInstanceStatesById(liveCatalog);
   const instanceState = stateById[instanceId] || null;
+  if (!instanceState?.promptPayload) return null;
 
-  if (!instanceState?.promptPayload) {
-    return null;
+  const runtime = buildQuestionPromptRuntimeOverride(instanceId);
+  const flowPromptContext = resolveFlowPromptContext({
+    promptRuntimeOverride: runtime?.packTemplate
+      ? {
+          packTemplate: runtime.packTemplate,
+          flowStep: runtime.flowStep,
+          promptModules: runtime.promptModules,
+          anchorInstanceId: instanceId
+        }
+      : null,
+    targetInstanceIds: [instanceId]
+  });
+  const memoryPayload = buildMemoryInjectionPayload();
+  const instanceLabel = instance.instanceLabel || null;
+  const boardCatalog = Catalog.buildBoardCatalogSummary(state.instancesById, {
+    mode: "generic",
+    activeInstanceId: instanceId,
+    hasGlobalBaseline: state.hasGlobalBaseline
+  });
+
+  const activeInstanceChangesSinceLastAgent = {};
+  if (!state.hasGlobalBaseline || !instanceState?.diff || !instanceLabel) {
+    activeInstanceChangesSinceLastAgent[instanceLabel || instanceId] = null;
+  } else {
+    activeInstanceChangesSinceLastAgent[instanceLabel || instanceId] = Catalog.aliasDiffForActiveInstance(instanceState.diff, state.aliasState);
   }
 
-  return {
-    activeInstanceLabel: instance.instanceLabel || null,
-    boardCatalog: Catalog.buildBoardCatalogSummary(state.instancesById, {
-      mode: "generic",
-      activeInstanceId: instanceId,
-      hasGlobalBaseline: state.hasGlobalBaseline
-    }),
+  const baseUserPayload = {
+    activeInstanceLabel: instanceLabel,
+    selectedInstanceLabels: instanceLabel ? [instanceLabel] : [],
+    boardCatalog,
     activeCanvasState: instanceState.promptPayload,
+    activeCanvasStates: instanceLabel ? { [instanceLabel]: instanceState.promptPayload } : {},
+    activeInstanceChangesSinceLastAgent,
     instanceMeta: {
       instanceId: instance.instanceId || null,
-      instanceLabel: instance.instanceLabel || null,
+      instanceLabel,
       canvasTypeId: instance.canvasTypeId || null,
       canvasTypeLabel: instance.canvasTypeLabel || null,
       imageId: instance.imageId || null
     },
-    userQuestion: userQuestion || ""
+    memoryState: memoryPayload.memoryState,
+    recentMemoryLogEntries: memoryPayload.recentMemoryLogEntries,
+    flowControlCatalog: flowPromptContext.flowControlCatalog,
+    boardFlowState: flowPromptContext.boardFlowState,
+    hint: buildPayloadMappingHint({
+      scopeLabel: "aktiven Instanz",
+      labelListKey: "selectedInstanceLabels",
+      mentionArea: true
+    })
   };
+
+  return PromptComposer.composePrompt({
+    baseSystemPrompt: DT_QUESTION_SYSTEM_PROMPT,
+    runMode: "exercise-question-instance",
+    triggerContext: {
+      source: "user",
+      mutationPolicy: "none",
+      feedbackPolicy: "text",
+      requiresSelection: true
+    },
+    userQuestion,
+    baseUserPayload,
+    involvedCanvasTypeIds: [instance.canvasTypeId].filter(Boolean),
+    templateCatalog: DT_TEMPLATE_CATALOG,
+    boardConfig: state.boardConfig,
+    exercisePack: runtime?.exercisePack || null,
+    currentStep: runtime?.exercisePack && runtime?.flowStep?.id
+      ? Exercises.getExerciseStep(runtime.exercisePack, runtime.flowStep.id, { lang })
+      : getCurrentExerciseStep(undefined, { lang }),
+    packTemplate: runtime?.packTemplate || null,
+    flowStep: runtime?.flowStep || null,
+    promptModules: runtime?.promptModules || [],
+    questionMode: true
+  });
 }
 
 async function runQuestionCallForInstance(instanceId, rawQuestionText, { sourceLabel = null } = {}) {
@@ -4104,8 +4134,8 @@ async function runQuestionCallForInstance(instanceId, rawQuestionText, { sourceL
     boardRunToken.statusItemIds = await createRunStatusItems([instanceId], resolvedSourceLabel, boardRunToken.runId);
     await syncBoardSoftLock(boardRunToken, { statusItemIds: boardRunToken.statusItemIds });
 
-    const userPayload = await buildQuestionUserPayloadForInstance(instanceId, questionText);
-    if (!userPayload) {
+    const promptBundle = await buildQuestionPromptBundleForInstance(instanceId, questionText);
+    if (!promptBundle) {
       const msg = t("question.contextUnavailable", lang, { sourceLabel: resolvedSourceLabel });
       logRuntimeNotice("precondition", msg);
       finalBoardRunStatus = "aborted";
@@ -4113,12 +4143,11 @@ async function runQuestionCallForInstance(instanceId, rawQuestionText, { sourceL
       return buildRunFailureResult("precondition", msg);
     }
 
-    const systemPrompt = buildQuestionSystemPromptForInstance(instanceId);
     const structuredResult = await OpenAI.callOpenAIQuestionStructured({
       apiKey,
       model,
-      systemPrompt,
-      userText: JSON.stringify(userPayload, null, 2)
+      systemPrompt: promptBundle.systemPrompt,
+      userText: JSON.stringify(promptBundle.userPayload, null, 2)
     });
 
     if (structuredResult.refusal) {

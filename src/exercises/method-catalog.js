@@ -4,7 +4,7 @@ import {
   DT_TRIGGER_KEYS
 } from "../config.js?v=20260307-batch75";
 
-import { METHOD_I18N_OVERRIDES } from "../i18n/catalog.js?v=20260306-batch6";
+import { METHOD_I18N_OVERRIDES } from "../i18n/catalog.js?v=20260307-batch8";
 import { normalizeUiLanguage, pickLocalized } from "../i18n/index.js?v=20260306-batch6";
 
 function asNonEmptyString(value) {
@@ -297,7 +297,8 @@ function buildPackTemplateProjection(packDef, runProfilesForPack) {
       order: Number.isFinite(Number(stepDef?.order)) ? Number(stepDef.order) : 0,
       label: asNonEmptyString(stepDef?.label) || id,
       instruction: asNonEmptyString(stepDef?.flowInstruction) || asNonEmptyString(stepDef?.visibleInstruction),
-      summary: asNonEmptyString(stepDef?.flowSummary)
+      summary: asNonEmptyString(stepDef?.flowSummary),
+      questionModuleIds: Object.freeze(normalizeUniqueStrings(stepDef?.questionModuleIds))
     });
   }
 
@@ -1958,13 +1959,1262 @@ Methodische Regeln:
   return catalog;
 }
 
-function createBatch7MethodCatalog(rawCatalog) {
+
+function inferTriggerParts(triggerKey) {
+  const normalized = normalizeTriggerKey(triggerKey);
+  if (!normalized) return { triggerKey: null, scope: null, intent: null };
+  const [scope, intent] = normalized.split('.');
+  return { triggerKey: normalized, scope: scope || null, intent: intent || null };
+}
+
+function makeFlowControlDef({
+  id,
+  label,
+  summary,
+  moduleIds = [],
+  mutationPolicy = null,
+  feedbackPolicy = null,
+  defaultScopeType = "fixed_instances",
+  allowedActions = [],
+  uiHint = null,
+  sortOrder = Number.MAX_SAFE_INTEGER
+} = {}) {
+  return {
+    id: asNonEmptyString(id),
+    label: asNonEmptyString(label),
+    summary: asNonEmptyString(summary),
+    moduleIds: normalizeUniqueStrings(moduleIds),
+    mutationPolicy: asNonEmptyString(mutationPolicy),
+    feedbackPolicy: asNonEmptyString(feedbackPolicy),
+    defaultScopeType: asNonEmptyString(defaultScopeType) || "fixed_instances",
+    allowedActions: normalizeUniqueStrings(allowedActions),
+    uiHint: asNonEmptyString(uiHint),
+    sortOrder: Number.isFinite(Number(sortOrder)) ? Number(sortOrder) : Number.MAX_SAFE_INTEGER
+  };
+}
+
+function makeTriggerProfileDef(triggerKey, {
+  prompt,
+  mutationPolicy = null,
+  feedbackPolicy = null,
+  flowControl = null,
+  requiresSelection = null
+} = {}) {
+  const parts = inferTriggerParts(triggerKey);
+  if (!parts.triggerKey) return null;
+  const resolvedRequiresSelection = typeof requiresSelection === "boolean"
+    ? requiresSelection
+    : parts.scope === "selection";
+  return {
+    triggerKey: parts.triggerKey,
+    scope: parts.scope,
+    intent: parts.intent,
+    requiresSelection: resolvedRequiresSelection,
+    mutationPolicy: asNonEmptyString(mutationPolicy),
+    feedbackPolicy: asNonEmptyString(feedbackPolicy),
+    prompt: asNonEmptyString(prompt),
+    flowControl: flowControl && typeof flowControl === "object" ? flowControl : null
+  };
+}
+
+function makeStepDef({
+  id,
+  order,
+  label,
+  visibleInstruction,
+  flowInstruction,
+  flowSummary,
+  allowedActions = [],
+  defaultEnterTrigger = null,
+  transitions = [],
+  questionModuleIds = [],
+  triggerProfiles = {}
+} = {}) {
+  return {
+    id: asNonEmptyString(id),
+    order: Number.isFinite(Number(order)) ? Number(order) : 0,
+    label: asNonEmptyString(label),
+    visibleInstruction: asNonEmptyString(visibleInstruction),
+    flowInstruction: asNonEmptyString(flowInstruction),
+    flowSummary: asNonEmptyString(flowSummary),
+    allowedActions: normalizeUniqueStrings(allowedActions),
+    defaultEnterTrigger: normalizeTriggerKey(defaultEnterTrigger),
+    transitions: Array.isArray(transitions) ? transitions : [],
+    questionModuleIds: normalizeUniqueStrings(questionModuleIds),
+    triggerProfiles
+  };
+}
+
+function makeManualTransition(toStepId, { allowedAfterTriggers = [], requiredStepStatuses = [] } = {}) {
+  return {
+    toStepId: asNonEmptyString(toStepId),
+    policy: "manual",
+    allowedSources: ["user", "admin", "agent_recommendation"],
+    allowedAfterTriggers: normalizeUniqueStrings(allowedAfterTriggers),
+    requiredStepStatuses: normalizeUniqueStrings(requiredStepStatuses)
+  };
+}
+
+function buildAnalyticsDidacticPromptModules() {
+  return {
+    "analytics.fit.shared.method_guardrails": {
+      id: "analytics.fit.shared.method_guardrails",
+      label: "Methodische Leitplanken",
+      summary: "Hält den Agenten strikt innerhalb der Canvas-Logik, der Schrittlogik und der isolierten Übung.",
+      prompt: `Arbeite methodisch sauber auf dem Analytics & AI Use Case Canvas:
+- Bleibe immer im Scope der ausgewählten Instanzen und des aktiven Schritts.
+- Behandle jede Sticky Note möglichst als eine atomare Aussage; vermeide Sammel-Stickies mit mehreren Gedanken.
+- Respektiere die Area-Semantik des Canvas streng. Vermische Problemraum, Lösungsraum, Fit-Logik und offene Fragen nicht unkontrolliert.
+- Bleibe auf Use-Case-Ebene. Erfinde keine unnötigen technischen Architekturen, Toollisten oder KI-Floskeln ohne klaren Bezug zur Nutzerarbeit.
+- Arbeite anschlussfähig am vorhandenen Boardzustand. Korrigiere, schärfe, fokussiere und parke – erfinde das Canvas nicht jedes Mal neu.
+- Nutze Connectoren nur dort, wo eine explizite methodische Relation klar, lesbar und wirklich hilfreich ist.`
+    },
+    "analytics.fit.shared.feedback_contract": {
+      id: "analytics.fit.shared.feedback_contract",
+      label: "Feedback-Vertrag",
+      summary: "Sorgt für nicht-kryptische, boardnahe und idiotensichere Rückmeldungen.",
+      prompt: `Feedback-Vertrag:
+- Antworte nicht kryptisch. Das feedback muss für nicht-expertische Nutzer klar, konkret und nachvollziehbar sein.
+- Beziehe dich immer zuerst auf das, was auf diesem Canvas tatsächlich vorhanden ist oder fehlt.
+- Formuliere klar: 1) was du auf dem Board siehst, 2) warum das im aktuellen Schritt wichtig ist, 3) was der nächste sinnvolle Arbeitsschritt ist.
+- Wenn ein Bereich leer oder unreif ist, gib kurze Satzanfänge oder Formulierungsanstöße statt abstrakter Methodensprache.
+- Wenn du Board-Mutationen vornimmst, erkläre knapp und konkret, was du verändert hast und warum.
+- Bleibe innerhalb des Regelwerks dieses Canvas; verweise nicht kryptisch auf externe Logiken, die hier gerade nicht ausgeführt werden.`
+    },
+    "analytics.fit.shared.question_style": {
+      id: "analytics.fit.shared.question_style",
+      label: "Fragemodus",
+      summary: "Macht Instanzfragen schrittbezogen, verständlich und trainingsorientiert.",
+      prompt: `Fragemodus:
+- Beantworte Fragen direkt, verständlich und boardbezogen.
+- Wenn die Frage allgemein ist (z. B. "Was mache ich hier?"), erkläre kurz Zweck des Canvas, den aktuellen Schritt, was in diesem Schritt gute Inhalte sind und was der nächste konkrete Schritt ist.
+- Wenn die Frage einen früheren oder späteren Workshopteil berührt, erkläre das knapp, bleibe aber in der isolierten Übung dieses Einzelcanvas.
+- Wenn die Frage nach Beispielen verlangt, gib kurze, plausible Beispiel-Stickies oder Satzanfänge – keine komplette Wunschlösung, sofern nicht ausdrücklich verlangt.
+- Wenn eine Frage eigentlich einen anderen Schritt betrifft, sage das freundlich und nenne, was im aktuellen Schritt zuerst geklärt werden sollte.`
+    },
+    "analytics.fit.shared.soft_reference_hints": {
+      id: "analytics.fit.shared.soft_reference_hints",
+      label: "Weiche Methodik-Referenzen",
+      summary: "Erlaubt optionale Verweise auf benachbarte Methoden, ohne daraus harte Handoffs zu machen.",
+      prompt: `Optionale Methoden-Referenzen:
+- Du darfst andere Methoden oder Canvas nur als weiche Orientierung erwähnen, nie als harte Voraussetzung.
+- Bei Nutzerfokus-Problemen kannst du Stakeholder Analysis oder Priority Matrix als optionale Denkhilfe erwähnen.
+- Bei unklaren Pains darfst du 5 Whys oder Cause and Effect als optionale Vertiefung erwähnen.
+- Bei unklarem Workflow darfst du Value Chain oder Prozesssicht als optionale Denkstütze erwähnen.
+- Bei Lösungsvergleichen darfst du Value Curve als spätere Vergleichshilfe erwähnen.
+- Formuliere das immer als "kann helfen", nicht als Pflicht oder aktuellen Handoff.`
+    },
+    "analytics.fit.shared.sorted_out_semantics": {
+      id: "analytics.fit.shared.sorted_out_semantics",
+      label: "Sorted-out-Semantik",
+      summary: "Erklärt, wie Sorted-out im isolierten Übungsszenario didaktisch zu nutzen ist.",
+      prompt: `Sorted-out-Semantik:
+- Sorted-out dient zum bewussten Parken, Fokussieren und Ausdünnen – nicht als Mülleimer ohne Erklärung.
+- Nutze sorted_out_left bevorzugt für Problemraum-, Fokus- oder Scope-Reste: alternative Nutzerrollen, offene Scope-Themen, weniger wichtige Gains/Pains, zurückgestellte Annahmen.
+- Nutze sorted_out_right bevorzugt für Lösungsraum-Reste: alternative Solution-Varianten, spätere Optionen, noch nicht tragfähige Benefits oder Lösungsbausteine.
+- Parke Inhalte lieber in Sorted-out als sie vorschnell zu löschen, wenn sie methodisch noch eine Rolle spielen könnten.`
+    },
+    "analytics.fit.shared.validation_and_color_semantics": {
+      id: "analytics.fit.shared.validation_and_color_semantics",
+      label: "Farben und Checkmarks",
+      summary: "Bindet die nun vorhandenen Farb- und Check-Mechaniken didaktisch ein.",
+      prompt: `Farben und Checkmarks in dieser Übung:
+- Verwende Farben methodisch konsistent: grün für Gains, rot für Pains, blau für User-/Problem-/Lösungselemente, weiß für kritische Annahmen oder offene Fragen.
+- Nutze set_sticky_color oder create_sticky.color nur dann, wenn die Farbsemantik fachlich wirklich klar ist.
+- Nutze checked nur als sichtbaren Validierungsmarker für bewusst bestätigte Inhalte.
+- In Step 3 sollen Checkmarks Benefits und die jeweils adressierten Gains, Pains, Results, Objectives oder Decisions/Actions markieren, wenn diese Beziehung wirklich validiert wurde.`
+    },
+    "analytics.fit.shared.no_handoff_boundary": {
+      id: "analytics.fit.shared.no_handoff_boundary",
+      label: "Keine Handoffs in dieser Übung",
+      summary: "Schließt echte Cross-Canvas-Übergaben bewusst aus.",
+      prompt: `Grenze dieser Übung:
+- Diese Übung endet vor dem echten Cross-Canvas-Handoff.
+- Erwähne spätere Übergaben höchstens als Ausblick oder Handoff-Readiness, aber führe keinen echten Transfer auf andere Canvas aus.
+- Formuliere Abschlussfeedback daher als "handoff-ready" oder "noch nicht handoff-ready" statt als tatsächlichen Übergang.`
+    },
+    "analytics.fit.shared.step_status_rules": {
+      id: "analytics.fit.shared.step_status_rules",
+      label: "Step-Status-Regeln",
+      summary: "Macht die Schrittfortschrittslogik explizit und damit für die Button-Freischaltung nutzbar.",
+      prompt: `Regeln für memoryEntry.stepStatus:
+- Verwende in_progress, wenn der Schritt noch mitten in Sammlung, Strukturierung oder Ableitung steckt.
+- Verwende ready_for_review, wenn der aktuelle Schritt genügend Substanz hat, um sinnvoll geprüft oder in den nächsten Schritt überführt zu werden.
+- Verwende completed nur dann, wenn der aktuelle Schritt in seinem Zielbild für diese isolierte Übung tragfähig abgeschlossen ist.
+- Nutze stepStatus nicht als allgemeine Stimmungsaussage, sondern als didaktischen Reifegrad des aktuellen Schritts.`
+    },
+    "analytics.fit.shared.hint_style": {
+      id: "analytics.fit.shared.hint_style",
+      label: "Hint-Stil",
+      summary: "Kurzer, anschlussfähiger Hinweisstil, der Selbstdenken erhält.",
+      prompt: `Hinweisstil:
+- Gib 1 bis 3 konkrete nächste Schritte, keinen Vollrundumschlag.
+- Hilf dem Nutzer selbst zu denken. Gib eher Formulierungsanstöße, Reihenfolgen oder Fokushinweise als komplett ausgearbeitete Endlösungen.
+- Wenn der relevante Bereich leer ist, gib Satzanfänge und eine klare Startreihenfolge.
+- Wenn schon Material da ist, knüpfe explizit an dieses Material an.`
+    },
+    "analytics.fit.shared.coach_style": {
+      id: "analytics.fit.shared.coach_style",
+      label: "Coach-Stil",
+      summary: "Sokratischer Stil mit Leitfragen und genau einem Mikroschritt.",
+      prompt: `Coach-Stil:
+- Formuliere eher coachend als bewertend.
+- Gib 3 bis 5 Leitfragen, die direkt auf den aktuellen Schritt und den tatsächlichen Boardzustand einzahlen.
+- Ergänze genau einen sinnvollen Mikroschritt, mit dem der Nutzer sofort weiterarbeiten kann.
+- Liefere keine komplette Lösung, wenn nicht ausdrücklich danach gefragt wird.`
+    },
+    "analytics.fit.shared.check_style": {
+      id: "analytics.fit.shared.check_style",
+      label: "Check-Stil",
+      summary: "Prüft methodische Reife und sagt klar, ob der Schritt weitertragfähig ist.",
+      prompt: `Check-Stil:
+- Prüfe nicht nur Vollständigkeit, sondern die Reife des aktuellen Arbeitsschritts.
+- Mache explizit sichtbar, was bereits tragfähig ist, was noch fehlt und ob der Schritt bereit für den nächsten Schritt ist.
+- Benenne Fehlplatzierungen, Unschärfen, Doppelungen und logische Brüche konkret.
+- Wenn Mutationen erlaubt sind, nimm nur klare, risikoarme Korrekturen vor.`
+    },
+    "analytics.fit.shared.review_style": {
+      id: "analytics.fit.shared.review_style",
+      label: "Review-Stil",
+      summary: "Qualitativer Review statt bloßer Checkliste oder Schnellurteil.",
+      prompt: `Review-Stil:
+- Führe einen qualitativen Review durch, keinen oberflächlichen Mängelbericht.
+- Benenne Stärken, Risiken, Widersprüche, Auslassungen und methodische Fehlentwicklungen.
+- Wenn der Reifegrad noch zu niedrig ist, sage das offen und route didaktisch sauber zurück in den fehlenden Arbeitsmodus.`
+    },
+    "analytics.fit.shared.synthesis_style": {
+      id: "analytics.fit.shared.synthesis_style",
+      label: "Synthesis-Stil",
+      summary: "Verdichtet nur, wenn genug Substanz vorhanden ist, und erfindet nichts hinzu.",
+      prompt: `Synthese-Stil:
+- Verdichte nur, wenn der aktuelle Schritt inhaltlich genug Substanz hat.
+- Erfinde keine Reife, keinen Fit und keine Abschlusssicherheit, wenn die Vorarbeit fehlt.
+- Gute Synthese heißt: wenige belastbare Aussagen, klare Grenzen, klare Rückroute, wenn etwas noch nicht trägt.`
+    },
+    "analytics.fit.step0.focus_preparation": {
+      id: "analytics.fit.step0.focus_preparation",
+      label: "Fokus: Preparation & Focus",
+      summary: "Setzt den Fokus des Einzelcanvas, ohne die spätere Workshop-Handoff-Logik vorauszusetzen.",
+      prompt: `Schrittfokus "Preparation & Focus":
+- Kläre zuerst, worauf sich dieser Canvas konkret fokussiert: Use Case, Application Idea oder eng umrissene Arbeitssituation.
+- Der Header ist der sichtbare Fokusanker. Dort gehört eine weiße Sticky mit dem konkreten Use-Case-Namen oder Arbeitstitel hin.
+- Weiße Sticky Notes im Canvas stehen in diesem Schritt für kritische Annahmen, Scope-Fragen oder offene Punkte.
+- Nutze Sorted-out links, wenn zusätzliche Fokusvarianten, Scope-Reste oder Nebenthemen bewusst geparkt werden sollen.
+- Die Footer-Legende ist in dieser Übung nicht Kern der Bewertung. Konzentriere dich auf Fokus, Scope und offene Annahmen.`
+    },
+    "analytics.fit.step0.bootstrap_blank_canvas": {
+      id: "analytics.fit.step0.bootstrap_blank_canvas",
+      label: "Bootstrap: leerer Start",
+      summary: "Hilft beim Start eines komplett leeren Einzelcanvas.",
+      prompt: `Wenn der Canvas ganz oder fast leer ist:
+- Starte nicht mit Solutions oder Fit, sondern mit Fokus und Scope.
+- Sinnvolle erste drei Einträge sind:
+  1) eine weiße Header-Sticky mit dem Use-Case-/Anwendungstitel,
+  2) 1 bis 3 weiße Sticky Notes mit offenen Annahmen oder Scope-Fragen,
+  3) optional eine geparkte Alternativfokussierung in sorted_out_left.
+- Gute Satzanfänge sind z. B.:
+  - "Focus on: ..."
+  - "Noch unklar ist ..."
+  - "Wir nehmen für diese Übung an, dass ..."
+  - "Außerhalb des aktuellen Fokus liegt ..."`
+    },
+    "analytics.fit.step0.question_preparation": {
+      id: "analytics.fit.step0.question_preparation",
+      label: "Fragen zu Preparation & Focus",
+      summary: "Macht Fragen zu Zweck, Einstieg und Scope in Step 0 gut beantwortbar.",
+      prompt: `Wenn im Fragemodus Step 0 aktiv ist:
+- Erkläre zuerst kurz Zweck des Canvas und warum der Einstieg über Fokus und Scope erfolgt.
+- Wenn der Nutzer fragt "Was mache ich hier?", antworte mit: Fokus benennen, offene Annahmen sichtbar machen, Nebenthemen parken.
+- Wenn der Nutzer nach dem Unterschied zwischen Fokus und späterem Inhalt fragt, erkläre: Step 0 bereitet die Arbeitsfläche vor; User Needs, Solution Design und Fit kommen danach.
+- Wenn der Nutzer nach Farben fragt, erkläre knapp die methodische Farbsemantik dieser Übung.`
+    },
+    "analytics.fit.step1.focus_user_perspective": {
+      id: "analytics.fit.step1.focus_user_perspective",
+      label: "Fokus: User Needs Analysis",
+      summary: "Führt Step 1 als Divergenz-und-Konvergenz-Logik der Nutzerperspektive.",
+      prompt: `Schrittfokus "User Needs Analysis":
+- Arbeite ausschließlich oder nahezu ausschließlich auf der rechten Seite des Canvas.
+- Step 1 hat eine klare Mikrologik:
+  1) mehrere plausible Nutzerrollen sammeln,
+  2) auf einen Hauptnutzer fokussieren,
+  3) dessen Situation konkretisieren,
+  4) Objectives & Results strukturieren,
+  5) Decisions & Actions strukturieren,
+  6) Gains & Pains andocken und priorisieren.
+- User & Situation ist ein Divergenz-und-Konvergenzmodus: mehrere plausible Nutzerrollen sind erlaubt, aber am Ende soll ein Hauptnutzer im Fokus stehen.
+- Objectives & Results dürfen als kleiner Driver Tree strukturiert werden.
+- Decisions & Actions dürfen als kleiner Workflow strukturiert werden.
+- Gains & Pains stehen aus Nutzersicht nahe an passenden blauen Stickies, bleiben aber standardmäßig unverbunden.`
+    },
+    "analytics.fit.step1.bootstrap_empty_user_perspective": {
+      id: "analytics.fit.step1.bootstrap_empty_user_perspective",
+      label: "Bootstrap: User Needs Analysis",
+      summary: "Hilft, wenn Step 1 noch leer oder unscharf ist.",
+      prompt: `Wenn die rechte Seite leer oder sehr unscharf ist:
+- Starte nicht mit Lösungsideen, sondern mit User & Situation.
+- Sinnvolle Reihenfolge:
+  1) mögliche Nutzerrollen sammeln,
+  2) einen Hauptnutzer wählen,
+  3) Situation konkretisieren,
+  4) 1 bis 3 Objectives/Results,
+  5) 1 bis 3 Decisions/Actions,
+  6) 2 bis 5 kritische Gains/Pains.
+- Gute Satzanfänge:
+  - User & Situation: "<Rolle> muss in <Situation/Kontext> ..."
+  - Objectives & Results: "Ziel ist ..., messbar daran, dass ..."
+  - Decisions & Actions: "<Rolle> entscheidet, ob ..." / "<Rolle> führt ... aus"
+  - Pains: "Schwierig ist derzeit ..., weil ..."
+  - Gains: "Hilfreich wäre ..., damit ..."`
+    },
+    "analytics.fit.step1.diverge_and_focus_users": {
+      id: "analytics.fit.step1.diverge_and_focus_users",
+      label: "Nutzer divergieren und fokussieren",
+      summary: "Macht den Unterschied zwischen Sammeln mehrerer Nutzer und Fokussieren auf einen Hauptnutzer explizit.",
+      prompt: `User-Divergenz und -Konvergenz:
+- Erlaube zunächst mehrere plausible Nutzerrollen.
+- Prüfe dann explizit, ob auf einen Hauptnutzer fokussiert wurde.
+- Sekundäre Nutzerrollen sollen nicht gelöscht werden, sondern in sorted_out_left geparkt oder als spätere Alternative markiert werden.
+- Antworte besonders hilfreich auf Fragen wie "Wie finde ich meine User?": nutze reale Rollen, Jobtitel, Verantwortungen, Entscheidungen und Situationen – nicht abstrakte Zielgruppenschlagworte.`
+    },
+    "analytics.fit.step1.attach_and_prioritize_gains_pains": {
+      id: "analytics.fit.step1.attach_and_prioritize_gains_pains",
+      label: "Gains/Pains andocken und priorisieren",
+      summary: "Macht Gains/Pains zu angedockten, priorisierten Nutzerbeobachtungen statt zu losen Listen.",
+      prompt: `Gains & Pains in Step 1:
+- Gains und Pains sollen aus Nutzersicht formuliert sein und inhaltlich an konkrete blaue Stickies andocken: objective, result, decision oder action.
+- Stelle Gains/Pains möglichst räumlich nahe an das zugehörige blaue Element.
+- Vermeide Pains als negierte Gains und Gains als bloß negierte Pains.
+- Bei Pains darfst du tiefer fragen: Ursache? Konsequenz? Was liegt unter dem Problem? 5 Whys ist als Denkmodus erlaubt.
+- Wenn Gains/Pains zu zahlreich werden, fokussiere kritische Einträge und parke weniger wichtige in sorted_out_left.`
+    },
+    "analytics.fit.step1.question_user_analysis": {
+      id: "analytics.fit.step1.question_user_analysis",
+      label: "Fragen zur Nutzeranalyse",
+      summary: "Erlaubt didaktisch gute Antworten auf typische User-Needs-Fragen.",
+      prompt: `Wenn im Fragemodus Step 1 aktiv ist:
+- Erkläre zuerst kurz, dass dieser Schritt noch nicht die Lösung baut, sondern den Problemraum fokussiert.
+- Wenn der Nutzer nach User-Personas oder Nutzerrollen fragt, erkläre: mehrere plausible Rollen sammeln, dann einen Hauptnutzer fokussieren, Situation konkretisieren.
+- Wenn der Nutzer Objectives/Results und Decisions/Actions verwechselt, trenne klar: Objectives/Results = gewünschte Zustände; Decisions/Actions = Verhalten oder Auswahlhandlungen.
+- Wenn der Nutzer nach Gains/Pains fragt, erkläre: aus Nutzersicht, an blaue Elemente andocken, kritische Punkte priorisieren, Rest parken.`
+    },
+    "analytics.fit.step2.focus_solution_perspective": {
+      id: "analytics.fit.step2.focus_solution_perspective",
+      label: "Fokus: Solution Design",
+      summary: "Modelliert Step 2 als Divergenz, Auswahl, Konkretisierung und Nutzenableitung.",
+      prompt: `Schrittfokus "Solution Design":
+- Arbeite schwerpunktmäßig auf der linken Seite des Canvas.
+- Step 2 folgt dieser Mikrologik:
+  1) Solution-Varianten sammeln,
+  2) eine Variante fokussieren,
+  3) andere Varianten in sorted_out_right parken,
+  4) Information ableiten,
+  5) Functions ableiten,
+  6) Benefits formulieren.
+- Solutions sind zunächst Varianten oder grobe Lösungsideen, nicht automatisch vernetzte Bausteine.
+- Information beschreibt, was der Nutzer wissen muss; Functions beschreiben, wie die Lösung diese Information nutzbar macht; Benefits beschreiben den resultierenden Nutzen.
+- Gute linke Seite folgt der rechten Seite; sie ist keine generische Technologiewand.`
+    },
+    "analytics.fit.step2.bootstrap_empty_solution_perspective": {
+      id: "analytics.fit.step2.bootstrap_empty_solution_perspective",
+      label: "Bootstrap: Solution Design",
+      summary: "Hilft, wenn die linke Seite noch fehlt oder die rechte Seite noch zu schwach ist.",
+      prompt: `Wenn die linke Seite leer oder unreif ist:
+- Prüfe zuerst, ob die rechte Seite schon genug Substanz hat. Wenn nicht, sage klar, welcher Teil von Step 1 zuerst vertieft werden muss.
+- Wenn Step 1 tragfähig genug ist, leite in dieser Reihenfolge ab:
+  1) 1 bis 3 Solution-Varianten sammeln,
+  2) eine Variante auswählen,
+  3) Information aus Decisions/Actions und Pains/Gains ableiten,
+  4) Functions aus der Nutzung dieser Information ableiten,
+  5) Benefits formulieren.
+- Gute Satzanfänge:
+  - Solutions: "Eine Lösungsidee wäre ..."
+  - Information: "Um Entscheidung/Aktion X besser auszuführen, braucht der Nutzer ..."
+  - Functions: "Die Lösung sollte den Nutzer unterstützen, indem ..."
+  - Benefits: "Dadurch wird für den Nutzer ... besser/leichter/schneller/sicherer"`
+    },
+    "analytics.fit.step2.choose_variant_and_park_alternatives": {
+      id: "analytics.fit.step2.choose_variant_and_park_alternatives",
+      label: "Variante wählen und Alternativen parken",
+      summary: "Macht die notwendige Fokussierung in Step 2 explizit.",
+      prompt: `Variantenlogik in Step 2:
+- Sammle zunächst mehrere denkbare Solution-Varianten, wenn das Board noch im Divergenzmodus ist.
+- Fokussiere dann bewusst eine Hauptvariante.
+- Parke alternative Varianten in sorted_out_right statt sie zu löschen.
+- Benefits sollen aus der gewählten Variante folgen, nicht aus allen Varianten gleichzeitig.
+- Wenn keine fokussierte Variante erkennbar ist, benenne das als zentrale Hürde für den Übergang in Fit Validation.`
+    },
+    "analytics.fit.step2.question_solution_design": {
+      id: "analytics.fit.step2.question_solution_design",
+      label: "Fragen zum Solution Design",
+      summary: "Beantwortet typische Fragen zur Ableitung der linken Seite.",
+      prompt: `Wenn im Fragemodus Step 2 aktiv ist:
+- Erkläre zuerst, dass dieser Schritt die Lösung aus der Nutzerarbeit ableitet, nicht frei erfindet.
+- Wenn der Nutzer nach dem Unterschied zwischen Solution, Information, Function und Benefit fragt, trenne diese vier Ebenen klar.
+- Wenn der Nutzer fragt, wie er von rechts nach links kommt, antworte mit der Reihenfolge: Variante wählen → Information ableiten → Function ableiten → Benefit formulieren.
+- Wenn die rechte Seite noch zu schwach ist, sage klar, welche Step-1-Inhalte zuerst präzisiert werden müssen.`
+    },
+    "analytics.fit.step3.focus_fit_review": {
+      id: "analytics.fit.step3.focus_fit_review",
+      label: "Fokus: Fit Validation",
+      summary: "Bewertet den Fit als Validierungs-, Markierungs- und Reduktionslogik.",
+      prompt: `Schrittfokus "Fit Validation & Minimum Desired Product":
+- Step 3 ist keine bloße Textsynthese, sondern eine Validierungs- und Reduktionsphase.
+- Prüfe für jeden Benefit, welchen Pain, Gain, Result, Objective, Decision oder welche Action er tatsächlich adressiert.
+- Nutze Checkmarks nur für bewusst validierte Beziehungen.
+- Ziel ist nicht maximale Menge, sondern ein Minimum Desired Product: nur validierte Benefits und die dafür nötigen Information/Functions sollen übrig bleiben.
+- Wenn der Fit nicht trägt, route nicht schönredend weiter, sondern zurück zur besseren Variantenwahl oder Ableitung.`
+    },
+    "analytics.fit.step3.bootstrap_incomplete_fit": {
+      id: "analytics.fit.step3.bootstrap_incomplete_fit",
+      label: "Vorbedingung: unreifer Fit",
+      summary: "Verhindert verfrühte Fit-Verdichtung auf unreifem Material.",
+      prompt: `Wenn die Nutzerperspektive oder die Lösungsperspektive noch zu leer, zu allgemein oder zu widersprüchlich ist:
+- Täusche keinen tragfähigen Fit vor.
+- Benenne präzise, welche Vorbedingungen fehlen.
+- Route sauber zurück: zu Step 1, wenn Problemraum, User, Objectives, Decisions oder Gains/Pains fehlen; zu Step 2, wenn Variantenwahl, Information, Functions oder Benefits fehlen.
+- Wenn der aktuelle Stand nur partiell tragfähig ist, sage klar, welche Fit-Ketten schon belastbar sind und welche noch nicht.`
+    },
+    "analytics.fit.step3.focus_fit_synthesis": {
+      id: "analytics.fit.step3.focus_fit_synthesis",
+      label: "Fokus: Check verdichten",
+      summary: "Verdichtet validierten Fit in kurze Check-Aussagen.",
+      prompt: `Check-Verdichtung:
+- Formuliere im Feld Check nur 1 bis 3 knappe, belastbare Fit-Aussagen.
+- Gute Check-Aussagen machen sichtbar, welche Information oder Function welche Entscheidung oder Handlung verbessert und wie dadurch ein kritischer Gain, Pain, Result oder ein Objective adressiert wird.
+- Verwende das Feld Check nicht als neue Ideensammlung und nicht als zweite Vollstruktur des Canvas.`
+    },
+    "analytics.fit.step3.prune_to_mdp": {
+      id: "analytics.fit.step3.prune_to_mdp",
+      label: "Zum Minimum Desired Product reduzieren",
+      summary: "Übersetzt die Tutorial-Logik von Validieren, Markieren, Parken und Reduzieren in konkrete Handlungsregeln.",
+      prompt: `Pruning- und MDP-Logik:
+- Wenn ein Benefit klar validiert ist, markiere den Benefit und die adressierten rechten Elemente mit checked=true.
+- Wenn ein Benefit nicht validiert ist, lasse ihn nicht einfach stehen: parke ihn oder entferne ihn – je nachdem, ob er noch als Alternative sinnvoll ist.
+- Information und Functions ohne tragfähigen Benefit sollen ebenfalls nicht einfach stehenbleiben.
+- Nutze sorted_out_right für alternative oder vorerst verworfene Lösungsbestandteile.
+- Lösche nur dann direkt, wenn ein Inhalt klar redundant, leer oder didaktisch nicht mehr sinnvoll ist. Parke lieber, wenn der Inhalt noch als Alternative taugt.
+- Das Ergebnis von Step 3 ist ein Minimum Desired Product, nicht die Summe aller zuvor gesammelten Ideen.`
+    },
+    "analytics.fit.step3.question_fit_validation": {
+      id: "analytics.fit.step3.question_fit_validation",
+      label: "Fragen zur Fit-Validierung",
+      summary: "Beantwortet typische Fragen zu Checkmarks, Pruning und Minimum Desired Product.",
+      prompt: `Wenn im Fragemodus Step 3 aktiv ist:
+- Erkläre, dass Step 3 validiert und reduziert, nicht nur formuliert.
+- Wenn der Nutzer nach Checkmarks fragt, erkläre: Checkmarks markieren validierte Beziehungen zwischen Benefits und relevanten Elementen auf der rechten Seite.
+- Wenn der Nutzer fragt, was mit unvalidierten Inhalten passiert, erkläre: tragfähige Alternativen werden geparkt, klar unbrauchbare Reste entfernt.
+- Wenn der Nutzer nach dem Minimum Desired Product fragt, erkläre: Es ist die kleinste noch tragfähige Lösungskonfiguration, die die wichtigsten kritischen Gains/Pains adressiert.
+- Wenn der Nutzer nach dem nächsten Schritt fragt, antworte mit Handoff-Readiness, aber ohne echten Cross-Canvas-Transfer.`
+    },
+    "analytics.fit.global.focus_cross_instance_review": {
+      id: "analytics.fit.global.focus_cross_instance_review",
+      label: "Fokus: Cross-Instance-Review",
+      summary: "Vergleicht mehrere Boards auf Arbeitsmodus, Reifegrad und wiederkehrende Muster.",
+      prompt: `Globaler Vergleichsmodus:
+- Vergleiche die betrachteten Instanzen im Gesamtzusammenhang.
+- Unterscheide, welche Boards noch im Sammelmodus sind, welche fokussiert haben, welche sauber ableiten und welche bereits valide Fit-Ketten zeigen.
+- Benenne wiederkehrende Muster: zu viele Nutzer gleichzeitig, unscharfe Objectives, fehlende Decisions/Actions, Benefits ohne Ableitung, zu frühe Fit-Verdichtung oder ungeprüfte Restbestände.
+- Das Ziel ist Orientierung und Mustererkennung, nicht globale Massenmutation.`
+    }
+  };
+}
+
+function buildAnalyticsDidacticSteps(pack) {
+  const stickyActions = ["create_sticky", "move_sticky", "delete_sticky"];
+  const structuredActions = ["create_sticky", "move_sticky", "delete_sticky", "create_connector"];
+  const validationActions = ["create_sticky", "move_sticky", "delete_sticky", "create_connector", "set_sticky_color", "set_check_status"];
+
+  return {
+    step0_preparation_and_focus: makeStepDef({
+      id: "step0_preparation_and_focus",
+      order: 5,
+      label: "Preparation & Focus",
+      visibleInstruction: "Starte mit Fokus und Scope: Benenne den Use Case im Header, notiere kritische Annahmen oder offene Fragen in Weiß und parke Nebenthemen bewusst im Sorted-out-Bereich.",
+      flowInstruction: "Starte mit Fokus und Scope: Lege im Header den konkreten Use Case fest, sammle kritische Annahmen oder offene Fragen als weiße Stickies und parke Nebenthemen bewusst, statt direkt in User oder Lösungen zu springen.",
+      flowSummary: "Vorbereitungsphase vor der eigentlichen Analyse: Fokus im Header setzen, Scope schärfen, offene Annahmen sichtbar machen, Nebenthemen bewusst parken.",
+      allowedActions: stickyActions,
+      defaultEnterTrigger: "selection.hint",
+      questionModuleIds: [
+        "analytics.fit.shared.method_guardrails",
+        "analytics.fit.shared.question_style",
+        "analytics.fit.shared.validation_and_color_semantics",
+        "analytics.fit.shared.no_handoff_boundary",
+        "analytics.fit.step0.focus_preparation",
+        "analytics.fit.step0.question_preparation"
+      ],
+      transitions: [
+        makeManualTransition("step1_user_perspective", {
+          allowedAfterTriggers: ["selection.check", "selection.review"],
+          requiredStepStatuses: ["ready_for_review", "completed"]
+        })
+      ],
+      triggerProfiles: {
+        "selection.hint": makeTriggerProfileDef("selection.hint", {
+          mutationPolicy: "minimal",
+          feedbackPolicy: "text",
+          prompt: `Hinweismodus für den Schritt "Preparation & Focus":
+- Hilf beim Einstieg, ohne die spätere Workshoplogik vorwegzunehmen.
+- Erkläre knapp, wie der Header-Fokus gesetzt wird und welche offenen Annahmen oder Scope-Fragen jetzt sichtbar gemacht werden sollten.
+- Schlage 1 bis 3 konkrete erste Stickies oder Satzanfänge vor.
+- Nutze Sorted-out links für Nebenthemen, alternative Fokusvarianten oder Scope-Reste.
+- Liefere stepStatus normalerweise als in_progress; nur wenn Fokus und Scope bereits klar sind, ist ready_for_review plausibel.`,
+          flowControl: makeFlowControlDef({
+            id: "analytics.fit.step0.hint",
+            label: "Vorbereitung starten",
+            summary: "Hilft beim Einstieg in Fokus, Scope und offene Annahmen auf diesem Canvas.",
+            moduleIds: [
+              "analytics.fit.shared.method_guardrails",
+              "analytics.fit.shared.feedback_contract",
+              "analytics.fit.shared.hint_style",
+              "analytics.fit.shared.validation_and_color_semantics",
+              "analytics.fit.shared.sorted_out_semantics",
+              "analytics.fit.shared.no_handoff_boundary",
+              "analytics.fit.step0.focus_preparation",
+              "analytics.fit.step0.bootstrap_blank_canvas"
+            ],
+            mutationPolicy: "minimal",
+            feedbackPolicy: "text",
+            allowedActions: [],
+            uiHint: "Gut für den allerersten Einstieg in dieses Canvas.",
+            sortOrder: 1
+          })
+        }),
+        "selection.coach": makeTriggerProfileDef("selection.coach", {
+          mutationPolicy: "none",
+          feedbackPolicy: "text",
+          prompt: `Coachmodus für den Schritt "Preparation & Focus":
+- Arbeite coachend statt lösend.
+- Hilf, den Use Case enger zu fokussieren, offene Annahmen sichtbar zu machen und Nebenthemen bewusst zu parken.
+- Gib 3 bis 5 Leitfragen und genau einen Mikroschritt.
+- actions sollen normalerweise leer bleiben.
+- Nutze stepStatus normalerweise als in_progress.`,
+          flowControl: makeFlowControlDef({
+            id: "analytics.fit.step0.coach",
+            label: "Fokus coachen",
+            summary: "Coacht Fokus, Scope und offene Annahmen mit Leitfragen und einem Mikroschritt.",
+            moduleIds: [
+              "analytics.fit.shared.method_guardrails",
+              "analytics.fit.shared.feedback_contract",
+              "analytics.fit.shared.coach_style",
+              "analytics.fit.shared.no_handoff_boundary",
+              "analytics.fit.step0.focus_preparation",
+              "analytics.fit.step0.bootstrap_blank_canvas"
+            ],
+            mutationPolicy: "none",
+            feedbackPolicy: "text",
+            allowedActions: [],
+            uiHint: "Nützlich, wenn Teilnehmende noch unsicher sind, worauf der Canvas fokussieren soll.",
+            sortOrder: 2
+          })
+        }),
+        "selection.check": makeTriggerProfileDef("selection.check", {
+          mutationPolicy: "minimal",
+          feedbackPolicy: "text",
+          prompt: `Prüfmodus für den Schritt "Preparation & Focus":
+- Prüfe, ob der Canvas einen klaren Fokus im Header hat und ob offene Annahmen oder Scope-Fragen sichtbar gemacht wurden.
+- Prüfe, ob noch diffuse Mehrdeutigkeit besteht: zu viele mögliche Use Cases, kein klarer Arbeitstitel, keine Abgrenzung.
+- Nimm nur kleine, risikoarme Korrekturen vor.
+- Setze stepStatus auf ready_for_review, wenn Fokus, Scope und offene Annahmen für den Start in Step 1 tragfähig genug sind; sonst in_progress.`,
+          flowControl: makeFlowControlDef({
+            id: "analytics.fit.step0.check",
+            label: "Fokus prüfen",
+            summary: "Prüft, ob Fokus und Scope klar genug sind, um in die Nutzeranalyse zu starten.",
+            moduleIds: [
+              "analytics.fit.shared.method_guardrails",
+              "analytics.fit.shared.feedback_contract",
+              "analytics.fit.shared.check_style",
+              "analytics.fit.shared.step_status_rules",
+              "analytics.fit.shared.validation_and_color_semantics",
+              "analytics.fit.step0.focus_preparation"
+            ],
+            mutationPolicy: "minimal",
+            feedbackPolicy: "text",
+            allowedActions: [],
+            uiHint: "Nutze diesen Button, bevor du in die Nutzeranalyse weitergehst.",
+            sortOrder: 3
+          })
+        }),
+        "selection.autocorrect": makeTriggerProfileDef("selection.autocorrect", {
+          mutationPolicy: "limited",
+          feedbackPolicy: "both",
+          prompt: `Autokorrekturmodus für den Schritt "Preparation & Focus":
+- Korrigiere nur klare Vorbereitungsprobleme.
+- Erzeuge oder verschiebe bei Bedarf eine weiße Header-Sticky für den Fokus und wenige weiße Stickies für kritische Annahmen oder offene Fragen.
+- Parke alternative Fokusvarianten oder Scope-Reste bevorzugt in sorted_out_left.
+- Entwickle in diesem Schritt keine Nutzerperspektive, Lösung oder Fit-Aussagen.
+- Erkläre im feedback knapp, was du gesetzt oder geparkt hast.`
+        }),
+        "selection.review": makeTriggerProfileDef("selection.review", {
+          mutationPolicy: "none",
+          feedbackPolicy: "text",
+          prompt: `Reviewmodus für den Schritt "Preparation & Focus":
+- Führe einen qualitativen Review von Fokus, Scope und offenen Annahmen durch.
+- Benenne, ob der Canvas zu breit, zu unklar oder ausreichend fokussiert ist.
+- Nimm standardmäßig keine Board-Mutationen vor.
+- Wenn der Fokus tragfähig ist, setze stepStatus auf ready_for_review oder completed; sonst in_progress.`
+        }),
+        "global.hint": makeTriggerProfileDef("global.hint", {
+          mutationPolicy: "none",
+          feedbackPolicy: "text",
+          prompt: `Globaler Hinweismodus für den Schritt "Preparation & Focus":
+- Gib übergreifende Hinweise, wie mehrere Teams ihre Use Cases enger fokussieren und offene Annahmen sichtbar machen können.
+- Benenne typische Startfehler und sinnvolle Einstiegsfragen.`
+        }),
+        "global.review": makeTriggerProfileDef("global.review", {
+          mutationPolicy: "none",
+          feedbackPolicy: "text",
+          prompt: `Globaler Reviewmodus für den Schritt "Preparation & Focus":
+- Vergleiche über mehrere Instanzen hinweg, wo Fokus und Scope klar genug sind und wo noch Mehrdeutigkeit oder fehlende Abgrenzung dominiert.
+- Fokus auf Vergleich und Muster, nicht auf Mutationen.`
+        })
+      }
+    }),
+    step1_user_perspective: makeStepDef({
+      id: "step1_user_perspective",
+      order: 10,
+      label: "User Needs Analysis",
+      visibleInstruction: "Arbeite jetzt die Nutzerperspektive aus: mehrere plausible Nutzerrollen sammeln, auf einen Hauptnutzer fokussieren, Situation konkretisieren, Objectives & Results strukturieren, Decisions & Actions strukturieren und Gains/Pains andocken.",
+      flowInstruction: "Baue jetzt den Problemraum auf: Nutzerrollen sammeln und fokussieren, Situation präzisieren, Objectives & Results als kleinen Driver Tree strukturieren, Decisions & Actions als kleinen Workflow skizzieren und Gains/Pains aus Nutzersicht andocken und priorisieren.",
+      flowSummary: "Step 1 ist Divergenz und Konvergenz im Problemraum: nicht sofort lösen, sondern Nutzerarbeit, Ziele, Ergebnisse, Entscheidungen, Handlungen und kritische Gains/Pains tragfähig machen.",
+      allowedActions: structuredActions,
+      defaultEnterTrigger: "selection.hint",
+      questionModuleIds: [
+        "analytics.fit.shared.method_guardrails",
+        "analytics.fit.shared.question_style",
+        "analytics.fit.shared.soft_reference_hints",
+        "analytics.fit.shared.sorted_out_semantics",
+        "analytics.fit.shared.validation_and_color_semantics",
+        "analytics.fit.shared.no_handoff_boundary",
+        "analytics.fit.step1.focus_user_perspective",
+        "analytics.fit.step1.diverge_and_focus_users",
+        "analytics.fit.step1.attach_and_prioritize_gains_pains",
+        "analytics.fit.step1.question_user_analysis"
+      ],
+      transitions: [
+        makeManualTransition("step2_solution_perspective", {
+          allowedAfterTriggers: ["selection.check", "selection.review"],
+          requiredStepStatuses: ["ready_for_review", "completed"]
+        })
+      ],
+      triggerProfiles: {
+        "selection.hint": makeTriggerProfileDef("selection.hint", {
+          mutationPolicy: "minimal",
+          feedbackPolicy: "text",
+          prompt: `Hinweismodus für den Schritt "User Needs Analysis":
+- Gib möglichst wenig invasive Unterstützung.
+- Erkenne, in welchem Mikro-Arbeitsmodus die Instanz gerade steckt: Nutzer sammeln, Hauptnutzer fokussieren, Situation konkretisieren, Objectives/Results strukturieren, Decisions/Actions strukturieren oder Gains/Pains andocken.
+- Priorisiere genau den nächsten sinnvollen Arbeitsmodus und gib 1 bis 3 konkrete Satzanfänge oder Formulierungsanstöße.
+- Dränge nicht auf Lösungen, Benefits oder Fit.
+- Nutze stepStatus normalerweise als in_progress; ready_for_review nur, wenn die Nutzerperspektive bereits tragfähig wirkt.`,
+          flowControl: makeFlowControlDef({
+            id: "analytics.fit.step1.hint",
+            label: "Nutzeranalyse starten",
+            summary: "Gibt den nächsten sinnvollen Arbeitsschritt in der Nutzeranalyse mit Formulierungsanstößen vor.",
+            moduleIds: [
+              "analytics.fit.shared.method_guardrails",
+              "analytics.fit.shared.feedback_contract",
+              "analytics.fit.shared.hint_style",
+              "analytics.fit.shared.soft_reference_hints",
+              "analytics.fit.shared.sorted_out_semantics",
+              "analytics.fit.step1.focus_user_perspective",
+              "analytics.fit.step1.bootstrap_empty_user_perspective",
+              "analytics.fit.step1.diverge_and_focus_users",
+              "analytics.fit.step1.attach_and_prioritize_gains_pains"
+            ],
+            mutationPolicy: "minimal",
+            feedbackPolicy: "text",
+            allowedActions: [],
+            uiHint: "Nützlich, wenn ein Team im Problemraum festhängt oder noch nicht weiß, womit es als Nächstes weitermachen soll.",
+            sortOrder: 11
+          })
+        }),
+        "selection.coach": makeTriggerProfileDef("selection.coach", {
+          mutationPolicy: "none",
+          feedbackPolicy: "text",
+          prompt: `Coachmodus für den Schritt "User Needs Analysis":
+- Coache statt zu lösen.
+- Hilf besonders bei Nutzerfokus, Situation, Objectives/Results, Decisions/Actions und kritischen Gains/Pains.
+- Gib 3 bis 5 Leitfragen und genau einen Mikroschritt.
+- Betone, dass Gains/Pains aus Nutzersicht formuliert und an blaue Elemente angedockt werden sollen.
+- actions sollen normalerweise leer bleiben.`,
+          flowControl: makeFlowControlDef({
+            id: "analytics.fit.step1.coach",
+            label: "Nutzeranalyse coachen",
+            summary: "Coacht die Nutzeranalyse mit Leitfragen und genau einem Mikroschritt.",
+            moduleIds: [
+              "analytics.fit.shared.method_guardrails",
+              "analytics.fit.shared.feedback_contract",
+              "analytics.fit.shared.coach_style",
+              "analytics.fit.shared.soft_reference_hints",
+              "analytics.fit.step1.focus_user_perspective",
+              "analytics.fit.step1.diverge_and_focus_users",
+              "analytics.fit.step1.attach_and_prioritize_gains_pains"
+            ],
+            mutationPolicy: "none",
+            feedbackPolicy: "text",
+            allowedActions: [],
+            uiHint: "Gut, wenn Teilnehmende selbst denken sollen und eher Leitfragen als Lösungen brauchen.",
+            sortOrder: 12
+          })
+        }),
+        "selection.check": makeTriggerProfileDef("selection.check", {
+          mutationPolicy: "limited",
+          feedbackPolicy: "text",
+          prompt: `Prüfmodus für den Schritt "User Needs Analysis":
+- Prüfe die rechte Seite in dieser Reihenfolge: Hauptnutzer & Situation, Objectives & Results, Decisions & Actions, Gains/Pains.
+- Prüfe besonders, ob mehrere Nutzerrollen sinnvoll divergiert und anschließend auf einen Hauptnutzer konvergiert wurden.
+- Prüfe, ob Objectives/Results und Decisions/Actions nicht verwechselt wurden.
+- Prüfe, ob Gains/Pains aus Nutzersicht formuliert, an blaue Elemente angedockt und bei Überfülle priorisiert oder geparkt wurden.
+- Korrigiere nur klare Fehlplatzierungen oder offensichtliche Unschärfen.
+- Setze stepStatus auf ready_for_review, wenn ein fokussierter Nutzer, eine konkrete Situation, 1 bis 3 Objectives/Results, 1 bis 3 Decisions/Actions und mehrere kritische Gains/Pains vorhanden sind; sonst in_progress.`,
+          flowControl: makeFlowControlDef({
+            id: "analytics.fit.step1.check",
+            label: "Nutzeranalyse prüfen",
+            summary: "Prüft, ob die Nutzeranalyse tragfähig genug ist, um daraus eine Lösung abzuleiten.",
+            moduleIds: [
+              "analytics.fit.shared.method_guardrails",
+              "analytics.fit.shared.feedback_contract",
+              "analytics.fit.shared.check_style",
+              "analytics.fit.shared.step_status_rules",
+              "analytics.fit.shared.sorted_out_semantics",
+              "analytics.fit.step1.focus_user_perspective",
+              "analytics.fit.step1.diverge_and_focus_users",
+              "analytics.fit.step1.attach_and_prioritize_gains_pains"
+            ],
+            mutationPolicy: "limited",
+            feedbackPolicy: "text",
+            allowedActions: [],
+            uiHint: "Nutze diesen Button, wenn die rechte Seite schon Substanz hat und du wissen willst, ob Step 2 sinnvoll starten kann.",
+            sortOrder: 13
+          })
+        }),
+        "selection.autocorrect": makeTriggerProfileDef("selection.autocorrect", {
+          mutationPolicy: "limited",
+          feedbackPolicy: "both",
+          prompt: `Autokorrekturmodus für den Schritt "User Needs Analysis":
+- Korrigiere nur klare Probleme auf der rechten Seite.
+- Verschiebe eindeutig falsch platzierte Stickies.
+- Ergänze höchstens wenige, klar notwendige Stickies, wenn ohne sie der Schritt didaktisch blockiert ist.
+- Nutze Farben konsistent: blau für User-/Problemraum-Elemente, grün für Gains, rot für Pains, weiß für offene Fragen.
+- Parke sekundäre Nutzerrollen oder weniger wichtige Gains/Pains bevorzugt in sorted_out_left statt sie vorschnell zu löschen.
+- Ergänze Connectoren nur dort, wo sie als kleiner Driver Tree oder kleiner Workflow methodisch wirklich sinnvoll sind.`
+        }),
+        "selection.review": makeTriggerProfileDef("selection.review", {
+          mutationPolicy: "none",
+          feedbackPolicy: "text",
+          prompt: `Reviewmodus für den Schritt "User Needs Analysis":
+- Führe einen qualitativen Review des Problemraums durch.
+- Benenne Reifegrad, Stärken, Unschärfen, Widersprüche und fehlende Vorarbeit.
+- Prüfe, ob das Team zu früh in Lösungen springt oder Gains/Pains nur lose sammelt, statt sie an die Nutzerarbeit anzudocken.
+- Nimm standardmäßig keine Board-Mutationen vor.
+- Nutze stepStatus als in_progress oder ready_for_review; completed nur bei wirklich tragfähiger Nutzeranalyse.`
+        }),
+        "selection.synthesize": makeTriggerProfileDef("selection.synthesize", {
+          mutationPolicy: "none",
+          feedbackPolicy: "text",
+          prompt: `Synthesemodus für den Schritt "User Needs Analysis":
+- Führe KEINE Fit- oder Lösungssynthese durch.
+- Verdichte stattdessen nur den aktuellen Stand der Nutzeranalyse: Hauptnutzer, Situation, wichtigste Objectives/Results, Decisions/Actions und kritische Gains/Pains.
+- Wenn die Nutzeranalyse noch zu unreif ist, sage das explizit.
+- actions sollen normalerweise leer bleiben.`
+        }),
+        "global.hint": makeTriggerProfileDef("global.hint", {
+          mutationPolicy: "none",
+          feedbackPolicy: "text",
+          prompt: `Globaler Hinweismodus für den Schritt "User Needs Analysis":
+- Gib übergreifende Hinweise, welche Mikro-Arbeitsmodi über mehrere Instanzen hinweg noch fehlen: Nutzerfokus, Situation, Objectives/Results, Decisions/Actions oder Gains/Pains.
+- Mache deutlich, welche Boards noch divergieren und welche bereits konvergiert haben.`
+        }),
+        "global.check": makeTriggerProfileDef("global.check", {
+          mutationPolicy: "limited",
+          feedbackPolicy: "text",
+          prompt: `Globaler Prüfmodus für den Schritt "User Needs Analysis":
+- Prüfe über mehrere Instanzen hinweg Reifegrad, Fokus und methodische Qualität der Nutzeranalyse.
+- Benenne, wo Teams noch keinen Hauptnutzer fokussiert haben, wo Objectives/Results oder Decisions/Actions fehlen und wo Gains/Pains nur lose Listen sind.`
+        }),
+        "global.autocorrect": makeTriggerProfileDef("global.autocorrect", {
+          mutationPolicy: "limited",
+          feedbackPolicy: "both",
+          prompt: `Globaler Autokorrekturmodus für den Schritt "User Needs Analysis":
+- Korrigiere über mehrere Instanzen hinweg nur eindeutige Fehlplatzierungen oder sehr offensichtliche Strukturprobleme der rechten Seite.
+- Keine Vorwegnahme der linken Lösungsperspektive.`
+        }),
+        "global.review": makeTriggerProfileDef("global.review", {
+          mutationPolicy: "none",
+          feedbackPolicy: "text",
+          prompt: `Globaler Reviewmodus für den Schritt "User Needs Analysis":
+- Vergleiche mehrere Nutzeranalysen hinsichtlich Fokus, Präzision, Strukturierung und Didaktik.
+- Hebe hervor, welche Boards bereit für Step 2 sind und welche noch im Problemraum vertieft werden müssen.`
+        }),
+        "global.coach": makeTriggerProfileDef("global.coach", {
+          mutationPolicy: "none",
+          feedbackPolicy: "text",
+          prompt: `Globaler Coachmodus für den Schritt "User Needs Analysis":
+- Gib übergreifende Leitfragen und eine klare Orientierung, wie Teams ihre Nutzeranalyse weiter schärfen sollten.
+- Mache sichtbar, wo noch Divergenz nötig ist und wo bereits fokussiert werden sollte.`
+        })
+      }
+    }),
+    step2_solution_perspective: makeStepDef({
+      id: "step2_solution_perspective",
+      order: 20,
+      label: "Solution Design",
+      visibleInstruction: "Leite jetzt die Lösungsperspektive ab: mehrere Solution-Varianten sammeln, eine Hauptvariante wählen, Alternativen rechts parken, daraus Information und Functions ableiten und erst danach Benefits formulieren.",
+      flowInstruction: "Entwickle jetzt die linke Seite aus dem Problemraum heraus: Varianten sammeln und fokussieren, Information und Functions aus Nutzerarbeit ableiten und daraus konkrete Benefits formulieren.",
+      flowSummary: "Step 2 ist Divergenz, Auswahl, Konkretisierung und Nutzenableitung – nicht freie Technologiewahl und nicht Vollvernetzung.",
+      allowedActions: structuredActions,
+      defaultEnterTrigger: "selection.hint",
+      questionModuleIds: [
+        "analytics.fit.shared.method_guardrails",
+        "analytics.fit.shared.question_style",
+        "analytics.fit.shared.soft_reference_hints",
+        "analytics.fit.shared.sorted_out_semantics",
+        "analytics.fit.shared.validation_and_color_semantics",
+        "analytics.fit.shared.no_handoff_boundary",
+        "analytics.fit.step2.focus_solution_perspective",
+        "analytics.fit.step2.choose_variant_and_park_alternatives",
+        "analytics.fit.step2.question_solution_design"
+      ],
+      transitions: [
+        makeManualTransition("step3_fit_check_and_synthesis", {
+          allowedAfterTriggers: ["selection.check", "selection.review"],
+          requiredStepStatuses: ["ready_for_review", "completed"]
+        })
+      ],
+      triggerProfiles: {
+        "selection.hint": makeTriggerProfileDef("selection.hint", {
+          mutationPolicy: "minimal",
+          feedbackPolicy: "text",
+          prompt: `Hinweismodus für den Schritt "Solution Design":
+- Gib 1 bis 3 präzise Hinweise, wie die linke Seite aus der rechten Seite abgeleitet werden sollte.
+- Erkenne den aktuellen Mikro-Arbeitsmodus: Varianten sammeln, Variante wählen, Information ableiten, Functions ableiten oder Benefits formulieren.
+- Wenn die rechte Seite noch zu schwach ist, sage das offen und route sauber zurück nach Step 1.
+- Nutze Sorted-out rechts für alternative Lösungsideen oder spätere Optionen.
+- stepStatus bleibt normalerweise in_progress, bis eine fokussierte Lösungsvariante und tragfähige Ableitungen sichtbar sind.`,
+          flowControl: makeFlowControlDef({
+            id: "analytics.fit.step2.hint",
+            label: "Solution Design starten",
+            summary: "Gibt den nächsten sinnvollen Ableitungsschritt auf der linken Seite vor.",
+            moduleIds: [
+              "analytics.fit.shared.method_guardrails",
+              "analytics.fit.shared.feedback_contract",
+              "analytics.fit.shared.hint_style",
+              "analytics.fit.shared.sorted_out_semantics",
+              "analytics.fit.step2.focus_solution_perspective",
+              "analytics.fit.step2.bootstrap_empty_solution_perspective",
+              "analytics.fit.step2.choose_variant_and_park_alternatives"
+            ],
+            mutationPolicy: "minimal",
+            feedbackPolicy: "text",
+            allowedActions: [],
+            uiHint: "Hilfreich, wenn aus dem Problemraum nun gezielt eine Lösungsperspektive abgeleitet werden soll.",
+            sortOrder: 21
+          })
+        }),
+        "selection.coach": makeTriggerProfileDef("selection.coach", {
+          mutationPolicy: "none",
+          feedbackPolicy: "text",
+          prompt: `Coachmodus für den Schritt "Solution Design":
+- Coache die Ableitung der linken Seite statt eine Komplettlösung zu liefern.
+- Hilf, Varianten bewusst zu unterscheiden, eine Hauptvariante zu wählen und Information/Functions/Benefits sauber voneinander zu trennen.
+- Gib 3 bis 5 Leitfragen und genau einen Mikroschritt.
+- actions sollen normalerweise leer bleiben.`,
+          flowControl: makeFlowControlDef({
+            id: "analytics.fit.step2.coach",
+            label: "Solution Design coachen",
+            summary: "Coacht Variantenwahl und Ableitung von Information, Functions und Benefits.",
+            moduleIds: [
+              "analytics.fit.shared.method_guardrails",
+              "analytics.fit.shared.feedback_contract",
+              "analytics.fit.shared.coach_style",
+              "analytics.fit.shared.sorted_out_semantics",
+              "analytics.fit.step2.focus_solution_perspective",
+              "analytics.fit.step2.choose_variant_and_park_alternatives"
+            ],
+            mutationPolicy: "none",
+            feedbackPolicy: "text",
+            allowedActions: [],
+            uiHint: "Gut, wenn Teilnehmende die linke Seite selbst herleiten sollen, statt eine Lösung vorgegeben zu bekommen.",
+            sortOrder: 22
+          })
+        }),
+        "selection.check": makeTriggerProfileDef("selection.check", {
+          mutationPolicy: "limited",
+          feedbackPolicy: "text",
+          prompt: `Prüfmodus für den Schritt "Solution Design":
+- Prüfe, ob Step 2 als echte Ableitung aus Step 1 sichtbar ist.
+- Prüfe, ob mehrere Solution-Varianten gesammelt und anschließend auf eine Hauptvariante fokussiert wurden.
+- Prüfe, ob alternative Varianten geparkt statt mit dem Hauptpfad vermischt wurden.
+- Prüfe, ob Information und Functions konkrete Decisions/Actions unterstützen und ob Benefits wirklich aus Information/Funktion folgen.
+- Korrigiere nur klare Fehlplatzierungen oder grobe Unschärfen.
+- Setze stepStatus auf ready_for_review, wenn eine fokussierte Variante, ableitbare Information/Functions und belastbare Benefits sichtbar sind; sonst in_progress.`,
+          flowControl: makeFlowControlDef({
+            id: "analytics.fit.step2.check",
+            label: "Solution Design prüfen",
+            summary: "Prüft, ob die Lösungsperspektive fokussiert und sauber aus Step 1 abgeleitet ist.",
+            moduleIds: [
+              "analytics.fit.shared.method_guardrails",
+              "analytics.fit.shared.feedback_contract",
+              "analytics.fit.shared.check_style",
+              "analytics.fit.shared.step_status_rules",
+              "analytics.fit.shared.sorted_out_semantics",
+              "analytics.fit.step2.focus_solution_perspective",
+              "analytics.fit.step2.choose_variant_and_park_alternatives"
+            ],
+            mutationPolicy: "limited",
+            feedbackPolicy: "text",
+            allowedActions: [],
+            uiHint: "Nutze diesen Button, wenn du wissen willst, ob aus der Nutzerperspektive bereits eine tragfähige Lösungsperspektive geworden ist.",
+            sortOrder: 23
+          })
+        }),
+        "selection.autocorrect": makeTriggerProfileDef("selection.autocorrect", {
+          mutationPolicy: "limited",
+          feedbackPolicy: "both",
+          prompt: `Autokorrekturmodus für den Schritt "Solution Design":
+- Korrigiere nur klare Probleme der linken Seite.
+- Trenne vermischte Ebenen: Solution, Information, Function, Benefit.
+- Parke alternative oder unfokussierte Solution-Varianten in sorted_out_right, statt alles gleichzeitig im Hauptpfad zu belassen.
+- Ergänze höchstens wenige, klar notwendige Stickies, wenn ohne sie die Ableitungslogik nicht lesbar wäre.
+- Ergänze Connectoren nur selektiv, wo eine konkrete Unterstützungs- oder Ableitungsbeziehung klar ist.`
+        }),
+        "selection.review": makeTriggerProfileDef("selection.review", {
+          mutationPolicy: "none",
+          feedbackPolicy: "text",
+          prompt: `Reviewmodus für den Schritt "Solution Design":
+- Führe einen qualitativen Review der linken Seite durch.
+- Prüfe Relevanz, Variantendenken, Fokussierung, Ableitung aus dem Problemraum und Nutzenlogik.
+- Benenne besonders solutionistische Sprünge, generische Technologieaussagen und Benefits ohne nachvollziehbare Herleitung.
+- Nimm standardmäßig keine Board-Mutationen vor.
+- stepStatus ist ready_for_review oder completed nur, wenn die Hauptvariante sauber fokussiert und die Ableitung tragfähig ist.`
+        }),
+        "selection.synthesize": makeTriggerProfileDef("selection.synthesize", {
+          mutationPolicy: "none",
+          feedbackPolicy: "text",
+          prompt: `Synthesemodus für den Schritt "Solution Design":
+- Führe keine Fit-Synthese durch.
+- Verdichte stattdessen nur, welche Variante aktuell fokussiert ist, welche Information und Functions daraus folgen und welche Benefits bereits plausibel sind.
+- Wenn noch keine klare Hauptvariante erkennbar ist, sage das offen.
+- actions sollen normalerweise leer bleiben.`
+        }),
+        "global.hint": makeTriggerProfileDef("global.hint", {
+          mutationPolicy: "none",
+          feedbackPolicy: "text",
+          prompt: `Globaler Hinweismodus für den Schritt "Solution Design":
+- Gib übergreifende Hinweise, wo Teams noch Varianten sammeln, wo sie noch nicht fokussiert haben und wo Information/Functions/Benefits zu generisch bleiben.`
+        }),
+        "global.check": makeTriggerProfileDef("global.check", {
+          mutationPolicy: "limited",
+          feedbackPolicy: "text",
+          prompt: `Globaler Prüfmodus für den Schritt "Solution Design":
+- Prüfe über mehrere Instanzen hinweg, ob die Lösungsperspektiven nachvollziehbar aus dem Problemraum abgeleitet sind.
+- Benenne fehlende Fokussierung, fehlende Informationslogik, unklare Functions und zu freie Benefits.`
+        }),
+        "global.autocorrect": makeTriggerProfileDef("global.autocorrect", {
+          mutationPolicy: "limited",
+          feedbackPolicy: "both",
+          prompt: `Globaler Autokorrekturmodus für den Schritt "Solution Design":
+- Korrigiere selektionsunabhängig nur eindeutige Vermischungen oder Fehlplatzierungen auf der linken Seite.
+- Keine globale Vollvernetzung und keine große Architektur-Erfindung.`
+        }),
+        "global.review": makeTriggerProfileDef("global.review", {
+          mutationPolicy: "none",
+          feedbackPolicy: "text",
+          prompt: `Globaler Reviewmodus für den Schritt "Solution Design":
+- Vergleiche mehrere Boards hinsichtlich Variantendenken, Fokussierung, Ableitung und Nutzennähe der Lösungsperspektive.
+- Hebe hervor, welche Instanzen bereit für Fit Validation sind und welche noch in Step 2 nachschärfen müssen.`
+        }),
+        "global.coach": makeTriggerProfileDef("global.coach", {
+          mutationPolicy: "none",
+          feedbackPolicy: "text",
+          prompt: `Globaler Coachmodus für den Schritt "Solution Design":
+- Gib übergreifende Leitfragen dazu, wie Teams ihre Lösungsperspektive fokussieren und sauber herleiten können.
+- Mache deutlich, ob eher Variantenwahl, Informationsableitung, Funktionsableitung oder Benefit-Qualität das Problem ist.`
+        })
+      }
+    }),
+    step3_fit_check_and_synthesis: makeStepDef({
+      id: "step3_fit_check_and_synthesis",
+      order: 30,
+      label: "Fit Validation & Minimum Desired Product",
+      visibleInstruction: "Validiere jetzt den Problem-Solution-Fit: prüfe Benefits gegen die rechte Seite, markiere belastbare Beziehungen mit Checkmarks, dünne unvalidierte Inhalte aus und verdichte den Kern im Feld Check.",
+      flowInstruction: "Prüfe jetzt, welche Benefits wirklich Gains, Pains, Objectives, Results, Decisions oder Actions adressieren. Markiere belastbare Beziehungen, reduziere auf das Minimum Desired Product und verdichte erst dann den Kern im Feld Check.",
+      flowSummary: "Step 3 validiert, markiert, reduziert und verdichtet. Ziel ist ein Minimum Desired Product und nicht die Summe aller bisherigen Ideen.",
+      allowedActions: validationActions,
+      defaultEnterTrigger: "selection.review",
+      questionModuleIds: [
+        "analytics.fit.shared.method_guardrails",
+        "analytics.fit.shared.question_style",
+        "analytics.fit.shared.sorted_out_semantics",
+        "analytics.fit.shared.validation_and_color_semantics",
+        "analytics.fit.shared.no_handoff_boundary",
+        "analytics.fit.step3.focus_fit_review",
+        "analytics.fit.step3.prune_to_mdp",
+        "analytics.fit.step3.question_fit_validation"
+      ],
+      transitions: [],
+      triggerProfiles: {
+        "selection.hint": makeTriggerProfileDef("selection.hint", {
+          mutationPolicy: "minimal",
+          feedbackPolicy: "text",
+          prompt: `Hinweismodus für den Schritt "Fit Validation & Minimum Desired Product":
+- Gib knappe Hinweise, welche Benefit-zu-rechter-Seite-Beziehungen als Nächstes validiert werden sollten.
+- Zeige, wo Checkmarks sinnvoll wären und wo stattdessen noch Vorarbeit aus Step 1 oder Step 2 fehlt.
+- Leite den Nutzer eher zum Prüfen und Ausdünnen an als zum Erfinden neuer Inhalte.
+- stepStatus ist nur dann ready_for_review oder completed, wenn belastbare Validierung und Reduktion erkennbar sind; sonst in_progress.`
+        }),
+        "selection.coach": makeTriggerProfileDef("selection.coach", {
+          mutationPolicy: "none",
+          feedbackPolicy: "text",
+          prompt: `Coachmodus für den Schritt "Fit Validation & Minimum Desired Product":
+- Coache die Validierung und Reduktion.
+- Gib 3 bis 5 Leitfragen dazu, welcher Benefit welchen Pain/Gain/Result/Objective/Decision/Action wirklich adressiert.
+- Ergänze genau einen Mikroschritt.
+- actions sollen normalerweise leer bleiben.`,
+          flowControl: makeFlowControlDef({
+            id: "analytics.fit.step3.coach",
+            label: "Fit-Validierung coachen",
+            summary: "Coacht die Validierung des Fits mit Leitfragen, ohne den Schritt vorwegzunehmen.",
+            moduleIds: [
+              "analytics.fit.shared.method_guardrails",
+              "analytics.fit.shared.feedback_contract",
+              "analytics.fit.shared.coach_style",
+              "analytics.fit.shared.validation_and_color_semantics",
+              "analytics.fit.shared.no_handoff_boundary",
+              "analytics.fit.step3.focus_fit_review",
+              "analytics.fit.step3.bootstrap_incomplete_fit"
+            ],
+            mutationPolicy: "none",
+            feedbackPolicy: "text",
+            allowedActions: [],
+            uiHint: "Gut, wenn der Fit gemeinsam erarbeitet statt vorschnell bewertet werden soll.",
+            sortOrder: 31
+          })
+        }),
+        "selection.check": makeTriggerProfileDef("selection.check", {
+          mutationPolicy: "limited",
+          feedbackPolicy: "text",
+          prompt: `Prüfmodus für den Schritt "Fit Validation & Minimum Desired Product":
+- Prüfe, welche Fit-Ketten bereits belastbar sind und wo Validierung noch fehlt.
+- Prüfe, ob Checkmarks sinnvoll gesetzt werden könnten und ob unvalidierte Benefits, Information oder Functions noch zu dominant sind.
+- Nimm nur kleine, klare Korrekturen vor.
+- Setze stepStatus auf ready_for_review, wenn mehrere belastbare validierte Beziehungen erkennbar sind und der Kern des Minimum Desired Product sichtbar wird; completed nur, wenn der Schritt wirklich tragfähig abgeschlossen ist.`
+        }),
+        "selection.autocorrect": makeTriggerProfileDef("selection.autocorrect", {
+          mutationPolicy: "full",
+          feedbackPolicy: "both",
+          prompt: `Autokorrekturmodus für den Schritt "Fit Validation & Minimum Desired Product":
+- Nutze die jetzt vorhandenen Mechaniken aktiv: Checkmarks setzen, Farben konsistent halten, unvalidierte Alternativen parken oder klar redundante Reste entfernen.
+- Markiere Benefits und adressierte rechte Elemente mit checked=true, wenn die Beziehung belastbar validiert ist.
+- Parke alternative oder noch nicht tragfähige Lösungsreste bevorzugt in sorted_out_right.
+- Entferne nur dann direkt, wenn Inhalte klar redundant, leer oder didaktisch nicht mehr sinnvoll sind.
+- Dünne Information und Functions ohne tragfähigen Benefit aus, um ein Minimum Desired Product sichtbar zu machen.
+- Ergänze nur wenige, wirklich belastbare Connectoren.
+- Erkläre im feedback klar, was validiert, geparkt oder entfernt wurde und warum.`,
+          flowControl: makeFlowControlDef({
+            id: "analytics.fit.step3.autocorrect",
+            label: "Minimum Desired Product herausarbeiten",
+            summary: "Markiert validierte Inhalte, dünnt Reste aus und arbeitet den tragfähigen Kern als Minimum Desired Product heraus.",
+            moduleIds: [
+              "analytics.fit.shared.method_guardrails",
+              "analytics.fit.shared.feedback_contract",
+              "analytics.fit.shared.validation_and_color_semantics",
+              "analytics.fit.shared.sorted_out_semantics",
+              "analytics.fit.shared.step_status_rules",
+              "analytics.fit.shared.no_handoff_boundary",
+              "analytics.fit.step3.focus_fit_review",
+              "analytics.fit.step3.prune_to_mdp"
+            ],
+            mutationPolicy: "full",
+            feedbackPolicy: "both",
+            allowedActions: ["create_sticky", "move_sticky", "delete_sticky", "create_connector", "set_sticky_color", "set_check_status"],
+            uiHint: "Nutze diesen Button, wenn der Canvas bereits genug Substanz hat, um valide Beziehungen zu markieren und auf den tragfähigen Kern zu reduzieren.",
+            sortOrder: 32
+          })
+        }),
+        "selection.review": makeTriggerProfileDef("selection.review", {
+          mutationPolicy: "none",
+          feedbackPolicy: "text",
+          prompt: `Reviewmodus für den Schritt "Fit Validation & Minimum Desired Product":
+- Führe einen qualitativen Review des Problem-Solution-Fit durch.
+- Prüfe, welche Benefits wirklich adressiert, welche nur behauptet und welche noch nicht tragfähig sind.
+- Prüfe, ob die Mehrheit der kritischen Gains/Pains und die wichtigsten Decisions/Actions überhaupt adressiert werden.
+- Benenne klar, ob der Canvas schon handoff-ready wäre oder noch nicht – aber ohne echten Handoff.
+- Nimm standardmäßig keine Board-Mutationen vor.`,
+          flowControl: makeFlowControlDef({
+            id: "analytics.fit.step3.review",
+            label: "Fit validieren",
+            summary: "Führt einen qualitativen Fit-Review durch und zeigt, ob der Canvas schon handoff-ready wäre oder noch nicht.",
+            moduleIds: [
+              "analytics.fit.shared.method_guardrails",
+              "analytics.fit.shared.feedback_contract",
+              "analytics.fit.shared.review_style",
+              "analytics.fit.shared.validation_and_color_semantics",
+              "analytics.fit.shared.no_handoff_boundary",
+              "analytics.fit.step3.focus_fit_review",
+              "analytics.fit.step3.bootstrap_incomplete_fit"
+            ],
+            mutationPolicy: "none",
+            feedbackPolicy: "text",
+            allowedActions: [],
+            uiHint: "Nutze diesen Button, um die Qualität des Fits zu prüfen, bevor du reduzierst oder verdichtest.",
+            sortOrder: 33
+          })
+        }),
+        "selection.synthesize": makeTriggerProfileDef("selection.synthesize", {
+          mutationPolicy: "limited",
+          feedbackPolicy: "text",
+          prompt: `Synthesemodus für den Schritt "Fit Validation & Minimum Desired Product":
+- Verdichte nur validierten oder weitgehend tragfähigen Fit.
+- Formuliere 1 bis 3 knappe Check-Aussagen im Feld Check.
+- Wenn die Validierung noch nicht weit genug ist, verweigere eine saubere Synthese nicht stillschweigend, sondern benenne klar, was zuerst validiert oder reduziert werden muss.
+- Ergänze höchstens wenige belastbare Fit-Kanten.
+- Nimm keine große Restrukturierung vor.`,
+          flowControl: makeFlowControlDef({
+            id: "analytics.fit.step3.synthesize",
+            label: "Check verdichten",
+            summary: "Verdichtet den validierten Kern des Fits in kurze Aussagen im Check-Feld.",
+            moduleIds: [
+              "analytics.fit.shared.method_guardrails",
+              "analytics.fit.shared.feedback_contract",
+              "analytics.fit.shared.synthesis_style",
+              "analytics.fit.shared.validation_and_color_semantics",
+              "analytics.fit.shared.no_handoff_boundary",
+              "analytics.fit.step3.focus_fit_synthesis",
+              "analytics.fit.step3.bootstrap_incomplete_fit",
+              "analytics.fit.step3.prune_to_mdp"
+            ],
+            mutationPolicy: "limited",
+            feedbackPolicy: "text",
+            allowedActions: ["create_sticky", "move_sticky", "delete_sticky", "create_connector", "set_check_status"],
+            uiHint: "Nutze diesen Button erst, wenn die wichtigsten Beziehungen validiert und der Kern bereits sichtbar gemacht wurden.",
+            sortOrder: 34
+          })
+        }),
+        "selection.grade": makeTriggerProfileDef("selection.grade", {
+          mutationPolicy: "none",
+          feedbackPolicy: "text",
+          prompt: `Bewertungsmodus für den Schritt "Fit Validation & Minimum Desired Product":
+- Bewerte Fit Clarity, Validation Quality, MDP Focus, Remaining Noise und Handoff Readiness.
+- Liefere zusätzlich eine evaluation mit Rubrik.
+- Werte nicht die Menge der Inhalte, sondern die Tragfähigkeit des validierten Kerns.`
+        }),
+        "global.hint": makeTriggerProfileDef("global.hint", {
+          mutationPolicy: "none",
+          feedbackPolicy: "text",
+          prompt: `Globaler Hinweismodus für den Schritt "Fit Validation & Minimum Desired Product":
+- Gib übergreifende Hinweise, wo Teams noch validieren, reduzieren oder sauber zurück in frühere Schritte routen sollten.`
+        }),
+        "global.review": makeTriggerProfileDef("global.review", {
+          mutationPolicy: "none",
+          feedbackPolicy: "text",
+          prompt: `Globaler Reviewmodus für den Schritt "Fit Validation & Minimum Desired Product":
+- Vergleiche mehrere Instanzen auf Fit-Reife, Validierungstiefe, Minimum-Desired-Product-Fokus, Restrauschen und Handoff-Readiness.
+- Fokus auf Muster, nicht auf Massenmutation.`,
+          flowControl: makeFlowControlDef({
+            id: "analytics.fit.global.review",
+            label: "Boards vergleichen",
+            summary: "Vergleicht mehrere Boards auf Fit-Reife, MDP-Fokus und wiederkehrende Qualitätsmuster.",
+            moduleIds: [
+              "analytics.fit.shared.method_guardrails",
+              "analytics.fit.shared.feedback_contract",
+              "analytics.fit.shared.review_style",
+              "analytics.fit.shared.no_handoff_boundary",
+              "analytics.fit.global.focus_cross_instance_review"
+            ],
+            mutationPolicy: "none",
+            feedbackPolicy: "text",
+            defaultScopeType: "global",
+            allowedActions: [],
+            uiHint: "Nützlich für einen Meta-Review über mehrere Canvas-Instanzen oder Teams hinweg.",
+            sortOrder: 39
+          })
+        }),
+        "global.coach": makeTriggerProfileDef("global.coach", {
+          mutationPolicy: "none",
+          feedbackPolicy: "text",
+          prompt: `Globaler Coachmodus für den Schritt "Fit Validation & Minimum Desired Product":
+- Gib übergreifende Leitfragen dazu, welche Boards weiter validieren, welche reduzieren und welche zurück in frühere Schritte sollten.`
+        }),
+        "global.grade": makeTriggerProfileDef("global.grade", {
+          mutationPolicy: "none",
+          feedbackPolicy: "text",
+          prompt: `Globaler Bewertungsmodus für den Schritt "Fit Validation & Minimum Desired Product":
+- Bewerte die Gesamtqualität des validierten Fits über mehrere Instanzen hinweg.
+- Liefere zusätzlich eine evaluation mit Rubrik.`
+        })
+      }
+    })
+  };
+}
+
+function applyAnalyticsUseCaseDidacticPatch(catalog) {
+  const pack = catalog?.packs?.["analytics-ai-usecase-fit-sprint-v1"];
+  if (!pack || typeof pack !== "object") return catalog;
+
+  pack.description = `Geführte Einzelcanvas-Übung auf dem Analytics & AI Use Case Canvas mit vier didaktischen Phasen: Preparation & Focus, User Needs Analysis, Solution Design sowie Fit Validation & Minimum Desired Product.`;
+  pack.packTemplateDescription = `Geführte Übung für das Analytics & AI Use Case Canvas mit klarer Trainingsdramaturgie: Fokus setzen, Nutzerarbeit aufbauen, Lösung ableiten, Fit validieren und auf einen tragfähigen Kern reduzieren.`;
+  pack.defaultStepId = "step0_preparation_and_focus";
+
+  pack.exerciseGlobalPrompt = `Auf diesem Board läuft die Übung "Use Case Fit Sprint" auf dem Canvas "Analytics & AI Use Case".
+
+Übergeordnetes Ziel:
+- Entwickle einen Analytics- oder KI-Anwendungsfall konsequent aus einer realen Nutzer- und Entscheidungssituation.
+- Diese Übung bildet einen isolierten Einzelcanvas ab: Fokus setzen, Nutzerarbeit aufbauen, Lösung ableiten, Fit validieren und auf einen tragfähigen Kern reduzieren.
+- Echte Cross-Canvas-Handoffs werden in dieser Übung noch nicht ausgeführt.
+
+Didaktische Leitidee:
+- Step 0 = Preparation & Focus: Fokus im Header, Scope schärfen, offene Annahmen sichtbar machen.
+- Step 1 = User Needs Analysis: Nutzerrollen divergieren und fokussieren, Situation konkretisieren, Objectives/Results und Decisions/Actions strukturieren, Gains/Pains andocken und priorisieren.
+- Step 2 = Solution Design: Varianten sammeln, eine Hauptvariante wählen, Information und Functions ableiten, Benefits formulieren.
+- Step 3 = Fit Validation & Minimum Desired Product: Benefits gegen die rechte Seite validieren, Checkmarks setzen, Reste ausdünnen, Minimum Desired Product sichtbar machen und den Kern im Feld Check verdichten.
+
+Grundregeln:
+- Arbeite präzise, atomar, area-genau und passend zum aktuellen Schritt.
+- Nutze Sorted-out bewusst zum Parken und Fokussieren.
+- Nutze Farben methodisch konsistent.
+- Nutze Checkmarks nur für bewusst validierte Beziehungen.
+- Nicht jede Sticky Note braucht einen Connector. Sparse, explizite Relationen sind richtig; lose Sammlungen sind ebenfalls erlaubt.`;
+
+  pack.packTemplateGlobalPrompt = `Auf diesem Board läuft die Übung "Use Case Fit Sprint" auf dem Canvas "Analytics & AI Use Case".
+
+Übergeordnetes Ziel:
+- Entwickle einen Analytics- oder KI-Anwendungsfall konsequent aus einer realen Nutzer- und Entscheidungssituation.
+- Die Übung endet vor dem echten Cross-Canvas-Handoff. Ziel ist ein handoff-reifer oder bewusst noch nicht handoff-reifer Einzelcanvas.
+
+Didaktische Dramaturgie:
+- Step 0: Preparation & Focus – Fokus setzen, Scope schärfen, offene Annahmen sichtbar machen.
+- Step 1: User Needs Analysis – mehrere Nutzerrollen divergieren, auf einen Hauptnutzer fokussieren, Situation präzisieren, Objectives & Results und Decisions & Actions strukturieren, Gains & Pains andocken und priorisieren.
+- Step 2: Solution Design – Varianten sammeln, eine Hauptvariante wählen, Alternativen parken, Information und Functions ableiten, Benefits formulieren.
+- Step 3: Fit Validation & Minimum Desired Product – Benefits validieren, Checkmarks setzen, Alternativen parken oder entfernen, Minimum Desired Product herausarbeiten und erst dann den Kern im Feld Check verdichten.
+
+Trigger- und Führungslogik:
+- Hint hilft mit knappen nächsten Schritten und Satzanfängen.
+- Coach arbeitet mit Leitfragen und genau einem Mikroschritt.
+- Check prüft Reife und Step-Readiness.
+- Review beurteilt qualitativ Stärken, Risiken, Widersprüche und fehlende Vorarbeit.
+- Autocorrect greift stärker ein, bleibt aber strikt im Scope des aktuellen Schritts.
+- Synthesize ist nur dort sinnvoll, wo bereits genug Substanz und Validierung vorhanden ist.
+
+Grenzen:
+- Kein echter Handoff auf andere Canvas.
+- Externe Methoden dürfen nur als optionale Orientierung erwähnt werden.
+- Antworten und feedback sollen konkret, boardbezogen, nicht-kryptisch und für Teilnehmende leicht handhabbar sein.`;
+
+  pack.promptModules = buildAnalyticsDidacticPromptModules();
+  pack.steps = buildAnalyticsDidacticSteps(pack);
+
+  return catalog;
+}
+
+function createBatch8MethodCatalog(rawCatalog) {
   const cloned = cloneJson(rawCatalog);
   applyAnalyticsUseCaseBatch7Patch(cloned);
+  applyAnalyticsUseCaseDidacticPatch(cloned);
   return deepFreeze(cloned);
 }
 
-export const METHOD_CATALOG = createBatch7MethodCatalog(RAW_METHOD_CATALOG);
+export const METHOD_CATALOG = createBatch8MethodCatalog(RAW_METHOD_CATALOG);
 
 const exercisePacks = {};
 const packTemplates = {};

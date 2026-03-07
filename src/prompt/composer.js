@@ -3,8 +3,8 @@ import {
   getDefaultCanvasTypeIdForPack,
   getPackDefaults,
   getStepTriggerConfig
-} from "../exercises/registry.js?v=20260306-batch6";
-import { parseTriggerKey } from "../runtime/exercise-engine.js?v=20260306-batch6";
+} from "../exercises/registry.js?v=20260307-batch8";
+import { parseTriggerKey } from "../runtime/exercise-engine.js?v=20260307-batch8";
 import { normalizeUiLanguage } from "../i18n/index.js?v=20260306-batch6";
 
 function asNonEmptyString(value) {
@@ -97,8 +97,11 @@ function buildConnectorPolicyBlock({
   lines.push("- 7_benefits werden nur selektiv verbunden, wenn ein Benefit klar auf Information/Funktion zurückgeht oder einen bestimmten Pain, Gain, Result, Objective oder eine Action adressiert.");
   lines.push("- 8_check dient der Verdichtung; vermeide dort Graph-Explosionen und bevorzuge wenige validierte Fit-Ketten oder knappe Check-Aussagen.");
 
-  if (stepId === "step1_user_perspective") {
-    lines.push("- In Step 1 dominiert zuerst Sammlung und Strukturierung der Nutzerperspektive: User & Situation → Objectives & Results → Decisions & Actions → Gains/Pains.");
+  if (stepId === "step0_preparation_and_focus") {
+    lines.push("- In Step 0 werden normalerweise keine Connectoren benötigt. Fokus, Scope und offene Annahmen werden sichtbar gemacht, nicht vernetzt.");
+    lines.push("- White/Open-Question-Stickies und geparkte Alternativen bleiben in diesem Schritt standardmäßig unverbunden.");
+  } else if (stepId === "step1_user_perspective") {
+    lines.push("- In Step 1 dominiert zuerst Sammlung und Strukturierung der Nutzerperspektive: mehrere Nutzerrollen sammeln, einen Hauptnutzer fokussieren, dann Objectives & Results, Decisions & Actions und Gains/Pains.");
     lines.push("- Gains/Pains werden in diesem Schritt standardmäßig NICHT verkettet. User & Situation bleibt meist ebenfalls unverbunden.");
   } else if (stepId === "step2_solution_perspective") {
     lines.push("- In Step 2 dominiert Ableitung statt Vollverdrahtung: erst Solution-Varianten oder Lösungsideen, dann Information und Functions, danach Benefits.");
@@ -439,7 +442,8 @@ export function composePrompt({
   flowStep = null,
   runProfile = null,
   promptModules = [],
-  controlContext = null
+  controlContext = null,
+  questionMode = false
 } = {}) {
   const systemBlocks = [];
   const hasFlowContext = !!(packTemplate || runProfile || flowStep || (Array.isArray(promptModules) && promptModules.length) || controlContext);
@@ -453,7 +457,7 @@ export function composePrompt({
   }
 
   systemBlocks.push(buildModePromptBlock(runMode, effectiveTriggerContext));
-  systemBlocks.push(buildOutputLanguageBlock(boardConfig?.displayLanguage));
+  systemBlocks.push(buildOutputLanguageBlock(boardConfig?.displayLanguage, { questionMode }));
 
   for (const block of buildCanvasTypePromptBlocks(involvedCanvasTypeIds, templateCatalog)) {
     systemBlocks.push(block);

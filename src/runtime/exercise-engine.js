@@ -10,7 +10,7 @@ import {
   getStepTriggerConfig,
   listStepTransitions,
   resolveNamedTransition
-} from "../exercises/registry.js?v=20260306-batch6";
+} from "../exercises/registry.js?v=20260307-batch8";
 
 function asNonEmptyString(value) {
   if (typeof value !== "string") return null;
