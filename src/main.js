@@ -8,19 +8,22 @@ import {
   DT_RUN_STATE_STALE_AFTER_MS,
   DT_RUN_STATUS_LAYOUT,
   DT_QUESTION_SYSTEM_PROMPT,
+  DT_CHECK_TAG_TITLE,
+  DT_CHECK_TAG_COLOR,
+  normalizeStickyColorToken,
   STICKY_LAYOUT
-} from "./config.js?v=20260306-batch6";
+} from "./config.js?v=20260307-batch75";
 
 import { createLogger, stripHtml, extractUnderlinedText, isFiniteNumber } from "./utils.js?v=20260301-step11-hotfix2";
 import { normalizeUiLanguage, t, getLocaleForLanguage } from "./i18n/index.js?v=20260306-batch6";
 
-import * as Board from "./miro/board.js?v=20260306-batch6";
-import * as Catalog from "./domain/catalog.js?v=20260307-batch5";
-import * as OpenAI from "./ai/openai.js?v=20260307-batch5";
+import * as Board from "./miro/board.js?v=20260307-batch75";
+import * as Catalog from "./domain/catalog.js?v=20260307-batch75";
+import * as OpenAI from "./ai/openai.js?v=20260307-batch75";
 import * as Memory from "./runtime/memory.js?v=20260301-step11-hotfix2";
 import * as Exercises from "./exercises/registry.js?v=20260306-batch6";
 import * as ExerciseLibrary from "./exercises/library.js?v=20260306-batch6";
-import * as PromptComposer from "./prompt/composer.js?v=20260306-batch6";
+import * as PromptComposer from "./prompt/composer.js?v=20260307-batch75";
 import * as ExerciseEngine from "./runtime/exercise-engine.js?v=20260306-batch6";
 import * as BoardFlow from "./runtime/board-flow.js?v=20260306-batch6";
 import * as PanelBridge from "./runtime/panel-bridge.js?v=20260305-schemafix2";
@@ -31,7 +34,7 @@ import {
   makeDirectedConnectorKey,
   makeUndirectedConnectorKey,
   normalizeAgentAction
-} from "./agent/action-normalization.js?v=20260305-batch1";
+} from "./agent/action-normalization.js?v=20260307-batch75";
 import { createEmptyActionExecutionStats, mergeActionExecutionStats, summarizeAppliedActions } from "./agent/action-stats.js?v=20260305-batch1";
 
 // --------------------------------------------------------------------
@@ -1081,6 +1084,32 @@ async function persistBoardConfig(partialConfig = {}) {
 
   setSelectedCanvasTypeId(state.boardConfig.defaultCanvasTypeId || fallbackCanvasTypeId);
   return state.boardConfig;
+}
+
+async function ensureSystemCheckTagId() {
+  const existingId = typeof state.boardConfig?.systemTagIds?.check === "string"
+    ? state.boardConfig.systemTagIds.check.trim()
+    : "";
+
+  const tag = await Board.ensureBoardTag({
+    title: DT_CHECK_TAG_TITLE,
+    color: DT_CHECK_TAG_COLOR,
+    preferredId: existingId || null
+  }, log);
+
+  const tagId = typeof tag?.id === "string" ? tag.id : null;
+  if (!tagId) return null;
+
+  if (existingId !== tagId) {
+    await persistBoardConfig({
+      systemTagIds: {
+        ...(state.boardConfig?.systemTagIds || {}),
+        check: tagId
+      }
+    });
+  }
+
+  return tagId;
 }
 
 async function persistExerciseRuntime(partialRuntime = {}) {
@@ -2894,6 +2923,16 @@ async function resolveSelectionToInstanceIds(items) {
     }
 
     try {
+      const boardRect = await Board.resolveBoardRect(item, parentGeomCache, log).catch(() => null);
+      if (boardRect) {
+        const instanceByRect = Board.findInstanceByRect(boardRect, geomEntries)
+          || Board.findInstanceByPoint(boardRect.x, boardRect.y, geomEntries);
+        if (instanceByRect?.instanceId) {
+          addInstanceId(instanceByRect.instanceId);
+          continue;
+        }
+      }
+
       const pos = await Board.resolveBoardCoords(item, parentGeomCache, log);
       if (!pos) continue;
       const instance = Board.findInstanceByPoint(pos.x, pos.y, geomEntries);
@@ -3137,15 +3176,20 @@ async function clusterSelectionWithIds(stickyIdsOrNull, expectedInstanceIdOrNull
   const parentGeomCache = new Map();
 
   for (const s of stickyNotes) {
+    let boardRect = null;
     let boardPos = null;
     try {
-      boardPos = await Board.resolveBoardCoords(s, parentGeomCache, log);
+      boardRect = await Board.resolveBoardRect(s, parentGeomCache, log);
     } catch (_) {}
+    if (!boardRect) {
+      try {
+        boardPos = await Board.resolveBoardCoords(s, parentGeomCache, log);
+      } catch (_) {}
+    }
 
-    const sx = boardPos?.x ?? s.x;
-    const sy = boardPos?.y ?? s.y;
-
-    const instance = Board.findInstanceByPoint(sx, sy, geomEntries);
+    const instance = boardRect
+      ? (Board.findInstanceByRect(boardRect, geomEntries) || Board.findInstanceByPoint(boardRect.x, boardRect.y, geomEntries))
+      : (boardPos ? Board.findInstanceByPoint(boardPos.x, boardPos.y, geomEntries) : null);
 
     if (!instance) {
       outside.push(s);
@@ -3228,13 +3272,8 @@ async function refreshBoardState() {
   const { liveCatalog, stickyOwnerCache } = await Catalog.rebuildLiveCatalog({
     ctx,
     instancesById: state.instancesById,
-    templateId: TEMPLATE_ID,
-    templateCatalog: DT_TEMPLATE_CATALOG,
     clusterAssignments: state.clusterAssignments,
-    computeTemplateGeometry: (inst) => Board.computeTemplateGeometry(inst, log),
-    buildInstanceGeometryIndex: () => Board.buildInstanceGeometryIndex(state.instancesById, log),
-    findInstanceByPoint: Board.findInstanceByPoint,
-    resolveBoardCoords: Board.resolveBoardCoords,
+    boardConfig: state.boardConfig,
     log
   });
 
@@ -3457,17 +3496,26 @@ async function applyAgentActionsToInstance(instanceId, actions) {
     }
   }
 
-  function detectBodyRegionIdFromBoardCoords(canvasTypeId, x, y) {
-    if (!geom || !isFiniteNumber(x) || !isFiniteNumber(y)) return null;
-    const left0 = geom.x - geom.width / 2;
-    const top0  = geom.y - geom.height / 2;
-    const px = (x - left0) / geom.width;
-    const py = (y - top0) / geom.height;
-    if (px < 0 || px > 1 || py < 0 || py > 1) return null;
-
-    const loc = Catalog.classifyNormalizedLocation(canvasTypeId, px, py);
+  function detectBodyRegionIdFromBoardRect(canvasTypeId, boardRect) {
+    if (!geom || !boardRect) return null;
+    const loc = Catalog.classifyBoardRectAgainstCanvas(canvasTypeId, boardRect, geom, { includeFooter: false });
     const rid = loc?.role === "body" ? loc.regionId : null;
     return (rid && Object.prototype.hasOwnProperty.call(occupiedByRegion, rid)) ? rid : null;
+  }
+
+  function detectBodyRegionIdFromBoardCoords(canvasTypeId, x, y, width = STICKY_LAYOUT.defaultWidthPx, height = STICKY_LAYOUT.defaultHeightPx) {
+    if (!geom || !isFiniteNumber(x) || !isFiniteNumber(y)) return null;
+    const boardRect = {
+      x,
+      y,
+      width,
+      height,
+      left: x - width / 2,
+      right: x + width / 2,
+      top: y - height / 2,
+      bottom: y + height / 2
+    };
+    return detectBodyRegionIdFromBoardRect(canvasTypeId, boardRect);
   }
 
   function registerCreatedStickyRef(refId, stickyId) {
@@ -3529,10 +3577,20 @@ async function applyAgentActionsToInstance(instanceId, actions) {
   }
 
   async function createStickyAtBoardPosition(action, x, y, sizeHint = null) {
+    const normalizedColor = normalizeStickyColorToken(action?.color) || null;
+    const shouldCheck = action?.checked === true;
+    const checkTagId = shouldCheck ? await ensureSystemCheckTagId() : null;
+    const width = isFiniteNumber(sizeHint?.width) ? Number(sizeHint.width) : null;
+    const height = isFiniteNumber(sizeHint?.height) ? Number(sizeHint.height) : null;
+
     const sticky = await Board.createStickyNoteAtBoardCoords({
       content: action.text || "(leer)",
       x,
-      y
+      y,
+      width,
+      height,
+      fillColor: normalizedColor,
+      tagIds: checkTagId ? [checkTagId] : null
     }, log);
 
     if (sticky?.id && action.refId) {
@@ -3542,15 +3600,17 @@ async function applyAgentActionsToInstance(instanceId, actions) {
       state.stickyOwnerCache.set(sticky.id, instanceId);
     }
 
-    if (sizeHint && sticky?.id) {
-      const regionId = detectBodyRegionIdFromBoardCoords(instance.canvasTypeId || TEMPLATE_ID, x, y);
+    if (sticky?.id) {
+      const actualWidth = isFiniteNumber(sticky.width) ? Number(sticky.width) : (width || STICKY_LAYOUT.defaultWidthPx);
+      const actualHeight = isFiniteNumber(sticky.height) ? Number(sticky.height) : (height || STICKY_LAYOUT.defaultHeightPx);
+      const regionId = detectBodyRegionIdFromBoardCoords(instance.canvasTypeId || TEMPLATE_ID, x, y, actualWidth, actualHeight);
       if (regionId && occupiedByRegion[regionId]) {
         occupiedByRegion[regionId].push({
           id: sticky.id,
           x,
           y,
-          width: isFiniteNumber(sticky.width) ? sticky.width : sizeHint.width,
-          height: isFiniteNumber(sticky.height) ? sticky.height : sizeHint.height
+          width: actualWidth,
+          height: actualHeight
         });
       }
     }
@@ -3602,7 +3662,7 @@ async function applyAgentActionsToInstance(instanceId, actions) {
         if (pos.isFull) {
           log(
             "WARNUNG: Region '" + regionId + "' wirkt voll (Grid " +
-            pos.cols + "x" + pos.rows +
+            (pos.cols || 1) + "x" + (pos.rows || 1) +
             "). move_sticky setzt auf letzte Zelle."
           );
         }
@@ -3622,7 +3682,7 @@ async function applyAgentActionsToInstance(instanceId, actions) {
 
       await Board.moveItemByIdToBoardCoords(stickyId, targetX, targetY, log);
 
-      const destRegionId = detectBodyRegionIdFromBoardCoords(canvasTypeId, targetX, targetY);
+      const destRegionId = detectBodyRegionIdFromBoardCoords(canvasTypeId, targetX, targetY, stickyW, stickyH);
       if (destRegionId && occupiedByRegion[destRegionId]) {
         occupiedByRegion[destRegionId].push({
           id: stickyId,
@@ -3673,7 +3733,7 @@ async function applyAgentActionsToInstance(instanceId, actions) {
       if (pos.isFull) {
         log(
           "WARNUNG: Region '" + regionId + "' wirkt voll (Grid " +
-          pos.cols + "x" + pos.rows +
+          (pos.cols || 1) + "x" + (pos.rows || 1) +
           "). Sticky wird auf die letzte Zelle gesetzt."
         );
       }
@@ -3693,6 +3753,50 @@ async function applyAgentActionsToInstance(instanceId, actions) {
       removeFromAllOccupied(stickyId);
       await Board.removeItemById(stickyId, log);
       markSuccess("delete_sticky");
+    },
+
+    "set_sticky_color": async (action) => {
+      const stickyId = resolveActionStickyReference(action.stickyId);
+      if (!stickyId) {
+        markSkipped("set_sticky_color: Sticky-Referenz nicht auflösbar: " + String(action.stickyId || "(leer)"));
+        return;
+      }
+
+      const color = normalizeStickyColorToken(action.color);
+      if (!color) {
+        markSkipped("set_sticky_color: Ungültige Farbe '" + String(action.color || "(leer)") + "' – übersprungen.");
+        return;
+      }
+
+      const sticky = await Board.setStickyNoteFillColor(stickyId, color, log);
+      if (!sticky) {
+        markFailure("set_sticky_color: Sticky konnte nicht eingefärbt werden: " + stickyId);
+        return;
+      }
+
+      markSuccess("set_sticky_color");
+    },
+
+    "set_check_status": async (action) => {
+      const stickyId = resolveActionStickyReference(action.stickyId);
+      if (!stickyId) {
+        markSkipped("set_check_status: Sticky-Referenz nicht auflösbar: " + String(action.stickyId || "(leer)"));
+        return;
+      }
+
+      const checkTagId = await ensureSystemCheckTagId();
+      if (!checkTagId) {
+        markFailure("set_check_status: Check-Tag konnte nicht bereitgestellt werden.");
+        return;
+      }
+
+      const sticky = await Board.setStickyNoteTagPresence(stickyId, checkTagId, action.checked === true, log);
+      if (!sticky) {
+        markFailure("set_check_status: Sticky konnte nicht markiert werden: " + stickyId);
+        return;
+      }
+
+      markSuccess("set_check_status");
     },
 
     "create_connector": async (action) => {
@@ -4400,14 +4504,30 @@ function validateNormalizedAction(action) {
 
   if (action.type === "create_sticky") {
     const area = pickFirstNonEmptyString(action.area, action.targetArea);
+    const color = action.color == null ? null : normalizeStickyColorToken(action.color);
+    const checked = action.checked == null ? null : action.checked === true;
     if (!action.text) return { ok: false, message: "create_sticky ohne text." };
     if (!area) return { ok: false, message: "create_sticky ohne area." };
-    return { ok: true, action: { ...action, area, targetArea: area } };
+    if (action.color != null && !color) return { ok: false, message: "create_sticky mit ungültiger color." };
+    return { ok: true, action: { ...action, area, targetArea: area, color, checked } };
   }
 
   if (action.type === "delete_sticky") {
     if (!action.stickyId) return { ok: false, message: "delete_sticky ohne stickyId." };
     return { ok: true, action };
+  }
+
+  if (action.type === "set_sticky_color") {
+    const color = normalizeStickyColorToken(action.color);
+    if (!action.stickyId) return { ok: false, message: "set_sticky_color ohne stickyId." };
+    if (!color) return { ok: false, message: "set_sticky_color ohne gültige color." };
+    return { ok: true, action: { ...action, color } };
+  }
+
+  if (action.type === "set_check_status") {
+    if (!action.stickyId) return { ok: false, message: "set_check_status ohne stickyId." };
+    if (typeof action.checked !== "boolean") return { ok: false, message: "set_check_status ohne checked=true/false." };
+    return { ok: true, action: { ...action, checked: action.checked === true } };
   }
 
   if (action.type === "create_connector") {

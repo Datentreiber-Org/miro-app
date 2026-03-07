@@ -130,11 +130,55 @@ export function buildOutputLanguageBlock(displayLanguage, { questionMode = false
   return lines.join("\n");
 }
 
+function buildBoardMechanicsBlock({
+  involvedCanvasTypeIds = [],
+  exerciseContext = null
+} = {}) {
+  const lines = [
+    "Mechanische Board-Regeln:",
+    "- Jede Canvas-Instanz hat zusätzlich zwei seitliche Off-Canvas-Bereiche: sorted_out_left und sorted_out_right.",
+    "- Diese Sorted-out-Bereiche liegen vollständig außerhalb der sichtbaren Canvas-Fläche und dienen zum bewussten Parken oder Aussortieren von Sticky Notes.",
+    "- Verwende für Sorted-out ausschließlich die Area-Keys sorted_out_left oder sorted_out_right. Die App übernimmt die tatsächliche Platzierung.",
+    "- Die Footer-/Legend-Region ist im agentischen Katalog bewusst ausgeblendet. Interpretiere fehlende Footer-Stickies nicht als leeres Board.",
+    "- Sticky-Objekte können ein Feld color tragen. Nutze ausschließlich unterstützte Miro-Farbwerte: gray, light_yellow, yellow, orange, light_green, green, dark_green, cyan, light_pink, pink, violet, red, light_blue, blue, dark_blue, black.",
+    "- Neue farbige Sticky Notes: create_sticky mit color verwenden.",
+    "- Bestehende Sticky Notes umfärben: set_sticky_color mit stickyId und color verwenden.",
+    "- Sticky-Objekte können ein Feld checked=true/false tragen. checked beschreibt einen sichtbaren Validierungsmarker der App.",
+    "- Neue geprüfte Sticky Notes: create_sticky mit checked=true verwenden.",
+    "- Bestehende Sticky Notes markieren oder entmarkieren: set_check_status mit stickyId und checked=true/false verwenden.",
+    "- Verwende checked nur für bewusst validierte, bestätigte oder geprüfte Inhalte, nicht als allgemeine Priorisierung oder Dekoration.",
+    "- Verwende keine Hex-Farben, keine freien Farbnamen und keine roh-UI-nahen Tag-IDs im Agent-Output."
+  ];
+
+  const allowedActions = normalizeUniqueStrings(exerciseContext?.allowedActions || []);
+  const hasAllowedActionsArray = Array.isArray(exerciseContext?.allowedActions);
+  const mutationPolicy = asNonEmptyString(exerciseContext?.mutationPolicy);
+
+  if (mutationPolicy === "none") {
+    lines.push("- In diesem Run sind Board-Mutationen nicht freigegeben. Plane daher weder set_sticky_color noch set_check_status oder create_sticky als Action, sondern benenne Hinweise nur im feedback.");
+  } else if (hasAllowedActionsArray) {
+    if (!allowedActions.includes("set_sticky_color")) {
+      lines.push("- set_sticky_color ist in diesem Run nicht explizit freigegeben. Nutze es daher nicht.");
+    }
+    if (!allowedActions.includes("set_check_status")) {
+      lines.push("- set_check_status ist in diesem Run nicht explizit freigegeben. Nutze es daher nicht.");
+    }
+  }
+
+  if (normalizeUniqueStrings(involvedCanvasTypeIds).includes(ANALYTICS_AI_USE_CASE_CANVAS_TYPE_ID)) {
+    lines.push("- Für Analytics & AI Use Case können Sorted-out-Bereiche genutzt werden, um alternative, zurückgestellte oder nicht weiterverfolgte Sticky Notes seitlich zu parken, ohne sie zu löschen.");
+  }
+
+  return lines.join("\n");
+}
+
 const ADMIN_OVERRIDE_ALLOWED_ACTIONS = Object.freeze([
   "create_sticky",
   "move_sticky",
   "delete_sticky",
   "create_connector",
+  "set_sticky_color",
+  "set_check_status",
   "inform"
 ]);
 
@@ -423,6 +467,14 @@ export function composePrompt({
   });
   if (connectorPolicyBlock) {
     systemBlocks.push(connectorPolicyBlock);
+  }
+
+  const boardMechanicsBlock = buildBoardMechanicsBlock({
+    involvedCanvasTypeIds,
+    exerciseContext: rawExerciseContext
+  });
+  if (boardMechanicsBlock) {
+    systemBlocks.push(boardMechanicsBlock);
   }
 
   const normalizedAdminOverrideText = asNonEmptyString(adminOverrideText);

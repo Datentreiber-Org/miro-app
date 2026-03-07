@@ -1,5 +1,7 @@
 import { isFiniteNumber } from "../utils.js?v=20260301-step11-hotfix2";
-import { ensureMiroReady, getBoard } from "./sdk.js?v=20260305-batch05";
+import { ensureMiroReady, getBoard } from "./sdk.js?v=20260307-batch75";
+
+const STICKY_RECT_FALLBACK = Object.freeze({ width: 200, height: 200 });
 
 // --------------------------------------------------------------------
 // Basic board item access, mutation and coordinate transforms
@@ -55,16 +57,46 @@ export async function zoomTo(item, log) {
 }
 
 // Sticky create/remove/move (low-level)
-export async function createStickyNoteAtBoardCoords({ content, x, y, frameId = null }, log) {
+export async function createStickyNoteAtBoardCoords({
+  content,
+  x,
+  y,
+  frameId = null,
+  fillColor = null,
+  tagIds = null,
+  width = null,
+  height = null,
+  shape = null
+}, log) {
   await ensureMiroReady(log);
   const board = getBoard();
   if (!board?.createStickyNote) throw new Error("miro.board.createStickyNote nicht verfügbar");
 
-  const sticky = await board.createStickyNote({
+  const payload = {
     content: content || "(leer)",
     x,
     y
-  });
+  };
+
+  if (isFiniteNumber(width)) payload.width = Number(width);
+  if (isFiniteNumber(height)) payload.height = Number(height);
+  if (shape === "square" || shape === "rectangle") payload.shape = shape;
+  if (fillColor) {
+    payload.style = {
+      ...(payload.style || {}),
+      fillColor
+    };
+  }
+  if (Array.isArray(tagIds) && tagIds.length) {
+    payload.tagIds = Array.from(new Set(tagIds.filter(Boolean)));
+  }
+
+  const sticky = await board.createStickyNote(payload);
+
+  if (Array.isArray(payload.tagIds) && payload.tagIds.length && typeof sticky?.sync === "function") {
+    sticky.tagIds = payload.tagIds;
+    await sticky.sync();
+  }
 
   if (frameId) {
     try {
@@ -204,6 +236,31 @@ export async function resolveBoardCoords(item, parentGeomCache = null, log) {
   return { x: boardX, y: boardY };
 }
 
+export async function resolveBoardRect(item, parentGeomCache = null, log) {
+  const center = await resolveBoardCoords(item, parentGeomCache, log);
+  if (!center) return null;
+
+  const width = isFiniteNumber(item?.width)
+    ? Number(item.width)
+    : (item?.type === "sticky_note" ? STICKY_RECT_FALLBACK.width : null);
+  const height = isFiniteNumber(item?.height)
+    ? Number(item.height)
+    : (item?.type === "sticky_note" ? STICKY_RECT_FALLBACK.height : null);
+
+  if (!isFiniteNumber(width) || !isFiniteNumber(height)) return null;
+
+  return {
+    x: center.x,
+    y: center.y,
+    width,
+    height,
+    left: center.x - width / 2,
+    right: center.x + width / 2,
+    top: center.y - height / 2,
+    bottom: center.y + height / 2
+  };
+}
+
 // Board-x/y -> lokale Item-x/y (wenn Item Parent hat)
 export async function boardToLocalCoords(item, boardX, boardY, parentGeomCache = null, log) {
   if (!item || !isFiniteNumber(boardX) || !isFiniteNumber(boardY)) return null;
@@ -227,12 +284,104 @@ export async function boardToLocalCoords(item, boardX, boardY, parentGeomCache =
 }
 
 // --------------------------------------------------------------------
+// Tags
+// --------------------------------------------------------------------
+export async function getTags(log) {
+  await ensureMiroReady(log);
+  const board = getBoard();
+  if (!board?.get) return [];
+
+  try {
+    const tags = await board.get({ type: "tag" });
+    return Array.isArray(tags) ? tags : [];
+  } catch (e) {
+    if (typeof log === "function") log("Fehler beim Laden der Tags: " + e.message);
+    return [];
+  }
+}
+
+export async function findBoardTagByTitle(title, log) {
+  const needle = typeof title === "string" ? title.trim() : "";
+  if (!needle) return null;
+  const tags = await getTags(log);
+  return tags.find((tag) => String(tag?.title || tag?.text || tag?.content || "").trim() === needle) || null;
+}
+
+export async function ensureBoardTag({ title, color = null, preferredId = null } = {}, log) {
+  await ensureMiroReady(log);
+  const board = getBoard();
+  if (!board?.createTag || !board?.get) throw new Error("miro.board.createTag nicht verfügbar");
+
+  const normalizedTitle = typeof title === "string" ? title.trim() : "";
+  if (!normalizedTitle) throw new Error("ensureBoardTag benötigt einen Titel.");
+
+  const tags = await getTags(log);
+  if (preferredId) {
+    const byId = tags.find((tag) => tag?.id === preferredId) || null;
+    if (byId) return byId;
+  }
+
+  const existing = tags.find((tag) => String(tag?.title || tag?.text || tag?.content || "").trim() === normalizedTitle) || null;
+  if (existing) return existing;
+
+  const payload = { title: normalizedTitle };
+  if (color) payload.color = color;
+  return await board.createTag(payload);
+}
+
+export async function setStickyNoteTagPresence(stickyOrId, tagId, present = true, log) {
+  await ensureMiroReady(log);
+  if (!tagId) return null;
+
+  const sticky = typeof stickyOrId === "string"
+    ? await getItemById(stickyOrId, log)
+    : stickyOrId;
+  if (!sticky || sticky.type !== "sticky_note") return null;
+
+  const nextIds = new Set(Array.isArray(sticky.tagIds) ? sticky.tagIds : []);
+  if (present) nextIds.add(tagId);
+  else nextIds.delete(tagId);
+
+  const normalized = Array.from(nextIds);
+  const current = Array.isArray(sticky.tagIds) ? sticky.tagIds : [];
+  const changed = normalized.length !== current.length || normalized.some((id, index) => id !== current[index]);
+  if (!changed) return sticky;
+
+  sticky.tagIds = normalized;
+  if (typeof sticky.sync === "function") {
+    await sticky.sync();
+  }
+  return sticky;
+}
+
+export async function setStickyNoteFillColor(stickyOrId, fillColor, log) {
+  await ensureMiroReady(log);
+  const sticky = typeof stickyOrId === "string"
+    ? await getItemById(stickyOrId, log)
+    : stickyOrId;
+  if (!sticky || sticky.type !== "sticky_note") return null;
+  if (!fillColor) return sticky;
+
+  const current = sticky?.style?.fillColor || sticky?.style?.backgroundColor || null;
+  if (current === fillColor) return sticky;
+
+  sticky.style = {
+    ...(sticky.style || {}),
+    fillColor
+  };
+  if (typeof sticky.sync === "function") {
+    await sticky.sync();
+  }
+  return sticky;
+}
+
+// --------------------------------------------------------------------
 // Board Context (Stickies/Connectors/Tags)
 // --------------------------------------------------------------------
 export async function getBoardBaseContext(log) {
   await ensureMiroReady(log);
   const board = getBoard();
-  if (!board?.get) return { stickies: [], connectors: [], tagsById: {} };
+  if (!board?.get) return { stickies: [], connectors: [], tags: [], tagsById: {} };
 
   try {
     const [stickies, connectors, tags] = await Promise.all([
@@ -252,10 +401,11 @@ export async function getBoardBaseContext(log) {
     return {
       stickies: stickies || [],
       connectors: connectors || [],
+      tags: tags || [],
       tagsById
     };
   } catch (e) {
     if (typeof log === "function") log("Fehler beim Laden des Board-Kontexts: " + e.message);
-    return { stickies: [], connectors: [], tagsById: {} };
+    return { stickies: [], connectors: [], tags: [], tagsById: {} };
   }
 }
