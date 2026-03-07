@@ -117,8 +117,8 @@ export const DT_SHAPE_META_KEY_CHAT_INTERFACE = "dt-chat-interface-v1";
 export const DT_MEMORY_RECENT_LOG_LIMIT = 5;
 export const DT_RUN_STATE_STALE_AFTER_MS = 15 * 60 * 1000;
 
-export const DT_SORTED_OUT_REGION_WIDTH_PX = 50;
-export const DT_SORTED_OUT_BUFFER_WIDTH_PX = 50;
+export const DT_SORTED_OUT_REGION_WIDTH_PX = 50 * (2 / 3);
+export const DT_SORTED_OUT_BUFFER_WIDTH_PX = 50 * (2 / 3);
 export const DT_SORTED_OUT_REGION_IDS = Object.freeze(["sorted_out_left", "sorted_out_right"]);
 export const DT_SORTED_OUT_REGION_TITLES = Object.freeze({
   sorted_out_left: "Sorted out (left)",
@@ -199,9 +199,10 @@ export const DT_FLOW_CONTROL_STATE_STYLES = Object.freeze({
 
 
 export const DT_CHAT_INTERFACE_LAYOUT = Object.freeze({
-  outerGapXPx: 160,
+  outerGapXPx: 260,
   columnGapXPx: 88,
   submitGapYPx: 44,
+  outputHeightPerCanvasHeight: 0.5,
   outputWidthPerCanvasHeight: 0.54,
   inputWidthPerOutputWidth: 0.9,
   inputHeightPerOutputHeight: 0.52,

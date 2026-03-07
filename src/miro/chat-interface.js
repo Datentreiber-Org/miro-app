@@ -109,7 +109,7 @@ export function computeChatInterfaceLayout(instance) {
     return null;
   }
 
-  const outputHeight = Math.max(geom.height, 520);
+  const outputHeight = Math.max(1, Math.round(geom.height * (Number(DT_CHAT_INTERFACE_LAYOUT.outputHeightPerCanvasHeight) || 0.5)));
   const outputWidth = clamp(
     outputHeight * DT_CHAT_INTERFACE_LAYOUT.outputWidthPerCanvasHeight,
     DT_CHAT_INTERFACE_LAYOUT.minOutputWidthPx,
@@ -136,7 +136,7 @@ export function computeChatInterfaceLayout(instance) {
   const submitX = inputX;
   const submitY = canvasTop + inputHeight + DT_CHAT_INTERFACE_LAYOUT.submitGapYPx + submitHeight / 2;
   const outputX = canvasRight + DT_CHAT_INTERFACE_LAYOUT.outerGapXPx + inputWidth + DT_CHAT_INTERFACE_LAYOUT.columnGapXPx + outputWidth / 2;
-  const outputY = geom.y;
+  const outputY = canvasTop + outputHeight / 2;
 
   return {
     input: { x: inputX, y: inputY, width: inputWidth, height: inputHeight },
