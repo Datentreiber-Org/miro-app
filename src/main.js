@@ -12,13 +12,13 @@ import {
   DT_CHECK_TAG_COLOR,
   normalizeStickyColorToken,
   STICKY_LAYOUT
-} from "./config.js?v=20260307-batch75";
+} from "./config.js?v=20260308-batch76";
 
 import { createLogger, stripHtml, extractUnderlinedText, isFiniteNumber } from "./utils.js?v=20260301-step11-hotfix2";
 import { normalizeUiLanguage, t, getLocaleForLanguage } from "./i18n/index.js?v=20260306-batch6";
 
-import * as Board from "./miro/board.js?v=20260307-batch75";
-import * as Catalog from "./domain/catalog.js?v=20260307-batch75";
+import * as Board from "./miro/board.js?v=20260308-batch76";
+import * as Catalog from "./domain/catalog.js?v=20260308-batch76";
 import * as OpenAI from "./ai/openai.js?v=20260307-batch75";
 import * as Memory from "./runtime/memory.js?v=20260301-step11-hotfix2";
 import * as Exercises from "./exercises/registry.js?v=20260306-batch6";
@@ -28,7 +28,7 @@ import * as ExerciseEngine from "./runtime/exercise-engine.js?v=20260306-batch6"
 import * as BoardFlow from "./runtime/board-flow.js?v=20260306-batch6";
 import * as PanelBridge from "./runtime/panel-bridge.js?v=20260305-schemafix2";
 import { buildPayloadMappingHint } from "./app/payload-hints.js?v=20260305-batch06";
-import { getInsertWidthPxForCanvasType, computeTemplateInsertPosition } from "./app/template-insertion.js?v=20260305-batch05";
+import { getInsertWidthPxForCanvasType, computeTemplateInsertPosition } from "./app/template-insertion.js?v=20260308-batch76";
 import {
   pickFirstNonEmptyString,
   makeDirectedConnectorKey,
@@ -3049,7 +3049,7 @@ async function onSelectionUpdate(event) {
 // Insert Canvas Instance (viewport-centered, collision-aware)
 // --------------------------------------------------------------------
 const TEMPLATE_INSERTION = {
-  defaultWidthPx: 2000,
+  defaultWidthPx: 4550,
   footprintGapPx: 240,
   maxSearchRings: 60
 };
@@ -3098,6 +3098,7 @@ async function insertTemplateImage() {
       instances: Array.from(state.instancesById.values()),
       computeTemplateGeometry: (instance, runLog) => Board.computeTemplateGeometry(instance, runLog),
       templateInsertion: TEMPLATE_INSERTION,
+      getCanvasTypeEntry,
       canvasDefs: DT_CANVAS_DEFS,
       defaultTemplateId: TEMPLATE_ID,
       isFiniteNumber,
@@ -3108,8 +3109,39 @@ async function insertTemplateImage() {
       url: selectedCanvasType.imageUrl,
       x: placement.x,
       y: placement.y,
-      width: insertWidthPx
+      width: placement.imageWidth || insertWidthPx
     }, log);
+
+    let backgroundShape = null;
+    try {
+      backgroundShape = await Board.createShape({
+        content: "",
+        shape: "rectangle",
+        x: placement.x,
+        y: placement.y,
+        width: placement.footprintWidth,
+        height: placement.footprintHeight,
+        style: {
+          fillColor: "#f3c316",
+          fillOpacity: 1,
+          borderOpacity: 0,
+          borderWidth: 0,
+          color: "#f3c316"
+        }
+      }, log);
+      try {
+        if (typeof backgroundShape?.sendBehindOf === "function") {
+          await backgroundShape.sendBehindOf(image);
+        }
+      } catch (_) {}
+      try {
+        if (typeof backgroundShape?.sendToBack === "function") {
+          await backgroundShape.sendToBack();
+        }
+      } catch (_) {}
+    } catch (bgError) {
+      log("WARNUNG: Gelber Canvas-Hintergrund konnte nicht erzeugt werden: " + bgError.message);
+    }
 
     const instance = await Board.registerInstanceFromImage(image, {
       templateCatalog: DT_TEMPLATE_CATALOG,
@@ -3132,7 +3164,7 @@ async function insertTemplateImage() {
 ${placementInfo}
 Die Steuerung erfolgt jetzt über das Side Panel.`);
 
-    await Board.zoomTo(image, log);
+    await Board.zoomTo(backgroundShape || image, log);
     await refreshSelectionStatusFromBoard();
   } catch (e) {
     log("Fehler beim Einfügen des Canvas: " + e.message);
@@ -3478,14 +3510,11 @@ async function applyAgentActionsToInstance(instanceId, actions) {
     occupiedByRegion[region.id] = buildOccupied(liveInst?.regions?.body?.[region.id]?.stickies);
   }
 
-  function deriveStickySize(regionId) {
-    const occ = occupiedByRegion[regionId] || [];
-    if (occ.length === 0) {
-      return { width: STICKY_LAYOUT.defaultWidthPx, height: STICKY_LAYOUT.defaultHeightPx };
-    }
+  function deriveStickySize() {
     return {
-      width: occ[0].width || STICKY_LAYOUT.defaultWidthPx,
-      height: occ[0].height || STICKY_LAYOUT.defaultHeightPx
+      width: STICKY_LAYOUT.defaultWidthPx,
+      height: STICKY_LAYOUT.defaultHeightPx,
+      shape: STICKY_LAYOUT.defaultShape || "rectangle"
     };
   }
 
@@ -3580,15 +3609,18 @@ async function applyAgentActionsToInstance(instanceId, actions) {
     const normalizedColor = normalizeStickyColorToken(action?.color) || null;
     const shouldCheck = action?.checked === true;
     const checkTagId = shouldCheck ? await ensureSystemCheckTagId() : null;
-    const width = isFiniteNumber(sizeHint?.width) ? Number(sizeHint.width) : null;
-    const height = isFiniteNumber(sizeHint?.height) ? Number(sizeHint.height) : null;
+    const width = isFiniteNumber(sizeHint?.width) ? Number(sizeHint.width) : STICKY_LAYOUT.defaultWidthPx;
+    const height = isFiniteNumber(sizeHint?.height) ? Number(sizeHint.height) : STICKY_LAYOUT.defaultHeightPx;
+    const shape = (sizeHint?.shape === "square" || sizeHint?.shape === "rectangle")
+      ? sizeHint.shape
+      : (STICKY_LAYOUT.defaultShape || "rectangle");
 
     const sticky = await Board.createStickyNoteAtBoardCoords({
       content: action.text || "(leer)",
       x,
       y,
       width,
-      height,
+      shape,
       fillColor: normalizedColor,
       tagIds: checkTagId ? [checkTagId] : null
     }, log);
@@ -3655,10 +3687,14 @@ async function applyAgentActionsToInstance(instanceId, actions) {
         stickyHeightPx: stickyH,
         marginPx: STICKY_LAYOUT.marginPx,
         gapPx: STICKY_LAYOUT.gapPx,
-        occupiedRects: occupiedByRegion[regionId]
+        occupiedRects: occupiedByRegion[regionId],
+        occupiedRectsByRegion: occupiedByRegion
       });
 
       if (pos) {
+        if (pos.overflowed && pos.resolvedRegionId && pos.resolvedRegionId !== regionId) {
+          log("INFO: Sorted-out-Region '" + regionId + "' ist voll; weiche auf '" + pos.resolvedRegionId + "' aus.");
+        }
         if (pos.isFull) {
           log(
             "WARNUNG: Region '" + regionId + "' wirkt voll (Grid " +
@@ -3717,19 +3753,23 @@ async function applyAgentActionsToInstance(instanceId, actions) {
         stickyHeightPx: size.height,
         marginPx: STICKY_LAYOUT.marginPx,
         gapPx: STICKY_LAYOUT.gapPx,
-        occupiedRects: occupiedByRegion[regionId]
+        occupiedRects: occupiedByRegion[regionId],
+        occupiedRectsByRegion: occupiedByRegion
       });
 
       if (!pos) {
         log("create_sticky: Konnte keine Platzierung berechnen (Region=" + regionId + "). Fallback Center.");
         const center = Catalog.areaCenterNormalized(regionId, canvasTypeId);
         const coords = Catalog.normalizedToBoardCoords(geom, center.px, center.py);
-        const sticky = await createStickyAtBoardPosition({ ...action, text }, coords.x, coords.y, null);
+        const sticky = await createStickyAtBoardPosition({ ...action, text }, coords.x, coords.y, size);
         if (sticky?.id) markSuccess("create_sticky");
         else markFailure("create_sticky: Miro lieferte kein Sticky-Item zurück.");
         return;
       }
 
+      if (pos.overflowed && pos.resolvedRegionId && pos.resolvedRegionId !== regionId) {
+        log("INFO: Sorted-out-Region '" + regionId + "' ist voll; platziere Sticky stattdessen in '" + pos.resolvedRegionId + "'.");
+      }
       if (pos.isFull) {
         log(
           "WARNUNG: Region '" + regionId + "' wirkt voll (Grid " +

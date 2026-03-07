@@ -1,7 +1,7 @@
 import { isFiniteNumber } from "../utils.js?v=20260301-step11-hotfix2";
-import { ensureMiroReady, getBoard } from "./sdk.js?v=20260307-batch75";
+import { ensureMiroReady, getBoard } from "./sdk.js?v=20260308-batch76";
 
-const STICKY_RECT_FALLBACK = Object.freeze({ width: 200, height: 200 });
+const STICKY_RECT_FALLBACK = Object.freeze({ width: 350, height: 228 });
 
 // --------------------------------------------------------------------
 // Basic board item access, mutation and coordinate transforms
@@ -39,6 +39,13 @@ export async function createImage(payload, log) {
   const board = getBoard();
   if (!board?.createImage) throw new Error("miro.board.createImage nicht verfügbar");
   return await board.createImage(payload);
+}
+
+export async function createShape(payload, log) {
+  await ensureMiroReady(log);
+  const board = getBoard();
+  if (!board?.createShape) throw new Error("miro.board.createShape nicht verfügbar");
+  return await board.createShape(payload);
 }
 
 export async function getViewport(log) {

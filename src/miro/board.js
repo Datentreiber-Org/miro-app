@@ -1,4 +1,4 @@
-export { ensureMiroReady, getBoard, registerSelectionUpdateHandler } from "./sdk.js?v=20260307-batch75";
+export { ensureMiroReady, getBoard, registerSelectionUpdateHandler } from "./sdk.js?v=20260308-batch76";
 
 export {
   normalizeBoardConfig,
@@ -26,7 +26,7 @@ export {
   normalizeBoardRunState,
   loadBoardRunState,
   saveBoardRunState
-} from "./storage.js?v=20260307-batch75";
+} from "./storage.js?v=20260308-batch76";
 
 export {
   buildAgentFeedbackContent,
@@ -56,6 +56,7 @@ export {
   getItemsById,
   getItemById,
   createImage,
+  createShape,
   getViewport,
   zoomTo,
   createStickyNoteAtBoardCoords,
@@ -71,7 +72,7 @@ export {
   setStickyNoteTagPresence,
   setStickyNoteFillColor,
   getBoardBaseContext
-} from "./items.js?v=20260307-batch75";
+} from "./items.js?v=20260308-batch76";
 
 export {
   readFlowControlMeta,
@@ -89,4 +90,4 @@ export {
   findInstanceByRect,
   registerInstanceFromImage,
   scanTemplateInstances
-} from "./instances.js?v=20260307-batch75";
+} from "./instances.js?v=20260308-batch76";

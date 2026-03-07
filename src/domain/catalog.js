@@ -2,13 +2,14 @@ import {
   TEMPLATE_ID,
   DT_CANVAS_DEFS,
   DT_SORTED_OUT_REGION_WIDTH_PX,
+  DT_SORTED_OUT_BUFFER_WIDTH_PX,
   DT_SORTED_OUT_REGION_IDS,
   DT_SORTED_OUT_REGION_TITLES,
   DT_EXCLUDE_FOOTER_FROM_AGENT_CATALOG_DEFAULT,
   DT_CHECK_TAG_TITLE,
   normalizeStickyColorToken,
   STICKY_LAYOUT
-} from "../config.js?v=20260307-batch75";
+} from "../config.js?v=20260308-batch76";
 import {
   stripHtml,
   isFiniteNumber,
@@ -23,7 +24,7 @@ import {
   resolveBoardRect,
   findInstanceByPoint,
   findInstanceByRect
-} from "../miro/board.js?v=20260307-batch75";
+} from "../miro/board.js?v=20260308-batch76";
 
 // --------------------------------------------------------------------
 // Canvas Definitions / Region Mapping
@@ -39,14 +40,26 @@ function getSortedOutWidthNorm(canvasTypeId) {
   return DT_SORTED_OUT_REGION_WIDTH_PX / originalWidth;
 }
 
+function getSortedOutBufferWidthNorm(canvasTypeId) {
+  const def = getCanvasDef(canvasTypeId);
+  const originalWidth = Number(def?.originalWidth);
+  if (!Number.isFinite(originalWidth) || originalWidth <= 0) return 0;
+  return DT_SORTED_OUT_BUFFER_WIDTH_PX / originalWidth;
+}
+
+function getSortedOutOutsideOffsetNorm(canvasTypeId) {
+  return getSortedOutWidthNorm(canvasTypeId) + getSortedOutBufferWidthNorm(canvasTypeId);
+}
+
 export function getSortedOutRegionDefs(canvasTypeId) {
   const widthNorm = getSortedOutWidthNorm(canvasTypeId);
+  const bufferNorm = getSortedOutBufferWidthNorm(canvasTypeId);
   if (!(widthNorm > 0)) return [];
 
   return DT_SORTED_OUT_REGION_IDS.map((regionId) => {
     const isLeft = regionId === "sorted_out_left";
-    const minX = isLeft ? -widthNorm : 1;
-    const maxX = isLeft ? 0 : 1 + widthNorm;
+    const minX = isLeft ? -(bufferNorm + widthNorm) : 1 + bufferNorm;
+    const maxX = isLeft ? -bufferNorm : 1 + bufferNorm + widthNorm;
     return {
       id: regionId,
       title: DT_SORTED_OUT_REGION_TITLES[regionId] || "Sorted out",
@@ -385,8 +398,8 @@ export function areaCenterNormalized(regionId, canvasTypeId) {
   if (regionId === "left") return { px: 1 / 6, py };
   if (regionId === "middle") return { px: 0.5, py };
   if (regionId === "right") return { px: 5 / 6, py };
-  if (regionId === "sorted_out_left") return { px: -getSortedOutWidthNorm(canvasTypeId) / 2, py: 0.5 };
-  if (regionId === "sorted_out_right") return { px: 1 + getSortedOutWidthNorm(canvasTypeId) / 2, py: 0.5 };
+  if (regionId === "sorted_out_left") return { px: -(getSortedOutBufferWidthNorm(canvasTypeId) + getSortedOutWidthNorm(canvasTypeId) / 2), py: 0.5 };
+  if (regionId === "sorted_out_right") return { px: 1 + getSortedOutBufferWidthNorm(canvasTypeId) + getSortedOutWidthNorm(canvasTypeId) / 2, py: 0.5 };
   return { px: 0.5, py: 0.5 };
 }
 
@@ -452,7 +465,7 @@ function boardToNormalized(templateGeometry, x, y) {
   };
 }
 
-function computeNextFreeStickyPositionInSortedOutRegion({
+function computeSingleSortedOutPosition({
   templateGeometry,
   canvasTypeId,
   regionId,
@@ -497,6 +510,88 @@ function computeNextFreeStickyPositionInSortedOutRegion({
   };
 }
 
+function getSiblingSortedOutRegionId(regionId) {
+  if (regionId === "sorted_out_left") return "sorted_out_right";
+  if (regionId === "sorted_out_right") return "sorted_out_left";
+  return null;
+}
+
+function computeNextFreeStickyPositionInSortedOutRegion({
+  templateGeometry,
+  canvasTypeId,
+  regionId,
+  stickyWidthPx,
+  stickyHeightPx,
+  gapPx = 20,
+  occupiedRects = [],
+  occupiedRectsByRegion = null
+}) {
+  const primary = computeSingleSortedOutPosition({
+    templateGeometry,
+    canvasTypeId,
+    regionId,
+    stickyWidthPx,
+    stickyHeightPx,
+    gapPx,
+    occupiedRects
+  });
+  if (primary && !primary.isFull) {
+    return {
+      ...primary,
+      requestedRegionId: regionId,
+      resolvedRegionId: regionId,
+      overflowed: false
+    };
+  }
+
+  const siblingRegionId = getSiblingSortedOutRegionId(regionId);
+  const siblingRects = siblingRegionId && occupiedRectsByRegion && Array.isArray(occupiedRectsByRegion[siblingRegionId])
+    ? occupiedRectsByRegion[siblingRegionId]
+    : [];
+  const sibling = siblingRegionId
+    ? computeSingleSortedOutPosition({
+        templateGeometry,
+        canvasTypeId,
+        regionId: siblingRegionId,
+        stickyWidthPx,
+        stickyHeightPx,
+        gapPx,
+        occupiedRects: siblingRects
+      })
+    : null;
+
+  if (sibling && !sibling.isFull) {
+    return {
+      ...sibling,
+      requestedRegionId: regionId,
+      resolvedRegionId: siblingRegionId,
+      overflowed: true
+    };
+  }
+
+  if (primary) {
+    return {
+      ...primary,
+      requestedRegionId: regionId,
+      resolvedRegionId: regionId,
+      overflowed: false,
+      bothSidesFull: !!(sibling && sibling.isFull)
+    };
+  }
+
+  if (sibling) {
+    return {
+      ...sibling,
+      requestedRegionId: regionId,
+      resolvedRegionId: siblingRegionId,
+      overflowed: true,
+      bothSidesFull: sibling.isFull === true
+    };
+  }
+
+  return null;
+}
+
 /**
  * Liefert die nächste freie Position in einer Body-Region,
  * füllt zeilenweise, wrappt, vermeidet Overlaps mit bestehenden Stickies.
@@ -511,7 +606,8 @@ export function computeNextFreeStickyPositionInBodyRegion({
   stickyHeightPx,
   marginPx = 20,
   gapPx = 20,
-  occupiedRects = []
+  occupiedRects = [],
+  occupiedRectsByRegion = null
 }) {
   if (isSortedOutRegionId(regionId)) {
     return computeNextFreeStickyPositionInSortedOutRegion({
@@ -521,7 +617,8 @@ export function computeNextFreeStickyPositionInBodyRegion({
       stickyWidthPx,
       stickyHeightPx,
       gapPx,
-      occupiedRects
+      occupiedRects,
+      occupiedRectsByRegion
     });
   }
 

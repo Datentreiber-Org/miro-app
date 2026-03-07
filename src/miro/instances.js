@@ -1,6 +1,6 @@
-import { DT_IMAGE_META_KEY_INSTANCE, DT_CANVAS_DEFS, DT_SORTED_OUT_REGION_WIDTH_PX } from "../config.js?v=20260307-batch75";
+import { DT_IMAGE_META_KEY_INSTANCE, DT_CANVAS_DEFS, DT_SORTED_OUT_REGION_WIDTH_PX, DT_SORTED_OUT_BUFFER_WIDTH_PX } from "../config.js?v=20260308-batch76";
 import { isFiniteNumber } from "../utils.js?v=20260301-step11-hotfix2";
-import { ensureMiroReady, getBoard } from "./sdk.js?v=20260307-batch75";
+import { ensureMiroReady, getBoard } from "./sdk.js?v=20260308-batch76";
 import {
   compareItemIdsAsc,
   normalizePositiveInt,
@@ -8,7 +8,7 @@ import {
   formatInstanceLabel,
   buildInternalInstanceIdFromImageId
 } from "./helpers.js?v=20260305-batch05";
-import { getItemById, resolveBoardCoords } from "./items.js?v=20260307-batch75";
+import { getItemById, resolveBoardCoords } from "./items.js?v=20260308-batch76";
 import {
   normalizeChatInterfaceShapeIds,
   hasCompleteChatInterfaceShapeIds,
@@ -18,7 +18,7 @@ import {
 import {
   loadBaselineSignatureForImageId,
   removeBaselineSignatureForImageId
-} from "./storage.js?v=20260307-batch75";
+} from "./storage.js?v=20260308-batch76";
 
 // --------------------------------------------------------------------
 // Template instance registration, geometry and scan/rebind logic
@@ -241,7 +241,7 @@ function getSortedOutOutsideOffsetBoard(canvasTypeId, geom) {
   if (!geom || !isFiniteNumber(geom.width) || !Number.isFinite(originalWidth) || originalWidth <= 0) {
     return 0;
   }
-  return geom.width * (DT_SORTED_OUT_REGION_WIDTH_PX / originalWidth);
+  return geom.width * ((DT_SORTED_OUT_REGION_WIDTH_PX + DT_SORTED_OUT_BUFFER_WIDTH_PX) / originalWidth);
 }
 
 function normalizeBoardRect(rect) {

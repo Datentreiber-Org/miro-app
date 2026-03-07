@@ -20,7 +20,9 @@ export const DT_TEMPLATE_CATALOG = {
     agentLabelPrefix: "Datentreiber 3-Boxes",
     thumbnailUrl: TEMPLATE_IMAGE_URL,
     imageUrl: TEMPLATE_IMAGE_URL,
-    insertWidthPx: 2000,
+    assetWidthPx: 4550,
+    assetHeightPx: 3219,
+    insertWidthPx: 4550,
     promptContext: `
 Dieser Canvas-Typ hat drei Body-Bereiche plus Header und Footer.
 Verwende für area bzw. targetArea ausschließlich diese Area-Keys:
@@ -39,7 +41,9 @@ Plane Connectoren nur dann, wenn eine konkrete fachliche Beziehung explizit sich
     agentLabelPrefix: "Analytics & AI Use Case",
     thumbnailUrl: ANALYTICS_AI_USE_CASE_IMAGE_URL,
     imageUrl: ANALYTICS_AI_USE_CASE_IMAGE_URL,
-    insertWidthPx: 2000,
+    assetWidthPx: 4550,
+    assetHeightPx: 3219,
+    insertWidthPx: 4550,
     promptContext: `
 Dieser Canvas-Typ ist das Analytics & AI Use Case Canvas.
 Ziel dieses Canvas ist es, einen Analytics- oder KI-Anwendungsfall aus einer konkreten Nutzerrolle, ihrer Situation, ihren Zielen, Entscheidungen, Handlungen, Pains und Gains herzuleiten und erst danach eine passende Lösung zu gestalten.
@@ -114,6 +118,7 @@ export const DT_MEMORY_RECENT_LOG_LIMIT = 5;
 export const DT_RUN_STATE_STALE_AFTER_MS = 15 * 60 * 1000;
 
 export const DT_SORTED_OUT_REGION_WIDTH_PX = 50;
+export const DT_SORTED_OUT_BUFFER_WIDTH_PX = 50;
 export const DT_SORTED_OUT_REGION_IDS = Object.freeze(["sorted_out_left", "sorted_out_right"]);
 export const DT_SORTED_OUT_REGION_TITLES = Object.freeze({
   sorted_out_left: "Sorted out (left)",
@@ -699,6 +704,7 @@ ${buildCommonAgentContractBlock("globalen Agentenlauf")}`;
 export const STICKY_LAYOUT = {
   marginPx: 20,              // Abstand zur Region (oben/links/rechts/unten)
   gapPx: 20,                 // Abstand zwischen Stickies (horizontal/vertikal)
-  defaultWidthPx: 200,       // Fallback, falls Miro keine width/height liefert
-  defaultHeightPx: 200
+  defaultShape: "rectangle",
+  defaultWidthPx: 350,       // Miro Sticky Note Größe M (Breite)
+  defaultHeightPx: 228       // Miro Sticky Note Größe M (Höhe, nur intern für Layout)
 };

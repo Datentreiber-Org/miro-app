@@ -1,25 +1,71 @@
-export function estimateTemplateSize(canvasTypeId, widthPx, { canvasDefs, defaultTemplateId }) {
-  const def = canvasDefs?.[canvasTypeId] || canvasDefs?.[defaultTemplateId] || null;
-  const originalWidth = Number(def?.originalWidth) || 0;
-  const originalHeight = Number(def?.originalHeight) || 0;
+import {
+  DT_SORTED_OUT_REGION_WIDTH_PX,
+  DT_SORTED_OUT_BUFFER_WIDTH_PX
+} from "../config.js?v=20260308-batch76";
 
-  if (originalWidth > 0 && originalHeight > 0) {
+function getCanvasDef(canvasTypeId, { canvasDefs, defaultTemplateId }) {
+  return canvasDefs?.[canvasTypeId] || canvasDefs?.[defaultTemplateId] || null;
+}
+
+function resolveCanvasTypeEntry(canvasTypeId, getCanvasTypeEntryFn) {
+  return typeof getCanvasTypeEntryFn === "function" ? (getCanvasTypeEntryFn(canvasTypeId) || null) : null;
+}
+
+export function estimateTemplateSize(canvasTypeId, widthPx, { getCanvasTypeEntry, canvasDefs, defaultTemplateId }) {
+  const entry = resolveCanvasTypeEntry(canvasTypeId, getCanvasTypeEntry);
+  const def = getCanvasDef(canvasTypeId, { canvasDefs, defaultTemplateId });
+
+  const requestedWidth = Number(widthPx) || Number(entry?.assetWidthPx) || Number(entry?.insertWidthPx) || Number(def?.originalWidth) || 0;
+  const assetWidth = Number(entry?.assetWidthPx) || requestedWidth;
+  const assetHeight = Number(entry?.assetHeightPx) || 0;
+  const fallbackHeight = Number(def?.originalHeight) || 0;
+  const fallbackWidth = Number(def?.originalWidth) || 0;
+
+  if (requestedWidth > 0 && assetWidth > 0 && assetHeight > 0) {
     return {
-      width: widthPx,
-      height: widthPx * (originalHeight / originalWidth)
+      width: requestedWidth,
+      height: requestedWidth * (assetHeight / assetWidth)
+    };
+  }
+
+  if (requestedWidth > 0 && fallbackWidth > 0 && fallbackHeight > 0) {
+    return {
+      width: requestedWidth,
+      height: requestedWidth * (fallbackHeight / fallbackWidth)
     };
   }
 
   return {
-    width: widthPx,
-    height: widthPx
+    width: requestedWidth > 0 ? requestedWidth : 0,
+    height: requestedWidth > 0 ? requestedWidth : 0
   };
 }
 
 export function getInsertWidthPxForCanvasType(canvasTypeId, { getCanvasTypeEntry, fallbackWidthPx }) {
-  const entry = typeof getCanvasTypeEntry === "function" ? getCanvasTypeEntry(canvasTypeId) : null;
-  const configuredWidth = Number(entry?.insertWidthPx) || 0;
+  const entry = resolveCanvasTypeEntry(canvasTypeId, getCanvasTypeEntry);
+  const configuredWidth = Number(entry?.assetWidthPx) || Number(entry?.insertWidthPx) || 0;
   return configuredWidth > 0 ? configuredWidth : fallbackWidthPx;
+}
+
+export function estimateTemplateChromeMarginPx(canvasTypeId, imageWidthPx, { canvasDefs, defaultTemplateId }) {
+  const def = getCanvasDef(canvasTypeId, { canvasDefs, defaultTemplateId });
+  const mapWidth = Number(def?.originalWidth) || 0;
+  const boardImageWidth = Number(imageWidthPx) || 0;
+  if (!(mapWidth > 0) || !(boardImageWidth > 0)) return 0;
+  const logicalChromePx = DT_SORTED_OUT_REGION_WIDTH_PX + DT_SORTED_OUT_BUFFER_WIDTH_PX;
+  return boardImageWidth * (logicalChromePx / mapWidth);
+}
+
+export function estimateTemplateFootprint(canvasTypeId, widthPx, { getCanvasTypeEntry, canvasDefs, defaultTemplateId }) {
+  const image = estimateTemplateSize(canvasTypeId, widthPx, { getCanvasTypeEntry, canvasDefs, defaultTemplateId });
+  const chromeMarginPx = estimateTemplateChromeMarginPx(canvasTypeId, image.width, { canvasDefs, defaultTemplateId });
+  return {
+    imageWidth: image.width,
+    imageHeight: image.height,
+    chromeMarginPx,
+    width: image.width + 2 * chromeMarginPx,
+    height: image.height + 2 * chromeMarginPx
+  };
 }
 
 function rectsOverlapByCenter(a, b, padding = 0) {
@@ -62,19 +108,24 @@ function buildInsertionCandidates(centerX, centerY, stepX, stepY, maxRings) {
   return candidates;
 }
 
-async function getOccupiedTemplateFootprints(instances, { computeTemplateGeometry, log }) {
+async function getOccupiedTemplateFootprints(instances, {
+  computeTemplateGeometry,
+  estimateChromeMarginPx,
+  log
+}) {
   const occupied = [];
 
   for (const inst of instances || []) {
     const geom = await computeTemplateGeometry(inst, log);
     if (!geom) continue;
 
+    const chromeMarginPx = Math.max(0, Number(estimateChromeMarginPx?.(inst?.canvasTypeId, geom.width) || 0));
     occupied.push({
       instanceId: inst.instanceId,
       x: geom.x,
       y: geom.y,
-      width: geom.width,
-      height: geom.height
+      width: geom.width + 2 * chromeMarginPx,
+      height: geom.height + 2 * chromeMarginPx
     });
   }
 
@@ -89,6 +140,7 @@ export async function computeTemplateInsertPosition({
   instances,
   computeTemplateGeometry,
   templateInsertion,
+  getCanvasTypeEntry,
   canvasDefs,
   defaultTemplateId,
   isFiniteNumber,
@@ -104,12 +156,17 @@ export async function computeTemplateInsertPosition({
     ? viewport.y + viewport.height / 2
     : 0;
 
-  const estimatedImage = estimateTemplateSize(canvasTypeId, insertWidthPx, { canvasDefs, defaultTemplateId });
-  const footprint = {
-    width: estimatedImage.width,
-    height: estimatedImage.height
-  };
-  const occupied = await getOccupiedTemplateFootprints(instances, { computeTemplateGeometry, log });
+  const footprint = estimateTemplateFootprint(canvasTypeId, insertWidthPx, {
+    getCanvasTypeEntry,
+    canvasDefs,
+    defaultTemplateId
+  });
+
+  const occupied = await getOccupiedTemplateFootprints(instances, {
+    computeTemplateGeometry,
+    estimateChromeMarginPx: (candidateCanvasTypeId, imageWidth) => estimateTemplateChromeMarginPx(candidateCanvasTypeId, imageWidth, { canvasDefs, defaultTemplateId }),
+    log
+  });
 
   const stepX = footprint.width + templateInsertion.footprintGapPx;
   const stepY = footprint.height + templateInsertion.footprintGapPx;
@@ -137,7 +194,12 @@ export async function computeTemplateInsertPosition({
         y: candidate.y,
         viewportCenterX,
         viewportCenterY,
-        usedViewportCenter: candidate.gridX === 0 && candidate.gridY === 0
+        usedViewportCenter: candidate.gridX === 0 && candidate.gridY === 0,
+        imageWidth: footprint.imageWidth,
+        imageHeight: footprint.imageHeight,
+        chromeMarginPx: footprint.chromeMarginPx,
+        footprintWidth: footprint.width,
+        footprintHeight: footprint.height
       };
     }
   }
