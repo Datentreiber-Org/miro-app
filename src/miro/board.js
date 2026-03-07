@@ -20,13 +20,20 @@ export {
   saveExerciseRuntime,
   loadMemoryLog,
   appendMemoryLogEntry,
+  normalizeProposalRecord,
+  loadProposalRecord,
+  saveProposalRecord,
+  listProposalRecords,
+  updateProposalRecordStatus,
+  supersedePendingProposals,
+  loadLatestPendingProposal,
   loadBoardFlow,
   saveBoardFlow,
   listBoardFlows,
   normalizeBoardRunState,
   loadBoardRunState,
   saveBoardRunState
-} from "./storage.js?v=20260308-batch76";
+} from "./storage.js?v=20260309-batch81";
 
 export {
   buildAgentFeedbackContent,

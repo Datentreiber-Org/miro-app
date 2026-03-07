@@ -10,10 +10,12 @@ import {
   DT_STORAGE_KEY_BOARD_FLOW_INDEX,
   DT_STORAGE_KEY_BOARD_FLOW_PREFIX,
   DT_STORAGE_KEY_RUN_STATE,
+  DT_STORAGE_KEY_PROPOSAL_INDEX,
+  DT_STORAGE_KEY_PROPOSAL_PREFIX,
   DT_DEFAULT_FEEDBACK_CHANNEL,
   DT_DEFAULT_APP_ADMIN_POLICY,
   DT_MEMORY_RECENT_LOG_LIMIT
-} from "../config.js?v=20260307-batch75";
+} from "../config.js?v=20260309-batch81";
 
 import { normalizeBoardFlow } from "../runtime/board-flow.js?v=20260306-batch6";
 import { normalizeUiLanguage } from "../i18n/index.js?v=20260306-batch6";
@@ -694,6 +696,207 @@ export async function saveExerciseRuntime(runtime, log) {
   }
 
   return normalized;
+}
+
+
+function proposalRecordKey(proposalId) {
+  return DT_STORAGE_KEY_PROPOSAL_PREFIX + String(proposalId);
+}
+
+function buildProposalRecordId() {
+  return "p-" + Date.now().toString(36) + "-" + Math.floor(Math.random() * 1e9).toString(36);
+}
+
+function normalizeProposalStatus(value) {
+  const normalized = asTrimmedString(value);
+  if (!normalized) return "pending";
+  return ["pending", "applied", "superseded", "discarded", "stale"].includes(normalized)
+    ? normalized
+    : "pending";
+}
+
+export function normalizeProposalRecord(rawRecord) {
+  const src = (rawRecord && typeof rawRecord === "object") ? rawRecord : {};
+  const targetInstanceLabels = uniqueIds(Array.isArray(src.targetInstanceLabels) ? src.targetInstanceLabels.map((value) => asTrimmedString(value)).filter(Boolean) : []);
+  const actions = Array.isArray(src.actions) ? src.actions.map((action) => ({ ...(action && typeof action === "object" ? action : {}) })) : [];
+  return {
+    version: 1,
+    proposalId: asTrimmedString(src.proposalId),
+    status: normalizeProposalStatus(src.status),
+    createdAt: asTrimmedString(src.createdAt),
+    updatedAt: asTrimmedString(src.updatedAt),
+    anchorInstanceId: asTrimmedString(src.anchorInstanceId),
+    anchorInstanceLabel: asTrimmedString(src.anchorInstanceLabel),
+    targetInstanceLabels,
+    canvasTypeId: asTrimmedString(src.canvasTypeId),
+    packTemplateId: asTrimmedString(src.packTemplateId),
+    stepId: asTrimmedString(src.stepId),
+    stepLabel: asTrimmedString(src.stepLabel),
+    triggerKey: asTrimmedString(src.triggerKey),
+    triggerSource: asTrimmedString(src.triggerSource),
+    runProfileId: asTrimmedString(src.runProfileId),
+    controlId: asTrimmedString(src.controlId),
+    basedOnStateHash: asTrimmedString(src.basedOnStateHash),
+    basedOnHeaderSummary: asTrimmedString(src.basedOnHeaderSummary),
+    basedOnStickyCount: Number.isFinite(Number(src.basedOnStickyCount)) ? Number(src.basedOnStickyCount) : null,
+    userRequest: asTrimmedString(src.userRequest),
+    analysis: asTrimmedString(src.analysis),
+    feedback: (src.feedback && typeof src.feedback === "object") ? { ...src.feedback } : null,
+    actions,
+    memoryEntry: (src.memoryEntry && typeof src.memoryEntry === "object") ? { ...src.memoryEntry } : null,
+    flowControlDirectives: (src.flowControlDirectives && typeof src.flowControlDirectives === "object") ? { ...src.flowControlDirectives } : null,
+    evaluation: (src.evaluation && typeof src.evaluation === "object") ? { ...src.evaluation } : null
+  };
+}
+
+async function loadProposalIndex(log) {
+  await ensureMiroReady(log);
+  const col = getStorageCollection();
+  if (!col) return [];
+
+  try {
+    const value = await col.get(DT_STORAGE_KEY_PROPOSAL_INDEX);
+    if (value && typeof value === "object" && value.version === 1 && Array.isArray(value.proposalIds)) {
+      return uniqueIds(value.proposalIds.map((id) => String(id)).filter(Boolean));
+    }
+  } catch (e) {
+    if (typeof log === "function") log("Fehler beim Laden des Proposal-Index: " + e.message);
+  }
+
+  return [];
+}
+
+async function saveProposalIndex(proposalIds, log) {
+  await ensureMiroReady(log);
+  const col = getStorageCollection();
+  if (!col) return uniqueIds(proposalIds || []);
+
+  const normalizedProposalIds = uniqueIds((proposalIds || []).map((id) => String(id)).filter(Boolean));
+  try {
+    await col.set(DT_STORAGE_KEY_PROPOSAL_INDEX, {
+      version: 1,
+      proposalIds: normalizedProposalIds
+    });
+  } catch (e) {
+    if (typeof log === "function") log("Fehler beim Speichern des Proposal-Index: " + e.message);
+  }
+  return normalizedProposalIds;
+}
+
+function compareProposalRecordsDesc(a, b) {
+  const aTs = asTrimmedString(a?.updatedAt) || asTrimmedString(a?.createdAt) || "";
+  const bTs = asTrimmedString(b?.updatedAt) || asTrimmedString(b?.createdAt) || "";
+  if (aTs !== bTs) return bTs.localeCompare(aTs);
+  return String(b?.proposalId || "").localeCompare(String(a?.proposalId || ""));
+}
+
+export async function loadProposalRecord(proposalId, log) {
+  await ensureMiroReady(log);
+  const normalizedId = asTrimmedString(proposalId);
+  if (!normalizedId) return null;
+
+  const col = getStorageCollection();
+  if (!col) return null;
+
+  try {
+    const raw = await col.get(proposalRecordKey(normalizedId));
+    const normalized = normalizeProposalRecord(raw);
+    return normalized.proposalId ? normalized : null;
+  } catch (e) {
+    if (typeof log === "function") log("Fehler beim Laden des Proposal-Records '" + normalizedId + "': " + e.message);
+    return null;
+  }
+}
+
+export async function saveProposalRecord(record, log) {
+  await ensureMiroReady(log);
+  const col = getStorageCollection();
+  const nowIso = new Date().toISOString();
+  const normalized = normalizeProposalRecord({
+    ...(record && typeof record === "object" ? record : {}),
+    proposalId: asTrimmedString(record?.proposalId) || buildProposalRecordId(),
+    createdAt: asTrimmedString(record?.createdAt) || nowIso,
+    updatedAt: nowIso,
+    status: normalizeProposalStatus(record?.status)
+  });
+
+  if (!normalized.proposalId) return null;
+  if (!col) return normalized;
+
+  try {
+    await col.set(proposalRecordKey(normalized.proposalId), normalized);
+    const index = await loadProposalIndex(log);
+    if (!index.includes(normalized.proposalId)) {
+      index.push(normalized.proposalId);
+      await saveProposalIndex(index, log);
+    }
+  } catch (e) {
+    if (typeof log === "function") log("Fehler beim Speichern des Proposal-Records '" + normalized.proposalId + "': " + e.message);
+  }
+
+  return normalized;
+}
+
+export async function listProposalRecords(filters = {}, log) {
+  await ensureMiroReady(log);
+  const col = getStorageCollection();
+  if (!col) return [];
+
+  const normalizedAnchorInstanceId = asTrimmedString(filters?.anchorInstanceId);
+  const normalizedStepId = asTrimmedString(filters?.stepId);
+  const normalizedStatuses = new Set(uniqueIds(Array.isArray(filters?.statuses) ? filters.statuses.map((value) => asTrimmedString(value)).filter(Boolean) : []));
+  const proposalIds = await loadProposalIndex(log);
+  if (!proposalIds.length) return [];
+
+  const records = [];
+  for (const proposalId of proposalIds) {
+    const record = await loadProposalRecord(proposalId, log);
+    if (!record?.proposalId) continue;
+    if (normalizedAnchorInstanceId && record.anchorInstanceId !== normalizedAnchorInstanceId) continue;
+    if (normalizedStepId && record.stepId !== normalizedStepId) continue;
+    if (normalizedStatuses.size && !normalizedStatuses.has(record.status)) continue;
+    records.push(record);
+  }
+
+  records.sort(compareProposalRecordsDesc);
+  return records;
+}
+
+export async function updateProposalRecordStatus(proposalId, status, patch = {}, log) {
+  const record = await loadProposalRecord(proposalId, log);
+  if (!record) return null;
+  return await saveProposalRecord({
+    ...record,
+    ...(patch && typeof patch === "object" ? patch : {}),
+    proposalId: record.proposalId,
+    createdAt: record.createdAt,
+    status: normalizeProposalStatus(status)
+  }, log);
+}
+
+export async function supersedePendingProposals({ anchorInstanceId = null, stepId = null, excludeProposalId = null } = {}, log) {
+  const records = await listProposalRecords({
+    anchorInstanceId,
+    stepId,
+    statuses: ["pending"]
+  }, log);
+
+  const supersededIds = [];
+  for (const record of records) {
+    if (!record?.proposalId || record.proposalId === excludeProposalId) continue;
+    await updateProposalRecordStatus(record.proposalId, "superseded", {}, log);
+    supersededIds.push(record.proposalId);
+  }
+  return supersededIds;
+}
+
+export async function loadLatestPendingProposal({ anchorInstanceId = null, stepId = null } = {}, log) {
+  const records = await listProposalRecords({
+    anchorInstanceId,
+    stepId,
+    statuses: ["pending"]
+  }, log);
+  return records[0] || null;
 }
 
 export async function loadMemoryLog(log) {

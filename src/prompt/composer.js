@@ -3,8 +3,8 @@ import {
   getDefaultCanvasTypeIdForPack,
   getPackDefaults,
   getStepTriggerConfig
-} from "../exercises/registry.js?v=20260307-batch8";
-import { parseTriggerKey } from "../runtime/exercise-engine.js?v=20260307-batch8";
+} from "../exercises/registry.js?v=20260310-batch81";
+import { parseTriggerKey } from "../runtime/exercise-engine.js?v=20260310-batch81";
 import { normalizeUiLanguage } from "../i18n/index.js?v=20260306-batch6";
 
 function asNonEmptyString(value) {
@@ -173,6 +173,65 @@ function buildBoardMechanicsBlock({
   }
 
   return lines.join("\n");
+}
+
+function normalizePendingProposalForPrompt(value) {
+  if (!value || typeof value !== "object") return null;
+  const status = asNonEmptyString(value.status) || null;
+  const stepId = asNonEmptyString(value.stepId) || null;
+  const createdAt = asNonEmptyString(value.createdAt) || null;
+  const summary = asNonEmptyString(value.summary)
+    || asNonEmptyString(value.feedback?.summary)
+    || asNonEmptyString(value.analysis)
+    || null;
+  const actionPreview = Array.isArray(value.actionPreview)
+    ? value.actionPreview.map(asNonEmptyString).filter(Boolean).slice(0, 8)
+    : [];
+
+  return {
+    status,
+    stepId,
+    createdAt,
+    summary,
+    actionPreview
+  };
+}
+
+function buildReadableAreaNamingBlock() {
+  return [
+    "Sichtbare Benennung von Canvas-Bereichen:",
+    "- Verwende in sichtbaren Antworten niemals rohe Area-Keys wie 2_user_and_situation oder 6a_information.",
+    "- Nutze stattdessen die sichtbaren Titel der Bereiche, z. B. User & Situation, Objectives & Results, Decisions & Actions, User Gains, User Pains, Solutions, Information, Functions, Benefits oder Check.",
+    "- sorted_out_left und sorted_out_right dürfen sichtbar als Sorted-out links bzw. Sorted-out rechts bezeichnet werden."
+  ].join("\n");
+}
+
+function buildProposalModeBlock({ exerciseContext = null, pendingProposal = null, questionMode = false } = {}) {
+  const lines = [];
+  const triggerIntent = asNonEmptyString(exerciseContext?.triggerIntent) || null;
+  const normalizedPendingProposal = normalizePendingProposalForPrompt(pendingProposal);
+
+  if (triggerIntent === "propose") {
+    lines.push("Vorschlagsmodus:");
+    lines.push("- In diesem Run sind actions konkrete Vorschläge für mögliche Board-Änderungen, aber noch KEINE bereits angewendeten Mutationen.");
+    lines.push("- Stelle sprachlich klar, dass noch nichts angewendet wurde. Verwende keine Formulierungen, die die Vorschläge als bereits umgesetzt darstellen.");
+    lines.push("- feedback muss menschlich lesbar erklären: 1) was du auf dem Board siehst, 2) was du vorschlägst, 3) warum das im aktuellen Schritt sinnvoll ist, 4) was nach einer Bestätigung passieren würde.");
+    lines.push("- Plane nur Vorschläge, die strikt im Scope des aktuellen Schritts bleiben. Nimm nichts aus späteren Schritten vorweg.");
+  }
+
+  if (normalizedPendingProposal) {
+    lines.push("Hinweis zu einem bereits vorliegenden Vorschlag:");
+    lines.push("- Im Payload kann ein pendingProposal enthalten sein. Dieser Vorschlag ist noch NICHT angewendet und gehört nicht automatisch zum echten Boardzustand.");
+    lines.push("- Wenn du dich auf pendingProposal beziehst, sprich klar von einem Vorschlag oder einer vorgeschlagenen Änderung, nicht von bereits vollzogener Arbeit.");
+    if (normalizedPendingProposal.summary) {
+      lines.push(`- Zusammenfassung des offenen Vorschlags: ${normalizedPendingProposal.summary}`);
+    }
+    if (normalizedPendingProposal.actionPreview.length) {
+      lines.push(`- Vorschlagsvorschau: ${normalizedPendingProposal.actionPreview.join(" | ")}`);
+    }
+  }
+
+  return lines.length ? lines.join("\n") : null;
 }
 
 const ADMIN_OVERRIDE_ALLOWED_ACTIONS = Object.freeze([
@@ -445,6 +504,8 @@ export function composePrompt({
   controlContext = null,
   questionMode = false
 } = {}) {
+  const payloadBase = (baseUserPayload && typeof baseUserPayload === "object") ? baseUserPayload : {};
+  const pendingProposal = normalizePendingProposalForPrompt(payloadBase.pendingProposal);
   const systemBlocks = [];
   const hasFlowContext = !!(packTemplate || runProfile || flowStep || (Array.isArray(promptModules) && promptModules.length) || controlContext);
   const normalizedAdminOverrideText = asNonEmptyString(adminOverrideText);
@@ -497,6 +558,17 @@ export function composePrompt({
     systemBlocks.push(boardMechanicsBlock);
   }
 
+  systemBlocks.push(buildReadableAreaNamingBlock());
+
+  const proposalModeBlock = buildProposalModeBlock({
+    exerciseContext,
+    pendingProposal,
+    questionMode
+  });
+  if (proposalModeBlock) {
+    systemBlocks.push(proposalModeBlock);
+  }
+
   if (hasFlowContext) {
     const packBlock = buildPackTemplatePromptBlock(packTemplate);
     if (packBlock) systemBlocks.push(packBlock);
@@ -533,7 +605,6 @@ export function composePrompt({
   }
 
   const systemPrompt = systemBlocks.filter(Boolean).join("\n\n---\n\n");
-  const payloadBase = (baseUserPayload && typeof baseUserPayload === "object") ? baseUserPayload : {};
 
   return {
     systemPrompt,

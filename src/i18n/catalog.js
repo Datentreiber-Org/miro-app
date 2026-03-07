@@ -183,6 +183,8 @@ export const UI_STRINGS = Object.freeze({
   "trigger.intent.synthesize": { de: "Synthesize", en: "Synthesize" },
   "trigger.intent.coach": { de: "Coach", en: "Coach" },
   "trigger.intent.grade": { de: "Grade", en: "Grade" },
+  "trigger.intent.propose": { de: "Vorschlag", en: "Proposal" },
+  "trigger.intent.apply": { de: "Anwenden", en: "Apply" },
 
   "sourceLabel.exerciseAgent": { de: "Exercise-Agent", en: "Exercise agent" },
   "sourceLabel.globalAgent": { de: "Global Agent", en: "Global agent" },
@@ -300,6 +302,16 @@ export const METHOD_I18N_OVERRIDES = Object.freeze({
       summary: { en: "Coaches focus, scope, and open assumptions with guiding questions and one micro-step." },
       uiHint: { en: "Use this when participants need help narrowing the use case and surfacing assumptions." }
     }),
+    "analytics.fit.step0.propose": Object.freeze({
+      label: { en: "Generate focus suggestions" },
+      summary: { en: "Generates concrete but not-yet-applied suggestions for focus, scope, and open assumptions." },
+      uiHint: { en: "Use this when you want concrete board suggestions before applying anything." }
+    }),
+    "analytics.fit.step0.apply": Object.freeze({
+      label: { en: "Apply suggestions" },
+      summary: { en: "Applies the latest stored focus/scope proposal to this canvas instance." },
+      uiHint: { en: "Becomes useful once a proposal exists for the current step." }
+    }),
     "analytics.fit.step1.check": Object.freeze({
       label: { en: "Check user needs analysis" },
       summary: { en: "Checks whether the user needs analysis is focused and strong enough to serve as the basis for solution design." },
@@ -315,6 +327,16 @@ export const METHOD_I18N_OVERRIDES = Object.freeze({
       summary: { en: "Coaches the user needs analysis with guiding questions and one micro-step." },
       uiHint: { en: "Use this when participants should keep thinking for themselves instead of getting a ready-made answer." }
     }),
+    "analytics.fit.step1.propose": Object.freeze({
+      label: { en: "Generate user-analysis suggestions" },
+      summary: { en: "Generates concrete but not-yet-applied suggestions for focus, structure, and prioritization in the user needs analysis." },
+      uiHint: { en: "Use this when you want concrete board suggestions before applying anything." }
+    }),
+    "analytics.fit.step1.apply": Object.freeze({
+      label: { en: "Apply suggestions" },
+      summary: { en: "Applies the latest stored user-analysis proposal to this canvas instance." },
+      uiHint: { en: "Becomes useful once a proposal exists for the current step." }
+    }),
     "analytics.fit.step2.check": Object.freeze({
       label: { en: "Check solution design" },
       summary: { en: "Checks whether the solution design is focused and cleanly derived from the user needs analysis." },
@@ -329,6 +351,16 @@ export const METHOD_I18N_OVERRIDES = Object.freeze({
       label: { en: "Coach solution design" },
       summary: { en: "Coaches variant choice and the derivation of Information, Functions, and Benefits." },
       uiHint: { en: "Use this when participants should derive the left-hand side themselves instead of receiving a ready-made design." }
+    }),
+    "analytics.fit.step2.propose": Object.freeze({
+      label: { en: "Generate solution suggestions" },
+      summary: { en: "Generates concrete but not-yet-applied suggestions for variant choice and left-side derivation." },
+      uiHint: { en: "Use this when you want concrete board suggestions before applying anything." }
+    }),
+    "analytics.fit.step2.apply": Object.freeze({
+      label: { en: "Apply suggestions" },
+      summary: { en: "Applies the latest stored solution-design proposal to this canvas instance." },
+      uiHint: { en: "Becomes useful once a proposal exists for the current step." }
     }),
     "analytics.fit.step3.review": Object.freeze({
       label: { en: "Validate fit" },
@@ -349,6 +381,16 @@ export const METHOD_I18N_OVERRIDES = Object.freeze({
       label: { en: "Coach fit validation" },
       summary: { en: "Coaches fit validation with guiding questions instead of jumping straight to judgement or condensation." },
       uiHint: { en: "Useful when the team should validate relationships together before reducing or condensing." }
+    }),
+    "analytics.fit.step3.propose": Object.freeze({
+      label: { en: "Generate validation / MDP suggestions" },
+      summary: { en: "Generates concrete but not-yet-applied suggestions for validation, checkmarks, pruning, and the Minimum Desired Product." },
+      uiHint: { en: "Use this when you want concrete board suggestions before applying anything." }
+    }),
+    "analytics.fit.step3.apply": Object.freeze({
+      label: { en: "Apply suggestions" },
+      summary: { en: "Applies the latest stored validation / MDP proposal to this canvas instance." },
+      uiHint: { en: "Becomes useful once a proposal exists for the current step." }
     }),
     "analytics.fit.global.review": Object.freeze({
       label: { en: "Compare boards" },
@@ -373,6 +415,10 @@ export const METHOD_I18N_OVERRIDES = Object.freeze({
     "analytics.fit.shared.coach_style": Object.freeze({
       label: { en: "Coach style" },
       summary: { en: "Socratic, motivating coaching style with guiding questions and one micro-step." }
+    }),
+    "analytics.fit.shared.proposal_mode": Object.freeze({
+      label: { en: "Proposal mode" },
+      summary: { en: "Describes the intermediate mode: concrete suggestions first, application only after confirmation." }
     }),
     "analytics.fit.shared.review_style": Object.freeze({
       label: { en: "Review style" },

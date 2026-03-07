@@ -3148,6 +3148,254 @@ function buildAnalyticsDidacticSteps(pack) {
   };
 }
 
+function applyAnalyticsProposalPromptPatch(pack) {
+  if (!pack || typeof pack !== "object") return;
+
+  Object.assign(pack.promptModules, {
+    "analytics.fit.shared.proposal_mode": {
+      id: "analytics.fit.shared.proposal_mode",
+      label: "Vorschlagsmodus",
+      summary: "Beschreibt den Zwischenmodus: konkrete Vorschläge zuerst, Umsetzung erst nach Bestätigung.",
+      prompt: `Vorschlagsmodus:
+- In diesem Trigger darfst du konkrete Board-Vorschläge machen, aber sie werden noch NICHT sofort angewendet.
+- actions beschreiben die vorgeschlagenen Änderungen, nicht bereits vollzogene Änderungen.
+- feedback muss für Menschen klar sagen: 1) was du auf dem Board siehst, 2) was du vorschlägst, 3) warum das im aktuellen Schritt sinnvoll ist, 4) dass noch nichts angewendet wurde und was nach einer Bestätigung passieren würde.
+- Bleibe streng im Scope des aktuellen Schritts. Der Vorschlagsmodus ist nicht dazu da, den gesamten Workshop vorwegzunehmen.`
+    },
+    "analytics.fit.step0.proposal_focus": {
+      id: "analytics.fit.step0.proposal_focus",
+      label: "Vorschläge für Preparation & Focus",
+      summary: "Macht konkrete, aber noch nicht angewendete Fokus- und Scope-Vorschläge.",
+      prompt: `Step-0-Vorschlagslogik:
+- Mache nur Vorschläge, die Fokus, Header, Scope und offene Annahmen schärfen.
+- Gute Vorschläge sind z. B.: Header präzisieren, weiße Annahmen/Fragen expliziter formulieren, Scope-Reste nach sorted_out_left parken.
+- Entwickle in diesem Vorschlagsmodus noch keine Nutzeranalyse, keine Lösung und keinen Fit.`
+    },
+    "analytics.fit.step1.proposal_user_analysis": {
+      id: "analytics.fit.step1.proposal_user_analysis",
+      label: "Vorschläge für User Needs Analysis",
+      summary: "Macht konkrete, aber noch nicht angewendete Vorschläge innerhalb der Nutzeranalyse.",
+      prompt: `Step-1-Vorschlagslogik:
+- Schlage nur Änderungen vor, die die Nutzeranalyse tragfähiger machen.
+- Gute Vorschläge sind z. B.: einen Hauptnutzer fokussieren, alternative Nutzerrollen nach sorted_out_left parken, Situation schärfen, Objectives/Results und Decisions/Actions sauberer trennen, Gains/Pains besser an relevante blaue Stickies andocken, weniger wichtige Gains/Pains parken.
+- Mache keine Lösungsvorschläge und verdichte keinen Fit vorzeitig.`
+    },
+    "analytics.fit.step2.proposal_solution_design": {
+      id: "analytics.fit.step2.proposal_solution_design",
+      label: "Vorschläge für Solution Design",
+      summary: "Macht konkrete, aber noch nicht angewendete Vorschläge für Variantenwahl und Ableitung der linken Seite.",
+      prompt: `Step-2-Vorschlagslogik:
+- Schlage nur Änderungen vor, die die linke Seite als Ableitung aus Step 1 verbessern.
+- Gute Vorschläge sind z. B.: mehrere Varianten trennen, eine Hauptvariante fokussieren, Alternativen nach sorted_out_right parken, Information/Functions/Benefits sauber differenzieren oder Benefit-Formulierungen schärfen.
+- Führe keine Fit-Verdichtung vorweg und tue nicht so, als sei die Lösung bereits validiert.`
+    },
+    "analytics.fit.step3.proposal_fit_validation": {
+      id: "analytics.fit.step3.proposal_fit_validation",
+      label: "Vorschläge für Fit Validation & MDP",
+      summary: "Macht konkrete, aber noch nicht angewendete Vorschläge für Validierung, Checkmarks und Reduktion.",
+      prompt: `Step-3-Vorschlagslogik:
+- Schlage nur Änderungen vor, die validieren, markieren, ausdünnen und auf ein Minimum Desired Product reduzieren.
+- Gute Vorschläge sind z. B.: Checkmarks für belastbare Benefit-Beziehungen setzen, unvalidierte Benefits/Information/Functions parken oder entfernen, wenige Check-Aussagen verdichten.
+- Beschreibe klar, welche Inhalte validiert sind, welche nur Alternativen bleiben und welche nach Bestätigung reduziert würden.`
+    }
+  });
+
+  setPromptModuleText(pack, "analytics.fit.shared.feedback_contract", {
+    prompt: `Feedback-Vertrag:
+- Antworte nicht kryptisch. Das feedback muss für nicht-expertische Nutzer klar, konkret und nachvollziehbar sein.
+- Beziehe dich immer zuerst auf das, was auf diesem Canvas tatsächlich vorhanden ist oder fehlt.
+- Formuliere klar: 1) was du auf dem Board siehst, 2) warum das im aktuellen Schritt wichtig ist, 3) was der nächste sinnvolle Arbeitsschritt ist.
+- Wenn ein Bereich leer oder unreif ist, gib kurze Satzanfänge oder Formulierungsanstöße statt abstrakter Methodensprache.
+- Wenn du Board-Mutationen vornimmst, erkläre knapp und konkret, was du verändert hast und warum.
+- Im Vorschlagsmodus musst du ausdrücklich sagen, dass noch nichts angewendet wurde.
+- Verwende in sichtbaren Antworten niemals rohe Area-Keys wie 2_user_and_situation oder 6a_information, sondern die sichtbaren Bereichstitel.
+- Bleibe innerhalb des Regelwerks dieses Canvas; verweise nicht kryptisch auf externe Logiken, die hier gerade nicht ausgeführt werden.`
+  });
+
+  setPromptModuleText(pack, "analytics.fit.shared.question_style", {
+    prompt: `Fragemodus:
+- Beantworte Fragen direkt, verständlich und boardbezogen.
+- Wenn die Frage allgemein ist (z. B. "Was mache ich hier?"), erkläre kurz Zweck des Canvas, den aktuellen Schritt, was in diesem Schritt gute Inhalte sind und was der nächste konkrete Schritt ist.
+- Wenn die Frage einen früheren oder späteren Workshopteil berührt, erkläre das knapp, bleibe aber in der isolierten Übung dieses Einzelcanvas.
+- Wenn die Frage nach Beispielen verlangt, gib kurze, plausible Beispiel-Stickies oder Satzanfänge – keine komplette Wunschlösung, sofern nicht ausdrücklich verlangt.
+- Wenn eine Frage eigentlich einen anderen Schritt betrifft, sage das freundlich und nenne, was im aktuellen Schritt zuerst geklärt werden sollte.
+- Wenn ein pendingProposal im Kontext vorhanden ist, erkläre ihn als noch nicht angewendeten Vorschlag und nicht als bereits umgesetzten Boardzustand.
+- Verwende in sichtbaren Antworten niemals rohe Area-Keys, sondern die sichtbaren Bereichstitel.`
+  });
+
+  function addStepProposalTriggers(stepId, proposalConfig, applyConfig) {
+    const step = pack.steps?.[stepId];
+    if (!step || typeof step !== "object") return;
+    const allowedActions = normalizeUniqueStrings(step.allowedActions || []);
+    step.triggerProfiles["selection.propose"] = makeTriggerProfileDef("selection.propose", {
+      mutationPolicy: "full",
+      feedbackPolicy: "text",
+      prompt: proposalConfig.prompt,
+      flowControl: makeFlowControlDef({
+        id: proposalConfig.runProfileId,
+        label: proposalConfig.label,
+        summary: proposalConfig.summary,
+        moduleIds: proposalConfig.moduleIds,
+        mutationPolicy: "full",
+        feedbackPolicy: "text",
+        defaultScopeType: "fixed_instances",
+        allowedActions,
+        uiHint: proposalConfig.uiHint,
+        sortOrder: proposalConfig.sortOrder
+      })
+    });
+    step.triggerProfiles["selection.apply"] = makeTriggerProfileDef("selection.apply", {
+      mutationPolicy: "full",
+      feedbackPolicy: "text",
+      prompt: applyConfig.prompt,
+      flowControl: makeFlowControlDef({
+        id: applyConfig.runProfileId,
+        label: applyConfig.label,
+        summary: applyConfig.summary,
+        moduleIds: applyConfig.moduleIds,
+        mutationPolicy: "full",
+        feedbackPolicy: "text",
+        defaultScopeType: "fixed_instances",
+        allowedActions,
+        uiHint: applyConfig.uiHint,
+        sortOrder: applyConfig.sortOrder
+      })
+    });
+  }
+
+  addStepProposalTriggers("step0_preparation_and_focus", {
+    runProfileId: "analytics.fit.step0.propose",
+    label: "Fokusvorschläge erzeugen",
+    summary: "Erzeugt konkrete, aber noch nicht angewendete Vorschläge für Fokus, Scope und offene Annahmen.",
+    moduleIds: [
+      "analytics.fit.shared.method_guardrails",
+      "analytics.fit.shared.feedback_contract",
+      "analytics.fit.shared.proposal_mode",
+      "analytics.fit.shared.sorted_out_semantics",
+      "analytics.fit.shared.validation_and_color_semantics",
+      "analytics.fit.shared.no_handoff_boundary",
+      "analytics.fit.step0.focus_preparation",
+      "analytics.fit.step0.proposal_focus"
+    ],
+    uiHint: "Macht konkrete Fokus- und Scope-Vorschläge, ohne sie sofort anzuwenden.",
+    sortOrder: 4,
+    prompt: `Vorschlagsmodus für den Schritt "Preparation & Focus":
+- Analysiere Fokus, Scope und offene Annahmen des aktuellen Canvas.
+- Schlage konkrete Board-Änderungen vor, die den Header schärfen, offene Annahmen expliziter machen oder Scope-Reste sauber nach sorted_out_left parken.
+- Nichts davon ist bereits angewendet. Beschreibe im feedback klar, was du vorschlagen würdest und warum.
+- Entwickle in diesem Schritt noch keine Nutzeranalyse, keine Lösung und keinen Fit.`
+  }, {
+    runProfileId: "analytics.fit.step0.apply",
+    label: "Vorschläge anwenden",
+    summary: "Wendet den zuletzt erzeugten Fokus-/Scope-Vorschlag auf diese Canvas-Instanz an.",
+    moduleIds: ["analytics.fit.shared.proposal_mode"],
+    uiHint: "Wird sinnvoll, sobald ein Fokus-Vorschlag vorliegt.",
+    sortOrder: 5,
+    prompt: `Bestätigungsmodus für den Schritt "Preparation & Focus":
+- Dieser Trigger wendet einen zuvor gespeicherten Vorschlag an.
+- Es sollen keine neuen Vorschläge erzeugt und keine neuen Board-Ideen erfunden werden.`
+  });
+
+  addStepProposalTriggers("step1_user_perspective", {
+    runProfileId: "analytics.fit.step1.propose",
+    label: "Nutzeranalyse-Vorschläge erzeugen",
+    summary: "Erzeugt konkrete, aber noch nicht angewendete Vorschläge für Fokus, Strukturierung und Priorisierung der Nutzeranalyse.",
+    moduleIds: [
+      "analytics.fit.shared.method_guardrails",
+      "analytics.fit.shared.feedback_contract",
+      "analytics.fit.shared.proposal_mode",
+      "analytics.fit.shared.sorted_out_semantics",
+      "analytics.fit.shared.validation_and_color_semantics",
+      "analytics.fit.step1.focus_user_perspective",
+      "analytics.fit.step1.diverge_and_focus_users",
+      "analytics.fit.step1.attach_and_prioritize_gains_pains",
+      "analytics.fit.step1.proposal_user_analysis"
+    ],
+    uiHint: "Macht konkrete Vorschläge zur Nutzeranalyse, ohne sie sofort anzuwenden.",
+    sortOrder: 14,
+    prompt: `Vorschlagsmodus für den Schritt "User Needs Analysis":
+- Analysiere die aktuelle Nutzeranalyse und erkenne, ob gerade Divergenz, Fokussierung, Strukturierung oder Priorisierung fehlt.
+- Schlage konkrete Board-Änderungen vor, z. B. einen Hauptnutzer fokussieren, Alternativen nach sorted_out_left parken, Objectives/Results oder Decisions/Actions sauberer trennen oder Gains/Pains sinnvoll andocken.
+- Handle noch nichts als bereits umgesetzt. Beschreibe im feedback klar, was du vorschlagen würdest und was nach Bestätigung passieren würde.
+- Entwickle in diesem Vorschlagsmodus keine Lösung und keinen Fit.`
+  }, {
+    runProfileId: "analytics.fit.step1.apply",
+    label: "Vorschläge anwenden",
+    summary: "Wendet den zuletzt erzeugten Vorschlag zur Nutzeranalyse auf diese Canvas-Instanz an.",
+    moduleIds: ["analytics.fit.shared.proposal_mode"],
+    uiHint: "Wird sinnvoll, sobald ein Vorschlag zur Nutzeranalyse vorliegt.",
+    sortOrder: 15,
+    prompt: `Bestätigungsmodus für den Schritt "User Needs Analysis":
+- Dieser Trigger wendet einen zuvor gespeicherten Vorschlag an.
+- Erzeuge keine neuen Ideen und keine neue Analyse, sondern führe nur den bestätigten Vorschlag aus.`
+  });
+
+  addStepProposalTriggers("step2_solution_perspective", {
+    runProfileId: "analytics.fit.step2.propose",
+    label: "Lösungsvorschläge erzeugen",
+    summary: "Erzeugt konkrete, aber noch nicht angewendete Vorschläge für Variantenwahl und Ableitung der linken Seite.",
+    moduleIds: [
+      "analytics.fit.shared.method_guardrails",
+      "analytics.fit.shared.feedback_contract",
+      "analytics.fit.shared.proposal_mode",
+      "analytics.fit.shared.sorted_out_semantics",
+      "analytics.fit.shared.validation_and_color_semantics",
+      "analytics.fit.step2.focus_solution_perspective",
+      "analytics.fit.step2.choose_variant_and_park_alternatives",
+      "analytics.fit.step2.proposal_solution_design"
+    ],
+    uiHint: "Macht konkrete Vorschläge zur linken Seite, ohne sie sofort anzuwenden.",
+    sortOrder: 24,
+    prompt: `Vorschlagsmodus für den Schritt "Solution Design":
+- Analysiere die aktuelle linke Seite und schlage konkrete Board-Änderungen vor, die Variantenwahl, Information, Functions, Benefits und Sorted-out-Nutzung sauberer machen.
+- Gute Vorschläge fokussieren eine Hauptvariante und parken Alternativen nach sorted_out_right.
+- Beschreibe im feedback klar, was du vorschlagen würdest, ohne so zu tun, als sei es bereits umgesetzt.
+- Ziehe keine Fit-Validierung vor.`
+  }, {
+    runProfileId: "analytics.fit.step2.apply",
+    label: "Vorschläge anwenden",
+    summary: "Wendet den zuletzt erzeugten Lösungsvorschlag auf diese Canvas-Instanz an.",
+    moduleIds: ["analytics.fit.shared.proposal_mode"],
+    uiHint: "Wird sinnvoll, sobald ein Lösungsvorschlag vorliegt.",
+    sortOrder: 25,
+    prompt: `Bestätigungsmodus für den Schritt "Solution Design":
+- Dieser Trigger wendet einen zuvor gespeicherten Vorschlag an.
+- Erzeuge keine neue Lösungsanalyse, sondern führe nur den bestätigten Vorschlag aus.`
+  });
+
+  addStepProposalTriggers("step3_fit_check_and_synthesis", {
+    runProfileId: "analytics.fit.step3.propose",
+    label: "Validierungs-/MDP-Vorschläge erzeugen",
+    summary: "Erzeugt konkrete, aber noch nicht angewendete Vorschläge für Checkmarks, Pruning und Minimum Desired Product.",
+    moduleIds: [
+      "analytics.fit.shared.method_guardrails",
+      "analytics.fit.shared.feedback_contract",
+      "analytics.fit.shared.proposal_mode",
+      "analytics.fit.shared.sorted_out_semantics",
+      "analytics.fit.shared.validation_and_color_semantics",
+      "analytics.fit.step3.focus_fit_review",
+      "analytics.fit.step3.prune_to_mdp",
+      "analytics.fit.step3.proposal_fit_validation"
+    ],
+    uiHint: "Macht konkrete Validierungs- und Reduktionsvorschläge, ohne sie sofort anzuwenden.",
+    sortOrder: 34,
+    prompt: `Vorschlagsmodus für den Schritt "Fit Validation & Minimum Desired Product":
+- Analysiere die bestehende Fit-Logik und schlage konkrete Board-Änderungen vor, die validieren, markieren, ausdünnen und auf ein Minimum Desired Product reduzieren.
+- Gute Vorschläge benennen klar, welche Benefits und rechten Elemente Checkmarks bekommen sollten, welche Inhalte als Alternative in sorted_out_right bleiben und welche Inhalte nach Bestätigung reduziert oder entfernt würden.
+- Noch nichts davon ist angewendet. Beschreibe im feedback klar den Unterschied zwischen aktuellem Zustand und Vorschlag.`
+  }, {
+    runProfileId: "analytics.fit.step3.apply",
+    label: "Vorschläge anwenden",
+    summary: "Wendet den zuletzt erzeugten Validierungs-/MDP-Vorschlag auf diese Canvas-Instanz an.",
+    moduleIds: ["analytics.fit.shared.proposal_mode"],
+    uiHint: "Wird sinnvoll, sobald ein Validierungs- oder MDP-Vorschlag vorliegt.",
+    sortOrder: 35,
+    prompt: `Bestätigungsmodus für den Schritt "Fit Validation & Minimum Desired Product":
+- Dieser Trigger wendet einen zuvor gespeicherten Vorschlag an.
+- Erzeuge keine neue Validierungsanalyse, sondern führe nur den bestätigten Vorschlag aus.`
+  });
+}
+
 function applyAnalyticsUseCaseDidacticPatch(catalog) {
   const pack = catalog?.packs?.["analytics-ai-usecase-fit-sprint-v1"];
   if (!pack || typeof pack !== "object") return catalog;
@@ -3203,6 +3451,7 @@ Grenzen:
 
   pack.promptModules = buildAnalyticsDidacticPromptModules();
   pack.steps = buildAnalyticsDidacticSteps(pack);
+  applyAnalyticsProposalPromptPatch(pack);
 
   return catalog;
 }

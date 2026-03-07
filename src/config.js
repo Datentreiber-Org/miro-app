@@ -112,6 +112,8 @@ export const DT_STORAGE_KEY_EXERCISE_RUNTIME = "dt-exercise-runtime-v1";
 export const DT_STORAGE_KEY_BOARD_FLOW_INDEX = "dt-board-flow-index-v1";
 export const DT_STORAGE_KEY_BOARD_FLOW_PREFIX = "dt-board-flow-v1:";
 export const DT_STORAGE_KEY_RUN_STATE = "dt-run-state-v1";
+export const DT_STORAGE_KEY_PROPOSAL_INDEX = "dt-proposal-index-v1";
+export const DT_STORAGE_KEY_PROPOSAL_PREFIX = "dt-proposal-v1:";
 export const DT_SHAPE_META_KEY_FLOW_CONTROL = "dt-flow-control-v1";
 export const DT_SHAPE_META_KEY_CHAT_INTERFACE = "dt-chat-interface-v1";
 export const DT_MEMORY_RECENT_LOG_LIMIT = 5;
@@ -275,7 +277,7 @@ export const DT_RUN_STATUS_LAYOUT = Object.freeze({
 
 // Trigger / Feedback Engine Defaults
 export const DT_TRIGGER_SCOPES = Object.freeze(["selection", "global"]);
-export const DT_TRIGGER_INTENTS = Object.freeze(["check", "hint", "autocorrect", "review", "synthesize", "coach", "grade"]);
+export const DT_TRIGGER_INTENTS = Object.freeze(["check", "hint", "autocorrect", "review", "synthesize", "coach", "grade", "propose", "apply"]);
 export const DT_TRIGGER_SOURCES = Object.freeze(["user", "admin", "system", "agent_recommendation"]);
 export const DT_FEEDBACK_CHANNELS = Object.freeze(["panel", "text", "both"]);
 export const DT_MUTATION_POLICIES = Object.freeze(["none", "minimal", "limited", "full"]);
@@ -291,13 +293,17 @@ export const DT_TRIGGER_DEFAULTS = Object.freeze({
   "selection.synthesize":   { scope: "selection", intent: "synthesize",   requiresSelection: true,  mutationPolicy: "none",    feedbackPolicy: "text" },
   "selection.coach":        { scope: "selection", intent: "coach",        requiresSelection: true,  mutationPolicy: "none",    feedbackPolicy: "text" },
   "selection.grade":        { scope: "selection", intent: "grade",        requiresSelection: true,  mutationPolicy: "none",    feedbackPolicy: "text" },
+  "selection.propose":      { scope: "selection", intent: "propose",      requiresSelection: true,  mutationPolicy: "full",    feedbackPolicy: "text" },
+  "selection.apply":        { scope: "selection", intent: "apply",        requiresSelection: true,  mutationPolicy: "full",    feedbackPolicy: "text" },
   "global.check":           { scope: "global",    intent: "check",        requiresSelection: false, mutationPolicy: "limited", feedbackPolicy: "text" },
   "global.hint":            { scope: "global",    intent: "hint",         requiresSelection: false, mutationPolicy: "minimal", feedbackPolicy: "text" },
   "global.autocorrect":     { scope: "global",    intent: "autocorrect",  requiresSelection: false, mutationPolicy: "full",    feedbackPolicy: "both" },
   "global.review":          { scope: "global",    intent: "review",       requiresSelection: false, mutationPolicy: "none",    feedbackPolicy: "text" },
   "global.synthesize":      { scope: "global",    intent: "synthesize",   requiresSelection: false, mutationPolicy: "none",    feedbackPolicy: "text" },
   "global.coach":           { scope: "global",    intent: "coach",        requiresSelection: false, mutationPolicy: "none",    feedbackPolicy: "text" },
-  "global.grade":           { scope: "global",    intent: "grade",        requiresSelection: false, mutationPolicy: "none",    feedbackPolicy: "text" }
+  "global.grade":           { scope: "global",    intent: "grade",        requiresSelection: false, mutationPolicy: "none",    feedbackPolicy: "text" },
+  "global.propose":         { scope: "global",    intent: "propose",      requiresSelection: false, mutationPolicy: "full",    feedbackPolicy: "text" },
+  "global.apply":           { scope: "global",    intent: "apply",        requiresSelection: false, mutationPolicy: "full",    feedbackPolicy: "text" }
 });
 
 export const DT_DEFAULT_FEEDBACK_CHANNEL = "text";

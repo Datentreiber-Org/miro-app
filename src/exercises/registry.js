@@ -16,4 +16,4 @@ export {
   getDefaultEnterTrigger,
   listStepTransitions,
   resolveNamedTransition
-} from "./method-catalog.js?v=20260307-batch8";
+} from "./method-catalog.js?v=20260310-batch81";

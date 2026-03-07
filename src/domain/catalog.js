@@ -9,7 +9,7 @@ import {
   DT_CHECK_TAG_TITLE,
   normalizeStickyColorToken,
   STICKY_LAYOUT
-} from "../config.js?v=20260308-batch76";
+} from "../config.js?v=20260309-batch81";
 import {
   stripHtml,
   isFiniteNumber,
@@ -24,7 +24,7 @@ import {
   resolveBoardRect,
   findInstanceByPoint,
   findInstanceByRect
-} from "../miro/board.js?v=20260308-batch76";
+} from "../miro/board.js?v=20260309-batch81";
 
 // --------------------------------------------------------------------
 // Canvas Definitions / Region Mapping
@@ -1146,6 +1146,15 @@ export function buildPromptPayloadFromClassification(classification, { useAliase
       return null;
     }
 
+    function resolveAreaTitle(item) {
+      if (!item) return null;
+      if (item.role === "header") return "Header";
+      if (item.role === "footer") return "Footer";
+      if (typeof item.regionTitle === "string" && item.regionTitle.trim()) return item.regionTitle.trim();
+      const mappedRegion = areaNameToRegion(item.regionId || item.regionTitle, canvasTypeId);
+      return mappedRegion?.title || null;
+    }
+
     function buildConnectionsOut(item) {
       const result = [];
       for (const connection of item?.connectionsOut || []) {
@@ -1155,6 +1164,7 @@ export function buildPromptPayloadFromClassification(classification, { useAliase
           toId: target?.stickyId ? getOrCreateStickyAlias(target.stickyId) : null,
           toText: target ? target.text : null,
           toArea: resolveAreaKey(target),
+          toAreaTitle: resolveAreaTitle(target),
           directed: connection.directed !== false
         });
       }
@@ -1170,6 +1180,7 @@ export function buildPromptPayloadFromClassification(classification, { useAliase
           fromId: source?.stickyId ? getOrCreateStickyAlias(source.stickyId) : null,
           fromText: source ? source.text : null,
           fromArea: resolveAreaKey(source),
+          fromAreaTitle: resolveAreaTitle(source),
           directed: connection.directed !== false
         });
       }
@@ -1199,7 +1210,7 @@ export function buildPromptPayloadFromClassification(classification, { useAliase
     const areasByName = Object.create(null);
     for (const region of orderedBodyRegions) {
       if (!region?.id) continue;
-      areasByName[region.id] = { name: region.id, stickies: [] };
+      areasByName[region.id] = { name: region.id, title: region.title || region.id, stickies: [] };
     }
 
     for (const item of Array.isArray(one.items) ? one.items : []) {
@@ -1228,9 +1239,11 @@ export function buildPromptPayloadFromClassification(classification, { useAliase
             fromId: fromItem?.stickyId ? getOrCreateStickyAlias(fromItem.stickyId) : null,
             fromText: fromItem ? fromItem.text : null,
             fromArea: resolveAreaKey(fromItem),
+            fromAreaTitle: resolveAreaTitle(fromItem),
             toId: toItem?.stickyId ? getOrCreateStickyAlias(toItem.stickyId) : null,
             toText: toItem ? toItem.text : null,
             toArea: resolveAreaKey(toItem),
+            toAreaTitle: resolveAreaTitle(toItem),
             directed: connection.directed !== false
           };
         })
@@ -1249,7 +1262,7 @@ export function buildPromptPayloadFromClassification(classification, { useAliase
         footerExcludedFromAgentCatalog: one.template?.footerExcludedFromAgentCatalog === true
       },
       header,
-      areas: orderedBodyRegions.map((region) => areasByName[region.id] || { name: region.id, stickies: [] }),
+      areas: orderedBodyRegions.map((region) => areasByName[region.id] || { name: region.id, title: region.title || region.id, stickies: [] }),
       connections: connectionsSummary
     };
   }
