@@ -3,10 +3,9 @@ import {
   getDefaultCanvasTypeIdForPack,
   getPackDefaults,
   getStepTriggerConfig
-} from "../exercises/registry.js?v=20260308-batch7-5";
-import { parseTriggerKey } from "../runtime/exercise-engine.js?v=20260308-batch7-5";
-import { normalizeUiLanguage } from "../i18n/index.js?v=20260308-batch7-5";
-import { DT_SORTED_OUT_OVERLAY, DT_CHECK_TAG, DT_STICKY_COLOR_TOKENS } from "../config.js?v=20260308-batch7-5";
+} from "../exercises/registry.js?v=20260306-batch6";
+import { parseTriggerKey } from "../runtime/exercise-engine.js?v=20260306-batch6";
+import { normalizeUiLanguage } from "../i18n/index.js?v=20260306-batch6";
 
 function asNonEmptyString(value) {
   if (typeof value !== "string") return null;
@@ -131,15 +130,46 @@ export function buildOutputLanguageBlock(displayLanguage, { questionMode = false
   return lines.join("\n");
 }
 
-function buildMechanicalCanvasSemanticsBlock() {
-  return [
-    "Mechanische Canvas-Regeln:",
-    `- Jede Canvas-Instanz besitzt zusätzlich zwei technische Sorted-Out-Areas: ${DT_SORTED_OUT_OVERLAY.leftAreaId} und ${DT_SORTED_OUT_OVERLAY.rightAreaId}. Beide liegen vollständig außerhalb des sichtbaren Canvas-Bildes und dienen zum Aussortieren von Stickies.`,
-    "- Footer- oder Legendenelemente werden absichtlich aus dem agentischen Katalog ausgeblendet. Wenn Footer-Inhalte fehlen, behandle das nicht als Fehler.",
-    `- Der sichtbare Check-Marker wird technisch als Tag mit dem Titel ${DT_CHECK_TAG.title} umgesetzt. Im Katalog erscheint dafür zusätzlich das boolesche Feld checked.`,
-    `- Sticky-Farben verwenden ausschließlich kanonische Miro-Farb-Tokens: ${DT_STICKY_COLOR_TOKENS.join(", ")}.`,
-    `- Verfügbare Mechanik-Actions: create_sticky darf optional color und checked setzen; set_sticky_color ändert die Farbe bestehender Stickies; set_check_status setzt oder entfernt den sichtbaren Check-Marker.`
-  ].join("\n");
+function buildBoardMechanicsBlock({
+  involvedCanvasTypeIds = [],
+  exerciseContext = null
+} = {}) {
+  const lines = [
+    "Mechanische Board-Regeln:",
+    "- Jede Canvas-Instanz hat zusätzlich zwei seitliche Off-Canvas-Bereiche: sorted_out_left und sorted_out_right.",
+    "- Diese Sorted-out-Bereiche liegen vollständig außerhalb der sichtbaren Canvas-Fläche und dienen zum bewussten Parken oder Aussortieren von Sticky Notes.",
+    "- Verwende für Sorted-out ausschließlich die Area-Keys sorted_out_left oder sorted_out_right. Die App übernimmt die tatsächliche Platzierung.",
+    "- Die Footer-/Legend-Region ist im agentischen Katalog bewusst ausgeblendet. Interpretiere fehlende Footer-Stickies nicht als leeres Board.",
+    "- Sticky-Objekte können ein Feld color tragen. Nutze ausschließlich unterstützte Miro-Farbwerte: gray, light_yellow, yellow, orange, light_green, green, dark_green, cyan, light_pink, pink, violet, red, light_blue, blue, dark_blue, black.",
+    "- Neue farbige Sticky Notes: create_sticky mit color verwenden.",
+    "- Bestehende Sticky Notes umfärben: set_sticky_color mit stickyId und color verwenden.",
+    "- Sticky-Objekte können ein Feld checked=true/false tragen. checked beschreibt einen sichtbaren Validierungsmarker der App.",
+    "- Neue geprüfte Sticky Notes: create_sticky mit checked=true verwenden.",
+    "- Bestehende Sticky Notes markieren oder entmarkieren: set_check_status mit stickyId und checked=true/false verwenden.",
+    "- Verwende checked nur für bewusst validierte, bestätigte oder geprüfte Inhalte, nicht als allgemeine Priorisierung oder Dekoration.",
+    "- Verwende keine Hex-Farben, keine freien Farbnamen und keine roh-UI-nahen Tag-IDs im Agent-Output."
+  ];
+
+  const allowedActions = normalizeUniqueStrings(exerciseContext?.allowedActions || []);
+  const hasAllowedActionsArray = Array.isArray(exerciseContext?.allowedActions);
+  const mutationPolicy = asNonEmptyString(exerciseContext?.mutationPolicy);
+
+  if (mutationPolicy === "none") {
+    lines.push("- In diesem Run sind Board-Mutationen nicht freigegeben. Plane daher weder set_sticky_color noch set_check_status oder create_sticky als Action, sondern benenne Hinweise nur im feedback.");
+  } else if (hasAllowedActionsArray) {
+    if (!allowedActions.includes("set_sticky_color")) {
+      lines.push("- set_sticky_color ist in diesem Run nicht explizit freigegeben. Nutze es daher nicht.");
+    }
+    if (!allowedActions.includes("set_check_status")) {
+      lines.push("- set_check_status ist in diesem Run nicht explizit freigegeben. Nutze es daher nicht.");
+    }
+  }
+
+  if (normalizeUniqueStrings(involvedCanvasTypeIds).includes(ANALYTICS_AI_USE_CASE_CANVAS_TYPE_ID)) {
+    lines.push("- Für Analytics & AI Use Case können Sorted-out-Bereiche genutzt werden, um alternative, zurückgestellte oder nicht weiterverfolgte Sticky Notes seitlich zu parken, ohne sie zu löschen.");
+  }
+
+  return lines.join("\n");
 }
 
 const ADMIN_OVERRIDE_ALLOWED_ACTIONS = Object.freeze([
@@ -167,6 +197,14 @@ function applyAdminOverrideToExerciseContext(exerciseContext) {
     ...src,
     adminOverrideActive: true,
     allowedActions: [...ADMIN_OVERRIDE_ALLOWED_ACTIONS],
+    mutationPolicy: "full"
+  };
+}
+
+function applyAdminOverrideToTriggerContext(triggerContext) {
+  const src = (triggerContext && typeof triggerContext === "object") ? triggerContext : {};
+  return {
+    ...src,
     mutationPolicy: "full"
   };
 }
@@ -405,12 +443,16 @@ export function composePrompt({
 } = {}) {
   const systemBlocks = [];
   const hasFlowContext = !!(packTemplate || runProfile || flowStep || (Array.isArray(promptModules) && promptModules.length) || controlContext);
+  const normalizedAdminOverrideText = asNonEmptyString(adminOverrideText);
+  const effectiveTriggerContext = normalizedAdminOverrideText
+    ? applyAdminOverrideToTriggerContext(triggerContext)
+    : triggerContext;
 
   if (asNonEmptyString(baseSystemPrompt)) {
     systemBlocks.push(String(baseSystemPrompt).trim());
   }
 
-  systemBlocks.push(buildModePromptBlock(runMode, triggerContext));
+  systemBlocks.push(buildModePromptBlock(runMode, effectiveTriggerContext));
   systemBlocks.push(buildOutputLanguageBlock(boardConfig?.displayLanguage));
 
   for (const block of buildCanvasTypePromptBlocks(involvedCanvasTypeIds, templateCatalog)) {
@@ -421,7 +463,7 @@ export function composePrompt({
     boardConfig,
     exercisePack,
     currentStep,
-    triggerContext,
+    triggerContext: effectiveTriggerContext,
     templateCatalog,
     packTemplate,
     flowStep,
@@ -429,9 +471,13 @@ export function composePrompt({
     controlContext
   });
 
+  const exerciseContext = normalizedAdminOverrideText
+    ? applyAdminOverrideToExerciseContext(rawExerciseContext)
+    : rawExerciseContext;
+
   const connectorPolicyBlock = buildConnectorPolicyBlock({
     involvedCanvasTypeIds,
-    exerciseContext: rawExerciseContext,
+    exerciseContext,
     currentStep,
     flowStep
   });
@@ -439,12 +485,13 @@ export function composePrompt({
     systemBlocks.push(connectorPolicyBlock);
   }
 
-  systemBlocks.push(buildMechanicalCanvasSemanticsBlock());
-
-  const normalizedAdminOverrideText = asNonEmptyString(adminOverrideText);
-  const exerciseContext = normalizedAdminOverrideText
-    ? applyAdminOverrideToExerciseContext(rawExerciseContext)
-    : rawExerciseContext;
+  const boardMechanicsBlock = buildBoardMechanicsBlock({
+    involvedCanvasTypeIds,
+    exerciseContext
+  });
+  if (boardMechanicsBlock) {
+    systemBlocks.push(boardMechanicsBlock);
+  }
 
   if (hasFlowContext) {
     const packBlock = buildPackTemplatePromptBlock(packTemplate);

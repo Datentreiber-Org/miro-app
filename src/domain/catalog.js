@@ -1,4 +1,14 @@
-import { TEMPLATE_ID, DT_CANVAS_DEFS, DT_SORTED_OUT_OVERLAY, DT_FOOTER_EXCLUSION_DEFAULT, DT_CHECK_TAG, DT_STICKY_COLOR_TOKENS } from "../config.js?v=20260308-batch7-5";
+import {
+  TEMPLATE_ID,
+  DT_CANVAS_DEFS,
+  DT_SORTED_OUT_REGION_WIDTH_PX,
+  DT_SORTED_OUT_REGION_IDS,
+  DT_SORTED_OUT_REGION_TITLES,
+  DT_EXCLUDE_FOOTER_FROM_AGENT_CATALOG_DEFAULT,
+  DT_CHECK_TAG_TITLE,
+  normalizeStickyColorToken,
+  STICKY_LAYOUT
+} from "../config.js?v=20260307-batch75";
 import {
   stripHtml,
   isFiniteNumber,
@@ -10,10 +20,10 @@ import {
   computeTemplateGeometry,
   buildInstanceGeometryIndex,
   resolveBoardCoords,
-  getItemBoardRect,
+  resolveBoardRect,
   findInstanceByPoint,
   findInstanceByRect
-} from "../miro/board.js?v=20260308-batch7-5";
+} from "../miro/board.js?v=20260307-batch75";
 
 // --------------------------------------------------------------------
 // Canvas Definitions / Region Mapping
@@ -22,57 +32,37 @@ export function getCanvasDef(canvasTypeId) {
   return DT_CANVAS_DEFS[canvasTypeId] || null;
 }
 
-function normalizeStickyColorToken(color) {
-  if (typeof color !== "string") return null;
-  const token = color.trim().toLowerCase();
-  return DT_STICKY_COLOR_TOKENS.includes(token) ? token : null;
-}
-
-function normalizeTagTitle(title) {
-  return String(title || "").trim().toLowerCase();
-}
-
-function isCheckTag(tag) {
-  const title = typeof tag === "string" ? tag : (tag?.title || "");
-  const normalized = normalizeTagTitle(title);
-  return !!normalized && DT_CHECK_TAG.aliases.some((alias) => normalizeTagTitle(alias) === normalized);
+function getSortedOutWidthNorm(canvasTypeId) {
+  const def = getCanvasDef(canvasTypeId);
+  const originalWidth = Number(def?.originalWidth);
+  if (!Number.isFinite(originalWidth) || originalWidth <= 0) return 0;
+  return DT_SORTED_OUT_REGION_WIDTH_PX / originalWidth;
 }
 
 export function getSortedOutRegionDefs(canvasTypeId) {
-  const def = getCanvasDef(canvasTypeId);
-  if (!def?.originalWidth || !def?.originalHeight) return [];
+  const widthNorm = getSortedOutWidthNorm(canvasTypeId);
+  if (!(widthNorm > 0)) return [];
 
-  const outsideNorm = DT_SORTED_OUT_OVERLAY.outsidePx / def.originalWidth;
-  const title = DT_SORTED_OUT_OVERLAY.title;
-
-  return [
-    {
-      id: DT_SORTED_OUT_OVERLAY.leftAreaId,
-      title,
-      semanticGroup: DT_SORTED_OUT_OVERLAY.semanticGroup,
+  return DT_SORTED_OUT_REGION_IDS.map((regionId) => {
+    const isLeft = regionId === "sorted_out_left";
+    const minX = isLeft ? -widthNorm : 1;
+    const maxX = isLeft ? 0 : 1 + widthNorm;
+    return {
+      id: regionId,
+      title: DT_SORTED_OUT_REGION_TITLES[regionId] || "Sorted out",
+      semanticGroup: "sorted_out",
       polygonNorm: [
-        [-outsideNorm, 0],
-        [0, 0],
-        [0, 1],
-        [-outsideNorm, 1]
+        [minX, 0],
+        [maxX, 0],
+        [maxX, 1],
+        [minX, 1]
       ]
-    },
-    {
-      id: DT_SORTED_OUT_OVERLAY.rightAreaId,
-      title,
-      semanticGroup: DT_SORTED_OUT_OVERLAY.semanticGroup,
-      polygonNorm: [
-        [1, 0],
-        [1 + outsideNorm, 0],
-        [1 + outsideNorm, 1],
-        [1, 1]
-      ]
-    }
-  ];
+    };
+  });
 }
 
 export function isSortedOutRegionId(regionId) {
-  return regionId === DT_SORTED_OUT_OVERLAY.leftAreaId || regionId === DT_SORTED_OUT_OVERLAY.rightAreaId;
+  return DT_SORTED_OUT_REGION_IDS.includes(String(regionId || ""));
 }
 
 export function getBodyRegionDefs(canvasTypeId) {
@@ -100,7 +90,8 @@ export function getBodyRegionDefs(canvasTypeId) {
     return [
       { id: "left", title: "Box 1 (links)" },
       { id: "middle", title: "Box 2 (Mitte)" },
-      { id: "right", title: "Box 3 (rechts)" }
+      { id: "right", title: "Box 3 (rechts)" },
+      ...getSortedOutRegionDefs(TEMPLATE_ID)
     ];
   }
 
@@ -127,6 +118,98 @@ export function pointInPolygonNorm(px, py, polygonNorm) {
   return inside;
 }
 
+function polygonBoundsNorm(polygonNorm) {
+  let minX = Infinity, maxX = -Infinity, minY = Infinity, maxY = -Infinity;
+  for (const pt of polygonNorm || []) {
+    const x = pt[0];
+    const y = pt[1];
+    if (x < minX) minX = x;
+    if (x > maxX) maxX = x;
+    if (y < minY) minY = y;
+    if (y > maxY) maxY = y;
+  }
+  if (!Number.isFinite(minX)) return null;
+  return { minX, maxX, minY, maxY };
+}
+
+function normalizeRectBounds(rect) {
+  if (!rect) return null;
+  const left = isFiniteNumber(rect.left) ? Number(rect.left) : (isFiniteNumber(rect.x) && isFiniteNumber(rect.width) ? Number(rect.x) - Number(rect.width) / 2 : null);
+  const right = isFiniteNumber(rect.right) ? Number(rect.right) : (isFiniteNumber(rect.x) && isFiniteNumber(rect.width) ? Number(rect.x) + Number(rect.width) / 2 : null);
+  const top = isFiniteNumber(rect.top) ? Number(rect.top) : (isFiniteNumber(rect.y) && isFiniteNumber(rect.height) ? Number(rect.y) - Number(rect.height) / 2 : null);
+  const bottom = isFiniteNumber(rect.bottom) ? Number(rect.bottom) : (isFiniteNumber(rect.y) && isFiniteNumber(rect.height) ? Number(rect.y) + Number(rect.height) / 2 : null);
+  if (!isFiniteNumber(left) || !isFiniteNumber(right) || !isFiniteNumber(top) || !isFiniteNumber(bottom)) return null;
+  if (right <= left || bottom <= top) return null;
+  return {
+    left,
+    right,
+    top,
+    bottom,
+    x: isFiniteNumber(rect.x) ? Number(rect.x) : (left + right) / 2,
+    y: isFiniteNumber(rect.y) ? Number(rect.y) : (top + bottom) / 2,
+    width: isFiniteNumber(rect.width) ? Number(rect.width) : (right - left),
+    height: isFiniteNumber(rect.height) ? Number(rect.height) : (bottom - top)
+  };
+}
+
+function computeRectOverlapArea(a, b) {
+  const ra = normalizeRectBounds(a);
+  const rb = normalizeRectBounds(b);
+  if (!ra || !rb) return 0;
+  const overlapX = Math.min(ra.right, rb.right) - Math.max(ra.left, rb.left);
+  const overlapY = Math.min(ra.bottom, rb.bottom) - Math.max(ra.top, rb.top);
+  if (overlapX <= 0 || overlapY <= 0) return 0;
+  return overlapX * overlapY;
+}
+
+function normalizedRectToBoardRect(templateGeometry, normRect) {
+  const left0 = templateGeometry.x - templateGeometry.width / 2;
+  const top0 = templateGeometry.y - templateGeometry.height / 2;
+  const left = left0 + normRect.left * templateGeometry.width;
+  const right = left0 + normRect.right * templateGeometry.width;
+  const top = top0 + normRect.top * templateGeometry.height;
+  const bottom = top0 + normRect.bottom * templateGeometry.height;
+  return {
+    left,
+    right,
+    top,
+    bottom,
+    x: (left + right) / 2,
+    y: (top + bottom) / 2,
+    width: right - left,
+    height: bottom - top
+  };
+}
+
+export function boardRectToNormalizedRect(boardRect, templateGeometry) {
+  const rect = normalizeRectBounds(boardRect);
+  if (!rect || !templateGeometry) return null;
+  const left0 = templateGeometry.x - templateGeometry.width / 2;
+  const top0 = templateGeometry.y - templateGeometry.height / 2;
+  const left = (rect.left - left0) / templateGeometry.width;
+  const right = (rect.right - left0) / templateGeometry.width;
+  const top = (rect.top - top0) / templateGeometry.height;
+  const bottom = (rect.bottom - top0) / templateGeometry.height;
+  return {
+    left,
+    right,
+    top,
+    bottom,
+    x: (left + right) / 2,
+    y: (top + bottom) / 2,
+    width: right - left,
+    height: bottom - top
+  };
+}
+
+export function shouldExcludeFooterFromAgentCatalog(canvasTypeId) {
+  const def = getCanvasDef(canvasTypeId);
+  if (typeof def?.excludeFooterFromAgentCatalog === "boolean") {
+    return def.excludeFooterFromAgentCatalog;
+  }
+  return DT_EXCLUDE_FOOTER_FROM_AGENT_CATALOG_DEFAULT;
+}
+
 // Fallback (alte Logik)
 function roleFromNormalizedY(py) {
   if (py < 0.20) return "header";
@@ -146,7 +229,7 @@ function mapToRegionFallback(px, py) {
   return { id: "right", title: "Box 3 (rechts)" };
 }
 
-export function classifyNormalizedLocation(canvasTypeId, px, py) {
+export function classifyNormalizedLocation(canvasTypeId, px, py, { includeFooter = true } = {}) {
   const def = getCanvasDef(canvasTypeId);
   if (!def) {
     const role = roleFromNormalizedY(py);
@@ -164,7 +247,7 @@ export function classifyNormalizedLocation(canvasTypeId, px, py) {
 
   for (const region of getSortedOutRegionDefs(canvasTypeId)) {
     if (pointInPolygonNorm(px, py, region.polygonNorm)) {
-      return { role: "body", regionId: region.id, regionTitle: region.title };
+      return { role: "body", regionId: region.id, regionTitle: region.title, semanticGroup: region.semanticGroup || null };
     }
   }
 
@@ -176,7 +259,7 @@ export function classifyNormalizedLocation(canvasTypeId, px, py) {
     }
   }
 
-  if (Array.isArray(def.footerPolygons)) {
+  if (includeFooter && Array.isArray(def.footerPolygons)) {
     for (const f of def.footerPolygons) {
       if (pointInPolygonNorm(px, py, f.polygonNorm)) {
         return { role: "footer", regionId: null, regionTitle: f.title || "Footer" };
@@ -193,6 +276,40 @@ export function classifyNormalizedLocation(canvasTypeId, px, py) {
   }
 
   return { role: "body", regionId: null, regionTitle: null };
+}
+
+export function classifyBoardRectAgainstCanvas(canvasTypeId, boardRect, templateGeometry, { includeFooter = true } = {}) {
+  const rect = boardRectToNormalizedRect(boardRect, templateGeometry);
+  if (!rect) return null;
+
+  let bestSortedOut = null;
+  for (const region of getSortedOutRegionDefs(canvasTypeId)) {
+    const bounds = polygonBoundsNorm(region.polygonNorm);
+    if (!bounds) continue;
+    const overlapArea = computeRectOverlapArea(
+      rect,
+      { left: bounds.minX, right: bounds.maxX, top: bounds.minY, bottom: bounds.maxY }
+    );
+    if (overlapArea <= 0) continue;
+    if (!bestSortedOut || overlapArea > bestSortedOut.overlapArea) {
+      bestSortedOut = {
+        overlapArea,
+        role: "body",
+        regionId: region.id,
+        regionTitle: region.title,
+        semanticGroup: region.semanticGroup || null
+      };
+    }
+  }
+  if (bestSortedOut) return bestSortedOut;
+
+  const centerX = rect.x;
+  const centerY = rect.y;
+  if (centerX < 0 || centerX > 1 || centerY < 0 || centerY > 1) {
+    return null;
+  }
+
+  return classifyNormalizedLocation(canvasTypeId, centerX, centerY, { includeFooter });
 }
 
 function normalizeAreaLookupToken(value) {
@@ -230,18 +347,11 @@ export function areaNameToRegion(areaName, canvasTypeId = null) {
     }
   }
 
-  if (norm.includes("sorted out") || norm.includes("sorted_out")) {
-    if (norm.includes("right") || norm.includes("rechts")) {
-      return { id: DT_SORTED_OUT_OVERLAY.rightAreaId, title: DT_SORTED_OUT_OVERLAY.title, canvasTypeId: canvasTypeId || TEMPLATE_ID };
-    }
-    if (norm.includes("left") || norm.includes("links")) {
-      return { id: DT_SORTED_OUT_OVERLAY.leftAreaId, title: DT_SORTED_OUT_OVERLAY.title, canvasTypeId: canvasTypeId || TEMPLATE_ID };
-    }
-    return { id: DT_SORTED_OUT_OVERLAY.leftAreaId, title: DT_SORTED_OUT_OVERLAY.title, canvasTypeId: canvasTypeId || TEMPLATE_ID };
-  }
   if (norm.includes("box 1") || norm.includes("links")) return { id: "left", title: "Box 1 (links)", canvasTypeId: canvasTypeId || TEMPLATE_ID };
   if (norm.includes("box 2") || norm.includes("mitte")) return { id: "middle", title: "Box 2 (Mitte)", canvasTypeId: canvasTypeId || TEMPLATE_ID };
   if (norm.includes("box 3") || norm.includes("rechts")) return { id: "right", title: "Box 3 (rechts)", canvasTypeId: canvasTypeId || TEMPLATE_ID };
+  if (norm.includes("sorted out") && norm.includes("left")) return { id: "sorted_out_left", title: DT_SORTED_OUT_REGION_TITLES.sorted_out_left, canvasTypeId: canvasTypeId || TEMPLATE_ID };
+  if (norm.includes("sorted out") && norm.includes("right")) return { id: "sorted_out_right", title: DT_SORTED_OUT_REGION_TITLES.sorted_out_right, canvasTypeId: canvasTypeId || TEMPLATE_ID };
 
   return null;
 }
@@ -254,77 +364,42 @@ export function normalizedToBoardCoords(templateGeometry, px, py) {
 }
 
 function areaCenterNormalizedFromDef(canvasTypeId, regionId) {
-  const def = getCanvasDef(canvasTypeId);
-  if (!def?.regionPolygons) return null;
-
-  const r = def.regionPolygons.find((rp) => rp.id === regionId || rp.title === regionId);
-  if (!r?.polygonNorm?.length) return null;
-
-  let minX = Infinity, maxX = -Infinity, minY = Infinity, maxY = -Infinity;
-  for (const [x, y] of r.polygonNorm) {
-    if (x < minX) minX = x;
-    if (x > maxX) maxX = x;
-    if (y < minY) minY = y;
-    if (y > maxY) maxY = y;
-  }
-
-  return { px: (minX + maxX) / 2, py: (minY + maxY) / 2 };
+  const regions = getBodyRegionDefs(canvasTypeId);
+  const region = regions.find((candidate) => candidate.id === regionId || candidate.title === regionId);
+  if (!region?.polygonNorm?.length) return null;
+  const bounds = polygonBoundsNorm(region.polygonNorm);
+  if (!bounds) return null;
+  return { px: (bounds.minX + bounds.maxX) / 2, py: (bounds.minY + bounds.maxY) / 2 };
 }
 
 export function areaCenterNormalized(regionId, canvasTypeId) {
   if (regionId && canvasTypeId) {
-    const c = areaCenterNormalizedFromDef(canvasTypeId, regionId);
-    if (c) return c;
+    const center = areaCenterNormalizedFromDef(canvasTypeId, regionId);
+    if (center) return center;
   }
 
   const yMin = 0.20;
   const yMax = 0.95;
   const py = (yMin + yMax) / 2;
 
-  if (regionId === DT_SORTED_OUT_OVERLAY.leftAreaId || regionId === DT_SORTED_OUT_OVERLAY.rightAreaId) {
-    const bounds = getBodyRegionBoundsNorm(canvasTypeId, regionId);
-    if (bounds) return { px: (bounds.minX + bounds.maxX) / 2, py: (bounds.minY + bounds.maxY) / 2 };
-  }
   if (regionId === "left") return { px: 1 / 6, py };
   if (regionId === "middle") return { px: 0.5, py };
   if (regionId === "right") return { px: 5 / 6, py };
+  if (regionId === "sorted_out_left") return { px: -getSortedOutWidthNorm(canvasTypeId) / 2, py: 0.5 };
+  if (regionId === "sorted_out_right") return { px: 1 + getSortedOutWidthNorm(canvasTypeId) / 2, py: 0.5 };
   return { px: 0.5, py: 0.5 };
 }
 
 // --------------------------------------------------------------------
 // Region Bounds + Sticky Auto-Layout (Grid mit Wrap, collision-aware)
 // --------------------------------------------------------------------
-function polygonBoundsNorm(polygonNorm) {
-  let minX = Infinity, maxX = -Infinity, minY = Infinity, maxY = -Infinity;
-  for (const pt of polygonNorm || []) {
-    const x = pt[0];
-    const y = pt[1];
-    if (x < minX) minX = x;
-    if (x > maxX) maxX = x;
-    if (y < minY) minY = y;
-    if (y > maxY) maxY = y;
-  }
-  if (!Number.isFinite(minX)) return null;
-  return { minX, maxX, minY, maxY };
-}
-
 export function getBodyRegionBoundsNorm(canvasTypeId, regionId) {
-  const def = getCanvasDef(canvasTypeId);
-
-  if (isSortedOutRegionId(regionId)) {
-    const sorted = getSortedOutRegionDefs(canvasTypeId).find((region) => region.id === regionId);
-    if (sorted?.polygonNorm?.length) {
-      return polygonBoundsNorm(sorted.polygonNorm);
-    }
+  const region = getBodyRegionDefs(canvasTypeId).find((candidate) => candidate.id === regionId);
+  if (region?.polygonNorm?.length) {
+    return polygonBoundsNorm(region.polygonNorm);
   }
 
-  if (def?.regionPolygons && regionId) {
-    const r = def.regionPolygons.find((rp) => rp.id === regionId);
-    if (r?.polygonNorm?.length) {
-      return polygonBoundsNorm(r.polygonNorm);
-    }
-  }
-
+  // Fallback: 3-Boxes Default (falls defs fehlen)
   const yMin = 0.18;
   const yMax = 0.95;
 
@@ -344,115 +419,87 @@ export function getBodyRegionBoundsNorm(canvasTypeId, regionId) {
 export function getBodyRegionBoundsBoard(templateGeometry, canvasTypeId, regionId) {
   if (!templateGeometry) return null;
 
-  const b = getBodyRegionBoundsNorm(canvasTypeId, regionId);
-  if (!b) return null;
+  const boundsNorm = getBodyRegionBoundsNorm(canvasTypeId, regionId);
+  if (!boundsNorm) return null;
 
-  const left0 = templateGeometry.x - templateGeometry.width / 2;
-  const top0  = templateGeometry.y - templateGeometry.height / 2;
-
-  const left   = left0 + b.minX * templateGeometry.width;
-  const right  = left0 + b.maxX * templateGeometry.width;
-  const top    = top0  + b.minY * templateGeometry.height;
-  const bottom = top0  + b.maxY * templateGeometry.height;
-
-  return {
-    left, right, top, bottom,
-    width: right - left,
-    height: bottom - top,
-    norm: b
-  };
+  return normalizedRectToBoardRect(templateGeometry, {
+    left: boundsNorm.minX,
+    right: boundsNorm.maxX,
+    top: boundsNorm.minY,
+    bottom: boundsNorm.maxY
+  });
 }
 
 function rectsOverlap(a, b, padding = 0) {
-  const aL = a.x - a.width / 2 - padding;
-  const aR = a.x + a.width / 2 + padding;
-  const aT = a.y - a.height / 2 - padding;
-  const aB = a.y + a.height / 2 + padding;
+  const ra = normalizeRectBounds(a);
+  const rb = normalizeRectBounds(b);
+  if (!ra || !rb) return false;
 
-  const bL = b.x - b.width / 2;
-  const bR = b.x + b.width / 2;
-  const bT = b.y - b.height / 2;
-  const bB = b.y + b.height / 2;
+  const aL = ra.left - padding;
+  const aR = ra.right + padding;
+  const aT = ra.top - padding;
+  const aB = ra.bottom + padding;
 
-  return !(aR <= bL || aL >= bR || aB <= bT || aT >= bB);
+  return !(aR <= rb.left || aL >= rb.right || aB <= rb.top || aT >= rb.bottom);
 }
 
 function boardToNormalized(templateGeometry, x, y) {
   const left0 = templateGeometry.x - templateGeometry.width / 2;
-  const top0  = templateGeometry.y - templateGeometry.height / 2;
+  const top0 = templateGeometry.y - templateGeometry.height / 2;
   return {
     px: (x - left0) / templateGeometry.width,
     py: (y - top0) / templateGeometry.height
   };
 }
 
-function boardRectToNormalizedRect(templateGeometry, rect) {
-  const left0 = templateGeometry.x - templateGeometry.width / 2;
-  const top0  = templateGeometry.y - templateGeometry.height / 2;
-  return {
-    minX: (rect.left - left0) / templateGeometry.width,
-    maxX: (rect.right - left0) / templateGeometry.width,
-    minY: (rect.top - top0) / templateGeometry.height,
-    maxY: (rect.bottom - top0) / templateGeometry.height,
-    centerPx: (rect.x - left0) / templateGeometry.width,
-    centerPy: (rect.y - top0) / templateGeometry.height
-  };
-}
+function computeNextFreeStickyPositionInSortedOutRegion({
+  templateGeometry,
+  canvasTypeId,
+  regionId,
+  stickyWidthPx,
+  stickyHeightPx,
+  gapPx = 20,
+  occupiedRects = []
+}) {
+  const bounds = getBodyRegionBoundsBoard(templateGeometry, canvasTypeId, regionId);
+  if (!bounds) return null;
 
-function makeRectFromBounds(bounds) {
-  return {
-    left: bounds.left,
-    right: bounds.right,
-    top: bounds.top,
-    bottom: bounds.bottom,
-    x: (bounds.left + bounds.right) / 2,
-    y: (bounds.top + bounds.bottom) / 2,
-    width: bounds.right - bounds.left,
-    height: bounds.bottom - bounds.top
-  };
-}
+  const stickyWidth = Math.max(10, Number(stickyWidthPx) || STICKY_LAYOUT.defaultWidthPx);
+  const stickyHeight = Math.max(10, Number(stickyHeightPx) || STICKY_LAYOUT.defaultHeightPx);
+  const x = regionId === "sorted_out_left"
+    ? bounds.right - stickyWidth / 2
+    : bounds.left + stickyWidth / 2;
 
-function classifyStickyRectInCanvas(canvasTypeId, templateGeometry, stickyRect) {
-  const leftSortedBounds = getBodyRegionBoundsBoard(templateGeometry, canvasTypeId, DT_SORTED_OUT_OVERLAY.leftAreaId);
-  const rightSortedBounds = getBodyRegionBoundsBoard(templateGeometry, canvasTypeId, DT_SORTED_OUT_OVERLAY.rightAreaId);
-  const leftOverlap = leftSortedBounds ? rectsOverlap(stickyRect, makeRectFromBounds(leftSortedBounds)) : false;
-  const rightOverlap = rightSortedBounds ? rectsOverlap(stickyRect, makeRectFromBounds(rightSortedBounds)) : false;
+  const top = templateGeometry.y - templateGeometry.height / 2;
+  const bottom = templateGeometry.y + templateGeometry.height / 2;
+  const stepY = stickyHeight + gapPx;
+  const minY = top + stickyHeight / 2;
+  const maxY = bottom - stickyHeight / 2;
+  const rows = Math.max(1, Math.floor((maxY - minY) / Math.max(1, stepY)) + 1);
 
-  if (leftOverlap || rightOverlap) {
-    const regionId = leftOverlap && !rightOverlap
-      ? DT_SORTED_OUT_OVERLAY.leftAreaId
-      : (!leftOverlap && rightOverlap
-        ? DT_SORTED_OUT_OVERLAY.rightAreaId
-        : (stickyRect.x <= templateGeometry.x ? DT_SORTED_OUT_OVERLAY.leftAreaId : DT_SORTED_OUT_OVERLAY.rightAreaId));
-    return {
-      role: "body",
-      regionId,
-      regionTitle: DT_SORTED_OUT_OVERLAY.title,
-      px: boardRectToNormalizedRect(templateGeometry, stickyRect).centerPx,
-      py: boardRectToNormalizedRect(templateGeometry, stickyRect).centerPy
-    };
+  for (let row = 0; row < rows; row++) {
+    const y = minY + row * stepY;
+    if (y > maxY + 0.0001) break;
+    const candidate = { x, y, width: stickyWidth, height: stickyHeight };
+    if (!(occupiedRects || []).some((rect) => rectsOverlap(candidate, rect, 0))) {
+      return { x, y, row, rows, isFull: false, bounds };
+    }
   }
 
-  const normalizedRect = boardRectToNormalizedRect(templateGeometry, stickyRect);
-  const px = normalizedRect.centerPx;
-  const py = normalizedRect.centerPy;
-  if (px < 0 || px > 1 || py < 0 || py > 1) {
-    return { role: "body", regionId: null, regionTitle: null, px, py };
-  }
-
-  const loc = classifyNormalizedLocation(canvasTypeId, px, py);
+  const fallbackRow = Math.max(0, rows - 1);
   return {
-    role: loc.role,
-    regionId: loc.regionId || null,
-    regionTitle: loc.regionTitle || null,
-    px,
-    py
+    x,
+    y: Math.min(maxY, minY + fallbackRow * stepY),
+    row: fallbackRow,
+    rows,
+    isFull: true,
+    bounds
   };
 }
 
 /**
  * Liefert die nächste freie Position in einer Body-Region,
- * füllt reguläre Regionen grid-basiert und Sorted-Out-Regionen vertikal am Rand.
+ * füllt zeilenweise, wrappt, vermeidet Overlaps mit bestehenden Stickies.
  *
  * occupiedRects: [{x,y,width,height}, ...] in Board-Koordinaten
  */
@@ -466,80 +513,72 @@ export function computeNextFreeStickyPositionInBodyRegion({
   gapPx = 20,
   occupiedRects = []
 }) {
+  if (isSortedOutRegionId(regionId)) {
+    return computeNextFreeStickyPositionInSortedOutRegion({
+      templateGeometry,
+      canvasTypeId,
+      regionId,
+      stickyWidthPx,
+      stickyHeightPx,
+      gapPx,
+      occupiedRects
+    });
+  }
+
   const bounds = getBodyRegionBoundsBoard(templateGeometry, canvasTypeId, regionId);
   if (!bounds) return null;
 
-  const w = Math.max(10, Number(stickyWidthPx) || 200);
-  const h = Math.max(10, Number(stickyHeightPx) || 200);
-  const padding = Math.max(0, gapPx * 0.5);
+  const stickyWidth = Math.max(10, Number(stickyWidthPx) || STICKY_LAYOUT.defaultWidthPx);
+  const stickyHeight = Math.max(10, Number(stickyHeightPx) || STICKY_LAYOUT.defaultHeightPx);
+
+  const innerWidth = Math.max(1, bounds.width - 2 * marginPx);
+  const innerHeight = Math.max(1, bounds.height - 2 * marginPx);
+
+  const stepX = stickyWidth + gapPx;
+  const stepY = stickyHeight + gapPx;
+
+  const cols = Math.max(1, Math.floor((innerWidth - stickyWidth) / Math.max(1, stepX)) + 1);
+  const rows = Math.max(1, Math.floor((innerHeight - stickyHeight) / Math.max(1, stepY)) + 1);
+
+  const usedWidth = cols * stickyWidth + Math.max(0, cols - 1) * gapPx;
+  const usedHeight = rows * stickyHeight + Math.max(0, rows - 1) * gapPx;
+
+  const marginX = Math.max(marginPx, (bounds.width - usedWidth) / 2);
+  const marginY = Math.max(marginPx, (bounds.height - usedHeight) / 2);
 
   function overlapsAny(candidate) {
-    for (const occ of occupiedRects || []) {
-      if (!occ || typeof occ.x !== "number" || typeof occ.y !== "number") continue;
-      const ow = Math.max(10, Number(occ.width) || w);
-      const oh = Math.max(10, Number(occ.height) || h);
-      if (rectsOverlap(candidate, { ...occ, width: ow, height: oh }, padding)) return true;
+    for (const rect of occupiedRects || []) {
+      if (rectsOverlap(candidate, rect, 0)) return true;
     }
     return false;
   }
 
-  if (isSortedOutRegionId(regionId)) {
-    const x = regionId === DT_SORTED_OUT_OVERLAY.leftAreaId
-      ? bounds.right - w / 2
-      : bounds.left + w / 2;
-    const top = bounds.top;
-    const bottom = bounds.bottom;
-    const stepY = h + gapPx;
-    const rows = Math.max(1, Math.floor((bounds.height + gapPx) / stepY));
-
-    for (let r = 0; r < rows; r++) {
-      const y = top + h / 2 + r * stepY;
-      if (y + h / 2 > bottom) break;
-      const candidate = { x, y, width: w, height: h };
-      if (!overlapsAny(candidate)) {
-        return { x, y, col: 0, row: r, cols: 1, rows, isFull: false, bounds };
-      }
-    }
-
-    const lastY = Math.min(bottom - h / 2, top + h / 2 + (rows - 1) * stepY);
-    return { x, y: lastY, col: 0, row: rows - 1, cols: 1, rows, isFull: true, bounds };
-  }
-
-  const regionW = bounds.width;
-  const regionH = bounds.height;
-  const marginX = Math.max(0, Math.min(marginPx, (regionW - w) / 2));
-  const marginY = Math.max(0, Math.min(marginPx, (regionH - h) / 2));
-  const availW = Math.max(0, regionW - 2 * marginX);
-  const availH = Math.max(0, regionH - 2 * marginY);
-  const stepX = w + gapPx;
-  const stepY = h + gapPx;
-  const cols = Math.max(1, Math.floor((availW + gapPx) / stepX));
-  const rows = Math.max(1, Math.floor((availH + gapPx) / stepY));
-
   function isInsideRegionByClassification(x, y) {
-    const n = boardToNormalized(templateGeometry, x, y);
-    if (n.px < 0 || n.px > 1 || n.py < 0 || n.py > 1) return false;
-    const loc = classifyNormalizedLocation(canvasTypeId, n.px, n.py);
+    const normalized = boardToNormalized(templateGeometry, x, y);
+    const loc = classifyNormalizedLocation(canvasTypeId, normalized.px, normalized.py, { includeFooter: false });
     return loc?.role === "body" && loc?.regionId === regionId;
   }
 
-  for (let r = 0; r < rows; r++) {
-    for (let c = 0; c < cols; c++) {
-      const x = bounds.left + marginX + w / 2 + c * stepX;
-      const y = bounds.top + marginY + h / 2 + r * stepY;
+  for (let row = 0; row < rows; row++) {
+    for (let col = 0; col < cols; col++) {
+      const x = bounds.left + marginX + stickyWidth / 2 + col * stepX;
+      const y = bounds.top + marginY + stickyHeight / 2 + row * stepY;
+
       if (!isInsideRegionByClassification(x, y)) continue;
-      const candidate = { x, y, width: w, height: h };
+
+      const candidate = { x, y, width: stickyWidth, height: stickyHeight };
       if (!overlapsAny(candidate)) {
-        return { x, y, col: c, row: r, cols, rows, isFull: false, bounds };
+        return { x, y, col, row, cols, rows, isFull: false, bounds };
       }
     }
   }
 
-  const lastC = cols - 1;
-  const lastR = rows - 1;
-  const x = bounds.left + marginX + w / 2 + lastC * stepX;
-  const y = bounds.top + marginY + h / 2 + lastR * stepY;
-  return { x, y, col: lastC, row: lastR, cols, rows, isFull: true, bounds };
+  const lastCol = cols - 1;
+  const lastRow = rows - 1;
+  const x = bounds.left + marginX + stickyWidth / 2 + lastCol * stepX;
+  const y = bounds.top + marginY + stickyHeight / 2 + lastRow * stepY;
+
+  return { x, y, col: lastCol, row: lastRow, cols, rows, isFull: true, bounds };
 }
 
 function connectorHasVisibleArrow(cap) {
@@ -552,10 +591,29 @@ function isConnectorDirected(connector) {
   return connectorHasVisibleArrow(connector?.style?.endStrokeCap) || connectorHasVisibleArrow(connector?.style?.startStrokeCap);
 }
 
+function deriveCheckedState(tagIds, tagsById, boardConfig) {
+  const ids = Array.isArray(tagIds) ? tagIds : [];
+  const checkTagId = typeof boardConfig?.systemTagIds?.check === "string" ? boardConfig.systemTagIds.check : null;
+  if (checkTagId && ids.includes(checkTagId)) return true;
+  return ids.some((tagId) => String(tagsById?.[tagId] || "").trim() === DT_CHECK_TAG_TITLE);
+}
+
+function countAgentRelevantStickies(liveInst, canvasTypeId) {
+  const excludeFooter = shouldExcludeFooterFromAgentCatalog(canvasTypeId);
+  let count = liveInst?.regions?.header?.stickies?.length || 0;
+  if (!excludeFooter) {
+    count += liveInst?.regions?.footer?.stickies?.length || 0;
+  }
+  for (const bucket of Object.values(liveInst?.regions?.body || {})) {
+    count += bucket?.stickies?.length || 0;
+  }
+  return count;
+}
+
 // --------------------------------------------------------------------
 // Live Catalog
 // --------------------------------------------------------------------
-export async function rebuildLiveCatalog({ ctx, instancesById, clusterAssignments, log }) {
+export async function rebuildLiveCatalog({ ctx, instancesById, clusterAssignments, boardConfig = null, log }) {
   const liveCatalog = {
     canvasTypes: Object.create(null),
     instances: Object.create(null),
@@ -564,10 +622,11 @@ export async function rebuildLiveCatalog({ ctx, instancesById, clusterAssignment
   };
 
   const stickyOwnerCache = new Map();
+
   const geomEntries = await buildInstanceGeometryIndex(instancesById, log);
   const instGeom = new Map();
-  for (const e of geomEntries) {
-    if (e?.geom) instGeom.set(e.inst.instanceId, e.geom);
+  for (const entry of geomEntries) {
+    if (entry?.geom) instGeom.set(entry.inst.instanceId, entry.geom);
   }
 
   function ensureLiveInstance(inst) {
@@ -586,18 +645,30 @@ export async function rebuildLiveCatalog({ ctx, instancesById, clusterAssignment
           body: (() => {
             const body = Object.create(null);
             for (const region of getBodyRegionDefs(inst.canvasTypeId)) {
-              body[region.id] = { id: region.id, title: region.title || region.id, stickies: [] };
+              body[region.id] = {
+                id: region.id,
+                title: region.title || region.id,
+                semanticGroup: region.semanticGroup || null,
+                stickies: []
+              };
             }
-            body.none = { id: null, title: null, stickies: [] };
+            body.none = { id: null, title: null, semanticGroup: null, stickies: [] };
             return body;
           })()
         },
         allStickies: [],
         connections: [],
-        meta: { stickyCount: 0, connectorCount: 0, lastUpdated: null }
+        meta: {
+          stickyCount: 0,
+          totalStickyCount: 0,
+          footerStickyCount: 0,
+          connectorCount: 0,
+          lastUpdated: null
+        }
       };
 
       liveCatalog.instances[inst.instanceId] = live;
+
       const ctId = inst.canvasTypeId || TEMPLATE_ID;
       if (!liveCatalog.canvasTypes[ctId]) {
         liveCatalog.canvasTypes[ctId] = { canvasTypeId: ctId, instances: Object.create(null) };
@@ -611,53 +682,76 @@ export async function rebuildLiveCatalog({ ctx, instancesById, clusterAssignment
 
   const parentGeomCache = new Map();
 
-  for (const s of (ctx?.stickies || [])) {
-    const rect = await getItemBoardRect(s, parentGeomCache, log);
-    if (!rect) {
-      liveCatalog.unassignedStickies.push(s.id);
+  for (const sticky of (ctx?.stickies || [])) {
+    const boardRect = await resolveBoardRect(sticky, parentGeomCache, log).catch(() => null);
+    const boardPos = boardRect || await resolveBoardCoords(sticky, parentGeomCache, log).catch(() => null);
+    if (!boardRect && !boardPos) {
+      liveCatalog.unassignedStickies.push(sticky.id);
       continue;
     }
 
-    const owningInst = findInstanceByRect(rect, geomEntries, { outsidePx: DT_SORTED_OUT_OVERLAY.outsidePx });
+    const owningInst = boardRect
+      ? (findInstanceByRect(boardRect, geomEntries) || findInstanceByPoint(boardRect.x, boardRect.y, geomEntries))
+      : findInstanceByPoint(boardPos.x, boardPos.y, geomEntries);
     if (!owningInst) {
-      liveCatalog.unassignedStickies.push(s.id);
+      liveCatalog.unassignedStickies.push(sticky.id);
       continue;
     }
 
     const geom = instGeom.get(owningInst.instanceId);
     if (!geom) {
-      liveCatalog.unassignedStickies.push(s.id);
+      liveCatalog.unassignedStickies.push(sticky.id);
       continue;
     }
 
-    const loc = classifyStickyRectInCanvas(owningInst.canvasTypeId, geom, rect);
-    const tagIds = Array.isArray(s.tagIds) ? s.tagIds : [];
-    const tags = tagIds
-      .map((id) => ctx.tagsById?.[id])
-      .filter(Boolean)
-      .map((tag) => ({ id: tag.id || null, title: tag.title || "", color: tag.color || null, isCheck: tag.isCheck === true }));
+    const loc = boardRect
+      ? classifyBoardRectAgainstCanvas(owningInst.canvasTypeId, boardRect, geom, { includeFooter: true })
+      : (() => {
+          const left = geom.x - geom.width / 2;
+          const top = geom.y - geom.height / 2;
+          const px = (boardPos.x - left) / geom.width;
+          const py = (boardPos.y - top) / geom.height;
+          if (px < 0 || px > 1 || py < 0 || py > 1) return null;
+          return classifyNormalizedLocation(owningInst.canvasTypeId, px, py, { includeFooter: true });
+        })();
 
-    const clusterName = clusterAssignments?.get(s.id) || null;
-    const liveInst = ensureLiveInstance(owningInst);
+    if (!loc) {
+      liveCatalog.unassignedStickies.push(sticky.id);
+      continue;
+    }
+
+    const centerX = boardRect?.x ?? boardPos?.x ?? sticky.x;
+    const centerY = boardRect?.y ?? boardPos?.y ?? sticky.y;
+    const normalizedCenter = boardToNormalized(geom, centerX, centerY);
+    const rawColor = (sticky.style && (sticky.style.fillColor || sticky.style.backgroundColor)) || null;
+    const color = normalizeStickyColorToken(rawColor) || rawColor || null;
+    const tagIds = Array.isArray(sticky.tagIds) ? sticky.tagIds : [];
+    const tags = tagIds.map((tagId) => ctx.tagsById?.[tagId]).filter(Boolean);
+    const clusterName = clusterAssignments?.get(sticky.id) || null;
+    const checked = deriveCheckedState(tagIds, ctx.tagsById || {}, boardConfig);
+
     const stickObj = {
-      id: s.id,
-      text: stripHtml(s.content),
-      x: rect.x,
-      y: rect.y,
-      width: rect.width,
-      height: rect.height,
-      px: Math.round((Number(loc?.px) || 0) * 10000) / 10000,
-      py: Math.round((Number(loc?.py) || 0) * 10000) / 10000,
-      role: loc?.role || "body",
-      regionId: loc?.regionId || null,
-      regionTitle: loc?.regionTitle || null,
-      color: normalizeStickyColorToken((s.style && (s.style.fillColor || s.style.backgroundColor)) || null),
+      id: sticky.id,
+      text: stripHtml(sticky.content),
+      x: centerX,
+      y: centerY,
+      width: isFiniteNumber(sticky.width) ? sticky.width : STICKY_LAYOUT.defaultWidthPx,
+      height: isFiniteNumber(sticky.height) ? sticky.height : STICKY_LAYOUT.defaultHeightPx,
+      px: Math.round(normalizedCenter.px * 10000) / 10000,
+      py: Math.round(normalizedCenter.py * 10000) / 10000,
+      role: loc.role,
+      regionId: loc.regionId || null,
+      regionTitle: loc.regionTitle || null,
+      semanticGroup: loc.semanticGroup || null,
+      color,
       tags,
-      checked: tags.some((tag) => tag.isCheck || isCheckTag(tag)),
+      checked,
       clusterName,
       connectionsOut: [],
       connectionsIn: []
     };
+
+    const liveInst = ensureLiveInstance(owningInst);
 
     if (stickObj.role === "header") {
       liveInst.regions.header.stickies.push(stickObj);
@@ -666,38 +760,45 @@ export async function rebuildLiveCatalog({ ctx, instancesById, clusterAssignment
     } else {
       const key = (stickObj.regionId && liveInst.regions.body[stickObj.regionId]) ? stickObj.regionId : "none";
       if (!liveInst.regions.body[key]) {
-        liveInst.regions.body[key] = { id: key === "none" ? null : key, title: stickObj.regionTitle || null, stickies: [] };
+        liveInst.regions.body[key] = {
+          id: key === "none" ? null : key,
+          title: stickObj.regionTitle || null,
+          semanticGroup: stickObj.semanticGroup || null,
+          stickies: []
+        };
       }
       liveInst.regions.body[key].stickies.push(stickObj);
     }
 
     liveInst.allStickies.push(stickObj);
-    stickyOwnerCache.set(s.id, owningInst.instanceId);
+    stickyOwnerCache.set(sticky.id, owningInst.instanceId);
   }
 
-  for (const c of (ctx?.connectors || [])) {
-    const fromId = c.start?.item;
-    const toId = c.end?.item;
+  for (const connector of (ctx?.connectors || [])) {
+    const fromId = connector.start?.item;
+    const toId = connector.end?.item;
     if (!fromId || !toId) continue;
+
     const instFrom = stickyOwnerCache.get(fromId);
     const instTo = stickyOwnerCache.get(toId);
     if (!instFrom || instFrom !== instTo) continue;
+
     const liveInst = liveCatalog.instances[instFrom];
     if (!liveInst) continue;
+
     liveInst.connections.push({
-      connectorId: c.id,
+      connectorId: connector.id,
       fromStickyId: fromId,
       toStickyId: toId,
-      directed: isConnectorDirected(c)
+      directed: isConnectorDirected(connector)
     });
   }
 
   for (const liveInst of Object.values(liveCatalog.instances)) {
-    const visibleStickies = liveInst.allStickies.filter((sticky) => !(DT_FOOTER_EXCLUSION_DEFAULT && sticky.role === "footer"));
-    const visibleStickyIds = new Set(visibleStickies.map((sticky) => sticky.id));
-    const visibleConnectorCount = (liveInst.connections || []).filter((conn) => visibleStickyIds.has(conn.fromStickyId) && visibleStickyIds.has(conn.toStickyId)).length;
-    liveInst.meta.stickyCount = visibleStickies.length;
-    liveInst.meta.connectorCount = visibleConnectorCount;
+    liveInst.meta.totalStickyCount = liveInst.allStickies.length;
+    liveInst.meta.footerStickyCount = liveInst.regions.footer.stickies.length;
+    liveInst.meta.stickyCount = countAgentRelevantStickies(liveInst, liveInst.canvasTypeId);
+    liveInst.meta.connectorCount = liveInst.connections.length;
     liveInst.meta.lastUpdated = liveCatalog.lastFullRebuildAt;
   }
 
@@ -713,48 +814,56 @@ export async function rebuildLiveCatalog({ ctx, instancesById, clusterAssignment
 // Classification
 // --------------------------------------------------------------------
 export function buildClassificationFromLiveInstance(instance, liveInst) {
+  const excludeFooter = shouldExcludeFooterFromAgentCatalog(instance.canvasTypeId);
   const items = [];
   const headerStickies = [];
+  const footerStickies = [];
 
-  for (const s of liveInst.regions.header.stickies) {
+  function mapTags(tags) {
+    return Array.isArray(tags)
+      ? tags.map((title) => ({ id: null, title }))
+      : [];
+  }
+
+  for (const sticky of liveInst.regions.header.stickies) {
     items.push({
-      stickyId: s.id,
-      text: s.text,
+      stickyId: sticky.id,
+      text: sticky.text,
       role: "header",
       regionId: null,
       regionTitle: "Header",
-      color: s.color,
-      tags: Array.isArray(s.tags) ? s.tags : [],
-      checked: s.checked === true,
-      clusterName: s.clusterName,
+      color: sticky.color,
+      tags: mapTags(sticky.tags),
+      checked: sticky.checked === true,
+      clusterName: sticky.clusterName,
       connectionsOut: [],
       connectionsIn: []
     });
 
     headerStickies.push({
-      stickyId: s.id,
-      text: s.text,
-      px: s.px,
-      py: s.py,
-      color: s.color,
+      stickyId: sticky.id,
+      text: sticky.text,
+      px: sticky.px,
+      py: sticky.py,
+      color: sticky.color,
+      checked: sticky.checked === true,
       tagIds: [],
-      tags: Array.isArray(s.tags) ? s.tags : [],
-      checked: s.checked === true
+      tags: mapTags(sticky.tags)
     });
   }
 
   function addBodyRegion(regionId, regionTitle, list) {
-    for (const s of list || []) {
+    for (const sticky of list || []) {
       items.push({
-        stickyId: s.id,
-        text: s.text,
+        stickyId: sticky.id,
+        text: sticky.text,
         role: "body",
         regionId,
         regionTitle,
-        color: s.color,
-        tags: Array.isArray(s.tags) ? s.tags : [],
-        checked: s.checked === true,
-        clusterName: s.clusterName,
+        color: sticky.color,
+        tags: mapTags(sticky.tags),
+        checked: sticky.checked === true,
+        clusterName: sticky.clusterName,
         connectionsOut: [],
         connectionsIn: []
       });
@@ -767,42 +876,64 @@ export function buildClassificationFromLiveInstance(instance, liveInst) {
   }
   addBodyRegion(null, null, liveInst.regions.body?.none?.stickies || []);
 
+  for (const sticky of liveInst.regions.footer.stickies) {
+    const footerItem = {
+      stickyId: sticky.id,
+      text: sticky.text,
+      role: "footer",
+      regionId: null,
+      regionTitle: "Footer",
+      color: sticky.color,
+      tags: mapTags(sticky.tags),
+      checked: sticky.checked === true,
+      clusterName: sticky.clusterName,
+      connectionsOut: [],
+      connectionsIn: []
+    };
+    footerStickies.push(footerItem);
+    if (!excludeFooter) {
+      items.push(footerItem);
+    }
+  }
+
   const idToItem = Object.create(null);
-  for (const it of items) if (it?.stickyId) idToItem[it.stickyId] = it;
+  for (const item of items) {
+    if (item?.stickyId) idToItem[item.stickyId] = item;
+  }
 
   const connections = [];
-  for (const c of (liveInst.connections || [])) {
-    const fromItem = idToItem[c.fromStickyId];
-    const toItem = idToItem[c.toStickyId];
+  for (const connection of (liveInst.connections || [])) {
+    const fromItem = idToItem[connection.fromStickyId];
+    const toItem = idToItem[connection.toStickyId];
     if (!fromItem || !toItem) continue;
 
     connections.push({
-      connectorId: c.connectorId,
-      fromStickyId: c.fromStickyId,
-      toStickyId: c.toStickyId,
-      directed: c.directed !== false
+      connectorId: connection.connectorId,
+      fromStickyId: connection.fromStickyId,
+      toStickyId: connection.toStickyId,
+      directed: connection.directed !== false
     });
 
     fromItem.connectionsOut.push({
-      connectorId: c.connectorId,
-      toStickyId: c.toStickyId,
-      directed: c.directed !== false
+      connectorId: connection.connectorId,
+      toStickyId: connection.toStickyId,
+      directed: connection.directed !== false
     });
     toItem.connectionsIn.push({
-      connectorId: c.connectorId,
-      fromStickyId: c.fromStickyId,
-      directed: c.directed !== false
+      connectorId: connection.connectorId,
+      fromStickyId: connection.fromStickyId,
+      directed: connection.directed !== false
     });
   }
 
   const counts = { total: items.length, byRegion: {} };
-  for (const it of items) {
-    if (it.role === "body" && it.regionId) {
-      counts.byRegion[it.regionId] = (counts.byRegion[it.regionId] || 0) + 1;
+  for (const item of items) {
+    if (item.role === "body" && item.regionId) {
+      counts.byRegion[item.regionId] = (counts.byRegion[item.regionId] || 0) + 1;
     }
   }
 
-  const headerSummaryRaw = headerStickies.map((h) => h.text).filter(Boolean).join(" | ");
+  const headerSummaryRaw = headerStickies.map((sticky) => sticky.text).filter(Boolean).join(" | ");
   const headerSummary = headerSummaryRaw
     ? (headerSummaryRaw.length > 200 ? headerSummaryRaw.slice(0, 197) + "..." : headerSummaryRaw)
     : null;
@@ -815,9 +946,11 @@ export function buildClassificationFromLiveInstance(instance, liveInst) {
       canvasTypeLabel: instance.canvasTypeLabel || instance.title || "Datentreiber 3-Boxes",
       instanceLabel: instance.instanceLabel || null,
       imageId: instance.imageId,
-      headerSummary
+      headerSummary,
+      footerExcludedFromAgentCatalog: excludeFooter === true
     },
     header: { stickies: headerStickies },
+    footer: { stickies: footerStickies },
     counts,
     items,
     connections
@@ -843,8 +976,8 @@ export function buildClassificationForAllInstances(instancesById, liveCatalog) {
 export function createAliasState() {
   return {
     nextStickyAliasIndex: 1,
-    sticky: Object.create(null),        // alias -> stickyId
-    stickyReverse: Object.create(null)  // stickyId -> alias
+    sticky: Object.create(null),
+    stickyReverse: Object.create(null)
   };
 }
 
@@ -862,11 +995,11 @@ export function aliasDiffForActiveInstance(diff, aliasState) {
   const aliasId = (id) => (id ? (reverse[id] || id) : id);
 
   return {
-    created: (diff.created || []).map((e) => ({ ...e, stickyId: aliasId(e.stickyId) })),
-    deleted: (diff.deleted || []).map((e) => ({ ...e, stickyId: aliasId(e.stickyId) })),
-    updated: (diff.updated || []).map((e) => ({ stickyId: aliasId(e.stickyId), before: e.before, after: e.after })),
-    connectorsCreated: (diff.connectorsCreated || []).map((e) => ({ fromStickyId: aliasId(e.fromStickyId), toStickyId: aliasId(e.toStickyId) })),
-    connectorsDeleted: (diff.connectorsDeleted || []).map((e) => ({ fromStickyId: aliasId(e.fromStickyId), toStickyId: aliasId(e.toStickyId) }))
+    created: (diff.created || []).map((entry) => ({ ...entry, stickyId: aliasId(entry.stickyId) })),
+    deleted: (diff.deleted || []).map((entry) => ({ ...entry, stickyId: aliasId(entry.stickyId) })),
+    updated: (diff.updated || []).map((entry) => ({ stickyId: aliasId(entry.stickyId), before: entry.before, after: entry.after })),
+    connectorsCreated: (diff.connectorsCreated || []).map((entry) => ({ fromStickyId: aliasId(entry.fromStickyId), toStickyId: aliasId(entry.toStickyId) })),
+    connectorsDeleted: (diff.connectorsDeleted || []).map((entry) => ({ fromStickyId: aliasId(entry.fromStickyId), toStickyId: aliasId(entry.toStickyId) }))
   };
 }
 
@@ -874,34 +1007,28 @@ export function buildPromptPayloadFromClassification(classification, { useAliase
   if (!classification) return null;
 
   if (useAliases && !aliasState) {
-    // Sicherer Fallback: lokale Alias-Map (nicht ideal für Action-Resolution, aber verhindert Crash)
     aliasState = createAliasState();
     if (typeof log === "function") log("WARNUNG: buildPromptPayloadFromClassification(useAliases=true) ohne aliasState – es wurde ein lokaler AliasState erzeugt.");
   }
 
-  const perTemplate =
-    (Array.isArray(classification.templates) && classification.templates.length)
-      ? classification.templates
-      : [classification];
+  const perTemplate = (Array.isArray(classification.templates) && classification.templates.length)
+    ? classification.templates
+    : [classification];
 
   function getOrCreateStickyAlias(stickyId) {
     if (!useAliases || !stickyId) return null;
-
-    const rev = aliasState.stickyReverse;
-    const existing = rev[stickyId];
+    const existing = aliasState.stickyReverse[stickyId];
     if (existing) return existing;
-
-    const index = aliasState.nextStickyAliasIndex++;
-    const alias = "S" + String(index).padStart(4, "0");
+    const alias = "S" + String(aliasState.nextStickyAliasIndex++).padStart(4, "0");
     aliasState.sticky[alias] = stickyId;
-    rev[stickyId] = alias;
+    aliasState.stickyReverse[stickyId] = alias;
     return alias;
   }
 
   function transformOne(one) {
     const idToItem = Object.create(null);
-    if (Array.isArray(one.items)) {
-      for (const item of one.items) if (item?.stickyId) idToItem[item.stickyId] = item;
+    for (const item of Array.isArray(one.items) ? one.items : []) {
+      if (item?.stickyId) idToItem[item.stickyId] = item;
     }
 
     const canvasTypeId = one.template?.canvasTypeId || one.template?.id || null;
@@ -914,30 +1041,24 @@ export function buildPromptPayloadFromClassification(classification, { useAliase
       if (item.role === "footer") return "footer";
 
       const directRegionId = typeof item.regionId === "string" ? item.regionId.trim() : null;
-      if (directRegionId && knownAreaIds.has(directRegionId)) {
-        return directRegionId;
-      }
+      if (directRegionId && knownAreaIds.has(directRegionId)) return directRegionId;
 
       const mappedRegion = areaNameToRegion(item.regionTitle, canvasTypeId);
       const mappedRegionId = typeof mappedRegion?.id === "string" ? mappedRegion.id.trim() : null;
-      if (mappedRegionId && knownAreaIds.has(mappedRegionId)) {
-        return mappedRegionId;
-      }
-
+      if (mappedRegionId && knownAreaIds.has(mappedRegionId)) return mappedRegionId;
       return null;
     }
 
     function buildConnectionsOut(item) {
       const result = [];
-      if (!item?.connectionsOut) return result;
-      for (const co of item.connectionsOut) {
-        const target = co?.toStickyId ? idToItem[co.toStickyId] : null;
+      for (const connection of item?.connectionsOut || []) {
+        const target = connection?.toStickyId ? idToItem[connection.toStickyId] : null;
         result.push({
-          connectorId: co.connectorId,
+          connectorId: connection.connectorId,
           toId: target?.stickyId ? getOrCreateStickyAlias(target.stickyId) : null,
           toText: target ? target.text : null,
           toArea: resolveAreaKey(target),
-          directed: co.directed !== false
+          directed: connection.directed !== false
         });
       }
       return result;
@@ -945,15 +1066,14 @@ export function buildPromptPayloadFromClassification(classification, { useAliase
 
     function buildConnectionsIn(item) {
       const result = [];
-      if (!item?.connectionsIn) return result;
-      for (const ci of item.connectionsIn) {
-        const source = ci?.fromStickyId ? idToItem[ci.fromStickyId] : null;
+      for (const connection of item?.connectionsIn || []) {
+        const source = connection?.fromStickyId ? idToItem[connection.fromStickyId] : null;
         result.push({
-          connectorId: ci.connectorId,
+          connectorId: connection.connectorId,
           fromId: source?.stickyId ? getOrCreateStickyAlias(source.stickyId) : null,
           fromText: source ? source.text : null,
           fromArea: resolveAreaKey(source),
-          directed: ci.directed !== false
+          directed: connection.directed !== false
         });
       }
       return result;
@@ -962,19 +1082,16 @@ export function buildPromptPayloadFromClassification(classification, { useAliase
     const headerStickiesRaw = one.header?.stickies || [];
     const header = {
       summary: one.template?.headerSummary,
-      stickies: headerStickiesRaw.map((h) => {
-        const item = h.stickyId ? idToItem[h.stickyId] : null;
-        const tagObjs = (item?.tags && Array.isArray(item.tags)) ? item.tags : (Array.isArray(h.tags) ? h.tags : []);
-        const tags = tagObjs.map((t) => (typeof t === "string" ? t : t?.title)).filter(Boolean);
-
-        const alias = item?.stickyId ? getOrCreateStickyAlias(item.stickyId) : null;
-
+      stickies: headerStickiesRaw.map((sticky) => {
+        const item = sticky.stickyId ? idToItem[sticky.stickyId] : null;
+        const tagObjs = Array.isArray(item?.tags) ? item.tags : (Array.isArray(sticky.tags) ? sticky.tags : []);
+        const tags = tagObjs.map((tag) => tag?.title).filter(Boolean);
         return {
-          id: alias,
-          text: h.text,
-          color: (item?.color) || h.color || null,
+          id: item?.stickyId ? getOrCreateStickyAlias(item.stickyId) : null,
+          text: sticky.text,
+          color: item?.color || sticky.color || null,
+          checked: item?.checked === true,
           tags,
-          checked: item?.checked === true || h.checked === true,
           clusterName: item?.clusterName || null,
           connectionsOut: buildConnectionsOut(item),
           connectionsIn: buildConnectionsIn(item)
@@ -988,46 +1105,36 @@ export function buildPromptPayloadFromClassification(classification, { useAliase
       areasByName[region.id] = { name: region.id, stickies: [] };
     }
 
-    if (Array.isArray(one.items)) {
-      for (const item of one.items) {
-        if (!item || item.role !== "body") continue;
-
-        const areaKey = resolveAreaKey(item);
-        if (!areaKey || !areasByName[areaKey]) continue;
-
-        const tags = Array.isArray(item.tags)
-          ? item.tags.map((t) => t?.title).filter(Boolean)
-          : [];
-
-        const alias = getOrCreateStickyAlias(item.stickyId);
-
-        areasByName[areaKey].stickies.push({
-          id: alias,
-          text: item.text,
-          color: item.color || null,
-          tags,
-          checked: item.checked === true,
-          clusterName: item.clusterName || null,
-          connectionsOut: buildConnectionsOut(item),
-          connectionsIn: buildConnectionsIn(item)
-        });
-      }
+    for (const item of Array.isArray(one.items) ? one.items : []) {
+      if (!item || item.role !== "body") continue;
+      const areaKey = resolveAreaKey(item);
+      if (!areaKey || !areasByName[areaKey]) continue;
+      const tags = Array.isArray(item.tags) ? item.tags.map((tag) => tag?.title).filter(Boolean) : [];
+      areasByName[areaKey].stickies.push({
+        id: getOrCreateStickyAlias(item.stickyId),
+        text: item.text,
+        color: item.color || null,
+        checked: item.checked === true,
+        tags,
+        clusterName: item.clusterName || null,
+        connectionsOut: buildConnectionsOut(item),
+        connectionsIn: buildConnectionsIn(item)
+      });
     }
 
     const connectionsSummary = Array.isArray(one.connections)
-      ? one.connections.map((c) => {
-          const fromItem = c.fromStickyId ? idToItem[c.fromStickyId] : null;
-          const toItem = c.toStickyId ? idToItem[c.toStickyId] : null;
-
+      ? one.connections.map((connection) => {
+          const fromItem = connection.fromStickyId ? idToItem[connection.fromStickyId] : null;
+          const toItem = connection.toStickyId ? idToItem[connection.toStickyId] : null;
           return {
-            connectorId: c.connectorId,
+            connectorId: connection.connectorId,
             fromId: fromItem?.stickyId ? getOrCreateStickyAlias(fromItem.stickyId) : null,
             fromText: fromItem ? fromItem.text : null,
             fromArea: resolveAreaKey(fromItem),
             toId: toItem?.stickyId ? getOrCreateStickyAlias(toItem.stickyId) : null,
             toText: toItem ? toItem.text : null,
             toArea: resolveAreaKey(toItem),
-            directed: c.directed !== false
+            directed: connection.directed !== false
           };
         })
       : [];
@@ -1041,7 +1148,8 @@ export function buildPromptPayloadFromClassification(classification, { useAliase
         headerSummary: one.template?.headerSummary,
         instanceLabel: one.template?.instanceLabel || null,
         canvasTypeId,
-        canvasTypeLabel: one.template?.canvasTypeLabel || one.template?.name || null
+        canvasTypeLabel: one.template?.canvasTypeLabel || one.template?.name || null,
+        footerExcludedFromAgentCatalog: one.template?.footerExcludedFromAgentCatalog === true
       },
       header,
       areas: orderedBodyRegions.map((region) => areasByName[region.id] || { name: region.id, stickies: [] }),
@@ -1100,7 +1208,7 @@ export async function computeInstanceState(instance, {
 // Board Catalog Summary (für Agent Payloads)
 // --------------------------------------------------------------------
 export function buildBoardCatalogSummary(instancesById, {
-  mode = "generic",            // "global" | "instance" | "generic"
+  mode = "generic",
   activeInstanceId = null,
   hasGlobalBaseline = false
 } = {}) {

@@ -1,6 +1,6 @@
-import { DT_IMAGE_META_KEY_INSTANCE, DT_SORTED_OUT_OVERLAY } from "../config.js?v=20260308-batch7-5";
+import { DT_IMAGE_META_KEY_INSTANCE, DT_CANVAS_DEFS, DT_SORTED_OUT_REGION_WIDTH_PX } from "../config.js?v=20260307-batch75";
 import { isFiniteNumber } from "../utils.js?v=20260301-step11-hotfix2";
-import { ensureMiroReady, getBoard } from "./sdk.js?v=20260308-batch7-5";
+import { ensureMiroReady, getBoard } from "./sdk.js?v=20260307-batch75";
 import {
   compareItemIdsAsc,
   normalizePositiveInt,
@@ -8,17 +8,17 @@ import {
   formatInstanceLabel,
   buildInternalInstanceIdFromImageId
 } from "./helpers.js?v=20260305-batch05";
-import { getItemById, resolveBoardCoords } from "./items.js?v=20260308-batch7-5";
+import { getItemById, resolveBoardCoords } from "./items.js?v=20260307-batch75";
 import {
   normalizeChatInterfaceShapeIds,
   hasCompleteChatInterfaceShapeIds,
   createChatInterfaceForInstance,
   removeChatInterfaceShapes
-} from "./chat-interface.js?v=20260308-batch7-5";
+} from "./chat-interface.js?v=20260306-batch6";
 import {
   loadBaselineSignatureForImageId,
   removeBaselineSignatureForImageId
-} from "./storage.js?v=20260308-batch7-5";
+} from "./storage.js?v=20260307-batch75";
 
 // --------------------------------------------------------------------
 // Template instance registration, geometry and scan/rebind logic
@@ -235,6 +235,61 @@ export async function buildInstanceGeometryIndex(instancesById, log) {
   return entries;
 }
 
+function getSortedOutOutsideOffsetBoard(canvasTypeId, geom) {
+  const def = DT_CANVAS_DEFS?.[canvasTypeId] || null;
+  const originalWidth = Number(def?.originalWidth);
+  if (!geom || !isFiniteNumber(geom.width) || !Number.isFinite(originalWidth) || originalWidth <= 0) {
+    return 0;
+  }
+  return geom.width * (DT_SORTED_OUT_REGION_WIDTH_PX / originalWidth);
+}
+
+function normalizeBoardRect(rect) {
+  if (!rect) return null;
+  const left = isFiniteNumber(rect.left) ? Number(rect.left) : (isFiniteNumber(rect.x) && isFiniteNumber(rect.width) ? Number(rect.x) - Number(rect.width) / 2 : null);
+  const right = isFiniteNumber(rect.right) ? Number(rect.right) : (isFiniteNumber(rect.x) && isFiniteNumber(rect.width) ? Number(rect.x) + Number(rect.width) / 2 : null);
+  const top = isFiniteNumber(rect.top) ? Number(rect.top) : (isFiniteNumber(rect.y) && isFiniteNumber(rect.height) ? Number(rect.y) - Number(rect.height) / 2 : null);
+  const bottom = isFiniteNumber(rect.bottom) ? Number(rect.bottom) : (isFiniteNumber(rect.y) && isFiniteNumber(rect.height) ? Number(rect.y) + Number(rect.height) / 2 : null);
+  if (!isFiniteNumber(left) || !isFiniteNumber(right) || !isFiniteNumber(top) || !isFiniteNumber(bottom)) return null;
+  if (right <= left || bottom <= top) return null;
+  return {
+    left,
+    right,
+    top,
+    bottom,
+    x: isFiniteNumber(rect.x) ? Number(rect.x) : (left + right) / 2,
+    y: isFiniteNumber(rect.y) ? Number(rect.y) : (top + bottom) / 2,
+    width: isFiniteNumber(rect.width) ? Number(rect.width) : (right - left),
+    height: isFiniteNumber(rect.height) ? Number(rect.height) : (bottom - top)
+  };
+}
+
+function buildOwnershipRectForEntry(entry) {
+  const geom = entry?.geom;
+  if (!geom || !isFiniteNumber(geom.x) || !isFiniteNumber(geom.y) || !isFiniteNumber(geom.width) || !isFiniteNumber(geom.height)) {
+    return null;
+  }
+  const extra = getSortedOutOutsideOffsetBoard(entry?.inst?.canvasTypeId, geom);
+  return {
+    left: geom.x - geom.width / 2 - extra,
+    right: geom.x + geom.width / 2 + extra,
+    top: geom.y - geom.height / 2,
+    bottom: geom.y + geom.height / 2,
+    x: geom.x,
+    y: geom.y,
+    width: geom.width + extra * 2,
+    height: geom.height
+  };
+}
+
+function computeRectOverlapArea(a, b) {
+  if (!a || !b) return 0;
+  const overlapX = Math.min(a.right, b.right) - Math.max(a.left, b.left);
+  const overlapY = Math.min(a.bottom, b.bottom) - Math.max(a.top, b.top);
+  if (overlapX <= 0 || overlapY <= 0) return 0;
+  return overlapX * overlapY;
+}
+
 export function findInstanceByPoint(x, y, geomEntries) {
   let bestInst = null;
   let bestDistSq = Infinity;
@@ -262,51 +317,27 @@ export function findInstanceByPoint(x, y, geomEntries) {
   return bestInst;
 }
 
-function rectIntersects(a, b) {
-  if (!a || !b) return false;
-  return !(a.right <= b.left || a.left >= b.right || a.bottom <= b.top || a.top >= b.bottom);
-}
-
-function rectIntersectionArea(a, b) {
-  if (!rectIntersects(a, b)) return 0;
-  const width = Math.max(0, Math.min(a.right, b.right) - Math.max(a.left, b.left));
-  const height = Math.max(0, Math.min(a.bottom, b.bottom) - Math.max(a.top, b.top));
-  return width * height;
-}
-
-function buildInstanceOwnershipEnvelope(geom, outsidePx = DT_SORTED_OUT_OVERLAY.outsidePx) {
-  if (!geom) return null;
-  return {
-    left: geom.x - geom.width / 2 - outsidePx,
-    right: geom.x + geom.width / 2 + outsidePx,
-    top: geom.y - geom.height / 2,
-    bottom: geom.y + geom.height / 2
-  };
-}
-
-export function findInstanceByRect(rect, geomEntries, { outsidePx = DT_SORTED_OUT_OVERLAY.outsidePx } = {}) {
-  if (!rect || !isFiniteNumber(rect.left) || !isFiniteNumber(rect.right) || !isFiniteNumber(rect.top) || !isFiniteNumber(rect.bottom)) {
-    return null;
-  }
+export function findInstanceByRect(boardRect, geomEntries) {
+  const rect = normalizeBoardRect(boardRect);
+  if (!rect) return null;
 
   let bestInst = null;
-  let bestArea = 0;
+  let bestOverlapArea = 0;
   let bestDistSq = Infinity;
 
-  for (const entry of geomEntries || []) {
-    const geom = entry?.geom;
-    if (!geom) continue;
+  for (const entry of Array.isArray(geomEntries) ? geomEntries : []) {
+    const ownershipRect = buildOwnershipRectForEntry(entry);
+    if (!ownershipRect) continue;
 
-    const envelope = buildInstanceOwnershipEnvelope(geom, outsidePx);
-    const overlapArea = rectIntersectionArea(rect, envelope);
+    const overlapArea = computeRectOverlapArea(rect, ownershipRect);
     if (overlapArea <= 0) continue;
 
-    const dx = rect.x - geom.x;
-    const dy = rect.y - geom.y;
+    const dx = rect.x - ownershipRect.x;
+    const dy = rect.y - ownershipRect.y;
     const distSq = dx * dx + dy * dy;
 
-    if (overlapArea > bestArea || (overlapArea === bestArea && distSq < bestDistSq)) {
-      bestArea = overlapArea;
+    if (overlapArea > bestOverlapArea || (overlapArea === bestOverlapArea && distSq < bestDistSq)) {
+      bestOverlapArea = overlapArea;
       bestDistSq = distSq;
       bestInst = entry.inst;
     }

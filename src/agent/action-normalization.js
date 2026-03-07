@@ -1,3 +1,5 @@
+import { normalizeStickyColorToken } from "../config.js?v=20260307-batch75";
+
 export function pickFirstNonEmptyString(...values) {
   for (const value of values) {
     if (typeof value !== "string") continue;
@@ -15,8 +17,14 @@ export function coerceBooleanLike(value) {
   const normalized = value.trim().toLowerCase();
   if (!normalized) return null;
 
-  if (["true", "yes", "ja", "1", "directed", "with_arrow", "arrow"].includes(normalized)) return true;
-  if (["false", "no", "nein", "0", "none", "undirected", "without_arrow", "no_arrow"].includes(normalized)) return false;
+  if ([
+    "true", "yes", "ja", "1", "directed", "with_arrow", "arrow",
+    "checked", "check", "valid", "validated", "done", "complete", "completed"
+  ].includes(normalized)) return true;
+  if ([
+    "false", "no", "nein", "0", "none", "undirected", "without_arrow", "no_arrow",
+    "unchecked", "uncheck", "invalid", "not_validated", "open", "pending"
+  ].includes(normalized)) return false;
   return null;
 }
 
@@ -68,15 +76,27 @@ export function makeCanonicalStickyPairKey(a, b) {
   return makeUndirectedConnectorKey(a, b);
 }
 
-export function canonicalizeAgentActionType(rawType) {
+function normalizeActionTypeToken(rawType) {
   if (typeof rawType !== "string") return null;
-
-  const snake = rawType
+  return rawType
     .trim()
     .replace(/([a-z0-9])([A-Z])/g, "$1_$2")
     .replace(/[\s-]+/g, "_")
     .replace(/__+/g, "_")
     .toLowerCase();
+}
+
+function inferCheckStatusFromRawType(rawType) {
+  const token = normalizeActionTypeToken(rawType);
+  if (!token) return null;
+  if (token.includes("uncheck") || token.includes("remove_check") || token.includes("clear_check")) return false;
+  if (token.includes("check") || token.includes("validate") || token.includes("mark_checked")) return true;
+  return null;
+}
+
+export function canonicalizeAgentActionType(rawType) {
+  const snake = normalizeActionTypeToken(rawType);
+  if (!snake) return null;
 
   const compact = snake.replace(/_/g, "");
 
@@ -109,15 +129,25 @@ export function canonicalizeAgentActionType(rawType) {
     linknote: "create_connector",
     linknotes: "create_connector",
     setstickycolor: "set_sticky_color",
+    setcolor: "set_sticky_color",
+    setnotecolor: "set_sticky_color",
     recolorsticky: "set_sticky_color",
-    changestickycolor: "set_sticky_color",
+    recolornote: "set_sticky_color",
     colorsticky: "set_sticky_color",
+    colornote: "set_sticky_color",
+    changestickycolor: "set_sticky_color",
+    changenotecolor: "set_sticky_color",
     setcheckstatus: "set_check_status",
+    checksticky: "set_check_status",
+    checknote: "set_check_status",
     markchecked: "set_check_status",
-    unmarkchecked: "set_check_status",
+    markstickychecked: "set_check_status",
+    validate_sticky: "set_check_status",
+    validatesticky: "set_check_status",
+    unchecksticky: "set_check_status",
+    unchecknote: "set_check_status",
     clearcheck: "set_check_status",
-    setvalidated: "set_check_status",
-    markvalidated: "set_check_status",
+    removecheck: "set_check_status",
     inform: "inform",
     message: "inform",
     note: "inform",
@@ -125,15 +155,6 @@ export function canonicalizeAgentActionType(rawType) {
   };
 
   return typeMap[compact] || null;
-}
-
-function inferCheckedStateFromRawType(rawType) {
-  if (typeof rawType !== "string") return null;
-  const normalized = rawType.trim().toLowerCase();
-  if (!normalized) return null;
-  if (normalized.includes("unmark") || normalized.includes("clear")) return false;
-  if (normalized.includes("mark") || normalized.includes("check") || normalized.includes("valid")) return true;
-  return null;
 }
 
 export function normalizeAgentAction(rawAction) {
@@ -144,6 +165,27 @@ export function normalizeAgentAction(rawAction) {
   if (!type) return null;
 
   const normalizedDirection = normalizeConnectorDirection(rawAction);
+  const inferredChecked = inferCheckStatusFromRawType(rawType);
+  const explicitChecked = coerceBooleanLike(
+    rawAction.checked ??
+    rawAction.isChecked ??
+    rawAction.check ??
+    rawAction.validated ??
+    rawAction.isValidated ??
+    rawAction.status
+  );
+  const checked = explicitChecked == null ? inferredChecked : explicitChecked;
+
+  const color = normalizeStickyColorToken(
+    pickFirstNonEmptyString(
+      rawAction.color,
+      rawAction.fillColor,
+      rawAction.stickyColor,
+      rawAction.backgroundColor,
+      rawAction?.style?.fillColor,
+      rawAction?.style?.backgroundColor
+    )
+  );
 
   return {
     type,
@@ -225,15 +267,8 @@ export function normalizeAgentAction(rawAction) {
       rawAction.content,
       rawAction.note
     ),
-    color: pickFirstNonEmptyString(
-      rawAction.color,
-      rawAction.fillColor,
-      rawAction.backgroundColor,
-      rawAction.stickyColor
-    ),
-    checked: coerceBooleanLike(
-      rawAction.checked ?? rawAction.isChecked ?? rawAction.validated ?? inferCheckedStateFromRawType(rawType)
-    ),
+    color,
+    checked,
     directed: normalizedDirection.directed,
     reverseDirection: normalizedDirection.reverseDirection
   };
