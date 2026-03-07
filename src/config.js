@@ -27,10 +27,7 @@ Verwende für area bzw. targetArea ausschließlich diese Area-Keys:
 - left = Box 1 (links)
 - middle = Box 2 (Mitte)
 - right = Box 3 (rechts)
-- sorted_out_left = seitlicher Sorted-out-Bereich links außerhalb des sichtbaren Canvas
-- sorted_out_right = seitlicher Sorted-out-Bereich rechts außerhalb des sichtbaren Canvas
 Sticky Notes müssen inhaltlich sinnvoll diesen Bereichen zugeordnet werden.
-Die Sorted-out-Bereiche dienen zum bewussten Parken, Aussortieren oder späteren Wiederaufgreifen von Notizen; sie sind kein normaler Arbeitsbereich innerhalb der sichtbaren Canvas-Fläche.
 Plane Connectoren nur dann, wenn eine konkrete fachliche Beziehung explizit sichtbar gemacht werden soll. Bloße thematische Nähe, Brainstorm-Sammlungen oder Cluster sind kein automatischer Grund für Connectoren.`.trim()
   },
   [ANALYTICS_AI_USE_CASE_TEMPLATE_ID]: {
@@ -55,8 +52,6 @@ Verwende für area bzw. targetArea ausschließlich diese Area-Keys:
 - 6b_functions = Functions: Funktionen oder Mechanismen, mit denen diese Informationen erzeugt, bereitgestellt oder nutzbar gemacht werden.
 - 7_benefits = Benefits: resultierende Vorteile der Lösung, die Pains reduzieren, Gains verstärken oder zu besseren Ergebnissen und Zielen beitragen.
 - 8_check = Check: kurze Verdichtungen zum Problem-Solution-Fit.
-- sorted_out_left = seitlicher Sorted-out-Bereich links außerhalb des sichtbaren Canvas
-- sorted_out_right = seitlicher Sorted-out-Bereich rechts außerhalb des sichtbaren Canvas
 
 Didaktische Grundlogik dieses Canvas:
 - Arbeite nicht als Vollgraph, sondern in Arbeitsmodi: zuerst sammeln, dann strukturieren, dann ableiten, dann prüfen und verdichten.
@@ -85,8 +80,6 @@ Qualitätskriterien:
 - Entscheidungen und Handlungen sind der methodische Drehpunkt: Informationen und Funktionen sind nur dann wertvoll, wenn sie Entscheidungen oder Handlungen tatsächlich verbessern.
 - Vermeide zu frühe Technologiediskussionen, Systemarchitekturen oder generische KI-Floskeln ohne Bezug zur Nutzerarbeit.
 - Nicht jede Sticky Note braucht einen eingehenden oder ausgehenden Connector. Unverbundene Stickies sind korrekt, wenn sie Sammlung, Alternative oder Beobachtung repräsentieren.
-- Die Footer-/Legend-Region ist für den Agenten absichtlich nicht im Katalog enthalten. Interpretiere das nicht als fehlenden Inhalt, sondern als ausgeblendeten Board-Randbereich.
-- Die seitlichen Sorted-out-Bereiche liegen außerhalb der sichtbaren Canvas-Fläche und dienen zum bewussten Parken oder Aussortieren von Sticky Notes.
 
 Didaktischer Reifegrad:
 - Wenn die relevante Seite des Canvas leer oder fast leer ist, wechsle von harter Bewertung zu aktivierender Anleitung: erkläre einen sinnvollen Einstieg, schlage eine Reihenfolge vor und gib konkrete Formulierungsanstöße.
@@ -113,16 +106,23 @@ export const DT_SHAPE_META_KEY_CHAT_INTERFACE = "dt-chat-interface-v1";
 export const DT_MEMORY_RECENT_LOG_LIMIT = 5;
 export const DT_RUN_STATE_STALE_AFTER_MS = 15 * 60 * 1000;
 
-export const DT_SORTED_OUT_REGION_WIDTH_PX = 50;
-export const DT_SORTED_OUT_REGION_IDS = Object.freeze(["sorted_out_left", "sorted_out_right"]);
-export const DT_SORTED_OUT_REGION_TITLES = Object.freeze({
-  sorted_out_left: "Sorted out (left)",
-  sorted_out_right: "Sorted out (right)"
+export const DT_SORTED_OUT_OVERLAY = Object.freeze({
+  outsidePx: 50,
+  leftAreaId: "sorted_out_left",
+  rightAreaId: "sorted_out_right",
+  title: "Sorted Out",
+  semanticGroup: "sorted_out"
 });
-export const DT_EXCLUDE_FOOTER_FROM_AGENT_CATALOG_DEFAULT = true;
-export const DT_CHECK_TAG_TITLE = "✔️";
-export const DT_CHECK_TAG_COLOR = "green";
-export const DT_STICKY_COLOR_VALUES = Object.freeze([
+
+export const DT_FOOTER_EXCLUSION_DEFAULT = true;
+
+export const DT_CHECK_TAG = Object.freeze({
+  title: "✔️",
+  color: "green",
+  aliases: Object.freeze(["✔️", "✅", "check", "✔️ check", "✅ check"])
+});
+
+export const DT_STICKY_COLOR_TOKENS = Object.freeze([
   "gray",
   "light_yellow",
   "yellow",
@@ -140,30 +140,6 @@ export const DT_STICKY_COLOR_VALUES = Object.freeze([
   "dark_blue",
   "black"
 ]);
-
-const DT_STICKY_COLOR_ALIASES = Object.freeze({
-  grey: "gray",
-  magenta: "pink",
-  purple: "violet",
-  teal: "cyan",
-  sky: "light_blue",
-  sky_blue: "light_blue",
-  lightblue: "light_blue",
-  lightgreen: "light_green",
-  darkgreen: "dark_green",
-  darkblue: "dark_blue",
-  lightyellow: "light_yellow",
-  offwhite: "light_yellow",
-  white: "light_yellow"
-});
-
-export function normalizeStickyColorToken(value) {
-  if (typeof value !== "string") return null;
-  const normalized = value.trim().toLowerCase().replace(/[\s-]+/g, "_");
-  if (!normalized) return null;
-  if (DT_STICKY_COLOR_VALUES.includes(normalized)) return normalized;
-  return DT_STICKY_COLOR_ALIASES[normalized] || null;
-}
 
 export const DT_FLOW_SCOPE_TYPES = Object.freeze(["fixed_instances", "global"]);
 export const DT_FLOW_CONTROL_STATES = Object.freeze(["active", "disabled", "done"]);
@@ -491,7 +467,7 @@ function buildActionReferenceRulesBlock({ instanceLabelRule = null } = {}) {
     lines.push(`- ${instanceLabelRule}`);
   }
 
-  lines.push('- Für create_sticky und move_sticky gib nur area bzw. targetArea an. Verwende dafür exakt einen vorhandenen Area-Key aus activeCanvasState/activeCanvasStates → templates[].areas[].name; die App übernimmt die Platzierung. sorted_out_left und sorted_out_right sind seitliche Off-Canvas-Parkbereiche.');
+  lines.push('- Für create_sticky und move_sticky gib nur area bzw. targetArea an. Verwende dafür exakt einen vorhandenen Area-Key aus activeCanvasState/activeCanvasStates → templates[].areas[].name; die App übernimmt die Platzierung.');
   lines.push('- In memoryEntry referenziere Canvas nur über instanceLabel.');
   return lines.join("\n");
 }
@@ -596,14 +572,6 @@ Regeln für memoryEntry:
 - Referenziere dort niemals Sticky-IDs, keine Rohkoordinaten und keine internen technischen IDs. Referenziere Canvas ausschließlich über instanceLabel.
 - Wenn es für ein Feld nichts zu melden gibt, setze ein leeres Array [] oder null/leer, aber lasse memoryEntry nicht weg.
 - Falls du keine Board-Mutationen vorschlägst, setze actions auf ein leeres Array [], liefere aber trotzdem analysis, memoryEntry und feedback.
-
-Mechanische Zusatzregeln für Actions:
-- create_sticky darf optional ein Feld color mit einer Miro-Sticky-Farbe tragen: gray, light_yellow, yellow, orange, light_green, green, dark_green, cyan, light_pink, pink, violet, red, light_blue, blue, dark_blue, black.
-- create_sticky darf optional checked=true setzen; die App markiert die Sticky dann sichtbar als geprüft.
-- set_sticky_color ändert die Farbe einer bestehenden Sticky und benötigt stickyId plus color.
-- set_check_status ändert den sichtbaren Prüfstatus einer bestehenden Sticky und benötigt stickyId plus checked=true/false.
-- Verwende keine Hex-Farben und keine freien Farbnamen außerhalb der unterstützten Miro-Palette.
-- checked beschreibt einen sichtbaren Validierungsmarker der App. Nutze ihn nur, wenn ein Inhalt bewusst als geprüft, validiert oder bestätigt markiert werden soll.
 
 Zusatz für ${modeLabel}:
 - flowControlDirectives und evaluation dürfen niemals die eigentliche Board-Manipulation ersetzen; actions, memoryEntry und feedback bleiben gleichwertige Bestandteile des Outputs.`.trim();

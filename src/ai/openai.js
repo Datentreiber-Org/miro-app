@@ -1,4 +1,4 @@
-import { OPENAI_ENDPOINT } from "../config.js?v=20260307-batch75";
+import { OPENAI_ENDPOINT } from "../config.js?v=20260308-batch7-5";
 
 function nullableStringSchema(description = "") {
   return {
@@ -42,8 +42,8 @@ const AGENT_ACTION_SCHEMA = strictObjectSchema({
     targetArea: nullableStringSchema("Ziel-Region innerhalb der Zielinstanz. Die App platziert Stickies innerhalb der Region automatisch."),
     text: nullableStringSchema("Textinhalt für create_sticky oder inform."),
     message: nullableStringSchema("Informationsnachricht für inform."),
-    color: nullableStringSchema("Optionale Miro-Sticky-Farbe aus der unterstützten Palette, z. B. green, red, blue."),
-    checked: nullableBooleanSchema("Optionaler sichtbarer Prüfstatus für create_sticky oder set_check_status."),
+    color: nullableStringSchema("Kanonischer Sticky-Farb-Token, z. B. light_yellow, green, red oder blue."),
+    checked: nullableBooleanSchema("Ob eine Sticky den sichtbaren Check-Marker tragen soll."),
     directed: nullableBooleanSchema("Ob der Connector gerichtet sein soll."),
     reverseDirection: nullableBooleanSchema("Ob die vom Modell gedachte Richtung invertiert werden soll.")
 });

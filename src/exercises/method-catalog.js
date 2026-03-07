@@ -2,7 +2,7 @@ import {
   DT_DEFAULT_APP_ADMIN_POLICY,
   DT_DEFAULT_FEEDBACK_CHANNEL,
   DT_TRIGGER_KEYS
-} from "../config.js?v=20260307-batch75";
+} from "../config.js?v=20260307-batch5";
 
 import { METHOD_I18N_OVERRIDES } from "../i18n/catalog.js?v=20260306-batch6";
 import { normalizeUiLanguage, pickLocalized } from "../i18n/index.js?v=20260306-batch6";
@@ -24,16 +24,6 @@ function normalizeUniqueStrings(values) {
     result.push(text);
   }
   return result;
-}
-
-const EXTRA_STICKY_MUTATION_ACTIONS = Object.freeze(["set_sticky_color", "set_check_status"]);
-
-function augmentAllowedActions(values) {
-  const base = normalizeUniqueStrings(values);
-  if (!base.some((value) => ["create_sticky", "move_sticky", "delete_sticky"].includes(value))) {
-    return base;
-  }
-  return normalizeUniqueStrings([...base, ...EXTRA_STICKY_MUTATION_ACTIONS]);
 }
 
 function normalizeTriggerKey(value) {
@@ -218,7 +208,7 @@ function buildExerciseStep(stepDef) {
     order: Number.isFinite(Number(stepDef?.order)) ? Number(stepDef.order) : 0,
     label: asNonEmptyString(stepDef?.label) || asNonEmptyString(stepDef?.id),
     visibleInstruction: asNonEmptyString(stepDef?.visibleInstruction),
-    allowedActions: augmentAllowedActions(stepDef?.allowedActions),
+    allowedActions: normalizeUniqueStrings(stepDef?.allowedActions),
     defaultEnterTrigger: normalizeTriggerKey(stepDef?.defaultEnterTrigger),
     allowedTriggers: Object.freeze(allowedTriggers),
     transitions: Object.freeze(normalizeTransitions(stepDef?.transitions))
@@ -278,7 +268,7 @@ function buildFlowControlProjection(packDef, stepDef, triggerProfile) {
     mutationPolicy: asNonEmptyString(flowControl.mutationPolicy) || asNonEmptyString(triggerProfile?.mutationPolicy),
     feedbackPolicy: asNonEmptyString(flowControl.feedbackPolicy) || asNonEmptyString(triggerProfile?.feedbackPolicy),
     defaultScopeType: asNonEmptyString(flowControl.defaultScopeType) || "fixed_instances",
-    allowedActions: augmentAllowedActions(flowControl.allowedActions),
+    allowedActions: normalizeUniqueStrings(flowControl.allowedActions),
     uiHint: asNonEmptyString(flowControl.uiHint),
     sortOrder: Number.isFinite(Number(flowControl.sortOrder)) ? Number(flowControl.sortOrder) : Number.MAX_SAFE_INTEGER
   });

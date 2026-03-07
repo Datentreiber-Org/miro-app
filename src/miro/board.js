@@ -1,4 +1,4 @@
-export { ensureMiroReady, getBoard, registerSelectionUpdateHandler } from "./sdk.js?v=20260307-batch75";
+export { ensureMiroReady, getBoard, registerSelectionUpdateHandler } from "./sdk.js?v=20260305-batch05";
 
 export {
   normalizeBoardConfig,
@@ -26,12 +26,12 @@ export {
   normalizeBoardRunState,
   loadBoardRunState,
   saveBoardRunState
-} from "./storage.js?v=20260307-batch75";
+} from "./storage.js?v=20260308-batch7-5";
 
 export {
   buildAgentFeedbackContent,
   buildQuestionAnswerContent
-} from "./feedback.js?v=20260306-batch6";
+} from "./feedback.js?v=20260308-batch7-5";
 
 export {
   normalizeChatInterfaceShapeIds,
@@ -48,7 +48,7 @@ export {
   getChatPlaceholderVariants,
   isKnownChatPlaceholderContent,
   syncChatPlaceholdersForLanguage
-} from "./chat-interface.js?v=20260306-batch6";
+} from "./chat-interface.js?v=20260308-batch7-5";
 
 export {
   getSelection,
@@ -62,16 +62,15 @@ export {
   createConnectorBetweenItems,
   removeItemById,
   moveItemByIdToBoardCoords,
-  resolveBoardCoords,
-  resolveBoardRect,
-  boardToLocalCoords,
-  getTags,
-  findBoardTagByTitle,
+  getItemBoardRect,
+  listTags,
   ensureBoardTag,
-  setStickyNoteTagPresence,
-  setStickyNoteFillColor,
+  setItemTagMembership,
+  setStickyColorById,
+  resolveBoardCoords,
+  boardToLocalCoords,
   getBoardBaseContext
-} from "./items.js?v=20260307-batch75";
+} from "./items.js?v=20260308-batch7-5";
 
 export {
   readFlowControlMeta,
@@ -80,7 +79,7 @@ export {
   computeSuggestedFlowControlPosition,
   createFlowControlShape,
   syncFlowControlShapeAppearance
-} from "./flow-controls.js?v=20260306-batch6";
+} from "./flow-controls.js?v=20260308-batch7-5";
 
 export {
   computeTemplateGeometry,
@@ -89,4 +88,4 @@ export {
   findInstanceByRect,
   registerInstanceFromImage,
   scanTemplateInstances
-} from "./instances.js?v=20260307-batch75";
+} from "./instances.js?v=20260308-batch7-5";

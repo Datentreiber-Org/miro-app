@@ -13,11 +13,11 @@ import {
   DT_DEFAULT_FEEDBACK_CHANNEL,
   DT_DEFAULT_APP_ADMIN_POLICY,
   DT_MEMORY_RECENT_LOG_LIMIT
-} from "../config.js?v=20260307-batch75";
+} from "../config.js?v=20260307-batch5";
 
 import { normalizeBoardFlow } from "../runtime/board-flow.js?v=20260306-batch6";
 import { normalizeUiLanguage } from "../i18n/index.js?v=20260306-batch6";
-import { ensureMiroReady, getBoard } from "./sdk.js?v=20260307-batch75";
+import { ensureMiroReady, getBoard } from "./sdk.js?v=20260307-batch5";
 import { compareItemIdsAsc, normalizePositiveInt, asTrimmedString } from "./helpers.js?v=20260305-batch05";
 
 // --------------------------------------------------------------------
@@ -204,13 +204,6 @@ function normalizeBoardMode(value) {
   return value === "exercise" ? "exercise" : "generic";
 }
 
-function normalizeBoardSystemTagIds(rawSystemTagIds) {
-  const src = (rawSystemTagIds && typeof rawSystemTagIds === "object") ? rawSystemTagIds : {};
-  return {
-    check: asTrimmedString(src.check)
-  };
-}
-
 export function normalizeBoardConfig(rawConfig, { defaultCanvasTypeId = null } = {}) {
   const src = (rawConfig && typeof rawConfig === "object") ? rawConfig : {};
   const exercisePackId = asTrimmedString(src.exercisePackId);
@@ -226,7 +219,7 @@ export function normalizeBoardConfig(rawConfig, { defaultCanvasTypeId = null } =
     .filter(Boolean)));
 
   return {
-    version: 3,
+    version: 2,
     boardMode,
     exercisePackId: exercisePackId || null,
     defaultCanvasTypeId: normalizedDefaultCanvasTypeId || null,
@@ -235,8 +228,7 @@ export function normalizeBoardConfig(rawConfig, { defaultCanvasTypeId = null } =
     userMayChangeStep: src.userMayChangeStep === true,
     appAdminPolicy,
     appAdminUserIds,
-    displayLanguage: normalizeUiLanguage(src.displayLanguage),
-    systemTagIds: normalizeBoardSystemTagIds(src.systemTagIds)
+    displayLanguage: normalizeUiLanguage(src.displayLanguage)
   };
 }
 
@@ -272,7 +264,7 @@ export async function isBoardAnchorItem(item, log) {
 
   try {
     const meta = await item.getMetadata(DT_ANCHOR_META_KEY_BOARD);
-    return !!(meta && typeof meta === "object" && (meta.version === 1 || meta.version === 2 || meta.version === 3));
+    return !!(meta && typeof meta === "object" && (meta.version === 1 || meta.version === 2));
   } catch (_) {
     return false;
   }
@@ -297,7 +289,7 @@ async function listBoardAnchorItems(log) {
     if (!shape?.getMetadata) continue;
     try {
       const meta = await shape.getMetadata(DT_ANCHOR_META_KEY_BOARD);
-      if (meta && typeof meta === "object" && (meta.version === 1 || meta.version === 2 || meta.version === 3)) {
+      if (meta && typeof meta === "object" && (meta.version === 1 || meta.version === 2)) {
         anchors.push(shape);
       }
     } catch (_) {}
