@@ -15,5 +15,7 @@ export {
   isTriggerAllowedForStep,
   getDefaultEnterTrigger,
   listStepTransitions,
-  resolveNamedTransition
+  resolveNamedTransition,
+  listRunProfilesForStep,
+  listRunProfilesForStepSurface
 } from "./method-catalog.js?v=20260311-batch83fix1";

@@ -27,7 +27,13 @@ export const UI_STRINGS = Object.freeze({
   "status.recommendation.empty": { de: "Noch keine Button-Freischaltungen gespeichert.", en: "No button activations stored yet." },
   "status.selection.loading": { de: "Selektion wird geladen ...", en: "Loading selection ..." },
 
-  "section.exerciseActions": { de: "Übungsaktionen", en: "Exercise actions" },
+  "section.exerciseActions": { de: "Empfohlene Aktionen", en: "Recommended actions" },
+  "section.exerciseActionsPrimary": { de: "Primäre Aktionen", en: "Primary actions" },
+  "section.exerciseActionsProposal": { de: "Vorschläge", en: "Proposals" },
+  "exercise.action.secondaryHeading": { de: "Weitere Aktionen", en: "Additional actions" },
+  "exercise.action.noneAvailable": { de: "Für diesen Schritt sind aktuell keine kuratierten Aktionen sichtbar.", en: "No curated actions are currently visible for this step." },
+  "exercise.action.proposalUnavailable": { de: "Noch kein passender Vorschlag für den aktuellen Schritt und die aktuelle Selektion gespeichert.", en: "No matching proposal is stored yet for the current step and current selection." },
+  "exercise.action.applyUnavailable": { de: "Vorschläge anwenden wird aktiv, sobald für die aktuelle Selektion ein passender Vorschlag vorliegt.", en: "Apply proposals becomes active once a matching proposal exists for the current selection." },
   "exercise.action.check": { de: "Antworten prüfen", en: "Check answers" },
   "exercise.action.hint": { de: "Hinweis geben", en: "Give hint" },
   "exercise.action.autocorrect": { de: "Korrektur anwenden", en: "Apply correction" },
@@ -58,6 +64,13 @@ export const UI_STRINGS = Object.freeze({
   "admin.override.help": {
     de: "Der Admin-Override wird im Exercise-Runtime-State gespeichert und bei Agentenläufen zusätzlich in den Systemprompt injiziert.",
     en: "The admin override is stored in the exercise runtime state and additionally injected into the system prompt during agent runs."
+  },
+  "section.adminStepTriggers": { de: "Erweiterte Schritt-Trigger", en: "Advanced step triggers" },
+  "admin.stepTrigger.label": { de: "Erlaubter Trigger", en: "Allowed trigger" },
+  "admin.stepTrigger.run": { de: "Trigger ausführen", en: "Run trigger" },
+  "admin.stepTrigger.help": {
+    de: "Führt jeden im aktuellen Schritt erlaubten Trigger direkt aus. Versteckte Trigger bleiben so testbar, ohne im User-Panel prominent zu erscheinen.",
+    en: "Runs any trigger that is allowed in the current step directly. Hidden triggers stay testable without being prominent in the user panel."
   },
 
   "section.flowControls": { de: "Board Flow Controls", en: "Board flow controls" },
@@ -111,6 +124,13 @@ export const UI_STRINGS = Object.freeze({
     en: "No visible exercise step is active. The agent runs in generic mode."
   },
 
+  "recommendation.primaryActions": { de: "Primäre Aktionen jetzt: {value}", en: "Primary actions now: {value}" },
+  "recommendation.secondaryActions": { de: "Sekundäre Aktionen jetzt: {value}", en: "Secondary actions now: {value}" },
+  "recommendation.proposalActions": { de: "Vorschlagsmodus: {value}", en: "Proposal lane: {value}" },
+  "recommendation.proposalState.ready": { de: "für die aktuelle Selektion anwendbar", en: "applicable for the current selection" },
+  "recommendation.proposalState.missing": { de: "noch kein passender Vorschlag gespeichert", en: "no matching proposal stored yet" },
+  "recommendation.nextStep.ready": { de: "Nächster Schritt ist freigegeben: {value}", en: "Next step is available: {value}" },
+  "recommendation.nextStep.blocked": { de: "Nächster Schritt ist noch nicht freigegeben.", en: "The next step is not available yet." },
   "recommendation.lastTrigger": { de: "Letzter Trigger: {value}", en: "Last trigger: {value}" },
   "recommendation.lastTrigger.none": { de: "noch keiner", en: "none yet" },
   "recommendation.lastTriggerAt": { de: "Letzter Trigger-Zeitpunkt: {value}", en: "Last trigger time: {value}" },

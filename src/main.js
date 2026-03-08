@@ -89,6 +89,12 @@ const state = {
   // UI state
   selectedCanvasTypeId: TEMPLATE_ID,
   panelMode: "admin",
+  panelInteractionState: {
+    currentStepId: null,
+    selectedInstanceIds: [],
+    hasPendingProposalForCurrentStep: false,
+    pendingProposalInstanceIds: []
+  },
 
   // Re-entrancy guard
   handlingSelection: false,
@@ -127,12 +133,16 @@ const btnFlowCreateControlEl = document.getElementById("btn-flow-create-control"
 const btnFlowSetCurrentStepEl = document.getElementById("btn-flow-set-current-step");
 const btnFlowActivateSelectedControlEl = document.getElementById("btn-flow-activate-selected-control");
 const exerciseActionHelpEl = document.getElementById("exercise-action-help");
-const btnExerciseCheckEl = document.getElementById("btn-exercise-check");
-const btnExerciseHintEl = document.getElementById("btn-exercise-hint");
-const btnExerciseAutocorrectEl = document.getElementById("btn-exercise-autocorrect");
-const btnExerciseReviewEl = document.getElementById("btn-exercise-review");
-const btnExerciseCoachEl = document.getElementById("btn-exercise-coach");
+const exercisePrimaryActionsTitleEl = document.getElementById("exercise-primary-actions-title");
+const exercisePrimaryActionsEl = document.getElementById("exercise-primary-actions");
+const exerciseSecondaryActionsTitleEl = document.getElementById("exercise-secondary-actions-title");
+const exerciseSecondaryActionsEl = document.getElementById("exercise-secondary-actions");
+const exerciseProposalTitleEl = document.getElementById("exercise-proposal-title");
+const exerciseProposalActionsEl = document.getElementById("exercise-proposal-actions");
 const btnExerciseNextStepEl = document.getElementById("btn-exercise-next-step");
+const exerciseAdminTriggerEl = document.getElementById("exercise-admin-trigger");
+const btnExerciseAdminTriggerRunEl = document.getElementById("btn-exercise-admin-trigger-run");
+const exerciseAdminTriggerHelpEl = document.getElementById("exercise-admin-trigger-help");
 const btnMemoryClearAdminEl = document.getElementById("btn-memory-clear-admin");
 const RUNTIME_CONTEXT = window.__DT_RUNTIME_CONTEXT === "headless" ? "headless" : "panel";
 const IS_HEADLESS = RUNTIME_CONTEXT === "headless";
@@ -232,12 +242,10 @@ function formatRunFailure(runResult) {
 }
 
 function getManagedAgentRunButtons() {
+  const dynamicButtons = Array.from(document.querySelectorAll('[data-dt-agent-run="1"]'));
   return [
-    btnExerciseCheckEl,
-    btnExerciseHintEl,
-    btnExerciseAutocorrectEl,
-    btnExerciseReviewEl,
-    btnExerciseCoachEl,
+    ...dynamicButtons,
+    btnExerciseAdminTriggerRunEl,
     document.getElementById("btn-agent-selection"),
     document.getElementById("btn-openai-classic")
   ].filter(Boolean);
@@ -286,6 +294,10 @@ function releaseAgentRunLock(lockToken) {
   state.activeAgentRunLabel = null;
   state.activeAgentRunStartedAt = 0;
   setManagedAgentRunButtonsDisabled(false);
+  renderRecommendationStatus();
+  renderExerciseActionSurface();
+  renderAdminTriggerPicker();
+  void refreshExerciseInteractionSurface();
 }
 
 function buildBoardRunId() {
@@ -1217,10 +1229,142 @@ function packLabelWithStep(pack, stepId) {
   return step ? `${pack.label} / ${step.label}` : pack.label;
 }
 
+function getCurrentStepTransition(pack, currentStep) {
+  const source = getCurrentTriggerSource();
+  return pack && currentStep
+    ? ExerciseEngine.resolveNextTransition({
+        pack,
+        step: currentStep,
+        source,
+        lastTriggerKey: state.exerciseRuntime?.lastTriggerKey,
+        memoryStepStatus: getCurrentMemoryStepStatus()
+      })
+    : null;
+}
+
+function buildExerciseActionSurfaceModel() {
+  const lang = getCurrentDisplayLanguage();
+  const pack = getSelectedExercisePack({ lang });
+  const currentStep = getCurrentExerciseStep(pack, { lang });
+  const packTemplateId = pickFirstNonEmptyString(pack?.packTemplateId);
+  const interactionState = (state.panelInteractionState && typeof state.panelInteractionState === "object") ? state.panelInteractionState : {};
+  const selectedInstanceIds = Array.isArray(interactionState.selectedInstanceIds)
+    ? interactionState.selectedInstanceIds.filter(Boolean)
+    : (Array.isArray(state.lastCanvasSelectionInstanceIds) ? state.lastCanvasSelectionInstanceIds.filter(Boolean) : []);
+  const pendingProposalInstanceIds = Array.isArray(interactionState.pendingProposalInstanceIds)
+    ? interactionState.pendingProposalInstanceIds.filter(Boolean)
+    : [];
+  const hasPendingProposalForCurrentStep = interactionState.currentStepId === currentStep?.id && pendingProposalInstanceIds.length > 0;
+  const nextTransition = getCurrentStepTransition(pack, currentStep);
+
+  const primaryProfiles = packTemplateId && currentStep?.id
+    ? ExerciseLibrary.listRunProfilesForStepSurface(packTemplateId, currentStep.id, { panelRole: "primary", lang })
+    : [];
+  const secondaryProfiles = packTemplateId && currentStep?.id
+    ? ExerciseLibrary.listRunProfilesForStepSurface(packTemplateId, currentStep.id, { panelRole: "secondary", lang })
+    : [];
+  const proposalProfiles = packTemplateId && currentStep?.id
+    ? ExerciseLibrary.listRunProfilesForStepSurface(packTemplateId, currentStep.id, { panelRole: "proposal", lang }).map((profile) => ({
+        ...profile,
+        disabled: profile?.triggerKey === "selection.apply" ? !hasPendingProposalForCurrentStep : false
+      }))
+    : [];
+
+  return {
+    lang,
+    pack,
+    currentStep,
+    packTemplateId,
+    selectedInstanceIds,
+    pendingProposalInstanceIds,
+    hasPendingProposalForCurrentStep,
+    nextTransition,
+    primaryProfiles,
+    secondaryProfiles,
+    proposalProfiles
+  };
+}
+
+function clearExerciseButtonGroup(el) {
+  if (!el) return;
+  while (el.firstChild) el.removeChild(el.firstChild);
+}
+
+function renderRunProfileButtonGroup(containerEl, runProfiles = []) {
+  clearExerciseButtonGroup(containerEl);
+  if (!containerEl) return;
+  for (const runProfile of Array.isArray(runProfiles) ? runProfiles : []) {
+    if (!runProfile?.id) continue;
+    const button = document.createElement("button");
+    button.type = "button";
+    button.textContent = runProfile.label || runProfile.id;
+    button.title = [runProfile.summary, runProfile.uiHint].filter(Boolean).join("
+
+");
+    button.dataset.dtAgentRun = "1";
+    button.dataset.runProfileId = runProfile.id;
+    button.disabled = state.agentRunLock || runProfile.disabled === true;
+    button.addEventListener("click", () => {
+      void runExerciseRunProfileById(runProfile.id);
+    });
+    containerEl.appendChild(button);
+  }
+}
+
+async function computePendingProposalAvailabilityForSelection(stepId, instanceIds) {
+  const normalizedStepId = pickFirstNonEmptyString(stepId);
+  const pendingProposalInstanceIds = [];
+  for (const instanceId of normalizeTargetInstanceIds(instanceIds)) {
+    const proposal = await loadPendingProposalForInstance(instanceId, { stepId: normalizedStepId });
+    if (proposal?.proposalId) pendingProposalInstanceIds.push(instanceId);
+  }
+  return {
+    hasPendingProposalForCurrentStep: pendingProposalInstanceIds.length > 0,
+    pendingProposalInstanceIds
+  };
+}
+
+async function refreshPanelInteractionState() {
+  const lang = getCurrentDisplayLanguage();
+  const pack = getSelectedExercisePack({ lang });
+  const currentStep = getCurrentExerciseStep(pack, { lang });
+  const selectedInstanceIds = Array.isArray(state.lastCanvasSelectionInstanceIds)
+    ? state.lastCanvasSelectionInstanceIds.filter(Boolean)
+    : [];
+  const nextState = {
+    currentStepId: currentStep?.id || null,
+    selectedInstanceIds: selectedInstanceIds.slice(),
+    hasPendingProposalForCurrentStep: false,
+    pendingProposalInstanceIds: []
+  };
+
+  const packTemplateId = pickFirstNonEmptyString(pack?.packTemplateId);
+  const hasProposalApply = !!(packTemplateId && currentStep?.id && ExerciseLibrary
+    .listRunProfilesForStepSurface(packTemplateId, currentStep.id, { panelRole: "proposal", lang })
+    .some((profile) => profile?.triggerKey === "selection.apply"));
+
+  if (currentStep?.id && hasProposalApply && selectedInstanceIds.length) {
+    const proposalState = await computePendingProposalAvailabilityForSelection(currentStep.id, selectedInstanceIds);
+    nextState.hasPendingProposalForCurrentStep = proposalState.hasPendingProposalForCurrentStep;
+    nextState.pendingProposalInstanceIds = proposalState.pendingProposalInstanceIds;
+  }
+
+  state.panelInteractionState = nextState;
+  return nextState;
+}
+
+async function refreshExerciseInteractionSurface() {
+  await refreshPanelInteractionState();
+  renderExerciseActionSurface();
+  renderRecommendationStatus();
+  renderAdminTriggerPicker();
+}
+
 function renderRecommendationStatus() {
   if (!exerciseRecommendationStatusEl) return;
 
-  const lang = getCurrentDisplayLanguage();
+  const model = buildExerciseActionSurfaceModel();
+  const lang = model.lang;
   const lines = [];
   const lastTriggerKey = state.exerciseRuntime?.lastTriggerKey || null;
   const lastTriggerSource = state.exerciseRuntime?.lastTriggerSource || null;
@@ -1234,6 +1378,24 @@ function renderRecommendationStatus() {
   const lastDirectiveAt = state.exerciseRuntime?.lastFlowDirectiveAt || null;
   const lastActiveAnchorInstanceId = state.exerciseRuntime?.lastActiveAnchorInstanceId || null;
   const lastActivePackTemplateId = state.exerciseRuntime?.lastActivePackTemplateId || null;
+  const formatRunProfileLabels = (runProfiles) => (Array.isArray(runProfiles) ? runProfiles : [])
+    .map((profile) => profile?.label || profile?.id)
+    .filter(Boolean)
+    .join(", ") || t("recommendation.lastUnlocked.none", lang);
+
+  lines.push(t("recommendation.primaryActions", lang, { value: formatRunProfileLabels(model.primaryProfiles) }));
+  lines.push(t("recommendation.secondaryActions", lang, { value: formatRunProfileLabels(model.secondaryProfiles) }));
+  if (model.proposalProfiles.length) {
+    lines.push(t("recommendation.proposalActions", lang, {
+      value: formatRunProfileLabels(model.proposalProfiles) + " · " + t(model.hasPendingProposalForCurrentStep ? "recommendation.proposalState.ready" : "recommendation.proposalState.missing", lang)
+    }));
+  }
+  if (model.nextTransition) {
+    const nextStep = Exercises.getExerciseStep(model.pack, model.nextTransition.toStepId, { lang });
+    lines.push(t("recommendation.nextStep.ready", lang, { value: nextStep?.label || model.nextTransition.toStepId }));
+  } else {
+    lines.push(t("recommendation.nextStep.blocked", lang));
+  }
 
   lines.push(t("recommendation.lastTrigger", lang, {
     value: lastTriggerKey ? `${lastTriggerKey} (${lastTriggerSource || "system"})` : t("recommendation.lastTrigger.none", lang)
@@ -1251,46 +1413,98 @@ function renderRecommendationStatus() {
     }));
   }
 
-  exerciseRecommendationStatusEl.textContent = lines.join("\n");
+  exerciseRecommendationStatusEl.textContent = lines.join("
+");
 }
 
-function renderExerciseActionButtons() {
+function renderExerciseActionSurface() {
+  const model = buildExerciseActionSurfaceModel();
+  const lang = model.lang;
+
+  renderRunProfileButtonGroup(exercisePrimaryActionsEl, model.primaryProfiles);
+  renderRunProfileButtonGroup(exerciseSecondaryActionsEl, model.secondaryProfiles);
+  renderRunProfileButtonGroup(exerciseProposalActionsEl, model.proposalProfiles);
+
+  setElementHidden(exercisePrimaryActionsTitleEl, model.primaryProfiles.length === 0);
+  setElementHidden(exerciseSecondaryActionsTitleEl, model.secondaryProfiles.length === 0);
+  setElementHidden(exerciseProposalTitleEl, model.proposalProfiles.length === 0);
+
+  if (btnExerciseNextStepEl) {
+    btnExerciseNextStepEl.disabled = state.agentRunLock || !model.nextTransition;
+  }
+
+  if (exerciseActionHelpEl) {
+    const lines = [];
+    if (!model.pack) {
+      lines.push(t("exercise.action.help.noPack", lang));
+    } else if (!model.currentStep) {
+      lines.push(t("exercise.action.help.noStep", lang));
+    } else {
+      if (!model.primaryProfiles.length && !model.secondaryProfiles.length && !model.proposalProfiles.length) {
+        lines.push(t("exercise.action.noneAvailable", lang));
+      }
+      if (model.nextTransition) {
+        const nextStep = Exercises.getExerciseStep(model.pack, model.nextTransition.toStepId, { lang });
+        lines.push(t("exercise.action.help.nextStep", lang, { step: nextStep?.label || model.nextTransition.toStepId }));
+      } else {
+        lines.push(t("exercise.action.help.noTransition", lang));
+      }
+      if (model.proposalProfiles.some((profile) => profile?.triggerKey === "selection.apply") && !model.hasPendingProposalForCurrentStep) {
+        lines.push(t("exercise.action.applyUnavailable", lang));
+      }
+    }
+    exerciseActionHelpEl.textContent = lines.filter(Boolean).join("
+");
+  }
+
+}
+
+function renderAdminTriggerPicker() {
   const lang = getCurrentDisplayLanguage();
   const pack = getSelectedExercisePack({ lang });
   const currentStep = getCurrentExerciseStep(pack, { lang });
-  const source = getCurrentTriggerSource();
-  const nextTransition = pack && currentStep
-    ? ExerciseEngine.resolveNextTransition({
-        pack,
-        step: currentStep,
-        source,
-        lastTriggerKey: state.exerciseRuntime?.lastTriggerKey,
-        memoryStepStatus: getCurrentMemoryStepStatus()
-      })
-    : null;
-  const hasExerciseContext = !!pack && !!currentStep;
-
-  const triggerAvailability = (triggerKey) => hasExerciseContext && Exercises.isTriggerAllowedForStep(currentStep, triggerKey);
-
-  if (btnExerciseCheckEl) btnExerciseCheckEl.disabled = !triggerAvailability("selection.check");
-  if (btnExerciseHintEl) btnExerciseHintEl.disabled = !triggerAvailability("selection.hint");
-  if (btnExerciseAutocorrectEl) btnExerciseAutocorrectEl.disabled = !triggerAvailability("selection.autocorrect");
-  if (btnExerciseReviewEl) btnExerciseReviewEl.disabled = !triggerAvailability("selection.review");
-  if (btnExerciseCoachEl) btnExerciseCoachEl.disabled = !triggerAvailability("selection.coach");
-  if (btnExerciseNextStepEl) btnExerciseNextStepEl.disabled = !nextTransition;
-
-  if (exerciseActionHelpEl) {
-    if (!pack) {
-      exerciseActionHelpEl.textContent = t("exercise.action.help.noPack", lang);
-    } else if (!currentStep) {
-      exerciseActionHelpEl.textContent = t("exercise.action.help.noStep", lang);
-    } else if (nextTransition) {
-      const nextStep = Exercises.getExerciseStep(pack, nextTransition.toStepId, { lang });
-      exerciseActionHelpEl.textContent = t("exercise.action.help.nextStep", lang, { step: nextStep?.label || nextTransition.toStepId });
-    } else {
-      exerciseActionHelpEl.textContent = t("exercise.action.help.noTransition", lang);
-    }
+  const panel = document.getElementById("admin-trigger-panel");
+  if (panel) {
+    setElementHidden(panel, state.panelMode !== "admin");
   }
+  if (!exerciseAdminTriggerEl) return;
+
+  const triggerKeys = currentStep ? Exercises.listAllowedTriggerKeys(currentStep) : [];
+  const packTemplateId = pickFirstNonEmptyString(pack?.packTemplateId);
+  const runProfiles = packTemplateId && currentStep?.id
+    ? ExerciseLibrary.listRunProfilesForStep(packTemplateId, currentStep.id, { lang })
+    : [];
+  const currentValue = pickFirstNonEmptyString(exerciseAdminTriggerEl.value);
+  exerciseAdminTriggerEl.innerHTML = "";
+
+  if (!triggerKeys.length) {
+    const option = document.createElement("option");
+    option.value = "";
+    option.textContent = currentStep?.id || t("admin.exerciseStep.none", lang);
+    exerciseAdminTriggerEl.appendChild(option);
+    exerciseAdminTriggerEl.disabled = true;
+    if (btnExerciseAdminTriggerRunEl) btnExerciseAdminTriggerRunEl.disabled = true;
+    if (exerciseAdminTriggerHelpEl) {
+      exerciseAdminTriggerHelpEl.textContent = currentStep
+        ? t("admin.stepTrigger.help", lang)
+        : t("exercise.action.help.noStep", lang);
+    }
+    return;
+  }
+
+  for (const triggerKey of triggerKeys) {
+    const option = document.createElement("option");
+    option.value = triggerKey;
+    const matchingProfile = runProfiles.find((profile) => profile?.triggerKey === triggerKey);
+    option.textContent = matchingProfile?.label ? `${triggerKey} — ${matchingProfile.label}` : triggerKey;
+    exerciseAdminTriggerEl.appendChild(option);
+  }
+  if (currentValue && triggerKeys.includes(currentValue)) {
+    exerciseAdminTriggerEl.value = currentValue;
+  }
+  exerciseAdminTriggerEl.disabled = false;
+  if (btnExerciseAdminTriggerRunEl) btnExerciseAdminTriggerRunEl.disabled = state.agentRunLock || !triggerKeys.length;
+  if (exerciseAdminTriggerHelpEl) exerciseAdminTriggerHelpEl.textContent = t("admin.stepTrigger.help", lang);
 }
 
 function renderExerciseControls() {
@@ -1299,9 +1513,11 @@ function renderExerciseControls() {
   renderExerciseContextStatus();
   renderRecommendationStatus();
   renderAdminOverrideEditor();
-  renderExerciseActionButtons();
+  renderExerciseActionSurface();
+  renderAdminTriggerPicker();
   renderFlowAuthoringControls();
   renderPanelMode();
+  void refreshExerciseInteractionSurface();
 }
 
 function getSelectedFlowPackTemplateId() {
@@ -1701,15 +1917,57 @@ async function loadBoardFlows() {
   renderFlowAuthoringStatus();
 }
 
-function getRunProfileSortOrder(runProfileId) {
-  const sortOrder = ExerciseLibrary.getRunProfileById(runProfileId)?.sortOrder;
-  return Number.isFinite(Number(sortOrder)) ? Number(sortOrder) : Number.MAX_SAFE_INTEGER;
+function getRunProfileSurfaceMeta(runProfileId) {
+  const runProfile = ExerciseLibrary.getRunProfileById(runProfileId, { lang: getCurrentDisplayLanguage() });
+  return {
+    sortOrder: Number.isFinite(Number(runProfile?.sortOrder)) ? Number(runProfile.sortOrder) : Number.MAX_SAFE_INTEGER,
+    panelRole: runProfile?.panelRole || null,
+    boardGroup: runProfile?.boardGroup || "core",
+    seedByDefault: runProfile?.seedByDefault === true
+  };
 }
 
-function sortFlowControlsForDisplay(controls) {
+function getRunProfileSortOrder(runProfileId) {
+  return getRunProfileSurfaceMeta(runProfileId).sortOrder;
+}
+
+function getRunProfilePanelRoleRank(runProfileId) {
+  const panelRole = getRunProfileSurfaceMeta(runProfileId).panelRole;
+  if (panelRole === "primary") return 0;
+  if (panelRole === "secondary") return 1;
+  if (panelRole === "proposal") return 2;
+  return 3;
+}
+
+function getFlowControlDisplayBucket(flow, control) {
+  const currentStepId = pickFirstNonEmptyString(flow?.runtime?.currentStepId);
+  const boardGroup = getRunProfileSurfaceMeta(control?.runProfileId).boardGroup;
+  const isCurrentStep = !!(control?.stepId && currentStepId && control.stepId === currentStepId);
+  const isActiveLike = control?.state === "active";
+
+  if (isCurrentStep) {
+    if (boardGroup === "core") return 0;
+    if (boardGroup === "proposal") return 1;
+    return 2;
+  }
+  if (isActiveLike) return 2;
+  return 3;
+}
+
+function getFlowControlDisplayLane(flow, control) {
+  const bucket = getFlowControlDisplayBucket(flow, control);
+  if (bucket === 0) return 0;
+  if (bucket === 1) return 1;
+  if (bucket === 2) return 2;
+  return 3;
+}
+
+function sortFlowControlsForDisplay(flow, controls) {
   return (Array.isArray(controls) ? controls : [])
     .slice()
     .sort((a, b) => (
+      getFlowControlDisplayBucket(flow, a) - getFlowControlDisplayBucket(flow, b) ||
+      getRunProfilePanelRoleRank(a?.runProfileId) - getRunProfilePanelRoleRank(b?.runProfileId) ||
       getRunProfileSortOrder(a?.runProfileId) - getRunProfileSortOrder(b?.runProfileId) ||
       String(a?.label || a?.id || "").localeCompare(String(b?.label || b?.id || ""), undefined, { sensitivity: "base" })
     ));
@@ -1719,15 +1977,18 @@ async function syncBoardFlowVisuals(flow, { reflow = false } = {}) {
   if (!flow?.id) return flow;
 
   const lang = getCurrentDisplayLanguage();
-  const orderedControls = sortFlowControlsForDisplay(Object.values(flow.controls || {}));
+  const orderedControls = sortFlowControlsForDisplay(flow, Object.values(flow.controls || {}));
   const anchorInstance = flow.anchorInstanceId ? state.instancesById.get(flow.anchorInstanceId) : null;
 
   if (reflow && anchorInstance) {
-    for (let index = 0; index < orderedControls.length; index += 1) {
-      const control = orderedControls[index];
+    const laneOffsets = new Map();
+    for (const control of orderedControls) {
       if (!control?.itemId) continue;
+      const laneIndex = getFlowControlDisplayLane(flow, control);
+      const offsetIndex = laneOffsets.get(laneIndex) || 0;
+      laneOffsets.set(laneIndex, offsetIndex + 1);
       try {
-        const position = await Board.computeSuggestedFlowControlPosition(anchorInstance, { offsetIndex: index }, log);
+        const position = await Board.computeSuggestedFlowControlPosition(anchorInstance, { offsetIndex, laneIndex }, log);
         await Board.moveItemByIdToBoardCoords(control.itemId, position.x, position.y, log);
       } catch (e) {
         log("WARNUNG: Flow-Control-Layout konnte nicht aktualisiert werden: " + e.message);
@@ -1790,34 +2051,124 @@ async function saveBoardFlowAndCache(flow, { reflow = false } = {}) {
   return saved;
 }
 
-async function findOrCreateBoardFlowForPack(packTemplateId, anchorInstanceId) {
-  const existing = getExistingBoardFlowForPack(packTemplateId, anchorInstanceId);
+function resolveRelevantBoardFlowForCurrentStep(packTemplateId, preferredAnchorInstanceId = null) {
+  const normalizedPackTemplateId = pickFirstNonEmptyString(packTemplateId);
+  if (!normalizedPackTemplateId) return null;
+
+  if (preferredAnchorInstanceId) {
+    const preferred = getExistingBoardFlowForPack(normalizedPackTemplateId, preferredAnchorInstanceId);
+    if (preferred) return preferred;
+  }
+
+  const lastActivePackTemplateId = pickFirstNonEmptyString(state.exerciseRuntime?.lastActivePackTemplateId);
+  const lastActiveAnchorInstanceId = pickFirstNonEmptyString(state.exerciseRuntime?.lastActiveAnchorInstanceId);
+  if (lastActivePackTemplateId === normalizedPackTemplateId && lastActiveAnchorInstanceId) {
+    const lastActive = getExistingBoardFlowForPack(normalizedPackTemplateId, lastActiveAnchorInstanceId);
+    if (lastActive) return lastActive;
+  }
+
+  const selectedInstanceIds = Array.isArray(state.lastCanvasSelectionInstanceIds) ? state.lastCanvasSelectionInstanceIds.filter(Boolean) : [];
+  if (selectedInstanceIds.length === 1) {
+    const selectedFlow = getExistingBoardFlowForPack(normalizedPackTemplateId, selectedInstanceIds[0]);
+    if (selectedFlow) return selectedFlow;
+  }
+
+  const matchingFlows = Array.from(state.boardFlowsById.values()).filter((flow) => flow?.packTemplateId === normalizedPackTemplateId);
+  if (matchingFlows.length === 1) return matchingFlows[0];
+  return null;
+}
+
+async function ensureDefaultBoardControlsForStep(flow, stepId) {
+  const normalizedStepId = pickFirstNonEmptyString(stepId);
+  if (!flow?.id || !flow?.anchorInstanceId || !normalizedStepId) {
+    return { flow, createdRunProfileIds: [], skippedRunProfileIds: [] };
+  }
+
+  const runProfileIds = ExerciseLibrary.listRunProfilesForStepSurface(flow.packTemplateId, normalizedStepId, {
+    seedByDefaultOnly: true,
+    lang: getCurrentDisplayLanguage()
+  }).map((profile) => profile?.id).filter(Boolean);
+
+  if (!runProfileIds.length) {
+    return { flow, createdRunProfileIds: [], skippedRunProfileIds: [] };
+  }
+
+  return await ensureFlowControlsForRunProfiles({
+    flow,
+    anchorInstanceId: flow.anchorInstanceId,
+    runProfileIds
+  });
+}
+
+async function syncExerciseStepToBoardFlow(stepId, { packTemplateId = null, anchorInstanceId = null } = {}) {
+  const normalizedStepId = pickFirstNonEmptyString(stepId);
+  const normalizedPackTemplateId = pickFirstNonEmptyString(packTemplateId) || getSelectedExercisePackTemplateId();
+  if (!normalizedStepId || !normalizedPackTemplateId) return null;
+
+  const relevantFlow = resolveRelevantBoardFlowForCurrentStep(normalizedPackTemplateId, anchorInstanceId);
+  if (!relevantFlow?.id) return null;
+
+  let nextFlow = BoardFlow.setFlowCurrentStep(relevantFlow, normalizedStepId);
+  const stepChanged = nextFlow.runtime?.currentStepId !== relevantFlow.runtime?.currentStepId;
+  const ensured = await ensureDefaultBoardControlsForStep(nextFlow, normalizedStepId);
+  nextFlow = ensured.flow;
+
+  if (stepChanged || ensured.createdRunProfileIds.length) {
+    nextFlow = await saveBoardFlowAndCache(nextFlow, { reflow: true });
+  } else {
+    state.boardFlowsById.set(nextFlow.id, nextFlow);
+  }
+  return nextFlow;
+}
+
+async function findOrCreateBoardFlowForPack(packTemplateId, anchorInstanceId, { preferredStepId = null, seedDefaults = true } = {}) {
+  const normalizedPackTemplateId = pickFirstNonEmptyString(packTemplateId);
+  const normalizedAnchorInstanceId = pickFirstNonEmptyString(anchorInstanceId);
+  const lang = getCurrentDisplayLanguage();
+  const packTemplate = ExerciseLibrary.getPackTemplateById(normalizedPackTemplateId, { lang });
+  if (!packTemplate) {
+    throw new Error("Pack Template konnte nicht gefunden werden: " + String(packTemplateId || "(leer)"));
+  }
+  const selectedStepId = pickFirstNonEmptyString(preferredStepId, getSelectedFlowStepTemplateId(packTemplate));
+
+  const existing = normalizedAnchorInstanceId ? getExistingBoardFlowForPack(normalizedPackTemplateId, normalizedAnchorInstanceId) : null;
   if (existing) {
-    const selectedStepId = getSelectedFlowStepTemplateId(ExerciseLibrary.getPackTemplateById(packTemplateId, { lang: getCurrentDisplayLanguage() }));
-    const healthyExisting = await ensureBoardFlowHealthy(existing, {
+    let healthyExisting = await ensureBoardFlowHealthy(existing, {
       persist: true,
       pruneMissingControls: true,
       preferredStepId: selectedStepId,
       forcePreferredWhenNoControls: true
     });
-    state.boardFlowsById.set(healthyExisting.id, healthyExisting);
+    if (seedDefaults) {
+      const ensured = await ensureDefaultBoardControlsForStep(healthyExisting, healthyExisting.runtime?.currentStepId || selectedStepId);
+      healthyExisting = ensured.flow;
+      if (ensured.createdRunProfileIds.length) {
+        healthyExisting = await saveBoardFlowAndCache(healthyExisting, { reflow: true });
+      } else {
+        state.boardFlowsById.set(healthyExisting.id, healthyExisting);
+      }
+    } else {
+      state.boardFlowsById.set(healthyExisting.id, healthyExisting);
+    }
     return healthyExisting;
   }
 
-  const lang = getCurrentDisplayLanguage();
-  const packTemplate = ExerciseLibrary.getPackTemplateById(packTemplateId, { lang });
-  if (!packTemplate) {
-    throw new Error("Pack Template konnte nicht gefunden werden: " + String(packTemplateId || "(leer)"));
-  }
-
-  const anchorLabel = getInstanceLabelByInternalId(anchorInstanceId) || anchorInstanceId || "Board";
-  const flow = BoardFlow.createBoardFlowFromPackTemplate(packTemplate, {
-    id: buildFlowId(packTemplate.id, anchorInstanceId),
+  const anchorLabel = getInstanceLabelByInternalId(normalizedAnchorInstanceId) || normalizedAnchorInstanceId || "Board";
+  let flow = BoardFlow.createBoardFlowFromPackTemplate(packTemplate, {
+    id: buildFlowId(packTemplate.id, normalizedAnchorInstanceId),
     label: packTemplate.label + " – " + anchorLabel,
     labelMode: "auto",
-    anchorInstanceId
+    anchorInstanceId: normalizedAnchorInstanceId,
+    currentStepId: selectedStepId || null
   });
-  return await saveBoardFlowAndCache(flow);
+
+  let createdRunProfileIds = [];
+  if (seedDefaults) {
+    const ensured = await ensureDefaultBoardControlsForStep(flow, flow.runtime?.currentStepId || selectedStepId);
+    flow = ensured.flow;
+    createdRunProfileIds = ensured.createdRunProfileIds;
+  }
+  return await saveBoardFlowAndCache(flow, { reflow: createdRunProfileIds.length > 0 });
 }
 
 function buildFlowControlCatalogForPackTemplate(packTemplate) {
@@ -1846,7 +2197,7 @@ function buildBoardFlowStateForPrompt(flow) {
     anchorInstanceLabel: getInstanceLabelByInternalId(flow.anchorInstanceId) || null,
     currentStepId: flow.runtime?.currentStepId || null,
     currentStepLabel: currentStep?.label || null,
-    controls: sortFlowControlsForDisplay(Object.values(flow.controls || {})).map((control) => ({
+    controls: sortFlowControlsForDisplay(flow, Object.values(flow.controls || {})).map((control) => ({
       runProfileId: control.runProfileId || null,
       label: control.label || null,
       stepId: control.stepId || null,
@@ -1904,10 +2255,23 @@ async function createBoardFlowControlForRunProfile({ flow, anchorInstanceId, run
     forcePreferredWhenNoControls: true
   });
 
-  const orderedControls = sortFlowControlsForDisplay(Object.values(workingFlow.controls || {}));
-  const position = await Board.computeSuggestedFlowControlPosition(state.instancesById.get(anchorInstanceId), { offsetIndex: orderedControls.length }, log);
-  const nextLabel = pickFirstNonEmptyString(label, runProfile.label, t("flow.defaultControlLabel", lang));
+  const orderedControls = sortFlowControlsForDisplay(workingFlow, Object.values(workingFlow.controls || {}));
   const initialState = (!orderedControls.length || workingFlow.runtime?.currentStepId === stepTemplate.id) ? "active" : "disabled";
+  const draftControl = {
+    runProfileId: runProfile.id,
+    stepId: stepTemplate.id,
+    state: initialState,
+    label: pickFirstNonEmptyString(label, runProfile.label, t("flow.defaultControlLabel", lang))
+  };
+  const orderedWithDraft = sortFlowControlsForDisplay(workingFlow, [...orderedControls, draftControl]);
+  const draftIndex = orderedWithDraft.indexOf(draftControl);
+  const laneIndex = getFlowControlDisplayLane(workingFlow, draftControl);
+  const offsetIndex = orderedWithDraft
+    .slice(0, draftIndex)
+    .filter((control) => getFlowControlDisplayLane(workingFlow, control) === laneIndex)
+    .length;
+  const position = await Board.computeSuggestedFlowControlPosition(state.instancesById.get(anchorInstanceId), { offsetIndex, laneIndex }, log);
+  const nextLabel = draftControl.label;
   const shape = await Board.createFlowControlShape({
     label: nextLabel,
     x: position.x,
@@ -2110,7 +2474,7 @@ async function createFlowControlFromAdmin() {
 
   try {
     const { anchorInstanceId, scope } = await resolveAuthoringScopeFromCurrentSelection(packTemplate, flowScopeTypeEl?.value || runProfile.defaultScopeType);
-    let flow = await findOrCreateBoardFlowForPack(packTemplate.id, anchorInstanceId);
+    let flow = await findOrCreateBoardFlowForPack(packTemplate.id, anchorInstanceId, { preferredStepId: stepTemplate.id, seedDefaults: true });
     const inputLabel = ((flowControlLabelEl?.value || "").trim());
     const autoLabel = (flowControlLabelEl?.dataset.autoLabel || pickFirstNonEmptyString(runProfile.label, t("flow.defaultControlLabel", lang)) || "").trim();
     const nextLabel = inputLabel || autoLabel || t("flow.defaultControlLabel", lang);
@@ -2143,9 +2507,11 @@ async function setCurrentFlowStepFromAdmin() {
 
   try {
     const { anchorInstanceId } = await resolveAuthoringScopeFromCurrentSelection(packTemplate, "fixed_instances");
-    let flow = await findOrCreateBoardFlowForPack(packTemplate.id, anchorInstanceId);
+    let flow = await findOrCreateBoardFlowForPack(packTemplate.id, anchorInstanceId, { preferredStepId: stepTemplate.id, seedDefaults: true });
     flow = BoardFlow.setFlowCurrentStep(flow, stepTemplate.id);
-    flow = await saveBoardFlowAndCache(flow);
+    const ensuredDefaults = await ensureDefaultBoardControlsForStep(flow, stepTemplate.id);
+    flow = ensuredDefaults.flow;
+    flow = await saveBoardFlowAndCache(flow, { reflow: true });
     log("Board Flow: Aktiver Schritt gesetzt auf '" + (stepTemplate.label || stepTemplate.id) + "' für " + (flow.label || flow.id) + ".");
     renderFlowAuthoringControls();
   } catch (e) {
@@ -2479,6 +2845,10 @@ async function onExercisePackChange() {
     lastFlowDirectiveAt: null
   });
 
+  if (selectedPack?.packTemplateId && nextStepId) {
+    await syncExerciseStepToBoardFlow(nextStepId, { packTemplateId: selectedPack.packTemplateId });
+  }
+
   renderCanvasTypePicker();
   renderExerciseControls();
 
@@ -2502,6 +2872,9 @@ async function onExerciseStepChange() {
     lastFlowDirectiveCompleteRunProfileIds: [],
     lastFlowDirectiveAt: null
   });
+  if (pack?.packTemplateId && validStepId) {
+    await syncExerciseStepToBoardFlow(validStepId, { packTemplateId: pack.packTemplateId });
+  }
   renderExerciseControls();
 
   const step = Exercises.getExerciseStep(pack, validStepId, { lang });
@@ -2624,6 +2997,39 @@ async function runExerciseTriggerRequest(request) {
   });
 }
 
+async function runExerciseRunProfile(runProfile) {
+  if (!runProfile?.id || !runProfile?.triggerKey) {
+    log("Exercise-Modus: Run Profile konnte nicht gestartet werden – Profil oder Trigger fehlt.");
+    return null;
+  }
+  return await runExerciseTriggerRequest({
+    triggerKey: runProfile.triggerKey,
+    source: getCurrentTriggerSource()
+  });
+}
+
+async function runExerciseRunProfileById(runProfileId) {
+  const lang = getCurrentDisplayLanguage();
+  const runProfile = ExerciseLibrary.getRunProfileById(runProfileId, { lang });
+  if (!runProfile?.id) {
+    log("Exercise-Modus: Run Profile nicht gefunden: " + String(runProfileId || "(leer)"));
+    return null;
+  }
+  return await runExerciseRunProfile(runProfile);
+}
+
+async function runExerciseAdminTriggerSelection() {
+  const triggerKey = pickFirstNonEmptyString(exerciseAdminTriggerEl?.value);
+  if (!triggerKey) {
+    log("Exercise-Modus: Kein Admin-Trigger ausgewählt.");
+    return null;
+  }
+  return await runExerciseTriggerRequest({
+    triggerKey,
+    source: getCurrentTriggerSource()
+  });
+}
+
 async function runExerciseCheck() {
   return await runExerciseTriggerRequest({ scope: "selection", intent: "check", source: getCurrentTriggerSource() });
 }
@@ -2675,6 +3081,9 @@ async function advanceExerciseStep() {
     lastFlowDirectiveCompleteRunProfileIds: [],
     lastFlowDirectiveAt: null
   });
+  if (pack?.packTemplateId && nextStep?.id) {
+    await syncExerciseStepToBoardFlow(nextStep.id, { packTemplateId: pack.packTemplateId });
+  }
   renderExerciseControls();
 
   log(
@@ -2784,11 +3193,7 @@ function initPanelButtons() {
   document.getElementById("btn-save-admin-override")?.addEventListener("click", saveAdminOverrideFromUi);
   document.getElementById("btn-clear-admin-override")?.addEventListener("click", clearAdminOverrideFromUi);
 
-  btnExerciseCheckEl?.addEventListener("click", runExerciseCheck);
-  btnExerciseHintEl?.addEventListener("click", runExerciseHint);
-  btnExerciseAutocorrectEl?.addEventListener("click", runExerciseAutocorrect);
-  btnExerciseReviewEl?.addEventListener("click", () => runExerciseTriggerRequest({ scope: "selection", intent: "review", source: getCurrentTriggerSource() }));
-  btnExerciseCoachEl?.addEventListener("click", () => runExerciseTriggerRequest({ scope: "selection", intent: "coach", source: getCurrentTriggerSource() }));
+  btnExerciseAdminTriggerRunEl?.addEventListener("click", runExerciseAdminTriggerSelection);
   btnExerciseNextStepEl?.addEventListener("click", advanceExerciseStep);
   btnFlowCreateControlEl?.addEventListener("click", createFlowControlFromAdmin);
   btnFlowSetCurrentStepEl?.addEventListener("click", setCurrentFlowStepFromAdmin);
@@ -3536,6 +3941,9 @@ async function refreshSelectionStatusFromItems(items) {
     instanceIds
   }));
   renderFlowAuthoringStatus();
+  renderExerciseActionSurface();
+  renderRecommendationStatus();
+  void refreshExerciseInteractionSurface();
 
   return instanceIds;
 }

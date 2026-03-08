@@ -89,7 +89,7 @@ export async function removeFlowControlMeta(itemOrId, log) {
   }
 }
 
-export async function computeSuggestedFlowControlPosition(instance, { offsetIndex = 0 } = {}, log) {
+export async function computeSuggestedFlowControlPosition(instance, { offsetIndex = 0, laneIndex = 0 } = {}, log) {
   await ensureMiroReady(log);
   const geom = instance ? (await computeTemplateGeometry(instance, log)) : null;
   const fallbackX = Number(instance?.lastGeometry?.x) || 0;
@@ -98,10 +98,13 @@ export async function computeSuggestedFlowControlPosition(instance, { offsetInde
   const baseX = geom?.x || fallbackX;
   const baseY = geom?.y || fallbackY;
   const baseHeight = geom?.height || fallbackHeight;
+  const normalizedLaneIndex = Number.isFinite(Number(laneIndex)) ? Math.max(0, Number(laneIndex)) : 0;
+  const laneOffsetY = normalizedLaneIndex * (DT_FLOW_CONTROL_LAYOUT.heightPx + DT_FLOW_CONTROL_LAYOUT.laneGapYPx);
+  const historyOffsetY = normalizedLaneIndex >= 3 ? DT_FLOW_CONTROL_LAYOUT.historyLaneOffsetYPx : 0;
 
   return {
     x: baseX + offsetIndex * (DT_FLOW_CONTROL_LAYOUT.widthPx + DT_FLOW_CONTROL_LAYOUT.gapXPx),
-    y: baseY + baseHeight / 2 + DT_FLOW_CONTROL_LAYOUT.offsetFromCanvasBottomPx,
+    y: baseY + baseHeight / 2 + DT_FLOW_CONTROL_LAYOUT.offsetFromCanvasBottomPx + laneOffsetY + historyOffsetY,
     width: DT_FLOW_CONTROL_LAYOUT.widthPx,
     height: DT_FLOW_CONTROL_LAYOUT.heightPx
   };

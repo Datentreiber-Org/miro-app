@@ -68,7 +68,6 @@ Canvas-Invarianten:
 - Objectives & Results beschreibt Outcomes; Decisions & Actions beschreibt Verhalten oder Auswahlhandlungen.
 - User Gains kommen aus Nutzersicht; Benefits kommen aus der Lösungsperspektive.
 - Sorted-out links/rechts dienen zum bewussten Parken außerhalb der sichtbaren Canvas-Fläche.
-- Sticky Notes stehen grundsätzlich zunächst für sich; Connectoren nur bei expliziter methodischer Relation.
 - Die Footer-/Legend-Region ist nicht Teil des Agentenkatalogs und kein zu füllender Arbeitsbereich.`.trim()
   }
 };
@@ -152,7 +151,9 @@ export const DT_FLOW_CONTROL_LAYOUT = Object.freeze({
   widthPx: 180,
   heightPx: 52,
   gapXPx: 24,
-  offsetFromCanvasBottomPx: 120
+  laneGapYPx: 18,
+  offsetFromCanvasBottomPx: 120,
+  historyLaneOffsetYPx: 110
 });
 
 export const DT_FLOW_CONTROL_STATE_STYLES = Object.freeze({

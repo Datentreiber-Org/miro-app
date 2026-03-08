@@ -284,7 +284,10 @@ function buildFlowControlProjection(packDef, stepDef, triggerProfile) {
     defaultScopeType: asNonEmptyString(flowControl.defaultScopeType) || "fixed_instances",
     allowedActions: augmentAllowedActions(flowControl.allowedActions),
     uiHint: asNonEmptyString(flowControl.uiHint),
-    sortOrder: Number.isFinite(Number(flowControl.sortOrder)) ? Number(flowControl.sortOrder) : Number.MAX_SAFE_INTEGER
+    sortOrder: Number.isFinite(Number(flowControl.sortOrder)) ? Number(flowControl.sortOrder) : Number.MAX_SAFE_INTEGER,
+    panelRole: normalizeRunProfilePanelRole(flowControl.panelRole),
+    boardGroup: normalizeRunProfileBoardGroup(flowControl.boardGroup),
+    seedByDefault: flowControl.seedByDefault === true
   });
 }
 
@@ -1496,6 +1499,14 @@ function setTriggerModuleIds(pack, stepId, triggerKey, moduleIds) {
   trigger.moduleIds = normalizeUniqueStrings(moduleIds);
 }
 
+function setFlowControlSurface(pack, stepId, triggerKey, surface = {}) {
+  const flowControl = pack?.steps?.[stepId]?.triggerProfiles?.[triggerKey]?.flowControl;
+  if (!flowControl || typeof flowControl !== "object") return;
+  flowControl.panelRole = normalizeRunProfilePanelRole(surface.panelRole);
+  flowControl.boardGroup = normalizeRunProfileBoardGroup(surface.boardGroup);
+  flowControl.seedByDefault = surface.seedByDefault === true;
+}
+
 function applyAnalyticsUseCaseBatch7Patch(catalog) {
   const pack = catalog?.packs?.["analytics-ai-usecase-fit-sprint-v1"];
   if (!pack || typeof pack !== "object") return catalog;
@@ -1983,6 +1994,16 @@ function inferTriggerParts(triggerKey) {
   return { triggerKey: normalized, scope: scope || null, intent: intent || null };
 }
 
+function normalizeRunProfilePanelRole(value) {
+  const normalized = asNonEmptyString(value);
+  return ["primary", "secondary", "proposal"].includes(normalized) ? normalized : null;
+}
+
+function normalizeRunProfileBoardGroup(value) {
+  const normalized = asNonEmptyString(value);
+  return ["core", "proposal", "meta"].includes(normalized) ? normalized : "core";
+}
+
 function makeFlowControlDef({
   id,
   label,
@@ -1993,7 +2014,10 @@ function makeFlowControlDef({
   defaultScopeType = "fixed_instances",
   allowedActions = [],
   uiHint = null,
-  sortOrder = Number.MAX_SAFE_INTEGER
+  sortOrder = Number.MAX_SAFE_INTEGER,
+  panelRole = null,
+  boardGroup = "core",
+  seedByDefault = false
 } = {}) {
   return {
     id: asNonEmptyString(id),
@@ -2005,7 +2029,10 @@ function makeFlowControlDef({
     defaultScopeType: asNonEmptyString(defaultScopeType) || "fixed_instances",
     allowedActions: normalizeUniqueStrings(allowedActions),
     uiHint: asNonEmptyString(uiHint),
-    sortOrder: Number.isFinite(Number(sortOrder)) ? Number(sortOrder) : Number.MAX_SAFE_INTEGER
+    sortOrder: Number.isFinite(Number(sortOrder)) ? Number(sortOrder) : Number.MAX_SAFE_INTEGER,
+    panelRole: normalizeRunProfilePanelRole(panelRole),
+    boardGroup: normalizeRunProfileBoardGroup(boardGroup),
+    seedByDefault: seedByDefault === true
   };
 }
 
@@ -3006,7 +3033,7 @@ function buildAnalyticsDidacticSteps(pack) {
             feedbackPolicy: "text",
             allowedActions: [],
             uiHint: "Gut, wenn der Fit gemeinsam erarbeitet statt vorschnell bewertet werden soll.",
-            sortOrder: 31
+            sortOrder: 33
           })
         }),
         "selection.check": makeTriggerProfileDef("selection.check", {
@@ -3076,7 +3103,7 @@ function buildAnalyticsDidacticSteps(pack) {
             feedbackPolicy: "text",
             allowedActions: [],
             uiHint: "Nutze diesen Button, um die Qualität des Fits zu prüfen, bevor du reduzierst oder verdichtest.",
-            sortOrder: 33
+            sortOrder: 31
           })
         }),
         "selection.synthesize": makeTriggerProfileDef("selection.synthesize", {
@@ -3209,18 +3236,20 @@ function applyAnalyticsProposalPromptPatch(pack) {
       label: "Vorschläge für Solution Design",
       summary: "Macht konkrete, aber noch nicht angewendete Vorschläge für Variantenwahl und Ableitung der linken Seite.",
       prompt: `Step-2-Vorschlagslogik:
-- Schlage nur Änderungen vor, die die linke Seite als Ableitung aus Step 1 verbessern.
-- Gute Vorschläge sind z. B.: mehrere Varianten trennen, eine Hauptvariante fokussieren, Alternativen nach sorted_out_right parken, Information/Functions/Benefits sauber differenzieren oder Benefit-Formulierungen schärfen.
-- Führe keine Fit-Verdichtung vorweg und tue nicht so, als sei die Lösung bereits validiert.`
+- Lies zuerst den aktuellen Step-2-Zustand.
+- Wenn die rechte Seite noch zu unreif ist, tue nicht so, als sei gute Lösungableitung schon möglich; benenne die Rückroute nach Step 1 und bevorzuge textliche oder sehr kleine Vorschläge.
+- Gute zustandsbezogene Vorschläge sind z. B.: mehrere Varianten trennen, eine Hauptvariante fokussieren, Alternativen nach sorted_out_right parken, Information/Functions/Benefits sauber differenzieren oder generische Benefits schärfen.
+- Vorschläge in Step 2 bleiben Ableitung aus dem Problemraum; führe keine Fit-Verdichtung vorweg und tue nicht so, als sei die Lösung bereits validiert.`
     },
     "analytics.fit.step3.proposal_fit_validation": {
       id: "analytics.fit.step3.proposal_fit_validation",
       label: "Vorschläge für Fit Validation & MDP",
       summary: "Macht konkrete, aber noch nicht angewendete Vorschläge für Validierung, Checkmarks und Reduktion.",
       prompt: `Step-3-Vorschlagslogik:
-- Schlage nur Änderungen vor, die validieren, markieren, ausdünnen und auf ein Minimum Desired Product reduzieren.
-- Gute Vorschläge sind z. B.: Checkmarks für belastbare Benefit-Beziehungen setzen, unvalidierte Benefits/Information/Functions parken oder entfernen, wenige Check-Aussagen verdichten.
-- Beschreibe klar, welche Inhalte validiert sind, welche nur Alternativen bleiben und welche nach Bestätigung reduziert würden.`
+- Lies zuerst den aktuellen Step-3-Zustand.
+- Wenn Vorbedingungen für Fit-Validierung noch fehlen, tue nicht so, als seien Checkmarks, Check-Feld oder Minimum Desired Product schon belastbar; benenne die Rückroute nach Step 1 oder Step 2 und bevorzuge vorsichtige Vorschläge.
+- Gute zustandsbezogene Vorschläge sind z. B.: wenige Checkmarks für belastbare Benefit-Beziehungen setzen, unvalidierte Benefits/Information/Functions parken oder reduzieren, wenige Check-Aussagen verdichten oder Restrauschen ausdünnen.
+- Beschreibe klar, welche Inhalte bereits belastbar sind, welche nur Alternativen bleiben und welche nach Bestätigung reduziert würden.`
     }
   });
 
@@ -3267,7 +3296,10 @@ function applyAnalyticsProposalPromptPatch(pack) {
         defaultScopeType: "fixed_instances",
         allowedActions,
         uiHint: proposalConfig.uiHint,
-        sortOrder: proposalConfig.sortOrder
+        sortOrder: proposalConfig.sortOrder,
+        panelRole: "proposal",
+        boardGroup: "proposal",
+        seedByDefault: false
       })
     });
     step.triggerProfiles["selection.apply"] = makeTriggerProfileDef("selection.apply", {
@@ -3285,7 +3317,10 @@ function applyAnalyticsProposalPromptPatch(pack) {
         defaultScopeType: "fixed_instances",
         allowedActions,
         uiHint: applyConfig.uiHint,
-        sortOrder: applyConfig.sortOrder
+        sortOrder: applyConfig.sortOrder,
+        panelRole: "proposal",
+        boardGroup: "proposal",
+        seedByDefault: false
       })
     });
   }
@@ -3373,7 +3408,11 @@ function applyAnalyticsProposalPromptPatch(pack) {
       "analytics.fit.shared.proposal_mode",
       "analytics.fit.shared.sorted_out_semantics",
       "analytics.fit.shared.validation_and_color_semantics",
+      "analytics.fit.shared.no_handoff_boundary",
       "analytics.fit.step2.focus_solution_perspective",
+      "analytics.fit.step2.state_model",
+      "analytics.fit.step2.trigger_behavior",
+      "analytics.fit.step2.exit_criteria",
       "analytics.fit.step2.choose_variant_and_park_alternatives",
       "analytics.fit.step2.proposal_solution_design"
     ],
@@ -3406,7 +3445,11 @@ function applyAnalyticsProposalPromptPatch(pack) {
       "analytics.fit.shared.proposal_mode",
       "analytics.fit.shared.sorted_out_semantics",
       "analytics.fit.shared.validation_and_color_semantics",
+      "analytics.fit.shared.no_handoff_boundary",
       "analytics.fit.step3.focus_fit_review",
+      "analytics.fit.step3.state_model",
+      "analytics.fit.step3.trigger_behavior",
+      "analytics.fit.step3.exit_criteria",
       "analytics.fit.step3.prune_to_mdp",
       "analytics.fit.step3.proposal_fit_validation"
     ],
@@ -3555,6 +3598,105 @@ Allgemeine Leseregel:
     }
   });
 
+  Object.assign(pack.promptModules, {
+    "analytics.fit.step2.state_model": {
+      id: "analytics.fit.step2.state_model",
+      label: "Step-2-Zustandswelt",
+      summary: "Beschreibt die relevanten semantischen Arbeitszustände in Solution Design.",
+      prompt: `Step 2 ist Lösungableitung, nicht freie Technologiewahl. Lies den Boardzustand heuristisch:
+- S2-A rechte Seite noch nicht tragfähig genug: Hauptnutzer, Situation, Objectives/Results, Decisions/Actions oder Gains/Pains sind noch zu unreif. Bedeutung: Step 2 darf noch nicht sauber ableiten; route zurück nach Step 1 statt die linke Seite zu erfinden.
+- S2-B linke Seite leer, rechte Seite tragfähig: der Problemraum ist brauchbar, die linke Seite aber noch fast leer. Bedeutung: jetzt beginnt echte Ableitung; mehrere Varianten oder erste Lösungsideen sind sinnvoll.
+- S2-C mehrere Varianten, aber keine Fokusvariante: mehrere Solution-Stickies oder Lösungsrichtungen stehen nebeneinander, ohne Hauptvariante. Bedeutung: Divergenz ist da, Konvergenz fehlt. Eine Hauptvariante muss gewählt, Alternativen sollen in sorted_out_right geparkt werden.
+- S2-D Hauptvariante da, Information fehlt oder bleibt unscharf: eine fokussierte Lösungsidee ist sichtbar, aber welche Information Entscheidungen oder Handlungen verbessert, ist noch nicht klar.
+- S2-E Information und Functions sind vermischt oder unvollständig: Inhalte der linken Seite klingen auf mehreren Ebenen gleichzeitig oder lassen die Trennung Solution / Information / Function / Benefit nicht klar erkennen.
+- S2-F Benefits sind generisch oder nicht rückverfolgbar: Benefits bleiben marketinghaft, zu vage oder lassen keinen plausiblen Bezug zu Information, Functions oder zum Problemraum erkennen.
+- S2-G linke Seite ist überladen oder Alternativen sind ungeparkt: zu viele Varianten, Informationsreste, Funktionen oder Benefits konkurrieren gleichzeitig im Hauptpfad. Bedeutung: Rauschen verdeckt den Kern.
+- S2-H Step 2 ist tragfähig: eine Hauptvariante ist klar, Information und Functions sind nachvollziehbar abgeleitet, Benefits sind plausibel und Alternativen wurden reduziert oder geparkt.
+
+Allgemeine Leseregel:
+- Zustände sind semantische Lesarten des Boardkatalogs, keine App-Flags.
+- Interpretiere Reife, Fokussierung, Überladung und Readiness aus rechter Seite, linker Seite, Sorted-out-Nutzung und der Trennung von Solution, Information, Function und Benefit.
+- In Step 2 genügen wenige klare Unterstützungs- oder Ableitungsbeziehungen; Varianten bleiben standardmäßig unverbunden.`
+    },
+    "analytics.fit.step2.trigger_behavior": {
+      id: "analytics.fit.step2.trigger_behavior",
+      label: "Step-2-Triggerverhalten",
+      summary: "Übersetzt die Zustandswelt von Step 2 in passende Hilfeformen je Trigger.",
+      prompt: `Übersetze den erkannten Step-2-Zustand in die passende Triggerrolle:
+- hint: Priorisiere genau einen Mikro-Arbeitsmodus: zurück in Step 1 routen, Varianten anstoßen, eine Hauptvariante wählen, Information klären, Functions trennen, Benefits schärfen oder Rauschen parken. Gib 1 bis 3 konkrete Satzanfänge oder Fokushinweise.
+- coach: Arbeite mit 3 bis 5 Leitfragen und genau einem Mikroschritt. Coache Variantenwahl und Ableitung statt eine Komplettarchitektur zu liefern.
+- check: Prüfe zuerst, ob Step 1 tragfähig genug ist; prüfe dann Fokusvariante, Trennung der Ebenen und Nutzenlogik. Setze stepStatus gemäß Exit-Kriterien von Step 2.
+- review: Gib eine qualitative Einordnung von Variantendenken, Fokussierung, Ableitung, Nutzennähe und solutionistischen Sprüngen. Standardmäßig keine Mutationen.
+- synthesize: Keine Fit-Synthese. Verdichte nur, welche Hauptvariante, Information, Functions und Benefits aktuell schon plausibel sichtbar sind; wenn das noch fehlt, sage es explizit.
+- propose: Zusatzspur. Vorschläge müssen aus dem aktuellen Step-2-Zustand abgeleitet sein. Bei S2-A bevorzuge textliche Rückroute oder minimale Vorschläge; bei S2-B/C/D/E/F/G sind konkrete Vorschläge für Variantenwahl, Trennung, Schärfung oder Parken sinnvoll.
+- autocorrect: Nur klare Probleme der linken Seite korrigieren: Varianten entmischen, Hauptvariante fokussieren, Alternativen in sorted_out_right parken, Information/Functions/Benefits sauberer trennen und wenige Benefits schärfen. Keine Fit-Behauptung.
+
+Übersetzungsregel in Actions:
+- Bevorzuge feedback, solange didaktisch vor allem Fokussierung oder Herleitung fehlt.
+- Wenn du mutierst, dann klein, zustandsbezogen und ohne Graph-Explosion.
+- Connectoren in Step 2 nur selektiv: wenige klare Unterstützungs- oder Ableitungsbeziehungen; keine Vollverdrahtung der linken Seite.`
+    },
+    "analytics.fit.step2.exit_criteria": {
+      id: "analytics.fit.step2.exit_criteria",
+      label: "Step-2-Exit-Kriterien",
+      summary: "Beschreibt, wann Solution Design als tragfähig gilt.",
+      prompt: `Exit-Kriterien für Step 2:
+- in_progress: solange Step 1 noch nicht tragfähig genug ist, keine Hauptvariante fokussiert ist, die Ebenen vermischt bleiben, Benefits generisch wirken oder die linke Seite überladen ist.
+- ready_for_review: wenn eine Hauptvariante klar fokussiert wurde, alternative Varianten bewusst reduziert oder in sorted_out_right geparkt sind, Information und Functions nachvollziehbar aus dem Problemraum folgen und mehrere Benefits plausibel hergeleitet sind.
+- completed: nur wenn die linke Seite für diese Übung wirklich fokussiert, nachvollziehbar und lesbar ist.
+- Step 2 ist noch nicht tragfähig, wenn alle Varianten gleichzeitig aktiv bleiben, Information/Funktion/Benefit auf derselben Ebene verschwimmen oder Benefits bloß Technologieversprechen wiederholen.
+- Step 2 endet, bevor Fit-Validierung, Check-Verdichtung oder MDP-Reduktion dominieren.`
+    },
+    "analytics.fit.step3.state_model": {
+      id: "analytics.fit.step3.state_model",
+      label: "Step-3-Zustandswelt",
+      summary: "Beschreibt die relevanten semantischen Arbeitszustände in Fit Validation & Minimum Desired Product.",
+      prompt: `Step 3 ist Validierung, Reduktion und Verdichtung. Lies den Boardzustand heuristisch:
+- S3-A Vorbedingungen für Fit-Validierung fehlen: Problemraum oder Lösungsperspektive sind noch zu unreif, zu vage oder zu widersprüchlich. Bedeutung: Fit darf hier nicht behauptet werden; route sauber zurück nach Step 1 oder Step 2.
+- S3-B Benefits vorhanden, aber noch nicht validiert: Benefits stehen im Board, doch es ist noch unklar, welche Pains, Gains, Results, Objectives, Decisions oder Actions sie wirklich adressieren.
+- S3-C partielle Fit-Ketten sind sichtbar, aber noch nicht markiert: einige plausible Beziehungen sind erkennbar, doch Checkmarks oder klare Validierung fehlen noch.
+- S3-D Check-Feld ist zu früh, leer oder inhaltsfremd: 8_check ist noch leer, zu voll oder enthält lose Ideen statt knapper Fit-Aussagen.
+- S3-E zu viel unvalidiertes Rauschen: unvalidierte Benefits, Information, Functions oder Alternativen verdecken den Kern. Bedeutung: Minimum Desired Product ist noch nicht sichtbar.
+- S3-F Minimum Desired Product ist teilweise sichtbar, aber noch nicht sauber reduziert: ein valider Kern zeichnet sich ab, wird aber noch von Restbeständen überlagert.
+- S3-G validierter Kern ist sichtbar: mehrere belastbare Benefit-Beziehungen oder Fit-Ketten sind erkennbar, und unvalidierte Reste wurden reduziert oder geparkt.
+- S3-H Step 3 ist tragfähig bzw. handoff-ready im Rahmen dieser Übung: der validierte Kern ist sichtbar, wenige knappe Check-Aussagen verdichten ihn, ohne dass ein echter Cross-Canvas-Handoff ausgeführt wird.
+
+Allgemeine Leseregel:
+- Zustände sind semantische Lesarten des Boardkatalogs, keine App-Flags.
+- Interpretiere Validierung, Reduktion, Restrauschen und Readiness aus Benefits, Checkmarks, Check-Feld, Sorted-out-Nutzung und dem Anteil wirklich belastbarer Beziehungen.
+- In Step 3 sind wenige validierte Fit-Ketten oder knappe Check-Aussagen besser als dichte Graphen.`
+    },
+    "analytics.fit.step3.trigger_behavior": {
+      id: "analytics.fit.step3.trigger_behavior",
+      label: "Step-3-Triggerverhalten",
+      summary: "Übersetzt die Zustandswelt von Step 3 in passende Hilfeformen je Trigger.",
+      prompt: `Übersetze den erkannten Step-3-Zustand in die passende Triggerrolle:
+- hint: Priorisiere genau den nächsten Validierungs- oder Reduktionsschritt. Bei S3-A route zurück, bei S3-B/C fokussiere auf belastbare Beziehungen, bei S3-D/E/F auf Check-Feld, Ausdünnung und Kern, bei S3-G/H auf knappe Verdichtung.
+- coach: Arbeite mit 3 bis 5 Leitfragen und genau einem Mikroschritt. Frage explizit, welcher Benefit was auf der rechten Seite adressiert und was für einen validierten Kern wirklich nötig ist.
+- check: Prüfe Vorbedingungen, belastbare Fit-Ketten, sinnvolle Checkmarks, Restrauschen und Sichtbarkeit des Minimum Desired Product. Setze stepStatus gemäß Exit-Kriterien von Step 3.
+- review: Gib eine qualitative Einordnung des Fits, der Validierungstiefe, des Rauschens und der Handoff-Readiness innerhalb dieser Übung. Standardmäßig keine Mutationen.
+- synthesize: Verdichte nur validierten oder weitgehend tragfähigen Fit in 1 bis 3 knappe Check-Aussagen. Wenn die Vorbedingungen fehlen, verweigere die saubere Synthese nicht stillschweigend, sondern benenne, was zuerst validiert oder reduziert werden muss.
+- propose: Zusatzspur. Vorschläge müssen aus dem aktuellen Step-3-Zustand abgeleitet sein. Bei unreifen Vorbedingungen keine aggressive MDP-Reduktion oder Checkmarks vortäuschen; bei partiellem Fit gezielte Validierungs-, Pruning- und Check-Vorschläge machen.
+- autocorrect: Nutze Checkmarks, Parken, Ausdünnen und wenige belastbare Fit-Kanten vorsichtig und nur zustandsbezogen. Markiere nur validierte Beziehungen und mache den Kern sichtbar, ohne das Board neu zu erfinden.
+- grade: Werte die Tragfähigkeit des validierten Kerns, nicht die Menge der Inhalte.
+
+Übersetzungsregel in Actions:
+- Bevorzuge wenige validierte Markierungen, wenige belastbare Fit-Kanten und knappe Check-Aussagen.
+- Keine Graph-Explosion und keine Schönfärbung unreifer Boards.`
+    },
+    "analytics.fit.step3.exit_criteria": {
+      id: "analytics.fit.step3.exit_criteria",
+      label: "Step-3-Exit-Kriterien",
+      summary: "Beschreibt, wann Fit Validation & Minimum Desired Product als tragfähig gilt.",
+      prompt: `Exit-Kriterien für Step 3:
+- in_progress: solange Vorbedingungen fehlen, Benefits nur behauptet statt validiert sind, zu viel unvalidiertes Rauschen dominiert oder der Kern noch nicht reduziert wurde.
+- ready_for_review: wenn mehrere plausible Benefit-Beziehungen geprüft wurden, erste validierte Beziehungen oder Checkmarks sinnvoll sichtbar sind, Restrauschen reduziert wurde und der Kern des Minimum Desired Product erkennbar ist.
+- completed: nur wenn der validierte Kern klar sichtbar ist, wenige knappe Check-Aussagen im Feld Check stehen und die Übung als handoff-ready beschrieben werden kann, ohne einen echten Handoff auszuführen.
+- Step 3 ist noch nicht tragfähig, wenn Fit nur behauptet wird, Alternativen den Hauptpfad dominieren oder Check-Feld und Checkmarks bloß Dekoration sind.
+- Step 3 darf sauber zurück nach Step 1 oder Step 2 routen, wenn Problemraum oder Lösungsperspektive noch nicht tragfähig genug sind.`
+    }
+  });
+
   setPromptModuleText(pack, "analytics.fit.step0.focus_preparation", {
     summary: "Beschreibt Zielbild und Grenzen von Preparation & Focus, nicht die ganze Zustandslogik.",
     prompt: `Schrittfokus "Preparation & Focus":
@@ -3632,6 +3774,137 @@ Allgemeine Leseregel:
 - Wenn nach Nutzerrollen gefragt wird, erkläre: mehrere plausible Rollen sammeln, dann einen Hauptnutzer wählen und die Situation konkretisieren.
 - Wenn Objectives/Results und Decisions/Actions verwechselt werden, trenne klar Outcomes von Verhalten.
 - Wenn nach Gains/Pains gefragt wird, erkläre: aus Nutzersicht formulieren, an blaue Elemente andocken, kritische Punkte priorisieren und Rest parken.`
+  });
+
+  setPromptModuleText(pack, "analytics.fit.step0.trigger_behavior", {
+    summary: "Übersetzt die Zustandswelt von Step 0 in passende Hilfeformen und hält Connectoren dort ausdrücklich klein.",
+    prompt: `Übersetze den erkannten Step-0-Zustand in die passende Triggerrolle:
+- hint: Gib 1 bis 3 konkrete nächste Schritte oder Satzanfänge für genau den erkannten Zustand. Bei S0-A orientierst du, bei S0-B hilfst du bei der Fokuswahl, bei S0-C/D schärfst du Fokus oder Annahmen, bei S0-E empfiehlst du bewusstes Parken, bei S0-F routest du in Step 1.
+- coach: Arbeite sokratisch mit 3 bis 5 Leitfragen und genau einem Mikroschritt. Kein Rundumschlag, keine Vorwegnahme von Step 1, Step 2 oder Step 3.
+- check: Prüfe Fokus, Scope, offene Annahmen und Umgang mit Nebenthemen. Benenne klar, was für Readiness noch fehlt oder warum Step 0 tragfähig ist.
+- review: Gib eine qualitative Einordnung von Fokus, Schärfe, Überbreite und sichtbaren Risiken. Standardmäßig keine Board-Mutationen.
+- propose: Zusatzspur. Noch nichts anwenden. Im leeren oder sehr vagen Zustand bevorzuge textliche Vorschläge; Board-Vorschläge nur klein und anschlussfähig.
+- autocorrect: Nur klare Vorbereitungsprobleme korrigieren: Header präzisieren, wenige weiße Annahmen/Fragen ergänzen, Nebenthemen parken. Keine Nutzeranalyse, keine Lösung, kein Fit.
+- Connectoren spielen in Step 0 normalerweise keine Rolle; Fokusanker, offene Fragen und geparkte Alternativen bleiben standardmäßig unverbunden.
+
+Übersetzungsregel in Actions:
+- Bevorzuge feedback, solange Orientierung oder Fokussierung didaktisch genügt.
+- Wenn du mutierst, dann klein, konkret und strikt innerhalb von Fokus, Scope, offenen Annahmen und Sorted-out.`
+  });
+
+  setPromptModuleText(pack, "analytics.fit.step1.focus_user_perspective", {
+    summary: "Beschreibt Zielbild und Grenzen von User Needs Analysis, nicht die ganze Zustandslogik.",
+    prompt: `Schrittfokus "User Needs Analysis":
+- Arbeite primär auf der rechten Seite des Canvas.
+- Ziel ist ein tragfähiger Problemraum: Hauptnutzer, konkrete Situation, Objectives & Results, Decisions & Actions sowie angedockte Gains/Pains.
+- Objectives & Results beschreiben Outcomes; Decisions & Actions beschreiben Verhalten oder Auswahlhandlungen.
+- Gains und Pains kommen aus Nutzersicht und stehen inhaltlich nahe an relevanten blauen Elementen.
+- User & Situation bleibt meist unverbunden; Gains/Pains werden standardmäßig eher angedockt und priorisiert als als Kettengraph aufgebaut.
+- Springe noch nicht in Solutions, Benefits oder Fit.`
+  });
+
+  setPromptModuleText(pack, "analytics.fit.step1.trigger_behavior", {
+    summary: "Übersetzt die Zustandswelt von Step 1 in passende Hilfeformen je Trigger.",
+    prompt: `Übersetze den erkannten Step-1-Zustand in die passende Triggerrolle:
+- hint: Priorisiere genau einen nächsten Mikro-Arbeitsmodus: Nutzerrollen sammeln/fokussieren, Situation konkretisieren, Objectives/Results schärfen, Decisions/Actions präzisieren oder Gains/Pains andocken bzw. priorisieren. Gib 1 bis 3 konkrete Satzanfänge oder Fokushinweise.
+- coach: Arbeite mit 3 bis 5 Leitfragen und genau einem Mikroschritt. Lass den Nutzer denken; gib keine vorschnellen Lösungen.
+- check: Prüfe in dieser Reihenfolge Hauptnutzer & Situation, Objectives & Results, Decisions & Actions, Gains/Pains. Benenne klar, welche Reifestufe fehlt oder ob der Problemraum tragfähig genug für Step 2 ist.
+- review: Gib eine qualitative Einordnung von Reifegrad, Stärken, Widersprüchen, Überladung und fehlender Vorarbeit. Standardmäßig keine Mutationen.
+- synthesize: Keine Lösungs- oder Fit-Synthese. Verdichte nur den Stand der Nutzeranalyse; wenn sie unreif ist, sage explizit, was fehlt.
+- propose: Zusatzspur. Noch nichts anwenden. Vorschläge müssen aus dem aktuellen Step-1-Zustand abgeleitet sein, z. B. Hauptnutzer fokussieren, Situation schärfen, Outcomes und Verhalten trennen, Gains/Pains andocken oder parken.
+- autocorrect: Nur klare Probleme auf der rechten Seite korrigieren: Fehlplatzierungen, offensichtliche Verwechslungen, Überladung oder fehlende Andockung. Keine Lösung, kein Benefit, kein Fit.
+- Connectoren in Step 1 nur selten: User & Situation bleibt meist unverbunden, Gains/Pains werden standardmäßig nicht verkettet, sondern räumlich oder inhaltlich an relevante blaue Elemente gekoppelt.
+
+Übersetzungsregel in Actions:
+- Bevorzuge feedback, solange der nächste didaktische Schritt vor allem Denken, Fokussieren oder Priorisieren ist.
+- Wenn du mutierst, dann klein, anschlussfähig und streng problemraumgebunden.`
+  });
+
+  setPromptModuleText(pack, "analytics.fit.step2.focus_solution_perspective", {
+    summary: "Beschreibt Zielbild und Grenzen von Solution Design, nicht die ganze Zustandslogik.",
+    prompt: `Schrittfokus "Solution Design":
+- Arbeite primär auf der linken Seite des Canvas.
+- Ziel ist eine fokussierte Lösungsperspektive: mehrere plausible Varianten dürfen kurz sichtbar sein, aber eine Hauptvariante soll gewählt und Alternativen sollen in sorted_out_right geparkt werden.
+- Solution = Lösungsidee oder Intervention, Information = relevante Erkenntnis oder Signal, Function = Mechanismus oder Fähigkeit, Benefit = resultierender Nutzen.
+- Die linke Seite folgt dem Problemraum; sie ist keine freie Tool- oder Technologiewand.
+- Connectoren in Step 2 nur selektiv: wenige klare Unterstützungs- oder Ableitungsbeziehungen; Varianten bleiben standardmäßig unverbunden.`
+  });
+
+  setPromptModuleText(pack, "analytics.fit.step2.bootstrap_empty_solution_perspective", {
+    summary: "Hilft beim leeren oder noch nicht tragfähigen Einstieg in Step 2.",
+    prompt: `Leerer oder unreifer Einstieg in Step 2:
+- Prüfe zuerst, ob Step 1 tragfähig genug ist. Wenn nicht, benenne klar, welche Teile des Problemraums zuerst nachgeschärft werden müssen.
+- Wenn Step 1 brauchbar ist, ist die gute Reihenfolge:
+  1) 1 bis 3 Varianten oder Lösungsideen sammeln,
+  2) eine Hauptvariante wählen,
+  3) Alternativen in sorted_out_right parken,
+  4) Information ableiten,
+  5) Functions ableiten,
+  6) Benefits formulieren.
+- Gib lieber kurze, anschlussfähige Satzanfänge als eine komplette Zielarchitektur.`
+  });
+
+  setPromptModuleText(pack, "analytics.fit.step2.choose_variant_and_park_alternatives", {
+    summary: "Macht den Übergang von Variantenvielfalt zu einer Fokusvariante explizit.",
+    prompt: `Variantenlogik in Step 2:
+- Mehrere Solution-Varianten sind als Zwischenzustand erlaubt.
+- Für dieses Board soll aber eine Hauptvariante fokussiert werden.
+- Parke alternative Varianten bevorzugt in sorted_out_right statt sie zu löschen oder mit dem Hauptpfad zu vermischen.
+- Benefits folgen aus der gewählten Hauptvariante und nicht gleichzeitig aus allen Varianten.`
+  });
+
+  setPromptModuleText(pack, "analytics.fit.step2.question_solution_design", {
+    summary: "Erlaubt didaktisch gute Antworten auf typische Fragen zur linken Seite.",
+    prompt: `Fragen in Step 2:
+- Erkläre zuerst, dass dieser Schritt die Lösung aus dem Problemraum ableitet und nicht frei erfindet.
+- Wenn nach dem Unterschied zwischen Solution, Information, Function und Benefit gefragt wird, trenne diese Ebenen klar.
+- Wenn nach dem Einstieg gefragt wird, antworte mit der Reihenfolge: Varianten sammeln → Hauptvariante wählen → Information ableiten → Functions ableiten → Benefits formulieren.
+- Wenn Step 1 noch zu schwach ist, sage klar, welche Problemraum-Inhalte zuerst präzisiert werden müssen.`
+  });
+
+  setPromptModuleText(pack, "analytics.fit.step3.focus_fit_review", {
+    summary: "Beschreibt Zielbild und Grenzen von Fit Validation & Minimum Desired Product, nicht die ganze Zustandslogik.",
+    prompt: `Schrittfokus "Fit Validation & Minimum Desired Product":
+- Dieser Schritt validiert, markiert, reduziert und verdichtet.
+- Prüfe für jeden Benefit, welche Pains, Gains, Results, Objectives, Decisions oder Actions er wirklich adressiert.
+- Nutze Checkmarks nur für bewusst validierte Beziehungen.
+- Bevorzuge wenige validierte Fit-Ketten oder knappe Check-Aussagen statt dichten Graphen.
+- Wenn der Fit nicht trägt, route sauber zurück, statt unreife Boards schönzureden.`
+  });
+
+  setPromptModuleText(pack, "analytics.fit.step3.bootstrap_incomplete_fit", {
+    summary: "Verhindert verfrühte Fit-Verdichtung auf unreifem Material.",
+    prompt: `Unreifer Einstieg in Step 3:
+- Täusche keinen tragfähigen Fit vor, wenn Problemraum oder Lösungsperspektive noch zu leer, zu vage oder zu widersprüchlich sind.
+- Benenne klar, ob eher Step 1 oder Step 2 weiterbearbeitet werden muss.
+- Wenn nur Teile tragfähig sind, unterscheide sauber zwischen bereits plausiblen und noch unklaren Fit-Beziehungen.`
+  });
+
+  setPromptModuleText(pack, "analytics.fit.step3.focus_fit_synthesis", {
+    summary: "Macht das Check-Feld zu einer knappen Verdichtung statt zu einer zweiten Ideensammlung.",
+    prompt: `Check-Verdichtung in Step 3:
+- Formuliere im Feld Check nur 1 bis 3 knappe, belastbare Fit-Aussagen.
+- Gute Check-Aussagen machen sichtbar, welche Information oder Function welche Entscheidung, Handlung, welches Result oder welche Pain-/Gain-Lage verbessert.
+- Nutze das Feld Check nicht für neue lose Ideen und nicht als zweite Vollstruktur des Canvas.`
+  });
+
+  setPromptModuleText(pack, "analytics.fit.step3.prune_to_mdp", {
+    summary: "Übersetzt Validierung, Parken und Reduktion in konkrete Handlungsregeln.",
+    prompt: `Pruning- und MDP-Logik in Step 3:
+- Markiere Benefits und relevante rechte Elemente nur dann mit checked=true, wenn die Beziehung wirklich validiert ist.
+- Parke alternative oder noch nicht tragfähige Lösungsreste bevorzugt in sorted_out_right.
+- Dünne Information und Functions ohne tragfähigen Benefit aus, damit der Kern des Minimum Desired Product sichtbar wird.
+- Lösche nur dann direkt, wenn Inhalte klar redundant, leer oder didaktisch nicht mehr sinnvoll sind; parke lieber, wenn sie noch als Alternative taugen.`
+  });
+
+  setPromptModuleText(pack, "analytics.fit.step3.question_fit_validation", {
+    summary: "Erlaubt didaktisch gute Antworten auf typische Fragen zu Validierung, Checkmarks und MDP.",
+    prompt: `Fragen in Step 3:
+- Erkläre, dass dieser Schritt validiert und reduziert, nicht bloß formuliert.
+- Wenn nach Checkmarks gefragt wird, erkläre: Sie markieren bewusst validierte Beziehungen zwischen Benefits und relevanten Elementen auf der rechten Seite.
+- Wenn nach unvalidierten Inhalten gefragt wird, erkläre: tragfähige Alternativen werden geparkt, klar unbrauchbare Reste entfernt.
+- Wenn nach dem Minimum Desired Product gefragt wird, erkläre: Es ist die kleinste noch tragfähige Lösungskonfiguration, die die wichtigsten kritischen Gains/Pains und Entscheidungen adressiert.
+- Wenn nach dem nächsten Schritt gefragt wird, antworte mit Handoff-Readiness, aber ohne echten Cross-Canvas-Transfer.`
   });
 
   pack.steps = buildAnalyticsDidacticSteps(pack);
@@ -3776,6 +4049,207 @@ Allgemeine Leseregel:
     "analytics.fit.step1.question_user_analysis"
   ];
 
+  const STEP2_CORE_MODULE_IDS = [
+    "analytics.fit.shared.method_guardrails",
+    "analytics.fit.shared.feedback_contract",
+    "analytics.fit.shared.no_handoff_boundary",
+    "analytics.fit.step2.focus_solution_perspective",
+    "analytics.fit.step2.state_model"
+  ];
+  const STEP2_HINT_MODULE_IDS = [
+    ...STEP2_CORE_MODULE_IDS,
+    "analytics.fit.shared.hint_style",
+    "analytics.fit.shared.soft_reference_hints",
+    "analytics.fit.shared.sorted_out_semantics",
+    "analytics.fit.step2.trigger_behavior",
+    "analytics.fit.step2.exit_criteria",
+    "analytics.fit.step2.bootstrap_empty_solution_perspective",
+    "analytics.fit.step2.choose_variant_and_park_alternatives"
+  ];
+  const STEP2_COACH_MODULE_IDS = [
+    ...STEP2_CORE_MODULE_IDS,
+    "analytics.fit.shared.coach_style",
+    "analytics.fit.shared.soft_reference_hints",
+    "analytics.fit.shared.sorted_out_semantics",
+    "analytics.fit.step2.trigger_behavior",
+    "analytics.fit.step2.exit_criteria",
+    "analytics.fit.step2.bootstrap_empty_solution_perspective",
+    "analytics.fit.step2.choose_variant_and_park_alternatives"
+  ];
+  const STEP2_CHECK_MODULE_IDS = [
+    ...STEP2_CORE_MODULE_IDS,
+    "analytics.fit.shared.check_style",
+    "analytics.fit.shared.step_status_rules",
+    "analytics.fit.shared.sorted_out_semantics",
+    "analytics.fit.step2.trigger_behavior",
+    "analytics.fit.step2.exit_criteria",
+    "analytics.fit.step2.bootstrap_empty_solution_perspective",
+    "analytics.fit.step2.choose_variant_and_park_alternatives"
+  ];
+  const STEP2_AUTOCORRECT_MODULE_IDS = [
+    ...STEP2_CORE_MODULE_IDS,
+    "analytics.fit.shared.sorted_out_semantics",
+    "analytics.fit.step2.trigger_behavior",
+    "analytics.fit.step2.exit_criteria",
+    "analytics.fit.step2.choose_variant_and_park_alternatives"
+  ];
+  const STEP2_REVIEW_MODULE_IDS = [
+    ...STEP2_CORE_MODULE_IDS,
+    "analytics.fit.shared.review_style",
+    "analytics.fit.shared.step_status_rules",
+    "analytics.fit.shared.sorted_out_semantics",
+    "analytics.fit.step2.trigger_behavior",
+    "analytics.fit.step2.exit_criteria",
+    "analytics.fit.step2.choose_variant_and_park_alternatives"
+  ];
+  const STEP2_SYNTHESIZE_MODULE_IDS = [
+    ...STEP2_CORE_MODULE_IDS,
+    "analytics.fit.shared.synthesis_style",
+    "analytics.fit.step2.trigger_behavior",
+    "analytics.fit.step2.exit_criteria"
+  ];
+  const STEP2_GLOBAL_HINT_MODULE_IDS = [
+    ...STEP2_HINT_MODULE_IDS,
+    "analytics.fit.step2.exit_criteria"
+  ];
+  const STEP2_GLOBAL_CHECK_MODULE_IDS = [
+    ...STEP2_CHECK_MODULE_IDS
+  ];
+  const STEP2_GLOBAL_AUTOCORRECT_MODULE_IDS = [
+    ...STEP2_AUTOCORRECT_MODULE_IDS
+  ];
+  const STEP2_GLOBAL_REVIEW_MODULE_IDS = [
+    ...STEP2_REVIEW_MODULE_IDS
+  ];
+  const STEP2_GLOBAL_COACH_MODULE_IDS = [
+    ...STEP2_COACH_MODULE_IDS,
+    "analytics.fit.step2.exit_criteria"
+  ];
+  const STEP2_QUESTION_MODULE_IDS = [
+    "analytics.fit.shared.method_guardrails",
+    "analytics.fit.shared.question_style",
+    "analytics.fit.shared.soft_reference_hints",
+    "analytics.fit.shared.sorted_out_semantics",
+    "analytics.fit.shared.no_handoff_boundary",
+    "analytics.fit.step2.focus_solution_perspective",
+    "analytics.fit.step2.state_model",
+    "analytics.fit.step2.exit_criteria",
+    "analytics.fit.step2.bootstrap_empty_solution_perspective",
+    "analytics.fit.step2.choose_variant_and_park_alternatives",
+    "analytics.fit.step2.question_solution_design"
+  ];
+
+  const STEP3_COMMON_CORE_MODULE_IDS = [
+    "analytics.fit.shared.method_guardrails",
+    "analytics.fit.shared.feedback_contract",
+    "analytics.fit.shared.no_handoff_boundary",
+    "analytics.fit.step3.state_model"
+  ];
+  const STEP3_REVIEW_CORE_MODULE_IDS = [
+    ...STEP3_COMMON_CORE_MODULE_IDS,
+    "analytics.fit.step3.focus_fit_review"
+  ];
+  const STEP3_SYNTH_CORE_MODULE_IDS = [
+    ...STEP3_COMMON_CORE_MODULE_IDS,
+    "analytics.fit.step3.focus_fit_synthesis"
+  ];
+  const STEP3_HINT_MODULE_IDS = [
+    ...STEP3_REVIEW_CORE_MODULE_IDS,
+    "analytics.fit.shared.hint_style",
+    "analytics.fit.shared.validation_and_color_semantics",
+    "analytics.fit.shared.sorted_out_semantics",
+    "analytics.fit.step3.trigger_behavior",
+    "analytics.fit.step3.bootstrap_incomplete_fit",
+    "analytics.fit.step3.prune_to_mdp",
+    "analytics.fit.step3.exit_criteria"
+  ];
+  const STEP3_COACH_MODULE_IDS = [
+    ...STEP3_REVIEW_CORE_MODULE_IDS,
+    "analytics.fit.shared.coach_style",
+    "analytics.fit.shared.validation_and_color_semantics",
+    "analytics.fit.step3.trigger_behavior",
+    "analytics.fit.step3.bootstrap_incomplete_fit",
+    "analytics.fit.step3.prune_to_mdp",
+    "analytics.fit.step3.exit_criteria"
+  ];
+  const STEP3_CHECK_MODULE_IDS = [
+    ...STEP3_REVIEW_CORE_MODULE_IDS,
+    "analytics.fit.shared.check_style",
+    "analytics.fit.shared.step_status_rules",
+    "analytics.fit.shared.validation_and_color_semantics",
+    "analytics.fit.shared.sorted_out_semantics",
+    "analytics.fit.step3.trigger_behavior",
+    "analytics.fit.step3.bootstrap_incomplete_fit",
+    "analytics.fit.step3.prune_to_mdp",
+    "analytics.fit.step3.exit_criteria"
+  ];
+  const STEP3_AUTOCORRECT_MODULE_IDS = [
+    ...STEP3_REVIEW_CORE_MODULE_IDS,
+    "analytics.fit.shared.validation_and_color_semantics",
+    "analytics.fit.shared.sorted_out_semantics",
+    "analytics.fit.shared.step_status_rules",
+    "analytics.fit.step3.trigger_behavior",
+    "analytics.fit.step3.prune_to_mdp",
+    "analytics.fit.step3.exit_criteria"
+  ];
+  const STEP3_REVIEW_MODULE_IDS = [
+    ...STEP3_REVIEW_CORE_MODULE_IDS,
+    "analytics.fit.shared.review_style",
+    "analytics.fit.shared.step_status_rules",
+    "analytics.fit.shared.validation_and_color_semantics",
+    "analytics.fit.step3.trigger_behavior",
+    "analytics.fit.step3.bootstrap_incomplete_fit",
+    "analytics.fit.step3.exit_criteria"
+  ];
+  const STEP3_SYNTHESIZE_MODULE_IDS = [
+    ...STEP3_SYNTH_CORE_MODULE_IDS,
+    "analytics.fit.shared.synthesis_style",
+    "analytics.fit.shared.validation_and_color_semantics",
+    "analytics.fit.shared.sorted_out_semantics",
+    "analytics.fit.step3.trigger_behavior",
+    "analytics.fit.step3.bootstrap_incomplete_fit",
+    "analytics.fit.step3.prune_to_mdp",
+    "analytics.fit.step3.exit_criteria"
+  ];
+  const STEP3_GRADE_MODULE_IDS = [
+    ...STEP3_REVIEW_CORE_MODULE_IDS,
+    "analytics.fit.shared.step_status_rules",
+    "analytics.fit.shared.validation_and_color_semantics",
+    "analytics.fit.step3.trigger_behavior",
+    "analytics.fit.step3.bootstrap_incomplete_fit",
+    "analytics.fit.step3.prune_to_mdp",
+    "analytics.fit.step3.exit_criteria"
+  ];
+  const STEP3_GLOBAL_HINT_MODULE_IDS = [
+    ...STEP3_HINT_MODULE_IDS,
+    "analytics.fit.global.focus_cross_instance_review"
+  ];
+  const STEP3_GLOBAL_REVIEW_MODULE_IDS = [
+    ...STEP3_REVIEW_MODULE_IDS,
+    "analytics.fit.global.focus_cross_instance_review"
+  ];
+  const STEP3_GLOBAL_COACH_MODULE_IDS = [
+    ...STEP3_COACH_MODULE_IDS,
+    "analytics.fit.global.focus_cross_instance_review"
+  ];
+  const STEP3_GLOBAL_GRADE_MODULE_IDS = [
+    ...STEP3_GRADE_MODULE_IDS,
+    "analytics.fit.global.focus_cross_instance_review"
+  ];
+  const STEP3_QUESTION_MODULE_IDS = [
+    "analytics.fit.shared.method_guardrails",
+    "analytics.fit.shared.question_style",
+    "analytics.fit.shared.sorted_out_semantics",
+    "analytics.fit.shared.validation_and_color_semantics",
+    "analytics.fit.shared.no_handoff_boundary",
+    "analytics.fit.step3.focus_fit_review",
+    "analytics.fit.step3.state_model",
+    "analytics.fit.step3.exit_criteria",
+    "analytics.fit.step3.bootstrap_incomplete_fit",
+    "analytics.fit.step3.prune_to_mdp",
+    "analytics.fit.step3.question_fit_validation"
+  ];
+
   setQuestionModuleIds(pack, "step0_preparation_and_focus", STEP0_QUESTION_MODULE_IDS);
   setTriggerModuleIds(pack, "step0_preparation_and_focus", "selection.hint", STEP0_HINT_MODULE_IDS);
   setTriggerModuleIds(pack, "step0_preparation_and_focus", "selection.coach", STEP0_COACH_MODULE_IDS);
@@ -3794,6 +4268,50 @@ Allgemeine Leseregel:
   setTriggerModuleIds(pack, "step1_user_perspective", "selection.synthesize", STEP1_SYNTHESIZE_MODULE_IDS);
   setTriggerModuleIds(pack, "step1_user_perspective", "global.hint", STEP1_GLOBAL_HINT_MODULE_IDS);
   setTriggerModuleIds(pack, "step1_user_perspective", "global.check", STEP1_GLOBAL_CHECK_MODULE_IDS);
+
+  setQuestionModuleIds(pack, "step2_solution_perspective", STEP2_QUESTION_MODULE_IDS);
+  setTriggerModuleIds(pack, "step2_solution_perspective", "selection.hint", STEP2_HINT_MODULE_IDS);
+  setTriggerModuleIds(pack, "step2_solution_perspective", "selection.coach", STEP2_COACH_MODULE_IDS);
+  setTriggerModuleIds(pack, "step2_solution_perspective", "selection.check", STEP2_CHECK_MODULE_IDS);
+  setTriggerModuleIds(pack, "step2_solution_perspective", "selection.autocorrect", STEP2_AUTOCORRECT_MODULE_IDS);
+  setTriggerModuleIds(pack, "step2_solution_perspective", "selection.review", STEP2_REVIEW_MODULE_IDS);
+  setTriggerModuleIds(pack, "step2_solution_perspective", "selection.synthesize", STEP2_SYNTHESIZE_MODULE_IDS);
+  setTriggerModuleIds(pack, "step2_solution_perspective", "global.hint", STEP2_GLOBAL_HINT_MODULE_IDS);
+  setTriggerModuleIds(pack, "step2_solution_perspective", "global.check", STEP2_GLOBAL_CHECK_MODULE_IDS);
+  setTriggerModuleIds(pack, "step2_solution_perspective", "global.autocorrect", STEP2_GLOBAL_AUTOCORRECT_MODULE_IDS);
+  setTriggerModuleIds(pack, "step2_solution_perspective", "global.review", STEP2_GLOBAL_REVIEW_MODULE_IDS);
+  setTriggerModuleIds(pack, "step2_solution_perspective", "global.coach", STEP2_GLOBAL_COACH_MODULE_IDS);
+
+  setQuestionModuleIds(pack, "step3_fit_check_and_synthesis", STEP3_QUESTION_MODULE_IDS);
+  setTriggerModuleIds(pack, "step3_fit_check_and_synthesis", "selection.hint", STEP3_HINT_MODULE_IDS);
+  setTriggerModuleIds(pack, "step3_fit_check_and_synthesis", "selection.coach", STEP3_COACH_MODULE_IDS);
+  setTriggerModuleIds(pack, "step3_fit_check_and_synthesis", "selection.check", STEP3_CHECK_MODULE_IDS);
+  setTriggerModuleIds(pack, "step3_fit_check_and_synthesis", "selection.autocorrect", STEP3_AUTOCORRECT_MODULE_IDS);
+  setTriggerModuleIds(pack, "step3_fit_check_and_synthesis", "selection.review", STEP3_REVIEW_MODULE_IDS);
+  setTriggerModuleIds(pack, "step3_fit_check_and_synthesis", "selection.synthesize", STEP3_SYNTHESIZE_MODULE_IDS);
+  setTriggerModuleIds(pack, "step3_fit_check_and_synthesis", "selection.grade", STEP3_GRADE_MODULE_IDS);
+  setTriggerModuleIds(pack, "step3_fit_check_and_synthesis", "global.hint", STEP3_GLOBAL_HINT_MODULE_IDS);
+  setTriggerModuleIds(pack, "step3_fit_check_and_synthesis", "global.review", STEP3_GLOBAL_REVIEW_MODULE_IDS);
+  setTriggerModuleIds(pack, "step3_fit_check_and_synthesis", "global.coach", STEP3_GLOBAL_COACH_MODULE_IDS);
+  setTriggerModuleIds(pack, "step3_fit_check_and_synthesis", "global.grade", STEP3_GLOBAL_GRADE_MODULE_IDS);
+
+  setFlowControlSurface(pack, "step0_preparation_and_focus", "selection.hint", { panelRole: "primary", boardGroup: "core", seedByDefault: true });
+  setFlowControlSurface(pack, "step0_preparation_and_focus", "selection.check", { panelRole: "primary", boardGroup: "core", seedByDefault: true });
+  setFlowControlSurface(pack, "step0_preparation_and_focus", "selection.coach", { panelRole: "secondary", boardGroup: "core", seedByDefault: false });
+
+  setFlowControlSurface(pack, "step1_user_perspective", "selection.hint", { panelRole: "primary", boardGroup: "core", seedByDefault: true });
+  setFlowControlSurface(pack, "step1_user_perspective", "selection.check", { panelRole: "primary", boardGroup: "core", seedByDefault: true });
+  setFlowControlSurface(pack, "step1_user_perspective", "selection.coach", { panelRole: "secondary", boardGroup: "core", seedByDefault: false });
+
+  setFlowControlSurface(pack, "step2_solution_perspective", "selection.hint", { panelRole: "primary", boardGroup: "core", seedByDefault: true });
+  setFlowControlSurface(pack, "step2_solution_perspective", "selection.check", { panelRole: "primary", boardGroup: "core", seedByDefault: true });
+  setFlowControlSurface(pack, "step2_solution_perspective", "selection.coach", { panelRole: "secondary", boardGroup: "core", seedByDefault: false });
+
+  setFlowControlSurface(pack, "step3_fit_check_and_synthesis", "selection.review", { panelRole: "primary", boardGroup: "core", seedByDefault: true });
+  setFlowControlSurface(pack, "step3_fit_check_and_synthesis", "selection.autocorrect", { panelRole: "primary", boardGroup: "core", seedByDefault: true });
+  setFlowControlSurface(pack, "step3_fit_check_and_synthesis", "selection.synthesize", { panelRole: "secondary", boardGroup: "core", seedByDefault: false });
+  setFlowControlSurface(pack, "step3_fit_check_and_synthesis", "selection.coach", { panelRole: "secondary", boardGroup: "core", seedByDefault: false });
+  setFlowControlSurface(pack, "step3_fit_check_and_synthesis", "global.review", { panelRole: null, boardGroup: "meta", seedByDefault: false });
 
   setTriggerPrompt(pack, "step0_preparation_and_focus", "selection.hint", `Hinweismodus für den Schritt "Preparation & Focus":
 - Lies zuerst den semantischen Zustand dieses Schritts.
@@ -3879,6 +4397,117 @@ Allgemeine Leseregel:
 - Vergleiche über mehrere Instanzen hinweg Reifegrad und Step-2-Bereitschaft der Nutzeranalyse.
 - Benenne klar, wo Hauptnutzer, Situation, Outcomes, Verhalten oder Gains/Pains noch nicht tragfähig genug sind.`);
 
+  setTriggerPrompt(pack, "step2_solution_perspective", "selection.hint", `Hinweismodus für den Schritt "Solution Design":
+- Lies zuerst den semantischen Zustand dieses Schritts.
+- Priorisiere genau einen Mikro-Arbeitsmodus: zurück in Step 1 routen, Varianten sammeln, Hauptvariante wählen, Information klären, Functions trennen, Benefits schärfen oder Rauschen parken.
+- Gib 1 bis 3 konkrete Satzanfänge oder Fokushinweise.
+- Bevorzuge feedback; actions nur in klar begründeten Ausnahmefällen.
+- Nutze ready_for_review nur, wenn die Exit-Kriterien von Step 2 erfüllt sind.`);
+
+  setTriggerPrompt(pack, "step2_solution_perspective", "selection.coach", `Coachmodus für den Schritt "Solution Design":
+- Lies zuerst den semantischen Zustand dieses Schritts.
+- Arbeite coachend mit 3 bis 5 Leitfragen und genau einem Mikroschritt.
+- Hilf bei Variantenwahl, Ableitung und Trennung der linken Ebenen, ohne eine Komplettarchitektur vorzugeben.
+- actions sollen normalerweise leer bleiben.`);
+
+  setTriggerPrompt(pack, "step2_solution_perspective", "selection.check", `Prüfmodus für den Schritt "Solution Design":
+- Prüfe zuerst, ob Step 1 tragfähig genug für saubere Ableitung ist.
+- Prüfe dann Hauptvariante, Sorted-out-Nutzung, Trennung von Solution / Information / Function / Benefit und die Plausibilität der Benefits.
+- Korrigiere nur klare Fehlplatzierungen oder grobe Unschärfen.
+- Setze stepStatus gemäß den Exit-Kriterien von Step 2.`);
+
+  setTriggerPrompt(pack, "step2_solution_perspective", "selection.autocorrect", `Autokorrekturmodus für den Schritt "Solution Design":
+- Korrigiere nur klare Probleme der linken Seite.
+- Trenne vermischte Ebenen, fokussiere eine Hauptvariante, parke Alternativen in sorted_out_right und schärfe nur wenige notwendige Benefits.
+- Ergänze Connectoren nur selektiv, wo eine konkrete Unterstützungs- oder Ableitungsbeziehung klar ist.
+- Erfinde keinen validierten Fit und keine große Architektur.`);
+
+  setTriggerPrompt(pack, "step2_solution_perspective", "selection.review", `Reviewmodus für den Schritt "Solution Design":
+- Gib eine qualitative Einordnung der linken Seite: Variantendenken, Fokussierung, Ableitung, Nutzennähe und solutionistische Sprünge.
+- Benenne klar, ob Step 2 bereit für Step 3 ist oder noch im Problemraum oder in der Lösungsperspektive nachgeschärft werden muss.
+- Nimm standardmäßig keine Board-Mutationen vor.
+- Setze stepStatus gemäß den Exit-Kriterien von Step 2.`);
+
+  setTriggerPrompt(pack, "step2_solution_perspective", "selection.synthesize", `Synthesemodus für den Schritt "Solution Design":
+- Führe keine Fit-Synthese durch.
+- Verdichte nur, welche Hauptvariante, Information, Functions und Benefits aktuell plausibel sichtbar sind.
+- Wenn noch keine klare Hauptvariante oder keine tragfähige Ableitung erkennbar ist, sage das explizit.
+- actions sollen normalerweise leer bleiben.`);
+
+  setTriggerPrompt(pack, "step2_solution_perspective", "global.hint", `Globaler Hinweismodus für den Schritt "Solution Design":
+- Vergleiche über mehrere Instanzen hinweg, welche Boards noch in Step-1-Rückroute, Variantendivergenz, fehlender Fokusvariante, Ebenenvermischung oder generischen Benefits stecken.
+- Gib knappe Hinweise, welcher Mikro-Arbeitsmodus je Board als Nächstes sinnvoll wäre.`);
+
+  setTriggerPrompt(pack, "step2_solution_perspective", "global.check", `Globaler Prüfmodus für den Schritt "Solution Design":
+- Vergleiche über mehrere Instanzen hinweg Reifegrad und Step-3-Bereitschaft der Lösungsperspektive.
+- Benenne klar, wo Hauptvariante, Ableitung, Informationslogik, Funktionslogik oder Benefit-Qualität noch nicht tragfähig genug sind.`);
+
+  setTriggerPrompt(pack, "step2_solution_perspective", "global.autocorrect", `Globaler Autokorrekturmodus für den Schritt "Solution Design":
+- Korrigiere über mehrere Instanzen hinweg nur eindeutige Vermischungen oder Fehlplatzierungen auf der linken Seite.
+- Keine globale Vollvernetzung und keine freie Architektur-Erfindung.`);
+
+  setTriggerPrompt(pack, "step2_solution_perspective", "global.review", `Globaler Reviewmodus für den Schritt "Solution Design":
+- Vergleiche mehrere Boards hinsichtlich Variantenwahl, Fokussierung, Ableitung und Nutzennähe der linken Seite.
+- Hebe hervor, welche Instanzen bereit für Step 3 sind und welche noch in Step 2 nachschärfen müssen.`);
+
+  setTriggerPrompt(pack, "step2_solution_perspective", "global.coach", `Globaler Coachmodus für den Schritt "Solution Design":
+- Gib übergreifende Leitfragen dazu, wie Teams ihre Lösungsperspektive fokussieren und sauber ableiten können.
+- Mache deutlich, ob eher Variantenwahl, Informationsableitung, Funktionsableitung oder Benefit-Qualität das Problem ist.`);
+
+  setTriggerPrompt(pack, "step3_fit_check_and_synthesis", "selection.hint", `Hinweismodus für den Schritt "Fit Validation & Minimum Desired Product":
+- Lies zuerst den semantischen Zustand dieses Schritts.
+- Priorisiere genau den nächsten Validierungs- oder Reduktionsschritt: zurückrouten, Fit-Beziehungen prüfen, Checkmarks klären, Rauschen ausdünnen oder den Kern im Check-Feld verdichten.
+- Gib 1 bis 3 konkrete Fokushinweise.
+- Nutze ready_for_review oder completed nur, wenn die Exit-Kriterien von Step 3 erfüllt sind.`);
+
+  setTriggerPrompt(pack, "step3_fit_check_and_synthesis", "selection.coach", `Coachmodus für den Schritt "Fit Validation & Minimum Desired Product":
+- Lies zuerst den semantischen Zustand dieses Schritts.
+- Arbeite coachend mit 3 bis 5 Leitfragen und genau einem Mikroschritt.
+- Frage explizit, welcher Benefit was auf der rechten Seite wirklich adressiert und was für den validierten Kern nötig ist.
+- actions sollen normalerweise leer bleiben.`);
+
+  setTriggerPrompt(pack, "step3_fit_check_and_synthesis", "selection.check", `Prüfmodus für den Schritt "Fit Validation & Minimum Desired Product":
+- Prüfe Vorbedingungen, belastbare Fit-Ketten, sinnvolle Checkmarks, Restrauschen und Sichtbarkeit des Minimum Desired Product.
+- Nimm nur kleine, klare Korrekturen vor.
+- Setze stepStatus gemäß den Exit-Kriterien von Step 3.`);
+
+  setTriggerPrompt(pack, "step3_fit_check_and_synthesis", "selection.autocorrect", `Autokorrekturmodus für den Schritt "Fit Validation & Minimum Desired Product":
+- Nutze Checkmarks, Parken, Ausdünnen und wenige belastbare Fit-Kanten nur zustandsbezogen.
+- Markiere nur validierte Beziehungen, parke Alternativen bevorzugt in sorted_out_right und mache den Kern des Minimum Desired Product sichtbar.
+- Erfinde keine neue Struktur und erkläre im feedback klar, was validiert, geparkt oder reduziert wurde.`);
+
+  setTriggerPrompt(pack, "step3_fit_check_and_synthesis", "selection.review", `Reviewmodus für den Schritt "Fit Validation & Minimum Desired Product":
+- Gib eine qualitative Einordnung des Fits: Validierungstiefe, adressierte Pains/Gains/Outcomes, Restrauschen und Handoff-Readiness innerhalb dieser Übung.
+- Benenne klar, ob der Canvas weiter validieren, reduzieren oder sauber in frühere Schritte zurückmuss.
+- Nimm standardmäßig keine Board-Mutationen vor.
+- Setze stepStatus gemäß den Exit-Kriterien von Step 3.`);
+
+  setTriggerPrompt(pack, "step3_fit_check_and_synthesis", "selection.synthesize", `Synthesemodus für den Schritt "Fit Validation & Minimum Desired Product":
+- Verdichte nur validierten oder weitgehend tragfähigen Fit.
+- Formuliere 1 bis 3 knappe Check-Aussagen im Feld Check.
+- Wenn die Vorbedingungen noch nicht ausreichen, sage klar, was zuerst validiert oder reduziert werden muss.
+- Ergänze höchstens wenige belastbare Fit-Kanten und nimm keine große Restrukturierung vor.`);
+
+  setTriggerPrompt(pack, "step3_fit_check_and_synthesis", "selection.grade", `Bewertungsmodus für den Schritt "Fit Validation & Minimum Desired Product":
+- Bewerte Validierungstiefe, Kernfokus, Rest-Rauschen, Check-Feld-Qualität und Handoff-Readiness innerhalb dieser Übung.
+- Werte den tragfähigen Kern, nicht die Menge der Inhalte.
+- Liefere zusätzlich eine evaluation mit Rubrik.`);
+
+  setTriggerPrompt(pack, "step3_fit_check_and_synthesis", "global.hint", `Globaler Hinweismodus für den Schritt "Fit Validation & Minimum Desired Product":
+- Vergleiche über mehrere Instanzen hinweg, welche Boards noch Vorbedingungen klären, welche validieren, welche reduzieren und welche bereits einen sichtbaren Kern haben.
+- Gib knappe Hinweise, welcher Mikro-Arbeitsmodus je Board als Nächstes sinnvoll wäre.`);
+
+  setTriggerPrompt(pack, "step3_fit_check_and_synthesis", "global.review", `Globaler Reviewmodus für den Schritt "Fit Validation & Minimum Desired Product":
+- Vergleiche mehrere Instanzen auf Validierungstiefe, Minimum-Desired-Product-Fokus, Rest-Rauschen und Handoff-Readiness innerhalb dieser Übung.
+- Fokus auf Muster und Unterschiede, nicht auf Massenmutation.`);
+
+  setTriggerPrompt(pack, "step3_fit_check_and_synthesis", "global.coach", `Globaler Coachmodus für den Schritt "Fit Validation & Minimum Desired Product":
+- Gib übergreifende Leitfragen dazu, welche Boards weiter validieren, welche reduzieren und welche sauber in frühere Schritte zurück sollten.`);
+
+  setTriggerPrompt(pack, "step3_fit_check_and_synthesis", "global.grade", `Globaler Bewertungsmodus für den Schritt "Fit Validation & Minimum Desired Product":
+- Bewerte die Gesamtqualität des validierten Kerns über mehrere Instanzen hinweg.
+- Liefere zusätzlich eine evaluation mit Rubrik.`);
+
   applyAnalyticsProposalPromptPatch(pack);
 
   return catalog;
@@ -3930,7 +4559,10 @@ for (const [packId, packDef] of Object.entries(METHOD_CATALOG.packs || {})) {
         defaultScopeType: runProfile.defaultScopeType,
         allowedActions: Object.freeze(runProfile.allowedActions),
         uiHint: runProfile.uiHint,
-        sortOrder: runProfile.sortOrder
+        sortOrder: runProfile.sortOrder,
+        panelRole: runProfile.panelRole || null,
+        boardGroup: runProfile.boardGroup || "core",
+        seedByDefault: runProfile.seedByDefault === true
       });
       runProfiles[finalProfile.id] = finalProfile;
       packRunProfiles.push(runProfile);
@@ -4143,7 +4775,34 @@ export function listRunProfilesForPack(packOrId, options = {}) {
     .filter((profile) => !stepTemplateId || profile.stepTemplateId === stepTemplateId)
     .map((profile) => localizeRunProfileProjection(profile, lang));
 
-  return profiles.slice().sort((a, b) => String(a.label || a.id).localeCompare(String(b.label || b.id), undefined, { sensitivity: "base" }));
+  return profiles.slice().sort((a, b) => (
+    Number(a?.sortOrder ?? Number.MAX_SAFE_INTEGER) - Number(b?.sortOrder ?? Number.MAX_SAFE_INTEGER) ||
+    String(a?.label || a?.id || "").localeCompare(String(b?.label || b?.id || ""), undefined, { sensitivity: "base" })
+  ));
+}
+
+export function listRunProfilesForStep(packOrId, stepId, options = {}) {
+  const normalizedStepId = asNonEmptyString(stepId);
+  if (!normalizedStepId) return [];
+  return listRunProfilesForPack(packOrId, {
+    ...options,
+    stepTemplateId: normalizedStepId
+  });
+}
+
+export function listRunProfilesForStepSurface(packOrId, stepId, options = {}) {
+  const panelRole = options && Object.prototype.hasOwnProperty.call(options, "panelRole")
+    ? normalizeRunProfilePanelRole(options.panelRole)
+    : null;
+  const boardGroup = options && Object.prototype.hasOwnProperty.call(options, "boardGroup")
+    ? normalizeRunProfileBoardGroup(options.boardGroup)
+    : null;
+  const seedByDefaultOnly = options?.seedByDefaultOnly === true;
+
+  return listRunProfilesForStep(packOrId, stepId, options)
+    .filter((profile) => !panelRole || profile?.panelRole === panelRole)
+    .filter((profile) => !boardGroup || profile?.boardGroup === boardGroup)
+    .filter((profile) => !seedByDefaultOnly || profile?.seedByDefault === true);
 }
 
 export function getRunProfileById(id, options = {}) {

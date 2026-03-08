@@ -7,6 +7,8 @@ export {
   listStepTemplatesForPack,
   getStepTemplateForPack,
   listRunProfilesForPack,
+  listRunProfilesForStep,
+  listRunProfilesForStepSurface,
   getRunProfileById,
   getPromptModuleById,
   getPromptModulesByIds

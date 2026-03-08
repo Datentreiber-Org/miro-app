@@ -1,4 +1,4 @@
-<!doctype html> 
+<!doctype html>
 <html lang="de">
 <head>
   <meta charset="utf-8" />
@@ -185,13 +185,17 @@
   <div id="selection-status" data-i18n="status.selection.loading">Selektion wird geladen ...</div>
 
   <div class="panel-section" id="user-actions-panel">
-    <div class="panel-section-title" data-i18n="section.exerciseActions">Übungsaktionen</div>
+    <div class="panel-section-title" data-i18n="section.exerciseActions">Empfohlene Aktionen</div>
+    <div class="panel-section-title helper-text" id="exercise-primary-actions-title" data-i18n="section.exerciseActionsPrimary">Primäre Aktionen</div>
+    <div id="exercise-primary-actions" class="btn-row"></div>
+
+    <div class="panel-section-title helper-text" id="exercise-secondary-actions-title" data-i18n="exercise.action.secondaryHeading">Weitere Aktionen</div>
+    <div id="exercise-secondary-actions" class="btn-row"></div>
+
+    <div class="panel-section-title helper-text" id="exercise-proposal-title" data-i18n="section.exerciseActionsProposal">Vorschläge</div>
+    <div id="exercise-proposal-actions" class="btn-row"></div>
+
     <div class="btn-row">
-      <button id="btn-exercise-check" data-i18n="exercise.action.check">Antworten prüfen</button>
-      <button id="btn-exercise-hint" data-i18n="exercise.action.hint">Hinweis geben</button>
-      <button id="btn-exercise-autocorrect" data-i18n="exercise.action.autocorrect">Korrektur anwenden</button>
-      <button id="btn-exercise-review" data-i18n="exercise.action.review">Review</button>
-      <button id="btn-exercise-coach" data-i18n="exercise.action.coach">Coach</button>
       <button id="btn-exercise-next-step" data-i18n="exercise.action.nextStep">Nächster Schritt</button>
     </div>
     <div id="exercise-action-help" class="helper-text" data-i18n="exercise.action.help.default">
@@ -231,6 +235,18 @@
       <select id="exercise-step" disabled>
         <option value="" data-i18n="admin.exerciseStep.none">Kein Exercise Pack aktiv</option>
       </select>
+    </div>
+
+    <div class="panel-section" id="admin-trigger-panel">
+      <div class="panel-section-title" data-i18n="section.adminStepTriggers">Erweiterte Schritt-Trigger</div>
+      <div class="row">
+        <label for="exercise-admin-trigger" data-i18n="admin.stepTrigger.label">Erlaubter Trigger</label>
+        <select id="exercise-admin-trigger"></select>
+      </div>
+      <div class="btn-row">
+        <button id="btn-exercise-admin-trigger-run" data-i18n="admin.stepTrigger.run">Trigger ausführen</button>
+      </div>
+      <div id="exercise-admin-trigger-help" class="helper-text" data-i18n="admin.stepTrigger.help">Führt jeden im aktuellen Schritt erlaubten Trigger direkt aus. Versteckte Trigger bleiben so testbar, ohne im User-Panel prominent zu erscheinen.</div>
     </div>
 
     <div class="row">
