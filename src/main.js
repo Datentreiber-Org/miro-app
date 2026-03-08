@@ -660,7 +660,8 @@ async function syncBoardChromeLanguage(lang = getCurrentDisplayLanguage()) {
   }
 
   for (const [flowId, rawFlow] of state.boardFlowsById.entries()) {
-    const normalizedFlow = BoardFlow.normalizeBoardFlow(rawFlow);
+    const normalizedFlow = await ensureBoardFlowHealthy(rawFlow, { persist: true, pruneMissingControls: true });
+    state.boardFlowsById.set(flowId, normalizedFlow);
     const packTemplate = normalizedFlow.packTemplateId
       ? ExerciseLibrary.getPackTemplateById(normalizedFlow.packTemplateId, { lang })
       : null;
@@ -1486,9 +1487,216 @@ function renderFlowAuthoringControls({ forceLabelSync = false } = {}) {
   renderFlowAuthoringStatus();
 }
 
+function mergeBoardFlowWithPackTemplate(flow, packTemplate, { lang = getCurrentDisplayLanguage() } = {}) {
+  const normalizedFlow = BoardFlow.normalizeBoardFlow(flow);
+  if (!normalizedFlow?.id || !packTemplate?.id) {
+    return { flow: normalizedFlow, changed: false };
+  }
+
+  const templateSteps = ExerciseLibrary.listStepTemplatesForPack(packTemplate, { lang })
+    .slice()
+    .sort((a, b) => Number(a?.order || 0) - Number(b?.order || 0));
+  if (!templateSteps.length) {
+    return { flow: normalizedFlow, changed: false };
+  }
+
+  const existingStepsById = new Map((normalizedFlow.steps || []).map((step) => [step.id, step]));
+  const templateStepIds = new Set(templateSteps.map((step) => step.id));
+  let changed = false;
+
+  const mergedTemplateSteps = templateSteps.map((templateStep) => {
+    const existing = existingStepsById.get(templateStep.id) || null;
+    const labelMode = existing?.labelMode === 'custom' ? 'custom' : 'auto';
+    const label = labelMode === 'custom'
+      ? pickFirstNonEmptyString(existing?.label, templateStep.label, templateStep.id)
+      : pickFirstNonEmptyString(templateStep.label, existing?.label, templateStep.id);
+    const instructionOverride = pickFirstNonEmptyString(existing?.instructionOverride);
+    const instruction = instructionOverride
+      ? pickFirstNonEmptyString(existing?.instruction, templateStep.instruction)
+      : pickFirstNonEmptyString(templateStep.instruction, existing?.instruction);
+    const controlIds = Array.from(new Set((Array.isArray(existing?.controlIds) ? existing.controlIds : []).filter(Boolean)));
+    const nextStep = {
+      id: templateStep.id,
+      label,
+      labelMode,
+      order: Number.isFinite(Number(templateStep.order)) ? Number(templateStep.order) : Number(existing?.order || 0),
+      instruction: instruction || null,
+      instructionOverride: instructionOverride || null,
+      controlIds
+    };
+    if (!existing) {
+      changed = true;
+    } else if (
+      existing.label !== nextStep.label ||
+      (existing.labelMode || 'auto') !== nextStep.labelMode ||
+      Number(existing.order || 0) !== nextStep.order ||
+      (existing.instruction || null) !== nextStep.instruction ||
+      (existing.instructionOverride || null) !== nextStep.instructionOverride ||
+      JSON.stringify(existing.controlIds || []) !== JSON.stringify(nextStep.controlIds)
+    ) {
+      changed = true;
+    }
+    return nextStep;
+  });
+
+  const extraSteps = (normalizedFlow.steps || []).filter((step) => step?.id && !templateStepIds.has(step.id));
+  const nextSteps = [...mergedTemplateSteps, ...extraSteps].sort((a, b) => Number(a?.order || 0) - Number(b?.order || 0));
+  const validStepIds = new Set(nextSteps.map((step) => step.id));
+
+  const nextControls = {};
+  for (const [controlId, control] of Object.entries(normalizedFlow.controls || {})) {
+    const runProfile = control?.runProfileId ? ExerciseLibrary.getRunProfileById(control.runProfileId, { lang }) : null;
+    const desiredStepId = pickFirstNonEmptyString(control?.stepId, runProfile?.stepTemplateId);
+    const nextLabel = control?.labelMode === 'custom'
+      ? control.label
+      : pickFirstNonEmptyString(runProfile?.label, control?.label);
+    const nextControl = {
+      ...control,
+      stepId: desiredStepId || control?.stepId || null,
+      label: nextLabel || control?.label || null
+    };
+    if ((control?.stepId || null) !== (nextControl.stepId || null) || (control?.label || null) !== (nextControl.label || null)) {
+      changed = true;
+    }
+    nextControls[controlId] = nextControl;
+  }
+
+  let nextCurrentStepId = pickFirstNonEmptyString(normalizedFlow?.runtime?.currentStepId);
+  if (!nextCurrentStepId || !validStepIds.has(nextCurrentStepId)) {
+    const preferredStepId = pickFirstNonEmptyString(
+      normalizedFlow?.packTemplateId === getSelectedExercisePackTemplateId() ? state.exerciseRuntime?.currentStepId : null,
+      templateSteps[0]?.id,
+      nextSteps[0]?.id
+    );
+    nextCurrentStepId = preferredStepId || null;
+    changed = true;
+  }
+
+  const validControlIds = new Set(Object.keys(nextControls));
+  const finalSteps = nextSteps.map((step) => {
+    const filteredControlIds = Array.from(new Set((Array.isArray(step.controlIds) ? step.controlIds : []).filter((controlId) => validControlIds.has(controlId))));
+    if (JSON.stringify(step.controlIds || []) !== JSON.stringify(filteredControlIds)) {
+      changed = true;
+      return { ...step, controlIds: filteredControlIds };
+    }
+    return step;
+  });
+
+  const nextFlow = BoardFlow.normalizeBoardFlow({
+    ...normalizedFlow,
+    steps: finalSteps,
+    controls: nextControls,
+    runtime: {
+      ...(normalizedFlow.runtime || {}),
+      currentStepId: nextCurrentStepId
+    },
+    updatedAt: changed ? new Date().toISOString() : normalizedFlow.updatedAt
+  });
+
+  return { flow: nextFlow, changed };
+}
+
+async function pruneMissingBoardFlowControls(flow) {
+  const normalizedFlow = BoardFlow.normalizeBoardFlow(flow);
+  const controls = Object.entries(normalizedFlow.controls || {});
+  const itemIds = controls.map(([, control]) => String(control?.itemId || '')).filter(Boolean);
+  if (!itemIds.length) return { flow: normalizedFlow, changed: false, removedControlIds: [] };
+
+  let items = [];
+  try {
+    items = await Board.getItemsById(itemIds, log);
+  } catch (error) {
+    log('WARNUNG: Board-Flow-Controls konnten nicht geprüft werden: ' + formatRuntimeErrorMessage(error));
+    return { flow: normalizedFlow, changed: false, removedControlIds: [] };
+  }
+
+  const presentItemIds = new Set((Array.isArray(items) ? items : []).map((item) => String(item?.id || '')).filter(Boolean));
+  const removedControlIds = controls
+    .filter(([, control]) => control?.itemId && !presentItemIds.has(String(control.itemId)))
+    .map(([controlId]) => controlId);
+
+  if (!removedControlIds.length) {
+    return { flow: normalizedFlow, changed: false, removedControlIds: [] };
+  }
+
+  const removedSet = new Set(removedControlIds);
+  const nextControls = Object.fromEntries(controls.filter(([controlId]) => !removedSet.has(controlId)));
+  const nextSteps = (normalizedFlow.steps || []).map((step) => ({
+    ...step,
+    controlIds: (Array.isArray(step.controlIds) ? step.controlIds : []).filter((controlId) => !removedSet.has(controlId))
+  }));
+
+  const nextFlow = BoardFlow.normalizeBoardFlow({
+    ...normalizedFlow,
+    controls: nextControls,
+    steps: nextSteps,
+    updatedAt: new Date().toISOString()
+  });
+  return { flow: nextFlow, changed: true, removedControlIds };
+}
+
+async function ensureBoardFlowHealthy(flow, {
+  persist = false,
+  pruneMissingControls = true,
+  preferredStepId = null,
+  forcePreferredWhenNoControls = false
+} = {}) {
+  let nextFlow = BoardFlow.normalizeBoardFlow(flow);
+  if (!nextFlow?.id) return nextFlow;
+
+  const lang = getCurrentDisplayLanguage();
+  const packTemplate = nextFlow.packTemplateId
+    ? ExerciseLibrary.getPackTemplateById(nextFlow.packTemplateId, { lang })
+    : null;
+  let changed = false;
+
+  if (packTemplate) {
+    const merged = mergeBoardFlowWithPackTemplate(nextFlow, packTemplate, { lang });
+    nextFlow = merged.flow;
+    changed = changed || merged.changed;
+  }
+
+  const effectivePreferredStepId = pickFirstNonEmptyString(preferredStepId);
+  const hasControls = Object.keys(nextFlow.controls || {}).length > 0;
+  const validStepIds = new Set((nextFlow.steps || []).map((step) => step.id));
+  if (effectivePreferredStepId && validStepIds.has(effectivePreferredStepId)) {
+    const currentStepId = pickFirstNonEmptyString(nextFlow?.runtime?.currentStepId);
+    if (!currentStepId || !validStepIds.has(currentStepId) || (forcePreferredWhenNoControls && !hasControls)) {
+      const updatedFlow = BoardFlow.setFlowCurrentStep(nextFlow, effectivePreferredStepId);
+      if (updatedFlow.runtime?.currentStepId !== nextFlow.runtime?.currentStepId) {
+        nextFlow = updatedFlow;
+        changed = true;
+      }
+    }
+  }
+
+  if (pruneMissingControls) {
+    const pruned = await pruneMissingBoardFlowControls(nextFlow);
+    nextFlow = pruned.flow;
+    changed = changed || pruned.changed;
+    if (pruned.removedControlIds?.length) {
+      log('WARNUNG: Verwaiste Board-Flow-Controls entfernt: ' + pruned.removedControlIds.join(', '));
+    }
+  }
+
+  if (changed && persist) {
+    nextFlow = await Board.saveBoardFlow({
+      ...nextFlow,
+      updatedAt: new Date().toISOString()
+    }, log);
+  }
+
+  return nextFlow;
+}
+
 async function loadBoardFlows() {
   const flows = await Board.listBoardFlows(log);
-  state.boardFlowsById = new Map(flows.map((flow) => [flow.id, flow]));
+  const entries = [];
+  for (const flow of flows) {
+    const healthyFlow = await ensureBoardFlowHealthy(flow, { persist: true, pruneMissingControls: true });
+    if (healthyFlow?.id) entries.push([healthyFlow.id, healthyFlow]);
+  }
+  state.boardFlowsById = new Map(entries);
   await syncAllBoardFlowVisuals();
   renderFlowAuthoringStatus();
 }
@@ -1584,7 +1792,17 @@ async function saveBoardFlowAndCache(flow, { reflow = false } = {}) {
 
 async function findOrCreateBoardFlowForPack(packTemplateId, anchorInstanceId) {
   const existing = getExistingBoardFlowForPack(packTemplateId, anchorInstanceId);
-  if (existing) return existing;
+  if (existing) {
+    const selectedStepId = getSelectedFlowStepTemplateId(ExerciseLibrary.getPackTemplateById(packTemplateId, { lang: getCurrentDisplayLanguage() }));
+    const healthyExisting = await ensureBoardFlowHealthy(existing, {
+      persist: true,
+      pruneMissingControls: true,
+      preferredStepId: selectedStepId,
+      forcePreferredWhenNoControls: true
+    });
+    state.boardFlowsById.set(healthyExisting.id, healthyExisting);
+    return healthyExisting;
+  }
 
   const lang = getCurrentDisplayLanguage();
   const packTemplate = ExerciseLibrary.getPackTemplateById(packTemplateId, { lang });
@@ -1679,16 +1897,24 @@ async function createBoardFlowControlForRunProfile({ flow, anchorInstanceId, run
     throw new Error("Step Template für Run Profile nicht gefunden: " + runProfile.id);
   }
 
-  const orderedControls = sortFlowControlsForDisplay(Object.values(flow.controls || {}));
+  let workingFlow = await ensureBoardFlowHealthy(flow, {
+    persist: false,
+    pruneMissingControls: true,
+    preferredStepId: stepTemplate.id,
+    forcePreferredWhenNoControls: true
+  });
+
+  const orderedControls = sortFlowControlsForDisplay(Object.values(workingFlow.controls || {}));
   const position = await Board.computeSuggestedFlowControlPosition(state.instancesById.get(anchorInstanceId), { offsetIndex: orderedControls.length }, log);
   const nextLabel = pickFirstNonEmptyString(label, runProfile.label, t("flow.defaultControlLabel", lang));
+  const initialState = (!orderedControls.length || workingFlow.runtime?.currentStepId === stepTemplate.id) ? "active" : "disabled";
   const shape = await Board.createFlowControlShape({
     label: nextLabel,
     x: position.x,
     y: position.y,
     width: position.width,
     height: position.height,
-    state: "disabled",
+    state: initialState,
     lang
   }, log);
 
@@ -1702,10 +1928,13 @@ async function createBoardFlowControlForRunProfile({ flow, anchorInstanceId, run
     stepId: stepTemplate.id,
     anchorInstanceId,
     scope: scope || buildFlowScopeForRunProfile(runProfile, anchorInstanceId),
-    state: "disabled"
+    state: initialState
   });
 
-  const nextFlow = BoardFlow.upsertFlowControl(flow, control);
+  let nextFlow = BoardFlow.upsertFlowControl(workingFlow, control);
+  if (!orderedControls.length && nextFlow.runtime?.currentStepId !== stepTemplate.id) {
+    nextFlow = BoardFlow.setFlowCurrentStep(nextFlow, stepTemplate.id);
+  }
   await Board.writeFlowControlMeta(shape, {
     flowId: nextFlow.id,
     controlId
@@ -1986,8 +2215,9 @@ async function resolveSelectedFlowControl(items) {
   if (!meta) return null;
 
   const persistedFlow = await Board.loadBoardFlow(meta.flowId, log).catch(() => null);
-  const flow = persistedFlow || state.boardFlowsById.get(meta.flowId) || null;
-  if (!flow) return null;
+  const rawFlow = persistedFlow || state.boardFlowsById.get(meta.flowId) || null;
+  if (!rawFlow) return null;
+  const flow = await ensureBoardFlowHealthy(rawFlow, { persist: true, pruneMissingControls: true });
   state.boardFlowsById.set(flow.id, flow);
   await syncBoardFlowVisuals(flow);
 
@@ -2034,19 +2264,31 @@ function buildPromptRuntimeFromFlow(flow, control, runProfile, flowStep, packTem
 
 async function runAgentFromFlowControl(flow, control, selectedItem) {
   const lang = getCurrentDisplayLanguage();
-  const runProfile = ExerciseLibrary.getRunProfileById(control?.runProfileId, { lang });
-  const packTemplate = ExerciseLibrary.getPackTemplateById(flow?.packTemplateId, { lang });
-  const flowStep = BoardFlow.getFlowStep(flow, control?.stepId);
+  const healthyFlow = await ensureBoardFlowHealthy(flow, { persist: true, pruneMissingControls: true });
+  state.boardFlowsById.set(healthyFlow.id, healthyFlow);
+
+  const healthyControl = healthyFlow.controls?.[control?.id] || BoardFlow.findFlowControlByItemId(healthyFlow, selectedItem?.id) || control;
+  const runProfile = ExerciseLibrary.getRunProfileById(healthyControl?.runProfileId, { lang });
+  const packTemplate = ExerciseLibrary.getPackTemplateById(healthyFlow?.packTemplateId, { lang });
+  const resolvedStepId = pickFirstNonEmptyString(healthyControl?.stepId, runProfile?.stepTemplateId);
+  const flowStep = BoardFlow.getFlowStep(healthyFlow, resolvedStepId)
+    || (packTemplate && resolvedStepId ? ExerciseLibrary.getStepTemplateForPack(packTemplate, resolvedStepId, { lang }) : null)
+    || (packTemplate && runProfile?.stepTemplateId ? ExerciseLibrary.getStepTemplateForPack(packTemplate, runProfile.stepTemplateId, { lang }) : null);
 
   if (!runProfile || !packTemplate || !flowStep) {
-    const msg = "Board Flow: Control ist unvollständig konfiguriert.";
+    const missing = [
+      runProfile ? null : "runProfile",
+      packTemplate ? null : "packTemplate",
+      flowStep ? null : "step"
+    ].filter(Boolean).join(", ");
+    const msg = "Board Flow: Control ist unvollständig konfiguriert" + (missing ? " (" + missing + ")" : "") + ".";
     log(msg);
     if (IS_HEADLESS) await notifyRuntime(msg, { level: "error" });
     return;
   }
 
-  if (control.state !== "active") {
-    const msg = "Board Flow: Control '" + (control.label || control.id) + "' ist derzeit nicht aktiv.";
+  if (healthyControl.state !== "active") {
+    const msg = "Board Flow: Control '" + (healthyControl.label || healthyControl.id) + "' ist derzeit nicht aktiv.";
     log(msg);
     if (IS_HEADLESS) await notifyRuntime(msg, { level: "warning" });
     return;
@@ -2060,7 +2302,7 @@ async function runAgentFromFlowControl(flow, control, selectedItem) {
     return;
   }
 
-  const targetInstanceIds = resolveTargetInstanceIdsFromFlowScope(control.scope, packTemplate);
+  const targetInstanceIds = resolveTargetInstanceIdsFromFlowScope(healthyControl.scope, packTemplate);
   const targetInstanceLabels = getInstanceLabelsFromIds(targetInstanceIds);
   const triggerContext = ExerciseEngine.resolveTriggerContextForRunProfile({
     runProfile,
@@ -2077,20 +2319,20 @@ async function runAgentFromFlowControl(flow, control, selectedItem) {
     return;
   }
 
-  const promptRuntimeOverride = buildPromptRuntimeFromFlow(flow, control, runProfile, flowStep, packTemplate, targetInstanceIds);
-  const sourceLabel = control.label || runProfile.label || "Flow Control";
+  const promptRuntimeOverride = buildPromptRuntimeFromFlow(healthyFlow, healthyControl, runProfile, flowStep, packTemplate, targetInstanceIds);
+  const sourceLabel = healthyControl.label || runProfile.label || "Flow Control";
 
   const nextFlow = {
-    ...flow,
+    ...healthyFlow,
     runtime: {
-      ...(flow.runtime || {}),
-      lastTriggeredControlId: control.id,
+      ...(healthyFlow.runtime || {}),
+      lastTriggeredControlId: healthyControl.id,
       lastTriggeredAt: new Date().toISOString()
     },
     controls: {
-      ...(flow.controls || {}),
-      [control.id]: {
-        ...control,
+      ...(healthyFlow.controls || {}),
+      [healthyControl.id]: {
+        ...healthyControl,
         lastTriggeredAt: new Date().toISOString()
       }
     }
