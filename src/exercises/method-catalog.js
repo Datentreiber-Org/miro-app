@@ -209,7 +209,8 @@ function buildExerciseStep(stepDef) {
       requiresSelection: profile?.requiresSelection === true,
       mutationPolicy: asNonEmptyString(profile?.mutationPolicy),
       feedbackPolicy: asNonEmptyString(profile?.feedbackPolicy),
-      prompt: asNonEmptyString(profile?.prompt)
+      prompt: asNonEmptyString(profile?.prompt),
+      moduleIds: Object.freeze(normalizeUniqueStrings(profile?.moduleIds))
     });
   }
 
@@ -274,7 +275,10 @@ function buildFlowControlProjection(packDef, stepDef, triggerProfile) {
     packTemplateId: asNonEmptyString(packDef?.packTemplateId),
     stepTemplateId: asNonEmptyString(stepDef?.id),
     triggerKey: normalizeTriggerKey(triggerProfile?.triggerKey),
-    moduleIds: normalizeUniqueStrings(flowControl.moduleIds),
+    moduleIds: normalizeUniqueStrings([
+      ...(Array.isArray(triggerProfile?.moduleIds) ? triggerProfile.moduleIds : []),
+      ...(Array.isArray(flowControl?.moduleIds) ? flowControl.moduleIds : [])
+    ]),
     mutationPolicy: asNonEmptyString(flowControl.mutationPolicy) || asNonEmptyString(triggerProfile?.mutationPolicy),
     feedbackPolicy: asNonEmptyString(flowControl.feedbackPolicy) || asNonEmptyString(triggerProfile?.feedbackPolicy),
     defaultScopeType: asNonEmptyString(flowControl.defaultScopeType) || "fixed_instances",
@@ -1480,6 +1484,18 @@ function setTriggerPrompt(pack, stepId, triggerKey, prompt) {
   trigger.prompt = prompt;
 }
 
+function setQuestionModuleIds(pack, stepId, moduleIds) {
+  const stepDef = pack?.steps?.[stepId];
+  if (!stepDef || typeof stepDef !== "object") return;
+  stepDef.questionModuleIds = normalizeUniqueStrings(moduleIds);
+}
+
+function setTriggerModuleIds(pack, stepId, triggerKey, moduleIds) {
+  const trigger = pack?.steps?.[stepId]?.triggerProfiles?.[triggerKey];
+  if (!trigger || typeof trigger !== "object") return;
+  trigger.moduleIds = normalizeUniqueStrings(moduleIds);
+}
+
 function applyAnalyticsUseCaseBatch7Patch(catalog) {
   const pack = catalog?.packs?.["analytics-ai-usecase-fit-sprint-v1"];
   if (!pack || typeof pack !== "object") return catalog;
@@ -1998,7 +2014,8 @@ function makeTriggerProfileDef(triggerKey, {
   mutationPolicy = null,
   feedbackPolicy = null,
   flowControl = null,
-  requiresSelection = null
+  requiresSelection = null,
+  moduleIds = []
 } = {}) {
   const parts = inferTriggerParts(triggerKey);
   if (!parts.triggerKey) return null;
@@ -2013,6 +2030,7 @@ function makeTriggerProfileDef(triggerKey, {
     mutationPolicy: asNonEmptyString(mutationPolicy),
     feedbackPolicy: asNonEmptyString(feedbackPolicy),
     prompt: asNonEmptyString(prompt),
+    moduleIds: normalizeUniqueStrings(moduleIds),
     flowControl: flowControl && typeof flowControl === "object" ? flowControl : null
   };
 }
@@ -3238,6 +3256,7 @@ function applyAnalyticsProposalPromptPatch(pack) {
       mutationPolicy: "full",
       feedbackPolicy: "text",
       prompt: proposalConfig.prompt,
+      moduleIds: proposalConfig.moduleIds,
       flowControl: makeFlowControlDef({
         id: proposalConfig.runProfileId,
         label: proposalConfig.label,
@@ -3255,6 +3274,7 @@ function applyAnalyticsProposalPromptPatch(pack) {
       mutationPolicy: "full",
       feedbackPolicy: "text",
       prompt: applyConfig.prompt,
+      moduleIds: applyConfig.moduleIds,
       flowControl: makeFlowControlDef({
         id: applyConfig.runProfileId,
         label: applyConfig.label,
@@ -3282,6 +3302,8 @@ function applyAnalyticsProposalPromptPatch(pack) {
       "analytics.fit.shared.validation_and_color_semantics",
       "analytics.fit.shared.no_handoff_boundary",
       "analytics.fit.step0.focus_preparation",
+      "analytics.fit.step0.state_model",
+      "analytics.fit.step0.trigger_behavior",
       "analytics.fit.step0.proposal_focus"
     ],
     uiHint: "Macht konkrete Fokus- und Scope-Vorschläge, ohne sie sofort anzuwenden.",
@@ -3314,7 +3336,10 @@ function applyAnalyticsProposalPromptPatch(pack) {
       "analytics.fit.shared.proposal_mode",
       "analytics.fit.shared.sorted_out_semantics",
       "analytics.fit.shared.validation_and_color_semantics",
+      "analytics.fit.shared.no_handoff_boundary",
       "analytics.fit.step1.focus_user_perspective",
+      "analytics.fit.step1.state_model",
+      "analytics.fit.step1.trigger_behavior",
       "analytics.fit.step1.diverge_and_focus_users",
       "analytics.fit.step1.attach_and_prioritize_gains_pains",
       "analytics.fit.step1.proposal_user_analysis"
@@ -3414,51 +3439,446 @@ function applyAnalyticsUseCaseDidacticPatch(catalog) {
 
   pack.exerciseGlobalPrompt = `Auf diesem Board läuft die Übung "Use Case Fit Sprint" auf dem Canvas "Analytics & AI Use Case".
 
-Übergeordnetes Ziel:
-- Entwickle einen Analytics- oder KI-Anwendungsfall konsequent aus einer realen Nutzer- und Entscheidungssituation.
-- Diese Übung bildet einen isolierten Einzelcanvas ab: Fokus setzen, Nutzerarbeit aufbauen, Lösung ableiten, Fit validieren und auf einen tragfähigen Kern reduzieren.
-- Echte Cross-Canvas-Handoffs werden in dieser Übung noch nicht ausgeführt.
+Ziel:
+- Leite einen Analytics- oder KI-Use-Case aus realer Nutzerarbeit, realen Zielen, Entscheidungen und Handlungen her.
+- Diese Übung bleibt auf einem Einzelcanvas; ein echter Cross-Canvas-Handoff wird hier noch nicht ausgeführt.
 
-Didaktische Leitidee:
-- Step 0 = Preparation & Focus: Fokus im Header, Scope schärfen, offene Annahmen sichtbar machen.
-- Step 1 = User Needs Analysis: Nutzerrollen divergieren und fokussieren, Situation konkretisieren, Objectives/Results und Decisions/Actions strukturieren, Gains/Pains andocken und priorisieren.
-- Step 2 = Solution Design: Varianten sammeln, eine Hauptvariante wählen, Information und Functions ableiten, Benefits formulieren.
-- Step 3 = Fit Validation & Minimum Desired Product: Benefits gegen die rechte Seite validieren, Checkmarks setzen, Reste ausdünnen, Minimum Desired Product sichtbar machen und den Kern im Feld Check verdichten.
+Schrittrahmen:
+- Step 0: Fokus setzen, Scope schärfen, offene Annahmen sichtbar machen.
+- Step 1: Problemraum aufbauen: Hauptnutzer, Situation, Objectives & Results, Decisions & Actions, Gains/Pains.
+- Step 2: Lösung ableiten: Varianten, Fokusvariante, Information, Functions, Benefits.
+- Step 3: Fit validieren und auf einen tragfähigen Kern reduzieren.
 
-Grundregeln:
-- Arbeite präzise, atomar, area-genau und passend zum aktuellen Schritt.
-- Nutze Sorted-out bewusst zum Parken und Fokussieren.
-- Nutze Farben methodisch konsistent.
-- Nutze Checkmarks nur für bewusst validierte Beziehungen.
-- Nicht jede Sticky Note braucht einen Connector. Sparse, explizite Relationen sind richtig; lose Sammlungen sind ebenfalls erlaubt.`;
+Übergreifende Regeln:
+- Arbeite area-genau und passend zum aktiven Schritt.
+- Sorted-out dient zum bewussten Parken, nicht zum heimlichen Verwerfen.
+- Farben und Checkmarks sind methodische Signale.
+- Sticky Notes stehen grundsätzlich zunächst für sich; Connectoren nur selektiv bei expliziter Relation.`;
 
-  pack.packTemplateGlobalPrompt = `Auf diesem Board läuft die Übung "Use Case Fit Sprint" auf dem Canvas "Analytics & AI Use Case".
-
-Übergeordnetes Ziel:
-- Entwickle einen Analytics- oder KI-Anwendungsfall konsequent aus einer realen Nutzer- und Entscheidungssituation.
-- Die Übung endet vor dem echten Cross-Canvas-Handoff. Ziel ist ein handoff-reifer oder bewusst noch nicht handoff-reifer Einzelcanvas.
-
-Didaktische Dramaturgie:
-- Step 0: Preparation & Focus – Fokus setzen, Scope schärfen, offene Annahmen sichtbar machen.
-- Step 1: User Needs Analysis – mehrere Nutzerrollen divergieren, auf einen Hauptnutzer fokussieren, Situation präzisieren, Objectives & Results und Decisions & Actions strukturieren, Gains & Pains andocken und priorisieren.
-- Step 2: Solution Design – Varianten sammeln, eine Hauptvariante wählen, Alternativen parken, Information und Functions ableiten, Benefits formulieren.
-- Step 3: Fit Validation & Minimum Desired Product – Benefits validieren, Checkmarks setzen, Alternativen parken oder entfernen, Minimum Desired Product herausarbeiten und erst dann den Kern im Feld Check verdichten.
-
-Trigger- und Führungslogik:
-- Hint hilft mit knappen nächsten Schritten und Satzanfängen.
-- Coach arbeitet mit Leitfragen und genau einem Mikroschritt.
-- Check prüft Reife und Step-Readiness.
-- Review beurteilt qualitativ Stärken, Risiken, Widersprüche und fehlende Vorarbeit.
-- Autocorrect greift stärker ein, bleibt aber strikt im Scope des aktuellen Schritts.
-- Synthesize ist nur dort sinnvoll, wo bereits genug Substanz und Validierung vorhanden ist.
-
-Grenzen:
-- Kein echter Handoff auf andere Canvas.
-- Externe Methoden dürfen nur als optionale Orientierung erwähnt werden.
-- Antworten und feedback sollen konkret, boardbezogen, nicht-kryptisch und für Teilnehmende leicht handhabbar sein.`;
+  pack.packTemplateGlobalPrompt = `Pack-Baseline für den "Use Case Fit Sprint":
+- Folge der Vier-Schritt-Dramaturgie dieses Canvas: Fokus → Problemraum → Lösung → Fit & Verdichtung.
+- Rechte Seite zuerst, linke Seite danach, Check zuletzt.
+- Kein echter Handoff auf andere Canvas in dieser Übung.
+- Detailregeln für Zustände, Trigger und Mutationen kommen in den schritt- und triggernahen Prompt-Modulen.`;
 
   pack.promptModules = buildAnalyticsDidacticPromptModules();
+
+  Object.assign(pack.promptModules, {
+    "analytics.fit.step0.state_model": {
+      id: "analytics.fit.step0.state_model",
+      label: "Step-0-Zustandswelt",
+      summary: "Beschreibt die relevanten semantischen Arbeitszustände in Preparation & Focus.",
+      prompt: `Step 0 ist kein Einheitszustand. Lies den Boardzustand heuristisch und ordne ihn einer sinnvollen Arbeitslage zu:
+- S0-A Board komplett leer: Header leer, keine sinnvollen Body-Stickies, kein klarer Fokusanker. Bedeutung: Kick-off-Zustand. Reagiere mit Orientierung, Satzanfängen und 2 bis 4 guten Scope-/Annahmenfragen statt mit harter Bewertung.
+- S0-B mehrere konkurrierende Fokusideen: mehrere plausible Use-Case-Kandidaten oder alternative Fokus-Stickies gleichzeitig aktiv. Bedeutung: Divergenz ohne Konvergenz. Hilf, einen Fokus für dieses Board zu wählen und Alternativen in sorted_out_left zu parken.
+- S0-C Fokus vorhanden, aber diffus: ein Header oder Fokusanker ist da, bleibt aber generisch, buzzwordig oder ohne klare Rolle, Situation, Entscheidung oder Zielgröße. Bedeutung: Fokus existiert, ist aber noch nicht arbeitsfähig. Hilf beim Präzisieren des Headers.
+- S0-D Fokus klar, aber offene Annahmen fehlen: der Header ist brauchbar, doch Scope, Risiken oder offene Fragen sind noch unsichtbar. Bedeutung: Der Canvas wirkt fokussiert, blendet Unsicherheit aber aus. Mache 2 bis 4 kritische Annahmen oder Fragen sichtbar.
+- S0-E Nebenthemen ungeparkt / Fokus verwässert: frühe Lösungsideen, Scope-Reste oder alternative Themen liegen ungeordnet im Kernbereich. Bedeutung: Der Fokus zerfasert. Nutze sorted_out_left als bewussten Parkplatz.
+- S0-F Step 0 tragfähig: klarer Fokus im Header, sichtbare Scope-/Annahmenebene, Nebenthemen bewusst geparkt oder reduziert. Bedeutung: Step 1 kann sinnvoll beginnen.
+
+Allgemeine Leseregel:
+- Zustände sind heuristische Lesarten des Boardzustands, keine harte App-Zustandsmaschine.
+- Interpretiere Leere, Divergenz, Konvergenz, Überladung und Readiness aus Header, Area-Belegung, Farbe, Sorted-out-Nutzung und thematischer Klarheit.`
+    },
+    "analytics.fit.step0.trigger_behavior": {
+      id: "analytics.fit.step0.trigger_behavior",
+      label: "Step-0-Triggerverhalten",
+      summary: "Übersetzt die Zustandswelt von Step 0 in passende Hilfeformen je Trigger.",
+      prompt: `Übersetze den erkannten Step-0-Zustand in die passende Triggerrolle:
+- hint: Gib 1 bis 3 konkrete nächste Schritte oder Satzanfänge für genau den erkannten Zustand. Bei S0-A orientierst du, bei S0-B hilfst du bei der Fokuswahl, bei S0-C/D schärfst du Fokus oder Annahmen, bei S0-E empfiehlst du bewusstes Parken, bei S0-F routest du in Step 1.
+- coach: Arbeite sokratisch mit 3 bis 5 Leitfragen und genau einem Mikroschritt. Kein Rundumschlag, keine Vorwegnahme von Step 1, Step 2 oder Step 3.
+- check: Prüfe Fokus, Scope, offene Annahmen und Umgang mit Nebenthemen. Benenne klar, was für Readiness noch fehlt oder warum Step 0 tragfähig ist.
+- review: Gib eine qualitative Einordnung von Fokus, Schärfe, Überbreite und sichtbaren Risiken. Standardmäßig keine Board-Mutationen.
+- propose: Zusatzspur. Noch nichts anwenden. Im leeren oder sehr vagen Zustand bevorzuge textliche Vorschläge; Board-Vorschläge nur klein und anschlussfähig.
+- autocorrect: Nur klare Vorbereitungsprobleme korrigieren: Header präzisieren, wenige weiße Annahmen/Fragen ergänzen, Nebenthemen parken. Keine Nutzeranalyse, keine Lösung, kein Fit.
+
+Übersetzungsregel in Actions:
+- Bevorzuge feedback, solange Orientierung oder Fokussierung didaktisch genügt.
+- Wenn du mutierst, dann klein, konkret und strikt innerhalb von Fokus, Scope, offenen Annahmen und Sorted-out.`
+    },
+    "analytics.fit.step0.exit_criteria": {
+      id: "analytics.fit.step0.exit_criteria",
+      label: "Step-0-Exit-Kriterien",
+      summary: "Beschreibt, wann Preparation & Focus als tragfähig gilt.",
+      prompt: `Exit-Kriterien für Step 0:
+- in_progress: solange Fokus, Scope, offene Annahmen oder Parklogik noch unreif sind.
+- ready_for_review: wenn ein klarer Fokus im Header sichtbar ist, mehrere kritische Annahmen oder Scope-Fragen explizit gemacht wurden und Nebenthemen bewusst geparkt oder reduziert sind.
+- completed: nur wenn Step 0 für diese Einzelcanvas-Übung wirklich tragfähig und sauber fokussiert ist.
+- Step 0 ist nicht tragfähig, wenn mehrere konkurrierende Use Cases gleichzeitig aktiv bleiben, der Header nur buzzwordig ist oder Scope-Rauschen ungeparkt im Kern liegt.
+- Step 0 endet, bevor echte Nutzeranalyse, Lösungsideen oder Fit-Verdichtung dominieren.`
+    },
+    "analytics.fit.step1.state_model": {
+      id: "analytics.fit.step1.state_model",
+      label: "Step-1-Zustandswelt",
+      summary: "Beschreibt die relevanten semantischen Arbeitszustände in User Needs Analysis.",
+      prompt: `Step 1 ist eine Zustandswelt des Problemraums. Lies den Boardzustand heuristisch:
+- S1-A rechte Seite leer: User & Situation, Objectives & Results, Decisions & Actions und Gains/Pains sind weitgehend leer. Bedeutung: Kick-off-Zustand. Gib Startreihenfolge und kurze Satzanfänge statt harter Kritik.
+- S1-B mehrere Nutzerrollen, kein Hauptnutzer: mehrere plausible Rollen sind sichtbar, aber keine klare Fokussierung. Bedeutung: produktive Divergenz ohne Konvergenz. Hilf bei Auswahlkriterien und parke Nebenrollen bewusst.
+- S1-C Hauptnutzer da, Situation zu vage: Rolle benannt, aber Kontext, Trigger, Job-to-be-done oder konkrete Arbeitssituation bleiben unscharf. Bedeutung: formal fokussiert, inhaltlich noch nicht arbeitsfähig.
+- S1-D Objectives & Results fehlen oder sind unsauber: Nutzer und Situation existieren, aber Outcomes fehlen, sind zu generisch oder beschreiben Maßnahmen statt Zielzustände.
+- S1-E Decisions & Actions fehlen oder sind generisch: Objectives/Results stehen schon, doch reale Entscheidungen oder Handlungen fehlen oder kippen in Features/Systemfunktionen. Bedeutung: der methodische Drehpunkt fehlt.
+- S1-F Gains/Pains fehlen oder sind lose Liste: Gains/Pains sind leer, zu generisch oder nicht an relevante blaue Elemente angedockt.
+- S1-G Gains/Pains zu viele / überladen: viele rote und grüne Stickies ohne Priorisierung; alles wirkt gleich wichtig. Bedeutung: Sammlung ist erfolgt, Auswahl aber noch nicht.
+- S1-H Step 1 tragfähig: Hauptnutzer klar, Situation konkret, Objectives/Results und Decisions/Actions brauchbar, Gains/Pains sinnvoll angedockt und fokussiert. Bedeutung: Step 2 kann sinnvoll beginnen.
+
+Allgemeine Leseregel:
+- Zustände sind semantische Lesarten des Boardkatalogs, keine App-Flags.
+- Interpretiere Fokussierung, Unschärfe, Überladung und Readiness aus Area-Belegung, Formulierungsqualität, Sorted-out-Nutzung und klarer Trennung von Outcome, Verhalten und Nutzersicht.`
+    },
+    "analytics.fit.step1.trigger_behavior": {
+      id: "analytics.fit.step1.trigger_behavior",
+      label: "Step-1-Triggerverhalten",
+      summary: "Übersetzt die Zustandswelt von Step 1 in passende Hilfeformen je Trigger.",
+      prompt: `Übersetze den erkannten Step-1-Zustand in die passende Triggerrolle:
+- hint: Priorisiere genau einen nächsten Mikro-Arbeitsmodus: Nutzerrollen sammeln/fokussieren, Situation konkretisieren, Objectives/Results schärfen, Decisions/Actions präzisieren oder Gains/Pains andocken bzw. priorisieren. Gib 1 bis 3 konkrete Satzanfänge oder Fokushinweise.
+- coach: Arbeite mit 3 bis 5 Leitfragen und genau einem Mikroschritt. Lass den Nutzer denken; gib keine vorschnellen Lösungen.
+- check: Prüfe in dieser Reihenfolge Hauptnutzer & Situation, Objectives & Results, Decisions & Actions, Gains/Pains. Benenne klar, welche Reifestufe fehlt oder ob der Problemraum tragfähig genug für Step 2 ist.
+- review: Gib eine qualitative Einordnung von Reifegrad, Stärken, Widersprüchen, Überladung und fehlender Vorarbeit. Standardmäßig keine Mutationen.
+- synthesize: Keine Lösungs- oder Fit-Synthese. Verdichte nur den Stand der Nutzeranalyse; wenn sie unreif ist, sage explizit, was fehlt.
+- propose: Zusatzspur. Noch nichts anwenden. Vorschläge müssen aus dem aktuellen Step-1-Zustand abgeleitet sein, z. B. Hauptnutzer fokussieren, Situation schärfen, Outcomes und Verhalten trennen, Gains/Pains andocken oder parken.
+- autocorrect: Nur klare Probleme auf der rechten Seite korrigieren: Fehlplatzierungen, offensichtliche Verwechslungen, Überladung oder fehlende Andockung. Keine Lösung, kein Benefit, kein Fit.
+
+Übersetzungsregel in Actions:
+- Bevorzuge feedback, solange der nächste didaktische Schritt vor allem Denken, Fokussieren oder Priorisieren ist.
+- Wenn du mutierst, dann klein, anschlussfähig und streng problemraumgebunden.`
+    },
+    "analytics.fit.step1.exit_criteria": {
+      id: "analytics.fit.step1.exit_criteria",
+      label: "Step-1-Exit-Kriterien",
+      summary: "Beschreibt, wann User Needs Analysis als tragfähig gilt.",
+      prompt: `Exit-Kriterien für Step 1:
+- in_progress: solange Hauptnutzer, Situation, Outcomes, Verhalten oder Gains/Pains noch unreif, lose oder überladen sind.
+- ready_for_review: wenn ein Hauptnutzer klar fokussiert ist, die Situation konkret genug beschrieben ist, 1 bis 3 tragfähige Objectives/Results, 1 bis 3 konkrete Decisions/Actions und mehrere kritische Gains/Pains sichtbar und sinnvoll angedockt sind.
+- completed: nur wenn der Problemraum für diese Übung wirklich tragfähig, fokussiert und konsistent ist.
+- Step 1 ist noch nicht tragfähig, wenn mehrere Nutzerrollen gleichzeitig aktiv konkurrieren, Objectives/Results und Decisions/Actions verwechselt werden oder Gains/Pains nur lose Sammelstickies bleiben.
+- Step 1 endet, bevor Solution Design, Benefits oder Fit-Check die Nutzeranalyse überlagern.`
+    }
+  });
+
+  setPromptModuleText(pack, "analytics.fit.step0.focus_preparation", {
+    summary: "Beschreibt Zielbild und Grenzen von Preparation & Focus, nicht die ganze Zustandslogik.",
+    prompt: `Schrittfokus "Preparation & Focus":
+- Dieser Schritt setzt den Fokusanker des Canvas.
+- Ziel ist ein konkreter Use-Case- oder Arbeitstitel im Header, sichtbare Scope-/Annahmenfragen und bewusst geparkte Nebenthemen.
+- Nutze weiße Stickies für Fokus, offene Annahmen und Scope-Fragen.
+- Springe noch nicht in User Analysis, Solution Design oder Fit.`
+  });
+
+  setPromptModuleText(pack, "analytics.fit.step0.bootstrap_blank_canvas", {
+    summary: "Hilft beim leeren oder fast leeren Einstieg in Step 0.",
+    prompt: `Leerer Einstieg in Step 0:
+- Behandle Leere als Kick-off-Zustand, nicht als Fehlleistung.
+- Gute erste Schritte sind:
+  1) ein konkreter Fokus im Header,
+  2) 2 bis 4 weiße Annahmen- oder Scope-Stickies,
+  3) optional ein geparkter Alternativfokus in sorted_out_left.
+- Gib lieber kurze Satzanfänge als komplette Musterlösungen.`
+  });
+
+  setPromptModuleText(pack, "analytics.fit.step0.question_preparation", {
+    summary: "Macht Fragen zu Zweck, Einstieg und Scope in Step 0 gut beantwortbar.",
+    prompt: `Fragen in Step 0:
+- Erkläre kurz Zweck, Einstieg und Grenzen dieses Schritts.
+- Typische Antwortlogik: Fokus benennen, Scope schärfen, offene Annahmen sichtbar machen, Nebenthemen parken.
+- Wenn nach späteren Schritten gefragt wird, erkläre knapp die Reihenfolge, bleibe aber bei Step 0 anschlussfähig.`
+  });
+
+  setPromptModuleText(pack, "analytics.fit.step1.focus_user_perspective", {
+    summary: "Beschreibt Zielbild und Grenzen von User Needs Analysis, nicht die ganze Zustandslogik.",
+    prompt: `Schrittfokus "User Needs Analysis":
+- Arbeite primär auf der rechten Seite des Canvas.
+- Ziel ist ein tragfähiger Problemraum: Hauptnutzer, konkrete Situation, Objectives & Results, Decisions & Actions sowie angedockte Gains/Pains.
+- Objectives & Results beschreiben Outcomes; Decisions & Actions beschreiben Verhalten oder Auswahlhandlungen.
+- Gains und Pains kommen aus Nutzersicht und stehen inhaltlich nahe an relevanten blauen Elementen.
+- Springe noch nicht in Solutions, Benefits oder Fit.`
+  });
+
+  setPromptModuleText(pack, "analytics.fit.step1.bootstrap_empty_user_perspective", {
+    summary: "Hilft beim leeren oder sehr unscharfen Einstieg in Step 1.",
+    prompt: `Leerer Einstieg in Step 1:
+- Behandle Leere als Startzustand.
+- Gute Reihenfolge:
+  1) mögliche Nutzerrollen sammeln,
+  2) einen Hauptnutzer wählen,
+  3) dessen Situation konkretisieren,
+  4) 1 bis 3 Objectives/Results formulieren,
+  5) 1 bis 3 Decisions/Actions formulieren,
+  6) 2 bis 5 kritische Gains/Pains ergänzen.
+- Gib kurze Satzanfänge und arbeite noch nicht an Lösung, Benefits oder Fit.`
+  });
+
+  setPromptModuleText(pack, "analytics.fit.step1.diverge_and_focus_users", {
+    summary: "Macht den Übergang von mehreren Nutzerrollen zu einem Hauptnutzer explizit.",
+    prompt: `Nutzerfokus in Step 1:
+- Mehrere plausible Nutzerrollen sind als Zwischenzustand erlaubt.
+- Für dieses Board soll aber ein Hauptnutzer fokussiert werden.
+- Sekundäre Rollen werden bevorzugt geparkt, nicht vorschnell gelöscht.
+- Gute Auswahlkriterien sind Hebel, Relevanz, Entscheidungskern, Häufigkeit und Klarheit der Situation.`
+  });
+
+  setPromptModuleText(pack, "analytics.fit.step1.attach_and_prioritize_gains_pains", {
+    summary: "Macht Gains/Pains zu angedockten und priorisierten Nutzerbeobachtungen.",
+    prompt: `Gains & Pains in Step 1:
+- Gains/Pains sollen aus Nutzersicht formuliert sein und an relevante Objectives, Results, Decisions oder Actions andocken.
+- Stelle sie räumlich nahe an das zugehörige blaue Element.
+- Wenn Gains/Pains zu viele sind, fokussiere die kritischen Einträge und parke weniger wichtige in sorted_out_left.
+- Vertiefe Pains bei Bedarf über Ursache, Konsequenz oder zugrunde liegende Friktion.`
+  });
+
+  setPromptModuleText(pack, "analytics.fit.step1.question_user_analysis", {
+    summary: "Erlaubt didaktisch gute Antworten auf typische Fragen zu Nutzerfokus, Outcomes und Gains/Pains.",
+    prompt: `Fragen in Step 1:
+- Erkläre zuerst kurz, dass dieser Schritt noch nicht die Lösung baut, sondern den Problemraum tragfähig macht.
+- Wenn nach Nutzerrollen gefragt wird, erkläre: mehrere plausible Rollen sammeln, dann einen Hauptnutzer wählen und die Situation konkretisieren.
+- Wenn Objectives/Results und Decisions/Actions verwechselt werden, trenne klar Outcomes von Verhalten.
+- Wenn nach Gains/Pains gefragt wird, erkläre: aus Nutzersicht formulieren, an blaue Elemente andocken, kritische Punkte priorisieren und Rest parken.`
+  });
+
   pack.steps = buildAnalyticsDidacticSteps(pack);
+
+  const STEP0_CORE_MODULE_IDS = [
+    "analytics.fit.shared.method_guardrails",
+    "analytics.fit.shared.feedback_contract",
+    "analytics.fit.shared.no_handoff_boundary",
+    "analytics.fit.step0.focus_preparation",
+    "analytics.fit.step0.state_model"
+  ];
+  const STEP0_HINT_MODULE_IDS = [
+    ...STEP0_CORE_MODULE_IDS,
+    "analytics.fit.shared.hint_style",
+    "analytics.fit.shared.validation_and_color_semantics",
+    "analytics.fit.shared.sorted_out_semantics",
+    "analytics.fit.step0.trigger_behavior",
+    "analytics.fit.step0.bootstrap_blank_canvas"
+  ];
+  const STEP0_COACH_MODULE_IDS = [
+    ...STEP0_CORE_MODULE_IDS,
+    "analytics.fit.shared.coach_style",
+    "analytics.fit.step0.trigger_behavior",
+    "analytics.fit.step0.bootstrap_blank_canvas"
+  ];
+  const STEP0_CHECK_MODULE_IDS = [
+    ...STEP0_CORE_MODULE_IDS,
+    "analytics.fit.shared.check_style",
+    "analytics.fit.shared.step_status_rules",
+    "analytics.fit.shared.validation_and_color_semantics",
+    "analytics.fit.step0.exit_criteria"
+  ];
+  const STEP0_REVIEW_MODULE_IDS = [
+    ...STEP0_CORE_MODULE_IDS,
+    "analytics.fit.shared.review_style",
+    "analytics.fit.shared.step_status_rules",
+    "analytics.fit.step0.exit_criteria"
+  ];
+  const STEP0_AUTOCORRECT_MODULE_IDS = [
+    ...STEP0_CORE_MODULE_IDS,
+    "analytics.fit.shared.sorted_out_semantics",
+    "analytics.fit.shared.validation_and_color_semantics",
+    "analytics.fit.step0.trigger_behavior",
+    "analytics.fit.step0.exit_criteria"
+  ];
+  const STEP0_GLOBAL_HINT_MODULE_IDS = [
+    ...STEP0_HINT_MODULE_IDS,
+    "analytics.fit.step0.exit_criteria"
+  ];
+  const STEP0_GLOBAL_REVIEW_MODULE_IDS = [
+    ...STEP0_REVIEW_MODULE_IDS
+  ];
+  const STEP0_QUESTION_MODULE_IDS = [
+    "analytics.fit.shared.method_guardrails",
+    "analytics.fit.shared.question_style",
+    "analytics.fit.shared.validation_and_color_semantics",
+    "analytics.fit.shared.no_handoff_boundary",
+    "analytics.fit.step0.focus_preparation",
+    "analytics.fit.step0.state_model",
+    "analytics.fit.step0.exit_criteria",
+    "analytics.fit.step0.question_preparation"
+  ];
+
+  const STEP1_CORE_MODULE_IDS = [
+    "analytics.fit.shared.method_guardrails",
+    "analytics.fit.shared.feedback_contract",
+    "analytics.fit.shared.no_handoff_boundary",
+    "analytics.fit.step1.focus_user_perspective",
+    "analytics.fit.step1.state_model"
+  ];
+  const STEP1_HINT_MODULE_IDS = [
+    ...STEP1_CORE_MODULE_IDS,
+    "analytics.fit.shared.hint_style",
+    "analytics.fit.shared.soft_reference_hints",
+    "analytics.fit.shared.sorted_out_semantics",
+    "analytics.fit.shared.validation_and_color_semantics",
+    "analytics.fit.step1.trigger_behavior",
+    "analytics.fit.step1.bootstrap_empty_user_perspective",
+    "analytics.fit.step1.diverge_and_focus_users",
+    "analytics.fit.step1.attach_and_prioritize_gains_pains"
+  ];
+  const STEP1_COACH_MODULE_IDS = [
+    ...STEP1_CORE_MODULE_IDS,
+    "analytics.fit.shared.coach_style",
+    "analytics.fit.shared.soft_reference_hints",
+    "analytics.fit.step1.trigger_behavior",
+    "analytics.fit.step1.bootstrap_empty_user_perspective",
+    "analytics.fit.step1.diverge_and_focus_users",
+    "analytics.fit.step1.attach_and_prioritize_gains_pains"
+  ];
+  const STEP1_CHECK_MODULE_IDS = [
+    ...STEP1_CORE_MODULE_IDS,
+    "analytics.fit.shared.check_style",
+    "analytics.fit.shared.step_status_rules",
+    "analytics.fit.shared.sorted_out_semantics",
+    "analytics.fit.shared.validation_and_color_semantics",
+    "analytics.fit.step1.exit_criteria",
+    "analytics.fit.step1.diverge_and_focus_users",
+    "analytics.fit.step1.attach_and_prioritize_gains_pains"
+  ];
+  const STEP1_REVIEW_MODULE_IDS = [
+    ...STEP1_CORE_MODULE_IDS,
+    "analytics.fit.shared.review_style",
+    "analytics.fit.shared.step_status_rules",
+    "analytics.fit.shared.sorted_out_semantics",
+    "analytics.fit.step1.exit_criteria"
+  ];
+  const STEP1_AUTOCORRECT_MODULE_IDS = [
+    ...STEP1_CORE_MODULE_IDS,
+    "analytics.fit.shared.sorted_out_semantics",
+    "analytics.fit.shared.validation_and_color_semantics",
+    "analytics.fit.step1.trigger_behavior",
+    "analytics.fit.step1.diverge_and_focus_users",
+    "analytics.fit.step1.attach_and_prioritize_gains_pains",
+    "analytics.fit.step1.exit_criteria"
+  ];
+  const STEP1_SYNTHESIZE_MODULE_IDS = [
+    ...STEP1_CORE_MODULE_IDS,
+    "analytics.fit.shared.synthesis_style",
+    "analytics.fit.step1.trigger_behavior",
+    "analytics.fit.step1.exit_criteria"
+  ];
+  const STEP1_GLOBAL_HINT_MODULE_IDS = [
+    ...STEP1_HINT_MODULE_IDS,
+    "analytics.fit.step1.exit_criteria"
+  ];
+  const STEP1_GLOBAL_CHECK_MODULE_IDS = [
+    ...STEP1_CHECK_MODULE_IDS
+  ];
+  const STEP1_QUESTION_MODULE_IDS = [
+    "analytics.fit.shared.method_guardrails",
+    "analytics.fit.shared.question_style",
+    "analytics.fit.shared.soft_reference_hints",
+    "analytics.fit.shared.sorted_out_semantics",
+    "analytics.fit.shared.validation_and_color_semantics",
+    "analytics.fit.shared.no_handoff_boundary",
+    "analytics.fit.step1.focus_user_perspective",
+    "analytics.fit.step1.state_model",
+    "analytics.fit.step1.exit_criteria",
+    "analytics.fit.step1.diverge_and_focus_users",
+    "analytics.fit.step1.attach_and_prioritize_gains_pains",
+    "analytics.fit.step1.question_user_analysis"
+  ];
+
+  setQuestionModuleIds(pack, "step0_preparation_and_focus", STEP0_QUESTION_MODULE_IDS);
+  setTriggerModuleIds(pack, "step0_preparation_and_focus", "selection.hint", STEP0_HINT_MODULE_IDS);
+  setTriggerModuleIds(pack, "step0_preparation_and_focus", "selection.coach", STEP0_COACH_MODULE_IDS);
+  setTriggerModuleIds(pack, "step0_preparation_and_focus", "selection.check", STEP0_CHECK_MODULE_IDS);
+  setTriggerModuleIds(pack, "step0_preparation_and_focus", "selection.autocorrect", STEP0_AUTOCORRECT_MODULE_IDS);
+  setTriggerModuleIds(pack, "step0_preparation_and_focus", "selection.review", STEP0_REVIEW_MODULE_IDS);
+  setTriggerModuleIds(pack, "step0_preparation_and_focus", "global.hint", STEP0_GLOBAL_HINT_MODULE_IDS);
+  setTriggerModuleIds(pack, "step0_preparation_and_focus", "global.review", STEP0_GLOBAL_REVIEW_MODULE_IDS);
+
+  setQuestionModuleIds(pack, "step1_user_perspective", STEP1_QUESTION_MODULE_IDS);
+  setTriggerModuleIds(pack, "step1_user_perspective", "selection.hint", STEP1_HINT_MODULE_IDS);
+  setTriggerModuleIds(pack, "step1_user_perspective", "selection.coach", STEP1_COACH_MODULE_IDS);
+  setTriggerModuleIds(pack, "step1_user_perspective", "selection.check", STEP1_CHECK_MODULE_IDS);
+  setTriggerModuleIds(pack, "step1_user_perspective", "selection.autocorrect", STEP1_AUTOCORRECT_MODULE_IDS);
+  setTriggerModuleIds(pack, "step1_user_perspective", "selection.review", STEP1_REVIEW_MODULE_IDS);
+  setTriggerModuleIds(pack, "step1_user_perspective", "selection.synthesize", STEP1_SYNTHESIZE_MODULE_IDS);
+  setTriggerModuleIds(pack, "step1_user_perspective", "global.hint", STEP1_GLOBAL_HINT_MODULE_IDS);
+  setTriggerModuleIds(pack, "step1_user_perspective", "global.check", STEP1_GLOBAL_CHECK_MODULE_IDS);
+
+  setTriggerPrompt(pack, "step0_preparation_and_focus", "selection.hint", `Hinweismodus für den Schritt "Preparation & Focus":
+- Lies zuerst den semantischen Zustand dieses Schritts.
+- Gib 1 bis 3 konkrete nächste Schritte oder Satzanfänge für genau diesen Zustand.
+- Bevorzuge feedback; actions nur in klar begründeten Ausnahmefällen.
+- Springe nicht in User Analysis, Solution Design oder Fit.
+- Nutze ready_for_review nur, wenn die Exit-Kriterien von Step 0 erfüllt sind.`);
+
+  setTriggerPrompt(pack, "step0_preparation_and_focus", "selection.coach", `Coachmodus für den Schritt "Preparation & Focus":
+- Lies zuerst den semantischen Zustand dieses Schritts.
+- Arbeite coachend mit 3 bis 5 Leitfragen und genau einem Mikroschritt.
+- Kein Rundumschlag und keine Vorwegnahme späterer Schritte.
+- actions sollen normalerweise leer bleiben.`);
+
+  setTriggerPrompt(pack, "step0_preparation_and_focus", "selection.check", `Prüfmodus für den Schritt "Preparation & Focus":
+- Prüfe Fokus, Scope, offene Annahmen und den Umgang mit Nebenthemen.
+- Benenne klar, was für Readiness noch fehlt oder warum Step 0 tragfähig ist.
+- Nimm nur kleine, risikoarme Korrekturen vor.
+- Setze stepStatus gemäß den Exit-Kriterien von Step 0.`);
+
+  setTriggerPrompt(pack, "step0_preparation_and_focus", "selection.autocorrect", `Autokorrekturmodus für den Schritt "Preparation & Focus":
+- Korrigiere nur klare Vorbereitungsprobleme dieses Schritts.
+- Erlaube höchstens kleine Eingriffe: Header präzisieren, wenige weiße Annahmen/Fragen ergänzen, Nebenthemen parken.
+- Erfinde keinen neuen Use Case und baue keine Nutzeranalyse, Lösung oder Fit-Logik auf.
+- Erkläre im feedback knapp, was du geändert hast und warum.`);
+
+  setTriggerPrompt(pack, "step0_preparation_and_focus", "selection.review", `Reviewmodus für den Schritt "Preparation & Focus":
+- Gib eine qualitative Einordnung von Fokus, Schärfe, Überbreite und sichtbaren Risiken.
+- Benenne Stärken, Unschärfen und fehlendes Parken.
+- Nimm standardmäßig keine Board-Mutationen vor.
+- Setze stepStatus gemäß den Exit-Kriterien von Step 0.`);
+
+  setTriggerPrompt(pack, "step0_preparation_and_focus", "global.hint", `Globaler Hinweismodus für den Schritt "Preparation & Focus":
+- Vergleiche über mehrere Instanzen hinweg, welche Boards noch leer, diffus, konkurrierend oder bereits tragfähig fokussiert sind.
+- Gib knappe, wiederverwendbare Hinweise für Fokuswahl, Scope und sichtbare Annahmen.`);
+
+  setTriggerPrompt(pack, "step0_preparation_and_focus", "global.review", `Globaler Reviewmodus für den Schritt "Preparation & Focus":
+- Vergleiche über mehrere Instanzen hinweg Reifegrad, Überbreite, fehlende Abgrenzung und sichtbare Fokusqualität.
+- Fokus auf Muster und Unterschiede, nicht auf Mutationen.`);
+
+  setTriggerPrompt(pack, "step1_user_perspective", "selection.hint", `Hinweismodus für den Schritt "User Needs Analysis":
+- Lies zuerst den semantischen Zustand dieses Schritts.
+- Priorisiere genau einen nächsten Mikro-Arbeitsmodus: Nutzerrollen, Hauptnutzer, Situation, Objectives/Results, Decisions/Actions oder Gains/Pains.
+- Gib 1 bis 3 konkrete Satzanfänge oder Formulierungsanstöße.
+- Springe nicht in Lösungen, Benefits oder Fit.
+- Nutze ready_for_review nur, wenn die Exit-Kriterien von Step 1 erfüllt sind.`);
+
+  setTriggerPrompt(pack, "step1_user_perspective", "selection.coach", `Coachmodus für den Schritt "User Needs Analysis":
+- Lies zuerst den semantischen Zustand dieses Schritts.
+- Arbeite coachend mit 3 bis 5 Leitfragen und genau einem Mikroschritt.
+- Hilf bei Nutzerfokus, Situation, Outcomes, Verhalten und Gains/Pains, ohne die Lösung vorzuziehen.
+- actions sollen normalerweise leer bleiben.`);
+
+  setTriggerPrompt(pack, "step1_user_perspective", "selection.check", `Prüfmodus für den Schritt "User Needs Analysis":
+- Prüfe in dieser Reihenfolge: Hauptnutzer & Situation, Objectives & Results, Decisions & Actions, Gains/Pains.
+- Benenne klar, welche Reifestufe fehlt oder warum Step 1 tragfähig genug für Step 2 ist.
+- Korrigiere nur klare Fehlplatzierungen, Verwechslungen oder offensichtliche Überladung.
+- Setze stepStatus gemäß den Exit-Kriterien von Step 1.`);
+
+  setTriggerPrompt(pack, "step1_user_perspective", "selection.autocorrect", `Autokorrekturmodus für den Schritt "User Needs Analysis":
+- Korrigiere nur klare Probleme auf der rechten Seite.
+- Fokussiere Hauptnutzer, schärfe Situation, trenne Outcomes von Verhalten und docke Gains/Pains sinnvoll an.
+- Ergänze höchstens wenige notwendige Stickies und parke Überfluss bewusst.
+- Entwickle keine Lösung, keine Benefits und keinen Fit.`);
+
+  setTriggerPrompt(pack, "step1_user_perspective", "selection.review", `Reviewmodus für den Schritt "User Needs Analysis":
+- Gib eine qualitative Einordnung des Problemraums: Reifegrad, Stärken, Widersprüche, Überladung und fehlende Vorarbeit.
+- Prüfe besonders, ob zu früh in Lösungen gesprungen wird oder Gains/Pains nur lose gesammelt bleiben.
+- Nimm standardmäßig keine Board-Mutationen vor.
+- Setze stepStatus gemäß den Exit-Kriterien von Step 1.`);
+
+  setTriggerPrompt(pack, "step1_user_perspective", "selection.synthesize", `Synthesemodus für den Schritt "User Needs Analysis":
+- Führe keine Lösungs- oder Fit-Synthese durch.
+- Verdichte nur den Stand der Nutzeranalyse: Hauptnutzer, Situation, wichtigste Objectives/Results, Decisions/Actions und kritische Gains/Pains.
+- Wenn die Nutzeranalyse noch unreif ist, sage das explizit.
+- actions sollen normalerweise leer bleiben.`);
+
+  setTriggerPrompt(pack, "step1_user_perspective", "global.hint", `Globaler Hinweismodus für den Schritt "User Needs Analysis":
+- Vergleiche über mehrere Instanzen hinweg, welche Boards noch in Nutzerdivergenz, Situationsunschärfe, Outcome-/Verhaltensunklarheit oder Gains/Pains-Überladung stecken.
+- Gib knappe Hinweise, welcher Mikro-Arbeitsmodus je Board als Nächstes sinnvoll wäre.`);
+
+  setTriggerPrompt(pack, "step1_user_perspective", "global.check", `Globaler Prüfmodus für den Schritt "User Needs Analysis":
+- Vergleiche über mehrere Instanzen hinweg Reifegrad und Step-2-Bereitschaft der Nutzeranalyse.
+- Benenne klar, wo Hauptnutzer, Situation, Outcomes, Verhalten oder Gains/Pains noch nicht tragfähig genug sind.`);
+
   applyAnalyticsProposalPromptPatch(pack);
 
   return catalog;

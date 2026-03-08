@@ -4,6 +4,7 @@ import {
   getPackDefaults,
   getStepTriggerConfig
 } from "../exercises/registry.js?v=20260311-batch83fix1";
+import { getPromptModulesByIds } from "../exercises/library.js?v=20260311-batch83fix1";
 import { parseTriggerKey } from "../runtime/exercise-engine.js?v=20260311-batch83fix1";
 import { normalizeUiLanguage } from "../i18n/index.js?v=20260306-batch6";
 
@@ -346,6 +347,32 @@ function buildPromptModuleBlocks(promptModules) {
     .filter(Boolean);
 }
 
+function mergePromptModules(...collections) {
+  const result = [];
+  const seen = new Set();
+
+  for (const collection of collections) {
+    for (const module of Array.isArray(collection) ? collection : []) {
+      if (!module || typeof module !== "object") continue;
+      const moduleId = asNonEmptyString(module?.id) || `__prompt__:${asNonEmptyString(module?.prompt) || result.length}`;
+      if (seen.has(moduleId)) continue;
+      seen.add(moduleId);
+      result.push(module);
+    }
+  }
+
+  return result;
+}
+
+function resolveStepTriggerPromptModules(currentStep, triggerContext, displayLanguage) {
+  const stepTriggerConfig = currentStep && triggerContext
+    ? getStepTriggerConfig(currentStep, triggerContext.triggerKey)
+    : null;
+  return getPromptModulesByIds(stepTriggerConfig?.moduleIds || [], {
+    lang: displayLanguage
+  });
+}
+
 function buildControlContextBlock(controlContext) {
   if (!controlContext || typeof controlContext !== "object") return null;
   const lines = [];
@@ -498,7 +525,8 @@ export function composePrompt({
   const payloadBase = (baseUserPayload && typeof baseUserPayload === "object") ? baseUserPayload : {};
   const pendingProposal = normalizePendingProposalForPrompt(payloadBase.pendingProposal);
   const systemBlocks = [];
-  const hasFlowContext = !!(packTemplate || runProfile || flowStep || (Array.isArray(promptModules) && promptModules.length) || controlContext);
+  const explicitPromptModules = Array.isArray(promptModules) ? promptModules : [];
+  const hasFlowContext = !!(packTemplate || runProfile || flowStep || controlContext);
   const normalizedAdminOverrideText = asNonEmptyString(adminOverrideText);
   const effectiveTriggerContext = normalizedAdminOverrideText
     ? applyAdminOverrideToTriggerContext(triggerContext)
@@ -570,7 +598,7 @@ export function composePrompt({
     const runProfileBlock = buildRunProfilePromptBlock(runProfile);
     if (runProfileBlock) systemBlocks.push(runProfileBlock);
 
-    for (const block of buildPromptModuleBlocks(promptModules)) {
+    for (const block of buildPromptModuleBlocks(explicitPromptModules)) {
       systemBlocks.push(block);
     }
 
@@ -586,9 +614,19 @@ export function composePrompt({
       ? getStepTriggerConfig(currentStep, triggerContext.triggerKey)
       : null;
     const stepPrompt = asNonEmptyString(stepTriggerConfig?.prompt);
+    const stepTriggerPromptModules = resolveStepTriggerPromptModules(
+      currentStep,
+      triggerContext,
+      boardConfig?.displayLanguage
+    );
+    const combinedPromptModules = mergePromptModules(explicitPromptModules, stepTriggerPromptModules);
 
     if (stepPrompt) {
       systemBlocks.push(`Schritt-Kontext (${currentStep?.label || currentStep?.id || "aktueller Schritt"}):\n${stepPrompt}`);
+    }
+
+    for (const block of buildPromptModuleBlocks(combinedPromptModules)) {
+      systemBlocks.push(block);
     }
   }
   if (normalizedAdminOverrideText) {

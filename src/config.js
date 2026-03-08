@@ -47,7 +47,6 @@ Plane Connectoren nur dann, wenn eine konkrete fachliche Beziehung explizit sich
     insertWidthPx: 4550,
     promptContext: `
 Dieser Canvas-Typ ist das Analytics & AI Use Case Canvas.
-Ziel dieses Canvas ist es, einen Analytics- oder KI-Anwendungsfall aus einer konkreten Nutzerrolle, ihrer Situation, ihren Zielen, Entscheidungen, Handlungen, Pains und Gains herzuleiten und erst danach eine passende Lösung zu gestalten.
 
 Verwende für area bzw. targetArea ausschließlich diese Area-Keys:
 - header = Header: Fokus, Use-Case-Name oder konkreter Arbeitstitel dieses Canvas.
@@ -56,48 +55,21 @@ Verwende für area bzw. targetArea ausschließlich diese Area-Keys:
 - 4_decisions_and_actions = Decisions & Actions: reale Entscheidungen oder Handlungen, die der Nutzer treffen oder ausführen muss.
 - 5a_user_gains = User Gains: gewünschte positive Effekte aus Nutzersicht.
 - 5b_user_pains = User Pains: Hindernisse, Unsicherheiten, Friktionen, Risiken oder Aufwände aus Nutzersicht.
-- 6_solutions = Solutions: Lösungsideen oder Interventionen auf Use-Case-Ebene, keine bloßen Buzzwords.
+- 6_solutions = Solutions: Lösungsideen oder Interventionen auf Use-Case-Ebene.
 - 6a_information = Information: konkrete Informationen, Signale oder Erkenntnisse, die Entscheidungen oder Handlungen verbessern.
 - 6b_functions = Functions: Funktionen oder Mechanismen, mit denen diese Informationen erzeugt, bereitgestellt oder nutzbar gemacht werden.
-- 7_benefits = Benefits: resultierende Vorteile der Lösung, die Pains reduzieren, Gains verstärken oder zu besseren Ergebnissen und Zielen beitragen.
-- 8_check = Check: kurze Verdichtungen zum Problem-Solution-Fit.
+- 7_benefits = Benefits: resultierende Vorteile der Lösung.
+- 8_check = Check: späte Verdichtungen zum Problem-Solution-Fit.
 - sorted_out_left = seitlicher Sorted-out-Bereich links außerhalb des sichtbaren Canvas
 - sorted_out_right = seitlicher Sorted-out-Bereich rechts außerhalb des sichtbaren Canvas
 
-Didaktische Grundlogik dieses Canvas:
-- Arbeite nicht als Vollgraph, sondern in Arbeitsmodi: zuerst sammeln, dann strukturieren, dann ableiten, dann prüfen und verdichten.
-- Rechte Seite zuerst: User & Situation → Objectives & Results → Decisions & Actions → User Gains / User Pains.
-- Linke Seite danach: Solutions → Information / Functions → Benefits.
-- Das Feld 8_check kommt zuletzt und verdichtet nur bereits erarbeiteten Fit.
-- Gute Inhalte sind konkret, atomar, überprüfbar und area-genau; eine Sticky Note sollte möglichst nur eine klare Aussage enthalten.
-
-Connector-Policy für dieses Canvas:
-- Plane Connectoren sparsam und nur bei expliziter methodischer Relation, nicht bei bloßer thematischer Nähe.
-- 2_user_and_situation: normalerweise keine Connectoren.
-- 3_objectives_and_results: nur wenige Driver-Tree-Kanten, typischerweise Result → Objective.
-- 4_decisions_and_actions: nur wenige Workflow- oder Feedback-Loop-Kanten zwischen real zusammenhängenden Entscheidungen/Handlungen und ggf. zu Results.
-- 5a_user_gains und 5b_user_pains: standardmäßig Sammel- oder Brainstorm-Bereiche; Gains und Pains bleiben normalerweise unverbunden.
-- 6_solutions: alternative Lösungsideen bleiben zunächst unverbunden; bloße Varianten werden nicht automatisch vernetzt.
-- 6a_information und 6b_functions: Connectoren nur, wenn eine konkrete Information oder Funktion eine konkrete Entscheidung oder Handlung verbessert.
-- 7_benefits: Connectoren nur selektiv, wenn ein Benefit klar von Information/Funktion ableitbar ist oder einen bestimmten Pain, Gain, Result, Objective oder eine Action adressiert.
-- 8_check: keine Graph-Explosion; lieber wenige validierte Fit-Ketten oder knappe Verdichtungen.
-
-Qualitätskriterien:
-- Lieber konkrete, überprüfbare Formulierungen als abstrakte Schlagworte.
-- 3_objectives_and_results beschreibt erwünschte Zustände oder Outcomes, nicht bloß Maßnahmen.
-- 4_decisions_and_actions beschreibt Verhalten oder Auswahlhandlungen, nicht Features.
-- 5a_user_gains ist nicht dasselbe wie 7_benefits: Gains kommen aus Nutzersicht, Benefits aus der Lösungsperspektive.
-- 5b_user_pains ist nicht dasselbe wie 3_objectives_and_results: Pains beschreiben Probleme oder Friktionen, Objectives/Results beschreiben Zielzustände.
-- Entscheidungen und Handlungen sind der methodische Drehpunkt: Informationen und Funktionen sind nur dann wertvoll, wenn sie Entscheidungen oder Handlungen tatsächlich verbessern.
-- Vermeide zu frühe Technologiediskussionen, Systemarchitekturen oder generische KI-Floskeln ohne Bezug zur Nutzerarbeit.
-- Nicht jede Sticky Note braucht einen eingehenden oder ausgehenden Connector. Unverbundene Stickies sind korrekt, wenn sie Sammlung, Alternative oder Beobachtung repräsentieren.
-- Die Footer-/Legend-Region ist für den Agenten absichtlich nicht im Katalog enthalten. Interpretiere das nicht als fehlenden Inhalt, sondern als ausgeblendeten Board-Randbereich.
-- Die seitlichen Sorted-out-Bereiche liegen außerhalb der sichtbaren Canvas-Fläche und dienen zum bewussten Parken oder Aussortieren von Sticky Notes.
-
-Didaktischer Reifegrad:
-- Wenn die relevante Seite des Canvas leer oder fast leer ist, wechsle von harter Bewertung zu aktivierender Anleitung: erkläre einen sinnvollen Einstieg, schlage eine Reihenfolge vor und gib konkrete Formulierungsanstöße.
-- Wenn bereits Material vorhanden ist, arbeite anschlussfähig an den vorhandenen Inhalten statt das Canvas völlig neu zu erfinden.
-- Wenn der Canvas reif ist, darfst du strenger auf Konsistenz, Präzision und Problem-Solution-Fit prüfen.`.trim()
+Canvas-Invarianten:
+- Rechte Seite = Problemraum; linke Seite = Lösungsperspektive; 8_check kommt zuletzt.
+- Objectives & Results beschreibt Outcomes; Decisions & Actions beschreibt Verhalten oder Auswahlhandlungen.
+- User Gains kommen aus Nutzersicht; Benefits kommen aus der Lösungsperspektive.
+- Sorted-out links/rechts dienen zum bewussten Parken außerhalb der sichtbaren Canvas-Fläche.
+- Sticky Notes stehen grundsätzlich zunächst für sich; Connectoren nur bei expliziter methodischer Relation.
+- Die Footer-/Legend-Region ist nicht Teil des Agentenkatalogs und kein zu füllender Arbeitsbereich.`.trim()
   }
 };
 
