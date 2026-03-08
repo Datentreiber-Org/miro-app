@@ -3160,7 +3160,10 @@ function applyAnalyticsProposalPromptPatch(pack) {
 - In diesem Trigger darfst du konkrete Board-Vorschläge machen, aber sie werden noch NICHT sofort angewendet.
 - actions beschreiben die vorgeschlagenen Änderungen, nicht bereits vollzogene Änderungen.
 - feedback muss für Menschen klar sagen: 1) was du auf dem Board siehst, 2) was du vorschlägst, 3) warum das im aktuellen Schritt sinnvoll ist, 4) dass noch nichts angewendet wurde und was nach einer Bestätigung passieren würde.
-- Bleibe streng im Scope des aktuellen Schritts. Der Vorschlagsmodus ist nicht dazu da, den gesamten Workshop vorwegzunehmen.`
+- Bleibe streng im Scope des aktuellen Schritts. Der Vorschlagsmodus ist nicht dazu da, den gesamten Workshop vorwegzunehmen.
+- Materialisiere keine Coaching-Satzanfänge, keine Tutorialformulierungen, keine Platzhalter in eckigen Klammern und keine Meta-Präfixe wie „(HEADER)“, „Offene Frage:“ oder „Geparkt:“ als Sticky-Text.
+- Behandle nextFocus, recentMemoryLogEntries, frühere feedback-Texte und Satzanfänge als Coaching-Hinweise, nicht als direkt zu erzeugende Board-Inhalte.
+- Wenn der relevante Canvas-Bereich noch leer ist und kein konkreter inhaltlicher Anker vorliegt, bevorzuge actions=[] oder nur sehr wenige, klar fachliche Vorschläge statt Platzhalter-Stickies.`
     },
     "analytics.fit.step0.proposal_focus": {
       id: "analytics.fit.step0.proposal_focus",
@@ -3168,7 +3171,10 @@ function applyAnalyticsProposalPromptPatch(pack) {
       summary: "Macht konkrete, aber noch nicht angewendete Fokus- und Scope-Vorschläge.",
       prompt: `Step-0-Vorschlagslogik:
 - Mache nur Vorschläge, die Fokus, Header, Scope und offene Annahmen schärfen.
-- Gute Vorschläge sind z. B.: Header präzisieren, weiße Annahmen/Fragen expliziter formulieren, Scope-Reste nach sorted_out_left parken.
+- Gute Vorschläge sind z. B.: Header präzisieren, wenige weiße Annahmen/Fragen expliziter formulieren, Scope-Reste nach sorted_out_left parken.
+- Wenn der Canvas leer ist und noch kein konkreter Use-Case-Fokus vorliegt, bevorzuge textliches feedback oder höchstens einen sehr kleinen Vorschlag statt ein Startpaket voller Platzhalter-Stickies.
+- Erzeuge in Step 0 keine Platzhalter mit eckigen Klammern, keine Tutorial-Sätze und keine Meta-Labels wie „Offene Frage“ oder „Geparkt“ als Sticky-Text.
+- Lege Fokus-Stickies in den Header. Lege in Step 0 keine offenen Fragen in User & Situation, Objectives & Results oder Decisions & Actions ab.
 - Entwickle in diesem Vorschlagsmodus noch keine Nutzeranalyse, keine Lösung und keinen Fit.`
     },
     "analytics.fit.step1.proposal_user_analysis": {
@@ -3209,6 +3215,7 @@ function applyAnalyticsProposalPromptPatch(pack) {
 - Wenn du Board-Mutationen vornimmst, erkläre knapp und konkret, was du verändert hast und warum.
 - Im Vorschlagsmodus musst du ausdrücklich sagen, dass noch nichts angewendet wurde.
 - Verwende in sichtbaren Antworten niemals rohe Area-Keys wie 2_user_and_situation oder 6a_information, sondern die sichtbaren Bereichstitel.
+- Nutze „Header“ als sichtbaren Namen des Fokusbereichs, wenn du dich auf den Header beziehst.
 - Bleibe innerhalb des Regelwerks dieses Canvas; verweise nicht kryptisch auf externe Logiken, die hier gerade nicht ausgeführt werden.`
   });
 
@@ -3281,9 +3288,10 @@ function applyAnalyticsProposalPromptPatch(pack) {
     sortOrder: 4,
     prompt: `Vorschlagsmodus für den Schritt "Preparation & Focus":
 - Analysiere Fokus, Scope und offene Annahmen des aktuellen Canvas.
-- Schlage konkrete Board-Änderungen vor, die den Header schärfen, offene Annahmen expliziter machen oder Scope-Reste sauber nach sorted_out_left parken.
-- Nichts davon ist bereits angewendet. Beschreibe im feedback klar, was du vorschlagen würdest und warum.
-- Entwickle in diesem Schritt noch keine Nutzeranalyse, keine Lösung und keinen Fit.`
+- Wenn das Board noch leer ist und kein konkreter Use-Case-Fokus sichtbar ist, bevorzuge textliches feedback mit 1 bis 3 konkreten Formulierungsoptionen statt mehrere Platzhalter-Stickies vorzuschlagen.
+- Schlage Board-Änderungen nur dann konkret vor, wenn bereits ein inhaltlicher Fokus vorhanden ist oder der Nutzer ausdrücklich Beispiel-Stickies auf dem Board haben will.
+- Falls du in Step 0 konkrete Board-Vorschläge machst, beschränke dich auf den Header und höchstens sehr wenige weiße Fokus-/Scope-Stickies; entwickle noch keine Nutzeranalyse, keine Lösung und keinen Fit.
+- Nichts davon ist bereits angewendet. Beschreibe im feedback klar, was du vorschlagen würdest und warum.`
   }, {
     runProfileId: "analytics.fit.step0.apply",
     label: "Vorschläge anwenden",

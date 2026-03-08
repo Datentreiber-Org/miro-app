@@ -9,7 +9,7 @@ import {
   DT_CHECK_TAG_TITLE,
   normalizeStickyColorToken,
   STICKY_LAYOUT
-} from "../config.js?v=20260309-batch81";
+} from "../config.js?v=20260311-batch83fix1";
 import {
   stripHtml,
   isFiniteNumber,
@@ -24,7 +24,7 @@ import {
   resolveBoardRect,
   findInstanceByPoint,
   findInstanceByRect
-} from "../miro/board.js?v=20260309-batch81";
+} from "../miro/board.js?v=20260311-batch83fix1";
 
 // --------------------------------------------------------------------
 // Canvas Definitions / Region Mapping
@@ -109,6 +109,46 @@ export function getBodyRegionDefs(canvasTypeId) {
   }
 
   return result;
+}
+
+export function getHeaderRegionDef(canvasTypeId) {
+  const def = getCanvasDef(canvasTypeId);
+  const header = Array.isArray(def?.headerPolygons) ? def.headerPolygons[0] : null;
+  if (header?.polygonNorm?.length) {
+    return {
+      id: "header",
+      title: header.title || "Header",
+      polygonNorm: header.polygonNorm
+    };
+  }
+
+  return {
+    id: "header",
+    title: "Header",
+    polygonNorm: [
+      [0, 0],
+      [1, 0],
+      [1, 0.18],
+      [0, 0.18]
+    ]
+  };
+}
+
+export function getHeaderRegionBoundsNorm(canvasTypeId) {
+  const header = getHeaderRegionDef(canvasTypeId);
+  return header?.polygonNorm?.length ? polygonBoundsNorm(header.polygonNorm) : null;
+}
+
+export function getHeaderRegionBoundsBoard(templateGeometry, canvasTypeId) {
+  if (!templateGeometry) return null;
+  const boundsNorm = getHeaderRegionBoundsNorm(canvasTypeId);
+  if (!boundsNorm) return null;
+  return normalizedRectToBoardRect(templateGeometry, {
+    left: boundsNorm.minX,
+    right: boundsNorm.maxX,
+    top: boundsNorm.minY,
+    bottom: boundsNorm.maxY
+  });
 }
 
 export function pointInPolygonNorm(px, py, polygonNorm) {
@@ -347,6 +387,17 @@ export function areaNameToRegion(areaName, canvasTypeId = null) {
     : Object.keys(DT_CANVAS_DEFS).map((id) => ({ canvasTypeId: id, regions: getBodyRegionDefs(id) }));
 
   for (const candidate of candidates) {
+    const headerRegion = getHeaderRegionDef(candidate.canvasTypeId);
+    if (headerRegion?.id) {
+      const headerId = String(headerRegion.id || "").trim();
+      const headerTitle = String(headerRegion.title || headerId).trim();
+      const normalizedHeaderId = normalizeAreaLookupToken(headerId);
+      const normalizedHeaderTitle = normalizeAreaLookupToken(headerTitle);
+      if (norm === normalizedHeaderId || norm === normalizedHeaderTitle || norm.includes(normalizedHeaderTitle)) {
+        return { id: headerId, title: headerTitle, canvasTypeId: candidate.canvasTypeId };
+      }
+    }
+
     for (const region of candidate.regions) {
       const regionId = String(region.id || "").trim();
       const regionTitle = String(region.title || regionId).trim();
@@ -395,6 +446,11 @@ export function areaCenterNormalized(regionId, canvasTypeId) {
   const yMax = 0.95;
   const py = (yMin + yMax) / 2;
 
+  if (regionId === "header") {
+    const bounds = getHeaderRegionBoundsNorm(canvasTypeId);
+    if (bounds) return { px: (bounds.minX + bounds.maxX) / 2, py: (bounds.minY + bounds.maxY) / 2 };
+    return { px: 0.5, py: 0.09 };
+  }
   if (regionId === "left") return { px: 1 / 6, py };
   if (regionId === "middle") return { px: 0.5, py };
   if (regionId === "right") return { px: 5 / 6, py };
@@ -463,6 +519,66 @@ function boardToNormalized(templateGeometry, x, y) {
     px: (x - left0) / templateGeometry.width,
     py: (y - top0) / templateGeometry.height
   };
+}
+
+function computeNextFreeStickyPositionInHeaderRegion({
+  templateGeometry,
+  canvasTypeId,
+  stickyWidthPx,
+  stickyHeightPx,
+  marginPx = 20,
+  gapPx = 20,
+  occupiedRects = []
+}) {
+  const bounds = getHeaderRegionBoundsBoard(templateGeometry, canvasTypeId);
+  if (!bounds) return null;
+
+  const stickyWidth = Math.max(10, Number(stickyWidthPx) || STICKY_LAYOUT.defaultWidthPx);
+  const stickyHeight = Math.max(10, Number(stickyHeightPx) || STICKY_LAYOUT.defaultHeightPx);
+
+  const innerWidth = Math.max(1, bounds.width - 2 * marginPx);
+  const innerHeight = Math.max(1, bounds.height - 2 * marginPx);
+  const stepX = stickyWidth + gapPx;
+  const stepY = stickyHeight + gapPx;
+
+  const cols = Math.max(1, Math.floor((innerWidth - stickyWidth) / Math.max(1, stepX)) + 1);
+  const rows = Math.max(1, Math.floor((innerHeight - stickyHeight) / Math.max(1, stepY)) + 1);
+
+  const usedWidth = cols * stickyWidth + Math.max(0, cols - 1) * gapPx;
+  const usedHeight = rows * stickyHeight + Math.max(0, rows - 1) * gapPx;
+  const marginX = Math.max(marginPx, (bounds.width - usedWidth) / 2);
+  const marginY = Math.max(marginPx, (bounds.height - usedHeight) / 2);
+
+  function overlapsAny(candidate) {
+    for (const rect of occupiedRects || []) {
+      if (rectsOverlap(candidate, rect, 0)) return true;
+    }
+    return false;
+  }
+
+  function isInsideHeader(x, y) {
+    const normalized = boardToNormalized(templateGeometry, x, y);
+    const loc = classifyNormalizedLocation(canvasTypeId, normalized.px, normalized.py, { includeFooter: false });
+    return loc?.role === "header";
+  }
+
+  for (let row = 0; row < rows; row++) {
+    for (let col = 0; col < cols; col++) {
+      const x = bounds.left + marginX + stickyWidth / 2 + col * stepX;
+      const y = bounds.top + marginY + stickyHeight / 2 + row * stepY;
+      if (!isInsideHeader(x, y)) continue;
+      const candidate = { x, y, width: stickyWidth, height: stickyHeight };
+      if (!overlapsAny(candidate)) {
+        return { x, y, col, row, cols, rows, isFull: false, bounds };
+      }
+    }
+  }
+
+  const lastCol = cols - 1;
+  const lastRow = rows - 1;
+  const x = bounds.left + marginX + stickyWidth / 2 + lastCol * stepX;
+  const y = bounds.top + marginY + stickyHeight / 2 + lastRow * stepY;
+  return { x, y, col: lastCol, row: lastRow, cols, rows, isFull: true, bounds };
 }
 
 function computeSingleSortedOutPosition({
@@ -609,6 +725,18 @@ export function computeNextFreeStickyPositionInBodyRegion({
   occupiedRects = [],
   occupiedRectsByRegion = null
 }) {
+  if (regionId === "header") {
+    return computeNextFreeStickyPositionInHeaderRegion({
+      templateGeometry,
+      canvasTypeId,
+      stickyWidthPx,
+      stickyHeightPx,
+      marginPx,
+      gapPx,
+      occupiedRects
+    });
+  }
+
   if (isSortedOutRegionId(regionId)) {
     return computeNextFreeStickyPositionInSortedOutRegion({
       templateGeometry,
@@ -1129,8 +1257,10 @@ export function buildPromptPayloadFromClassification(classification, { useAliase
     }
 
     const canvasTypeId = one.template?.canvasTypeId || one.template?.id || null;
+    const headerRegion = getHeaderRegionDef(canvasTypeId);
     const orderedBodyRegions = getBodyRegionDefs(canvasTypeId);
-    const knownAreaIds = new Set(orderedBodyRegions.map((region) => region.id).filter(Boolean));
+    const orderedPromptAreas = [headerRegion, ...orderedBodyRegions].filter((region) => region?.id);
+    const knownAreaIds = new Set(orderedPromptAreas.map((region) => region.id).filter(Boolean));
 
     function resolveAreaKey(item) {
       if (!item) return null;
@@ -1208,9 +1338,13 @@ export function buildPromptPayloadFromClassification(classification, { useAliase
     };
 
     const areasByName = Object.create(null);
-    for (const region of orderedBodyRegions) {
+    for (const region of orderedPromptAreas) {
       if (!region?.id) continue;
       areasByName[region.id] = { name: region.id, title: region.title || region.id, stickies: [] };
+    }
+
+    if (areasByName.header) {
+      areasByName.header.stickies = header.stickies.slice();
     }
 
     for (const item of Array.isArray(one.items) ? one.items : []) {
@@ -1262,7 +1396,7 @@ export function buildPromptPayloadFromClassification(classification, { useAliase
         footerExcludedFromAgentCatalog: one.template?.footerExcludedFromAgentCatalog === true
       },
       header,
-      areas: orderedBodyRegions.map((region) => areasByName[region.id] || { name: region.id, title: region.title || region.id, stickies: [] }),
+      areas: orderedPromptAreas.map((region) => areasByName[region.id] || { name: region.id, title: region.title || region.id, stickies: [] }),
       connections: connectionsSummary
     };
   }

@@ -3,8 +3,8 @@ import {
   getDefaultCanvasTypeIdForPack,
   getPackDefaults,
   getStepTriggerConfig
-} from "../exercises/registry.js?v=20260310-batch81";
-import { parseTriggerKey } from "../runtime/exercise-engine.js?v=20260310-batch81";
+} from "../exercises/registry.js?v=20260311-batch83fix1";
+import { parseTriggerKey } from "../runtime/exercise-engine.js?v=20260311-batch83fix1";
 import { normalizeUiLanguage } from "../i18n/index.js?v=20260306-batch6";
 
 function asNonEmptyString(value) {
@@ -201,23 +201,14 @@ function buildReadableAreaNamingBlock() {
   return [
     "Sichtbare Benennung von Canvas-Bereichen:",
     "- Verwende in sichtbaren Antworten niemals rohe Area-Keys wie 2_user_and_situation oder 6a_information.",
-    "- Nutze stattdessen die sichtbaren Titel der Bereiche, z. B. User & Situation, Objectives & Results, Decisions & Actions, User Gains, User Pains, Solutions, Information, Functions, Benefits oder Check.",
+    "- Nutze stattdessen die sichtbaren Titel der Bereiche, z. B. Header, User & Situation, Objectives & Results, Decisions & Actions, User Gains, User Pains, Solutions, Information, Functions, Benefits oder Check.",
     "- sorted_out_left und sorted_out_right dürfen sichtbar als Sorted-out links bzw. Sorted-out rechts bezeichnet werden."
   ].join("\n");
 }
 
 function buildProposalModeBlock({ exerciseContext = null, pendingProposal = null, questionMode = false } = {}) {
   const lines = [];
-  const triggerIntent = asNonEmptyString(exerciseContext?.triggerIntent) || null;
   const normalizedPendingProposal = normalizePendingProposalForPrompt(pendingProposal);
-
-  if (triggerIntent === "propose") {
-    lines.push("Vorschlagsmodus:");
-    lines.push("- In diesem Run sind actions konkrete Vorschläge für mögliche Board-Änderungen, aber noch KEINE bereits angewendeten Mutationen.");
-    lines.push("- Stelle sprachlich klar, dass noch nichts angewendet wurde. Verwende keine Formulierungen, die die Vorschläge als bereits umgesetzt darstellen.");
-    lines.push("- feedback muss menschlich lesbar erklären: 1) was du auf dem Board siehst, 2) was du vorschlägst, 3) warum das im aktuellen Schritt sinnvoll ist, 4) was nach einer Bestätigung passieren würde.");
-    lines.push("- Plane nur Vorschläge, die strikt im Scope des aktuellen Schritts bleiben. Nimm nichts aus späteren Schritten vorweg.");
-  }
 
   if (normalizedPendingProposal) {
     lines.push("Hinweis zu einem bereits vorliegenden Vorschlag:");

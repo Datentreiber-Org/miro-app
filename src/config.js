@@ -26,6 +26,7 @@ export const DT_TEMPLATE_CATALOG = {
     promptContext: `
 Dieser Canvas-Typ hat drei Body-Bereiche plus Header und Footer.
 Verwende für area bzw. targetArea ausschließlich diese Area-Keys:
+- header = Header: Fokus oder Arbeitstitel des Canvas.
 - left = Box 1 (links)
 - middle = Box 2 (Mitte)
 - right = Box 3 (rechts)
@@ -49,6 +50,7 @@ Dieser Canvas-Typ ist das Analytics & AI Use Case Canvas.
 Ziel dieses Canvas ist es, einen Analytics- oder KI-Anwendungsfall aus einer konkreten Nutzerrolle, ihrer Situation, ihren Zielen, Entscheidungen, Handlungen, Pains und Gains herzuleiten und erst danach eine passende Lösung zu gestalten.
 
 Verwende für area bzw. targetArea ausschließlich diese Area-Keys:
+- header = Header: Fokus, Use-Case-Name oder konkreter Arbeitstitel dieses Canvas.
 - 2_user_and_situation = User & Situation: konkrete Nutzerrolle oder Nutzergruppe, Auslöser, Arbeitssituation, Kontext, Job to be done.
 - 3_objectives_and_results = Objectives & Results: angestrebte Ziele oder messbare gewünschte Ergebnisse.
 - 4_decisions_and_actions = Decisions & Actions: reale Entscheidungen oder Handlungen, die der Nutzer treffen oder ausführen muss.
@@ -630,7 +632,6 @@ Du siehst:
 - ein aktuelles Gedächtnisobjekt unter memoryState
 - eine kleine Verlaufsliste jüngerer Gedächtniseinträge unter recentMemoryLogEntries
 - optional einen Übungs-/Trainingskontext unter exerciseContext.
-- optional einen kleinen Button-Katalog unter flowControlCatalog sowie den aktuellen Board-Button-Zustand unter boardFlowState.
 - optional einen kleinen Button-Katalog unter flowControlCatalog sowie den aktuellen Board-Button-Zustand unter boardFlowState.
 
 Die genaue fachliche Bedeutung der Canvas-Instanzen wird in nachgelagerten Canvas-Typ-Kontextblöcken erklärt. Verlasse dich nicht auf stillschweigendes Vorwissen über einen bestimmten Canvas-Typ.

@@ -12,18 +12,18 @@ import {
   DT_CHECK_TAG_COLOR,
   normalizeStickyColorToken,
   STICKY_LAYOUT
-} from "./config.js?v=20260310-batch81";
+} from "./config.js?v=20260311-batch83fix1";
 
 import { createLogger, stripHtml, extractUnderlinedText, isFiniteNumber } from "./utils.js?v=20260301-step11-hotfix2";
 import { normalizeUiLanguage, t, getLocaleForLanguage } from "./i18n/index.js?v=20260306-batch6";
 
 import * as Board from "./miro/board.js?v=20260310-batch81";
-import * as Catalog from "./domain/catalog.js?v=20260310-batch81";
+import * as Catalog from "./domain/catalog.js?v=20260311-batch83fix1";
 import * as OpenAI from "./ai/openai.js?v=20260307-batch75";
 import * as Memory from "./runtime/memory.js?v=20260301-step11-hotfix2";
-import * as Exercises from "./exercises/registry.js?v=20260310-batch81";
-import * as ExerciseLibrary from "./exercises/library.js?v=20260310-batch81";
-import * as PromptComposer from "./prompt/composer.js?v=20260310-batch81";
+import * as Exercises from "./exercises/registry.js?v=20260311-batch83fix1";
+import * as ExerciseLibrary from "./exercises/library.js?v=20260311-batch83fix1";
+import * as PromptComposer from "./prompt/composer.js?v=20260311-batch83fix1";
 import * as ExerciseEngine from "./runtime/exercise-engine.js?v=20260310-batch81";
 import * as BoardFlow from "./runtime/board-flow.js?v=20260306-batch6";
 import * as PanelBridge from "./runtime/panel-bridge.js?v=20260305-schemafix2";
@@ -2916,10 +2916,22 @@ async function loadMemoryRuntimeState() {
   );
 }
 
-function buildMemoryInjectionPayload() {
+function buildMemoryInjectionPayload({ proposalMode = false } = {}) {
+  const memoryState = Memory.normalizeMemoryState(state.memoryState || Memory.createEmptyMemoryState());
+  if (!proposalMode) {
+    return {
+      memoryState,
+      recentMemoryLogEntries: Memory.getRecentMemoryEntries(state.memoryLog, DT_MEMORY_RECENT_LOG_LIMIT)
+    };
+  }
+
   return {
-    memoryState: Memory.normalizeMemoryState(state.memoryState || Memory.createEmptyMemoryState()),
-    recentMemoryLogEntries: Memory.getRecentMemoryEntries(state.memoryLog, DT_MEMORY_RECENT_LOG_LIMIT)
+    memoryState: {
+      ...memoryState,
+      nextFocus: null,
+      lastSummary: null
+    },
+    recentMemoryLogEntries: []
   };
 }
 
@@ -4047,6 +4059,7 @@ async function applyAgentActionsToInstance(instanceId, actions) {
   }
 
   const occupiedByRegion = Object.create(null);
+  occupiedByRegion.header = buildOccupied(liveInst?.regions?.header?.stickies);
   for (const region of Catalog.getBodyRegionDefs(instance.canvasTypeId || TEMPLATE_ID)) {
     occupiedByRegion[region.id] = buildOccupied(liveInst?.regions?.body?.[region.id]?.stickies);
   }
@@ -4069,7 +4082,7 @@ async function applyAgentActionsToInstance(instanceId, actions) {
   function detectBodyRegionIdFromBoardRect(canvasTypeId, boardRect) {
     if (!geom || !boardRect) return null;
     const loc = Catalog.classifyBoardRectAgainstCanvas(canvasTypeId, boardRect, geom, { includeFooter: false });
-    const rid = loc?.role === "body" ? loc.regionId : null;
+    const rid = (loc?.role === "body" || loc?.role === "header") ? (loc.regionId || (loc.role === "header" ? "header" : null)) : null;
     return (rid && Object.prototype.hasOwnProperty.call(occupiedByRegion, rid)) ? rid : null;
   }
 
@@ -4927,7 +4940,7 @@ async function runAgentForSelectedInstances(selectedInstanceIds, options = {}) {
     const singleLabel = resolvedActiveLabels.length === 1 ? resolvedActiveLabels[0] : null;
     const singleInstanceId = resolvedActiveIds.length === 1 ? resolvedActiveIds[0] : null;
     const boardCatalog = buildBoardCatalogForSelectedInstances(resolvedActiveIds);
-    const memoryPayload = buildMemoryInjectionPayload();
+    const memoryPayload = buildMemoryInjectionPayload({ proposalMode: isProposalRun === true });
     const expectedSignatureSnapshot = buildSignatureSnapshot(stateById, resolvedActiveIds);
     const flowPromptContext = resolveFlowPromptContext({
       promptRuntimeOverride,
@@ -5148,12 +5161,12 @@ async function runAgentForSelectedInstances(selectedInstanceIds, options = {}) {
     log(agentObj.analysis || "(keine analysis)");
 
     if (isProposalRun) {
-      const executableActions = Array.isArray(agentObj.actions)
-        ? agentObj.actions.filter((rawAction) => {
-            const normalized = normalizeAgentAction(rawAction);
-            return normalized && normalized.type !== "inform";
-          })
-        : [];
+      const executableActions = sanitizeProposalActionsForCurrentStep(agentObj.actions, {
+        stepId: currentStepId,
+        activeCanvasPayload: singleLabel ? activeCanvasStates[singleLabel] : null,
+        userText,
+        logFn: log
+      }).filter((action) => action && action.type !== "inform");
 
       let proposalRecord = null;
       let proposalDirectiveResult = null;
@@ -5892,4 +5905,101 @@ async function runGlobalAgent(triggerInstanceId, userText, options = {}) {
     }
     releaseAgentRunLock(runLock);
   }
+}function looksLikePlaceholderStickyText(text) {
+  const value = pickFirstNonEmptyString(text);
+  if (!value) return false;
+  const trimmed = value.trim();
+  if (!trimmed) return false;
+  if (/\[[^\]]+\]/.test(trimmed)) return true;
+  if (/^\(\s*header\s*\)/i.test(trimmed)) return true;
+  if (/^offene frage/i.test(trimmed)) return true;
+  if (/^geparkt/i.test(trimmed)) return true;
+  if (/^parkplatz/i.test(trimmed)) return true;
+  return false;
 }
+
+function promptPayloadHasVisibleContent(promptPayload) {
+  if (!promptPayload || typeof promptPayload !== "object") return false;
+  const templates = Array.isArray(promptPayload.templates) ? promptPayload.templates : [];
+  for (const tpl of templates) {
+    if (Array.isArray(tpl?.header?.stickies) && tpl.header.stickies.length) return true;
+    for (const area of Array.isArray(tpl?.areas) ? tpl.areas : []) {
+      if (Array.isArray(area?.stickies) && area.stickies.length) return true;
+    }
+  }
+  return false;
+}
+
+function userExplicitlyAskedForExampleStickies(userText) {
+  const value = pickFirstNonEmptyString(userText);
+  if (!value) return false;
+  const norm = value.toLowerCase();
+  return /beispiel|beispiel-sticky|beispielsticky|beispielhafte? sticky|setze .*beispiel|platziere .*beispiel|lege .*beispiel/.test(norm);
+}
+
+function sanitizeProposalActionsForCurrentStep(actions, {
+  stepId = null,
+  activeCanvasPayload = null,
+  userText = null,
+  logFn = null
+} = {}) {
+  const normalizedStepId = pickFirstNonEmptyString(stepId);
+  const normalizedActions = Array.isArray(actions)
+    ? actions.map((raw) => normalizeAgentAction(raw)).filter(Boolean)
+    : [];
+
+  if (normalizedStepId !== "step0_preparation_and_focus") {
+    return normalizedActions;
+  }
+
+  const boardHasContent = promptPayloadHasVisibleContent(activeCanvasPayload);
+  const explicitExamples = userExplicitlyAskedForExampleStickies(userText);
+  const logSafe = typeof logFn === "function" ? logFn : (() => {});
+
+  if (!boardHasContent && !explicitExamples) {
+    if (normalizedActions.length) {
+      logSafe("INFO: Step-0-Proposal auf leerem Canvas wird textlich gehalten; konkrete Vorschlags-Actions werden verworfen, solange keine expliziten Beispiel-Stickies angefordert wurden.");
+    }
+    return [];
+  }
+
+  const allowedAreas = new Set(["header", "sorted_out_left"]);
+  const sanitized = [];
+  for (const action of normalizedActions) {
+    if (action.type === "inform") continue;
+    if (action.type === "create_sticky") {
+      const area = pickFirstNonEmptyString(action.area, action.targetArea);
+      if (!allowedAreas.has(area)) {
+        logSafe("INFO: Step-0-Proposal verwirft create_sticky außerhalb von Header oder Sorted-out links: " + String(area || "(leer)"));
+        continue;
+      }
+      if (looksLikePlaceholderStickyText(action.text)) {
+        logSafe("INFO: Step-0-Proposal verwirft Platzhalter-/Meta-Sticky: " + String(action.text || "(leer)"));
+        continue;
+      }
+      sanitized.push(action);
+      continue;
+    }
+
+    if (action.type === "move_sticky") {
+      const area = pickFirstNonEmptyString(action.targetArea, action.area);
+      if (!allowedAreas.has(area)) {
+        logSafe("INFO: Step-0-Proposal verwirft move_sticky außerhalb von Header oder Sorted-out links: " + String(area || "(leer)"));
+        continue;
+      }
+      sanitized.push(action);
+      continue;
+    }
+
+    if (action.type === "set_sticky_color" || action.type === "set_check_status" || action.type === "delete_sticky") {
+      sanitized.push(action);
+      continue;
+    }
+
+    sanitized.push(action);
+  }
+
+  return sanitized;
+}
+
+
