@@ -43,19 +43,23 @@ export {
 export {
   normalizeChatInterfaceShapeIds,
   hasCompleteChatInterfaceShapeIds,
+  hasApplyChatInterfaceShapeId,
   computeChatInterfaceLayout,
   createChatInterfaceForInstance,
+  ensureChatApplyShapeForInstance,
   readChatInterfaceMeta,
   writeChatInterfaceMeta,
   removeChatInterfaceShapes,
   getChatInterfaceItemByRole,
   readChatInputContent,
   writeChatOutputContent,
+  buildChatApplyContent,
   getChatPlaceholderText,
   getChatPlaceholderVariants,
   isKnownChatPlaceholderContent,
-  syncChatPlaceholdersForLanguage
-} from "./chat-interface.js?v=20260306-batch6";
+  syncChatPlaceholdersForLanguage,
+  syncChatApplyButtonState
+} from "./chat-interface.js?v=20260309-batch9";
 
 export {
   getSelection,

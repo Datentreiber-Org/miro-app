@@ -3,14 +3,15 @@ import {
   DT_TRIGGER_DEFAULTS,
   DT_TRIGGER_SOURCES,
   DT_FEEDBACK_CHANNELS,
-  DT_MUTATION_POLICIES
-} from "../config.js?v=20260307-batch5";
+  DT_MUTATION_POLICIES,
+  DT_EXECUTION_MODES
+} from "../config.js?v=20260309-batch9";
 import {
   getPackDefaults,
   getStepTriggerConfig,
   listStepTransitions,
   resolveNamedTransition
-} from "../exercises/registry.js?v=20260307-batch8";
+} from "../exercises/registry.js?v=20260309-batch9";
 
 function asNonEmptyString(value) {
   if (typeof value !== "string") return null;
@@ -82,6 +83,32 @@ function normalizeFeedbackPolicy(value, fallback = "text") {
 function normalizeMutationPolicy(value, fallback = "none") {
   const normalized = asNonEmptyString(value);
   return normalized && DT_MUTATION_POLICIES.includes(normalized) ? normalized : fallback;
+}
+
+export function normalizeExecutionMode(value, fallback = "none") {
+  const normalized = asNonEmptyString(value);
+  return normalized && DT_EXECUTION_MODES.includes(normalized) ? normalized : fallback;
+}
+
+export function normalizeAllowedExecutionModes(values, fallback = ["none"]) {
+  const normalizedValues = normalizeUniqueStrings(values);
+  const allowed = normalizedValues.filter((value) => DT_EXECUTION_MODES.includes(value));
+  if (allowed.length) return allowed;
+  const normalizedFallback = normalizeUniqueStrings(fallback).filter((value) => DT_EXECUTION_MODES.includes(value));
+  return normalizedFallback.length ? normalizedFallback : ["none"];
+}
+
+export function resolveEffectiveExecutionMode({
+  rawExecutionMode = null,
+  forcedExecutionMode = null,
+  allowedExecutionModes = ["none"]
+} = {}) {
+  const allowed = normalizeAllowedExecutionModes(allowedExecutionModes, ["none"]);
+  const forced = forcedExecutionMode ? normalizeExecutionMode(forcedExecutionMode, null) : null;
+  if (forced && allowed.includes(forced)) return forced;
+  const normalizedRaw = normalizeExecutionMode(rawExecutionMode, allowed[0] || "none");
+  if (allowed.includes(normalizedRaw)) return normalizedRaw;
+  return allowed[0] || "none";
 }
 
 export function getTriggerDefault(triggerKey) {
@@ -196,7 +223,8 @@ export function resolveTriggerContext({
       targetInstanceLabels: normalizedTargets,
       requiresSelection,
       mutationPolicy: normalizeMutationPolicy(effectiveConfig.mutationPolicy, defaults?.mutationPolicy || "none"),
-      feedbackPolicy: normalizeFeedbackPolicy(effectiveConfig.feedbackPolicy, defaults?.feedbackPolicy || "text")
+      feedbackPolicy: normalizeFeedbackPolicy(effectiveConfig.feedbackPolicy, defaults?.feedbackPolicy || "text"),
+      allowedExecutionModes: normalizeAllowedExecutionModes(effectiveConfig.allowedExecutionModes, defaults?.allowedExecutionModes || ["none"])
     };
   }
 
@@ -212,6 +240,7 @@ export function resolveTriggerContext({
     requiresSelection,
     mutationPolicy: normalizeMutationPolicy(effectiveConfig.mutationPolicy, defaults?.mutationPolicy || "none"),
     feedbackPolicy: normalizeFeedbackPolicy(effectiveConfig.feedbackPolicy, packDefaults.feedbackChannel || boardConfig?.feedbackChannelDefault || defaults?.feedbackPolicy || "text"),
+    allowedExecutionModes: normalizeAllowedExecutionModes(effectiveConfig.allowedExecutionModes, defaults?.allowedExecutionModes || ["none"]),
     allowedActions,
     prompt: asNonEmptyString(effectiveConfig.prompt),
     targetInstanceLabels: normalizedTargets
@@ -232,6 +261,7 @@ export function buildTriggerConfigFromRunProfile(runProfile) {
     requiresSelection: defaults.requiresSelection === true,
     mutationPolicy: normalizeMutationPolicy(runProfile?.mutationPolicy, defaults.mutationPolicy || "none"),
     feedbackPolicy: normalizeFeedbackPolicy(runProfile?.feedbackPolicy, defaults.feedbackPolicy || "text"),
+    allowedExecutionModes: normalizeAllowedExecutionModes(runProfile?.allowedExecutionModes, defaults.allowedExecutionModes || ["none"]),
     allowedActions: normalizeUniqueStrings(runProfile?.allowedActions || [])
   };
 }
@@ -270,6 +300,7 @@ export function resolveTriggerContextForRunProfile({
       requiresSelection: true,
       mutationPolicy: triggerConfig.mutationPolicy,
       feedbackPolicy: normalizeFeedbackPolicy(triggerConfig.feedbackPolicy, boardConfig?.feedbackChannelDefault || "text"),
+      allowedExecutionModes: triggerConfig.allowedExecutionModes,
       allowedActions: triggerConfig.allowedActions,
       targetInstanceLabels: normalizedTargets
     };
@@ -284,6 +315,7 @@ export function resolveTriggerContextForRunProfile({
     requiresSelection: triggerConfig.requiresSelection,
     mutationPolicy: triggerConfig.mutationPolicy,
     feedbackPolicy: normalizeFeedbackPolicy(triggerConfig.feedbackPolicy, boardConfig?.feedbackChannelDefault || "text"),
+    allowedExecutionModes: triggerConfig.allowedExecutionModes,
     allowedActions: triggerConfig.allowedActions,
     prompt: null,
     targetInstanceLabels: normalizedTargets

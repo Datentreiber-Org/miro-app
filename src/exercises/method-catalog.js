@@ -1,11 +1,12 @@
 import {
   DT_DEFAULT_APP_ADMIN_POLICY,
   DT_DEFAULT_FEEDBACK_CHANNEL,
-  DT_TRIGGER_KEYS
-} from "../config.js?v=20260307-batch75";
+  DT_TRIGGER_KEYS,
+  DT_EXECUTION_MODES
+} from "../config.js?v=20260309-batch9";
 
-import { METHOD_I18N_OVERRIDES } from "../i18n/catalog.js?v=20260307-batch8";
-import { normalizeUiLanguage, pickLocalized } from "../i18n/index.js?v=20260306-batch6";
+import { METHOD_I18N_OVERRIDES } from "../i18n/catalog.js?v=20260309-batch9";
+import { normalizeUiLanguage, pickLocalized } from "../i18n/index.js?v=20260309-batch9";
 
 function asNonEmptyString(value) {
   if (typeof value !== "string") return null;
@@ -24,6 +25,13 @@ function normalizeUniqueStrings(values) {
     result.push(text);
   }
   return result;
+}
+
+function normalizeAllowedExecutionModes(values, fallback = ["none"]) {
+  const normalized = normalizeUniqueStrings(values).filter((value) => DT_EXECUTION_MODES.includes(value));
+  if (normalized.length) return normalized;
+  const normalizedFallback = normalizeUniqueStrings(fallback).filter((value) => DT_EXECUTION_MODES.includes(value));
+  return normalizedFallback.length ? normalizedFallback : ["none"];
 }
 
 const EXTRA_STICKY_MUTATION_ACTIONS = Object.freeze(["set_sticky_color", "set_check_status"]);
@@ -209,6 +217,7 @@ function buildExerciseStep(stepDef) {
       requiresSelection: profile?.requiresSelection === true,
       mutationPolicy: asNonEmptyString(profile?.mutationPolicy),
       feedbackPolicy: asNonEmptyString(profile?.feedbackPolicy),
+      allowedExecutionModes: Object.freeze(normalizeAllowedExecutionModes(profile?.allowedExecutionModes, ["none"])),
       prompt: asNonEmptyString(profile?.prompt),
       moduleIds: Object.freeze(normalizeUniqueStrings(profile?.moduleIds))
     });
@@ -281,6 +290,7 @@ function buildFlowControlProjection(packDef, stepDef, triggerProfile) {
     ]),
     mutationPolicy: asNonEmptyString(flowControl.mutationPolicy) || asNonEmptyString(triggerProfile?.mutationPolicy),
     feedbackPolicy: asNonEmptyString(flowControl.feedbackPolicy) || asNonEmptyString(triggerProfile?.feedbackPolicy),
+    allowedExecutionModes: normalizeAllowedExecutionModes(flowControl.allowedExecutionModes, triggerProfile?.allowedExecutionModes || ["none"]),
     defaultScopeType: asNonEmptyString(flowControl.defaultScopeType) || "fixed_instances",
     allowedActions: augmentAllowedActions(flowControl.allowedActions),
     uiHint: asNonEmptyString(flowControl.uiHint),
@@ -1499,6 +1509,28 @@ function setTriggerModuleIds(pack, stepId, triggerKey, moduleIds) {
   trigger.moduleIds = normalizeUniqueStrings(moduleIds);
 }
 
+function patchTriggerProfile(pack, stepId, triggerKey, patch = {}) {
+  const trigger = pack?.steps?.[stepId]?.triggerProfiles?.[triggerKey];
+  if (!trigger || typeof trigger !== "object") return;
+  if (typeof patch.prompt === "string") trigger.prompt = patch.prompt;
+  if (typeof patch.mutationPolicy === "string") trigger.mutationPolicy = asNonEmptyString(patch.mutationPolicy);
+  if (typeof patch.feedbackPolicy === "string") trigger.feedbackPolicy = asNonEmptyString(patch.feedbackPolicy);
+  if (patch.allowedExecutionModes) trigger.allowedExecutionModes = normalizeAllowedExecutionModes(patch.allowedExecutionModes, trigger.allowedExecutionModes || ["none"]);
+  if (patch.moduleIds) trigger.moduleIds = normalizeUniqueStrings(patch.moduleIds);
+}
+
+function patchFlowControl(pack, stepId, triggerKey, patch = {}) {
+  const flowControl = pack?.steps?.[stepId]?.triggerProfiles?.[triggerKey]?.flowControl;
+  if (!flowControl || typeof flowControl !== "object") return;
+  if (typeof patch.label === "string") flowControl.label = patch.label;
+  if (typeof patch.summary === "string") flowControl.summary = patch.summary;
+  if (typeof patch.uiHint === "string") flowControl.uiHint = patch.uiHint;
+  if (typeof patch.mutationPolicy === "string") flowControl.mutationPolicy = asNonEmptyString(patch.mutationPolicy);
+  if (typeof patch.feedbackPolicy === "string") flowControl.feedbackPolicy = asNonEmptyString(patch.feedbackPolicy);
+  if (patch.allowedExecutionModes) flowControl.allowedExecutionModes = normalizeAllowedExecutionModes(patch.allowedExecutionModes, flowControl.allowedExecutionModes || ["none"]);
+  if (patch.moduleIds) flowControl.moduleIds = normalizeUniqueStrings(patch.moduleIds);
+}
+
 function setFlowControlSurface(pack, stepId, triggerKey, surface = {}) {
   const flowControl = pack?.steps?.[stepId]?.triggerProfiles?.[triggerKey]?.flowControl;
   if (!flowControl || typeof flowControl !== "object") return;
@@ -2011,6 +2043,7 @@ function makeFlowControlDef({
   moduleIds = [],
   mutationPolicy = null,
   feedbackPolicy = null,
+  allowedExecutionModes = ["none"],
   defaultScopeType = "fixed_instances",
   allowedActions = [],
   uiHint = null,
@@ -2026,6 +2059,7 @@ function makeFlowControlDef({
     moduleIds: normalizeUniqueStrings(moduleIds),
     mutationPolicy: asNonEmptyString(mutationPolicy),
     feedbackPolicy: asNonEmptyString(feedbackPolicy),
+    allowedExecutionModes: normalizeAllowedExecutionModes(allowedExecutionModes, ["none"]),
     defaultScopeType: asNonEmptyString(defaultScopeType) || "fixed_instances",
     allowedActions: normalizeUniqueStrings(allowedActions),
     uiHint: asNonEmptyString(uiHint),
@@ -2040,6 +2074,7 @@ function makeTriggerProfileDef(triggerKey, {
   prompt,
   mutationPolicy = null,
   feedbackPolicy = null,
+  allowedExecutionModes = ["none"],
   flowControl = null,
   requiresSelection = null,
   moduleIds = []
@@ -2056,6 +2091,7 @@ function makeTriggerProfileDef(triggerKey, {
     requiresSelection: resolvedRequiresSelection,
     mutationPolicy: asNonEmptyString(mutationPolicy),
     feedbackPolicy: asNonEmptyString(feedbackPolicy),
+    allowedExecutionModes: normalizeAllowedExecutionModes(allowedExecutionModes, ["none"]),
     prompt: asNonEmptyString(prompt),
     moduleIds: normalizeUniqueStrings(moduleIds),
     flowControl: flowControl && typeof flowControl === "object" ? flowControl : null
@@ -3284,6 +3320,7 @@ function applyAnalyticsProposalPromptPatch(pack) {
     step.triggerProfiles["selection.propose"] = makeTriggerProfileDef("selection.propose", {
       mutationPolicy: "full",
       feedbackPolicy: "text",
+      allowedExecutionModes: ["proposal_only"],
       prompt: proposalConfig.prompt,
       moduleIds: proposalConfig.moduleIds,
       flowControl: makeFlowControlDef({
@@ -3293,6 +3330,7 @@ function applyAnalyticsProposalPromptPatch(pack) {
         moduleIds: proposalConfig.moduleIds,
         mutationPolicy: "full",
         feedbackPolicy: "text",
+        allowedExecutionModes: ["proposal_only"],
         defaultScopeType: "fixed_instances",
         allowedActions,
         uiHint: proposalConfig.uiHint,
@@ -3305,6 +3343,7 @@ function applyAnalyticsProposalPromptPatch(pack) {
     step.triggerProfiles["selection.apply"] = makeTriggerProfileDef("selection.apply", {
       mutationPolicy: "full",
       feedbackPolicy: "text",
+      allowedExecutionModes: ["direct_apply"],
       prompt: applyConfig.prompt,
       moduleIds: applyConfig.moduleIds,
       flowControl: makeFlowControlDef({
@@ -3314,6 +3353,7 @@ function applyAnalyticsProposalPromptPatch(pack) {
         moduleIds: applyConfig.moduleIds,
         mutationPolicy: "full",
         feedbackPolicy: "text",
+        allowedExecutionModes: ["direct_apply"],
         defaultScopeType: "fixed_instances",
         allowedActions,
         uiHint: applyConfig.uiHint,
@@ -4510,6 +4550,197 @@ Allgemeine Leseregel:
 
   applyAnalyticsProposalPromptPatch(pack);
 
+  setPromptModuleText(pack, "analytics.fit.shared.hint_style", {
+    summary: "Reiner Hinweisstil: Orientierung, Satzanfänge und nächster Mikroschritt ohne Board-Mutationen.",
+    prompt: `Hinweisstil:
+- Nutze executionMode = none und actions = [].
+- Gib nur Orientierung, Formulierungsanstöße und die nächsten 1 bis 3 sinnvollen Arbeitsschritte.
+- Erzeuge keine Sticky Notes, keine Connectoren und keine versteckten Board-Vorschläge als strukturierte actions.
+- Wenn der relevante Bereich leer ist, gib eine sinnvolle Startreihenfolge und konkrete Satzanfänge statt Board-Materialisierung.
+- Wenn Material vorhanden ist, knüpfe an dieses Material an, bleibe aber textlich.`
+  });
+
+  setPromptModuleText(pack, "analytics.fit.shared.coach_style", {
+    prompt: `Coaching-Stil:
+- Formuliere eher coachend als bewertend.
+- Nutze bevorzugt executionMode = none.
+- Verwende direct_apply nur für sehr kleine, didaktisch eindeutige Eingriffe; verwende proposal_only, wenn ein größerer konkreter Vorschlag hilfreicher ist.
+- Gib 3 bis 5 konkrete Leitfragen oder Reflexionsimpulse, die direkt zum aktiven Schritt passen.
+- Ergänze genau einen klaren Mikroschritt, mit dem der Nutzer sofort weitermachen kann.
+- Liefere keine vollständig ausformulierte Komplettlösung, wenn nicht ausdrücklich darum gebeten wird.
+- Wenn das Canvas leer ist, nutze Kick-off-Fragen und erkläre, warum ein bestimmter Einstieg fachlich sinnvoll ist.`
+  });
+
+  setPromptModuleText(pack, "analytics.fit.shared.check_style", {
+    prompt: `Prüfmodus:
+- Prüfe strukturiert auf Vollständigkeit, Präzision, Fehlplatzierungen, Doppelungen, Unklarheiten, Over-Connecting und logische Brüche.
+- Prüfe auch, ob der aktuelle Bereich im richtigen Arbeitsmodus bearbeitet wird: Sammlung, Strukturierung, Ableitung oder Verdichtung.
+- Nutze executionMode = none, wenn Diagnose genügt.
+- Nutze direct_apply nur für kleine, risikoarme und offensichtliche Korrekturen.
+- Nutze proposal_only, wenn du größere, generativere oder didaktisch erklärungsbedürftige Änderungen vorschlagen willst.
+- Gib im feedback möglichst klar an: was bereits tragfähig ist, was fehlt, was unklar oder zu generisch ist und was als nächstes verbessert werden sollte.`
+  });
+
+  setPromptModuleText(pack, "analytics.fit.shared.review_style", {
+    prompt: `Review-Stil:
+- Führe einen qualitativen Review durch, nicht bloß eine Checkliste.
+- Benenne möglichst klar Stärken, Schwächen, Widersprüche, fehlende Voraussetzungen, Over-Connecting und Risiken.
+- Nutze executionMode = none, wenn Diagnose und Einordnung genügen.
+- Nutze direct_apply nur für kleine, sehr klare Korrekturen.
+- Nutze proposal_only, wenn eine Umstrukturierung, Reduktion oder sichtbarere Änderung sinnvoll wäre, aber nicht ungefragt angewendet werden sollte.
+- Wenn der Reifegrad noch zu niedrig für einen belastbaren Review ist, sage das explizit und erkläre, welche Vorarbeit zuerst fehlt.`
+  });
+
+  setPromptModuleText(pack, "analytics.fit.shared.synthesis_style", {
+    prompt: `Synthese-Stil:
+- Verdichte vorhandene Inhalte in knappe, belastbare Aussagen.
+- Nutze executionMode = none, wenn Verdichtung textlich genügt.
+- Nutze direct_apply nur für kleine, klare Ergänzungen im Feld Check.
+- Nutze proposal_only, wenn die Verdichtung oder Reduktion erst nach Bestätigung angewendet werden sollte.
+- Erfinde keinen Problem-Solution-Fit, wenn der Canvas noch zu leer oder zu widersprüchlich ist.`
+  });
+
+  setPromptModuleText(pack, "analytics.fit.shared.proposal_mode", {
+    prompt: `Vorschlagsmodus:
+- In diesem Trigger ist executionMode = proposal_only Pflicht.
+- actions beschreiben die vorgeschlagenen Änderungen, nicht bereits vollzogene Änderungen.
+- feedback muss für Menschen klar sagen: 1) was du auf dem Board siehst, 2) was du konkret vorschlägst, 3) warum das im aktuellen Schritt sinnvoll ist, 4) dass noch nichts angewendet wurde und was nach einer Bestätigung passieren würde.
+- Bleibe streng im Scope des aktuellen Schritts. Der Vorschlagsmodus ist nicht dazu da, den gesamten Workshop vorwegzunehmen.
+- Materialisiere keine Coaching-Satzanfänge, keine Tutorialformulierungen, keine Platzhalter in eckigen Klammern und keine Meta-Präfixe wie „(HEADER)“, „Offene Frage:“ oder „Geparkt:“ als Sticky-Text.
+- Nutze den Canvas-Chat-Input, falls vorhanden, als optionalen Seed für das Verständnis der Problemstellung oder des gewünschten Fokus.
+- Wenn der relevante Canvas-Bereich leer ist, darfst du einen kleinen, fachlich konkreten Starter-Vorschlag erzeugen – aber nur in dem Umfang, der für den aktuellen Schritt wirklich anschlussfähig ist.`
+  });
+
+  setPromptModuleText(pack, "analytics.fit.step0.proposal_focus", {
+    prompt: `Step-0-Vorschlagslogik:
+- Dieser Vorschlagsmodus ist der sichtbare Start von Preparation & Focus.
+- Nutze vorhandenen Board-Inhalt plus optionalen Chat-Seed, um einen kleinen, klaren Startvorschlag zu erzeugen.
+- Gute Vorschläge sind z. B.: ein konkreter Header-Fokus, 1 bis 2 weiße Scope-/Annahmen-Stickies, das Parken offensichtlicher Alternativen in sorted_out_left.
+- Wenn der Canvas leer ist, darfst du einen kleinen anschlussfähigen Startsatz vorschlagen. Er soll fachlich konkret sein, nicht tutorialhaft.
+- Erkläre im feedback sichtbar, warum genau diese Vorschläge jetzt in Step 0 sinnvoll sind.
+- Entwickle noch keine Nutzeranalyse, keine Lösung und keinen Fit.`
+  });
+
+  setPromptModuleText(pack, "analytics.fit.step1.proposal_user_analysis", {
+    prompt: `Step-1-Vorschlagslogik:
+- Dieser Vorschlagsmodus ist der sichtbare Start oder Delta-Modus der Nutzeranalyse.
+- Nutze vorhandenen Board-Inhalt plus optionalen Chat-Seed, um einen kleinen, klaren Vorschlag für die rechte Seite zu erzeugen.
+- Gute Vorschläge sind z. B.: einen Hauptnutzer fokussieren, die Situation konkretisieren, 1 bis 3 Objectives/Results ergänzen, Decisions/Actions präzisieren oder Gains/Pains besser andocken bzw. priorisieren.
+- Wenn die rechte Seite noch sehr leer ist, darfst du einen kleinen Starter-Satz erzeugen. Wenn schon Material vorhanden ist, schlage eher Deltas als einen Komplettneuaufbau vor.
+- Erkläre im feedback sichtbar, warum genau diese Vorschläge jetzt in Step 1 sinnvoll sind.
+- Mache keine Lösungsvorschläge und verdichte keinen Fit vorzeitig.`
+  });
+
+  setPromptModuleText(pack, "analytics.fit.step2.proposal_solution_design", {
+    prompt: `Step-2-Vorschlagslogik:
+- Dieser Vorschlagsmodus ist der sichtbare Start oder Delta-Modus des Solution Design.
+- Lies zuerst den aktuellen Step-2-Zustand.
+- Wenn die rechte Seite noch zu unreif ist, tue nicht so, als sei gute Lösungsableitung schon möglich; benenne die Rückroute nach Step 1 und bevorzuge textliche oder sehr kleine Vorschläge.
+- Wenn die rechte Seite tragfähig ist, schlage einen kleinen, klaren Vorschlag für Variantenwahl und linke Ableitung vor: z. B. eine Hauptvariante fokussieren, Alternativen parken, Information präzisieren, Functions trennen oder Benefits schärfen.
+- Erkläre im feedback sichtbar, warum genau diese Vorschläge jetzt in Step 2 sinnvoll sind.
+- Verdichte keinen Fit und erfinde keine große Architektur.`
+  });
+
+  patchTriggerProfile(pack, "step0_preparation_and_focus", "selection.hint", { mutationPolicy: "none", allowedExecutionModes: ["none"] });
+  patchTriggerProfile(pack, "step1_user_perspective", "selection.hint", { mutationPolicy: "none", allowedExecutionModes: ["none"] });
+  patchTriggerProfile(pack, "step2_solution_perspective", "selection.hint", { mutationPolicy: "none", allowedExecutionModes: ["none"] });
+  patchTriggerProfile(pack, "step3_fit_check_and_synthesis", "selection.hint", { mutationPolicy: "none", allowedExecutionModes: ["none"] });
+  patchTriggerProfile(pack, "step0_preparation_and_focus", "global.hint", { mutationPolicy: "none", allowedExecutionModes: ["none"] });
+  patchTriggerProfile(pack, "step1_user_perspective", "global.hint", { mutationPolicy: "none", allowedExecutionModes: ["none"] });
+  patchTriggerProfile(pack, "step2_solution_perspective", "global.hint", { mutationPolicy: "none", allowedExecutionModes: ["none"] });
+  patchTriggerProfile(pack, "step3_fit_check_and_synthesis", "global.hint", { mutationPolicy: "none", allowedExecutionModes: ["none"] });
+
+  patchFlowControl(pack, "step0_preparation_and_focus", "selection.propose", {
+    label: "Vorbereitung starten",
+    summary: "Erzeugt einen kleinen, konkreten Startvorschlag für Fokus, Scope und offene Annahmen.",
+    uiHint: "Startet Step 0 als Vorschlagsmodus: erst lesen, dann bei Bedarf anwenden."
+  });
+  patchFlowControl(pack, "step1_user_perspective", "selection.propose", {
+    label: "Nutzeranalyse starten",
+    summary: "Erzeugt einen kleinen, konkreten Start- oder Delta-Vorschlag für die Nutzeranalyse.",
+    uiHint: "Startet Step 1 als Vorschlagsmodus: erst lesen, dann bei Bedarf anwenden."
+  });
+  patchFlowControl(pack, "step2_solution_perspective", "selection.propose", {
+    label: "Lösungsperspektive starten",
+    summary: "Erzeugt einen kleinen, konkreten Start- oder Delta-Vorschlag für die linke Seite.",
+    uiHint: "Startet Step 2 als Vorschlagsmodus: erst lesen, dann bei Bedarf anwenden."
+  });
+
+  patchFlowControl(pack, "step0_preparation_and_focus", "selection.hint", {
+    label: "Hinweis geben",
+    summary: "Gibt einen reinen Hinweis zum nächsten sinnvollen Arbeitsschritt in Step 0.",
+    uiHint: "Reiner Hinweis ohne Board-Vorschlag oder Mutation."
+  });
+  patchFlowControl(pack, "step1_user_perspective", "selection.hint", {
+    label: "Hinweis geben",
+    summary: "Gibt einen reinen Hinweis zum nächsten sinnvollen Arbeitsschritt in Step 1.",
+    uiHint: "Reiner Hinweis ohne Board-Vorschlag oder Mutation."
+  });
+  patchFlowControl(pack, "step2_solution_perspective", "selection.hint", {
+    label: "Hinweis geben",
+    summary: "Gibt einen reinen Hinweis zum nächsten sinnvollen Arbeitsschritt in Step 2.",
+    uiHint: "Reiner Hinweis ohne Board-Vorschlag oder Mutation."
+  });
+
+  setFlowControlSurface(pack, "step0_preparation_and_focus", "selection.propose", { panelRole: "primary", boardGroup: "core", seedByDefault: true });
+  setFlowControlSurface(pack, "step0_preparation_and_focus", "selection.check", { panelRole: "primary", boardGroup: "core", seedByDefault: true });
+  setFlowControlSurface(pack, "step0_preparation_and_focus", "selection.hint", { panelRole: "secondary", boardGroup: "core", seedByDefault: false });
+  setFlowControlSurface(pack, "step0_preparation_and_focus", "selection.apply", { panelRole: null, boardGroup: "meta", seedByDefault: false });
+
+  setFlowControlSurface(pack, "step1_user_perspective", "selection.propose", { panelRole: "primary", boardGroup: "core", seedByDefault: true });
+  setFlowControlSurface(pack, "step1_user_perspective", "selection.check", { panelRole: "primary", boardGroup: "core", seedByDefault: true });
+  setFlowControlSurface(pack, "step1_user_perspective", "selection.hint", { panelRole: "secondary", boardGroup: "core", seedByDefault: false });
+  setFlowControlSurface(pack, "step1_user_perspective", "selection.apply", { panelRole: null, boardGroup: "meta", seedByDefault: false });
+
+  setFlowControlSurface(pack, "step2_solution_perspective", "selection.propose", { panelRole: "primary", boardGroup: "core", seedByDefault: true });
+  setFlowControlSurface(pack, "step2_solution_perspective", "selection.check", { panelRole: "primary", boardGroup: "core", seedByDefault: true });
+  setFlowControlSurface(pack, "step2_solution_perspective", "selection.hint", { panelRole: "secondary", boardGroup: "core", seedByDefault: false });
+  setFlowControlSurface(pack, "step2_solution_perspective", "selection.apply", { panelRole: null, boardGroup: "meta", seedByDefault: false });
+
+  setFlowControlSurface(pack, "step3_fit_check_and_synthesis", "selection.apply", { panelRole: null, boardGroup: "meta", seedByDefault: false });
+
+  setTriggerPrompt(pack, "step0_preparation_and_focus", "selection.hint", `Hinweismodus für den Schritt "Preparation & Focus":
+- Nutze executionMode = none und actions = [].
+- Gib nur Orientierung: 1 bis 3 konkrete nächste Schritte oder Satzanfänge für genau diesen Zustand.
+- Springe nicht in User Analysis, Solution Design oder Fit.
+- Noch keine Board-Vorschläge, noch keine Sticky Notes.`);
+
+  setTriggerPrompt(pack, "step1_user_perspective", "selection.hint", `Hinweismodus für den Schritt "User Needs Analysis":
+- Nutze executionMode = none und actions = [].
+- Priorisiere genau einen nächsten Mikro-Arbeitsmodus und gib dazu 1 bis 3 konkrete Formulierungsanstöße.
+- Noch keine Lösung, keine Benefits, kein Fit und keine Board-Vorschläge.`);
+
+  setTriggerPrompt(pack, "step2_solution_perspective", "selection.hint", `Hinweismodus für den Schritt "Solution Design":
+- Nutze executionMode = none und actions = [].
+- Priorisiere genau einen Mikro-Arbeitsmodus: Rückroute, Variantenwahl, Informationsableitung, Funktionsableitung oder Benefit-Schärfung.
+- Gib nur textliche Orientierung und keine Board-Vorschläge.`);
+
+  setTriggerPrompt(pack, "step3_fit_check_and_synthesis", "selection.hint", `Hinweismodus für den Schritt "Fit Validation & Minimum Desired Product":
+- Nutze executionMode = none und actions = [].
+- Priorisiere genau den nächsten Validierungs- oder Reduktionsschritt.
+- Gib nur textliche Orientierung und keine Board-Vorschläge.`);
+
+  setTriggerPrompt(pack, "step0_preparation_and_focus", "selection.propose", `Vorschlagsmodus für den Schritt "Preparation & Focus":
+- Nutze executionMode = proposal_only.
+- Dieser Trigger ist der sichtbare Start von Step 0.
+- Nutze vorhandenen Board-Inhalt plus optionalen Chat-Seed, um einen kleinen, anschlussfähigen Startvorschlag für Fokus, Scope und offene Annahmen zu erzeugen.
+- Wenn das Board leer ist, darfst du einen kleinen, fachlich konkreten Starter-Satz vorschlagen: Header plus 1 bis 2 weiße Scope-/Annahmen-Stickies.
+- Erkläre im feedback sichtbar, warum genau diese Vorschläge jetzt sinnvoll sind und dass noch nichts angewendet wurde.`);
+
+  setTriggerPrompt(pack, "step1_user_perspective", "selection.propose", `Vorschlagsmodus für den Schritt "User Needs Analysis":
+- Nutze executionMode = proposal_only.
+- Dieser Trigger ist der sichtbare Start oder Delta-Modus von Step 1.
+- Nutze vorhandenen Board-Inhalt plus optionalen Chat-Seed, um einen kleinen, klaren Vorschlag für Hauptnutzer, Situation, Objectives/Results, Decisions/Actions und Gains/Pains zu erzeugen.
+- Wenn die rechte Seite noch leer ist, darfst du einen kleinen Starter-Satz vorschlagen. Wenn schon Material vorhanden ist, schlage eher Deltas als einen Komplettneuaufbau vor.
+- Erkläre im feedback sichtbar, warum genau diese Vorschläge jetzt sinnvoll sind und dass noch nichts angewendet wurde.`);
+
+  setTriggerPrompt(pack, "step2_solution_perspective", "selection.propose", `Vorschlagsmodus für den Schritt "Solution Design":
+- Nutze executionMode = proposal_only.
+- Dieser Trigger ist der sichtbare Start oder Delta-Modus von Step 2.
+- Lies zuerst, ob die rechte Seite schon tragfähig genug ist. Wenn nicht, benenne die Rückroute nach Step 1 und mache höchstens kleine Vorschläge.
+- Wenn die rechte Seite tragfähig ist, schlage einen kleinen, klaren Vorschlag für Variantenwahl und Ableitung der linken Seite vor.
+- Erkläre im feedback sichtbar, warum genau diese Vorschläge jetzt sinnvoll sind und dass noch nichts angewendet wurde.`);
+
   return catalog;
 }
 
@@ -4556,6 +4787,7 @@ for (const [packId, packDef] of Object.entries(METHOD_CATALOG.packs || {})) {
         moduleIds: Object.freeze(runProfile.moduleIds),
         mutationPolicy: runProfile.mutationPolicy,
         feedbackPolicy: runProfile.feedbackPolicy,
+        allowedExecutionModes: Object.freeze(runProfile.allowedExecutionModes || ["none"]),
         defaultScopeType: runProfile.defaultScopeType,
         allowedActions: Object.freeze(runProfile.allowedActions),
         uiHint: runProfile.uiHint,

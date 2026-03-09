@@ -12,20 +12,20 @@ import {
   DT_CHECK_TAG_COLOR,
   normalizeStickyColorToken,
   STICKY_LAYOUT
-} from "./config.js?v=20260311-batch83fix1";
+} from "./config.js?v=20260309-batch9";
 
 import { createLogger, stripHtml, extractUnderlinedText, isFiniteNumber } from "./utils.js?v=20260301-step11-hotfix2";
-import { normalizeUiLanguage, t, getLocaleForLanguage } from "./i18n/index.js?v=20260306-batch6";
+import { normalizeUiLanguage, t, getLocaleForLanguage } from "./i18n/index.js?v=20260309-batch9";
 
-import * as Board from "./miro/board.js?v=20260310-batch81";
+import * as Board from "./miro/board.js?v=20260309-batch9";
 import * as Catalog from "./domain/catalog.js?v=20260311-batch83fix1";
-import * as OpenAI from "./ai/openai.js?v=20260307-batch75";
+import * as OpenAI from "./ai/openai.js?v=20260309-batch9";
 import * as Memory from "./runtime/memory.js?v=20260301-step11-hotfix2";
-import * as Exercises from "./exercises/registry.js?v=20260311-batch83fix1";
-import * as ExerciseLibrary from "./exercises/library.js?v=20260311-batch83fix1";
-import * as PromptComposer from "./prompt/composer.js?v=20260311-batch83fix1";
-import * as ExerciseEngine from "./runtime/exercise-engine.js?v=20260310-batch81";
-import * as BoardFlow from "./runtime/board-flow.js?v=20260306-batch6";
+import * as Exercises from "./exercises/registry.js?v=20260309-batch9";
+import * as ExerciseLibrary from "./exercises/library.js?v=20260309-batch9";
+import * as PromptComposer from "./prompt/composer.js?v=20260309-batch9";
+import * as ExerciseEngine from "./runtime/exercise-engine.js?v=20260309-batch9";
+import * as BoardFlow from "./runtime/board-flow.js?v=20260309-batch87";
 import * as PanelBridge from "./runtime/panel-bridge.js?v=20260305-schemafix2";
 import { buildPayloadMappingHint } from "./app/payload-hints.js?v=20260305-batch06";
 import { getInsertWidthPxForCanvasType, computeTemplateInsertPosition } from "./app/template-insertion.js?v=20260308-batch76";
@@ -132,6 +132,8 @@ const flowAuthoringStatusEl = document.getElementById("flow-authoring-status");
 const btnFlowCreateControlEl = document.getElementById("btn-flow-create-control");
 const btnFlowSetCurrentStepEl = document.getElementById("btn-flow-set-current-step");
 const btnFlowActivateSelectedControlEl = document.getElementById("btn-flow-activate-selected-control");
+const btnFlowCompleteSelectedControlEl = document.getElementById("btn-flow-complete-selected-control");
+const btnFlowResetSelectedControlEl = document.getElementById("btn-flow-reset-selected-control");
 const exerciseActionHelpEl = document.getElementById("exercise-action-help");
 const exercisePrimaryActionsTitleEl = document.getElementById("exercise-primary-actions-title");
 const exercisePrimaryActionsEl = document.getElementById("exercise-primary-actions");
@@ -155,16 +157,6 @@ const log = logEl
 
 const DT_CLUSTER_SESSION_BRIDGE_KEY = "dt-cluster-session-v1::" + String(document.referrer || window.location.href || "default");
 const DT_CLUSTER_CUSTOM_ACTION_EVENT = "cluster-stickies";
-const DT_BATCH65_STATIC_LABELS = {
-  "btn-flow-activate-selected-control": {
-    de: "Selektierten Button aktiv setzen",
-    en: "Activate selected button"
-  },
-  "btn-memory-clear-admin": {
-    de: "Memory löschen",
-    en: "Clear memory"
-  }
-};
 const DT_CLUSTER_CUSTOM_ACTION_UI = {
   label: {
     de: "Stickies clustern",
@@ -245,9 +237,7 @@ function getManagedAgentRunButtons() {
   const dynamicButtons = Array.from(document.querySelectorAll('[data-dt-agent-run="1"]'));
   return [
     ...dynamicButtons,
-    btnExerciseAdminTriggerRunEl,
-    document.getElementById("btn-agent-selection"),
-    document.getElementById("btn-openai-classic")
+    btnExerciseAdminTriggerRunEl
   ].filter(Boolean);
 }
 
@@ -562,27 +552,23 @@ async function performPreApplyConflictCheck(expectedSignatureSnapshot, sourceLab
 // --------------------------------------------------------------------
 const PANEL_MODE_STORAGE_KEY = "dt-panel-mode-v1";
 
-function normalizePanelMode(value) {
-  return value === "user" ? "user" : "admin";
+function normalizePanelMode(_value) {
+  return "admin";
 }
 
 function loadPersistedPanelMode() {
-  try {
-    return normalizePanelMode(window.localStorage?.getItem(PANEL_MODE_STORAGE_KEY) || "admin");
-  } catch (_) {
-    return "admin";
-  }
+  return "admin";
 }
 
-function persistPanelMode(mode) {
+function persistPanelMode(_mode) {
   try {
-    window.localStorage?.setItem(PANEL_MODE_STORAGE_KEY, normalizePanelMode(mode));
+    window.localStorage?.setItem(PANEL_MODE_STORAGE_KEY, "admin");
   } catch (_) {}
 }
 
-function setPanelMode(mode, { persist = true } = {}) {
-  state.panelMode = normalizePanelMode(mode);
-  if (persist) persistPanelMode(state.panelMode);
+function setPanelMode(_mode, { persist = true } = {}) {
+  state.panelMode = "admin";
+  if (persist) persistPanelMode("admin");
   renderPanelMode();
 }
 
@@ -626,15 +612,6 @@ function getCanvasTypeDisplayName(canvasTypeId, fallback = null, lang = getCurre
   return translateTextKeyOrFallback(key, fallbackText, lang);
 }
 
-function applyBatch65UiLabels(lang = getCurrentDisplayLanguage()) {
-  const normalizedLang = normalizeUiLanguage(lang);
-  for (const [id, localized] of Object.entries(DT_BATCH65_STATIC_LABELS)) {
-    const el = document.getElementById(id);
-    if (!el) continue;
-    const nextText = localized?.[normalizedLang] || localized?.de || localized?.en || "";
-    if (nextText) el.textContent = nextText;
-  }
-}
 
 function applyStaticUiLanguage(lang = getCurrentDisplayLanguage()) {
   if (typeof document !== "undefined") {
@@ -658,7 +635,6 @@ function applyStaticUiLanguage(lang = getCurrentDisplayLanguage()) {
     boardLanguageEl.value = normalizeUiLanguage(lang);
   }
 
-  applyBatch65UiLabels(lang);
 }
 
 async function syncBoardChromeLanguage(lang = getCurrentDisplayLanguage()) {
@@ -670,6 +646,8 @@ async function syncBoardChromeLanguage(lang = getCurrentDisplayLanguage()) {
       log("WARNUNG: Chat-Placeholder konnten nicht synchronisiert werden: " + formatRuntimeErrorMessage(error));
     }
   }
+
+  await syncAllChatApplyButtonsForCurrentStep();
 
   for (const [flowId, rawFlow] of state.boardFlowsById.entries()) {
     const normalizedFlow = await ensureBoardFlowHealthy(rawFlow, { persist: true, pruneMissingControls: true });
@@ -746,20 +724,19 @@ async function applyBoardLanguage(nextLang, { syncBoardChrome = false } = {}) {
 }
 
 function renderPanelMode() {
-  const mode = normalizePanelMode(state.panelMode);
+  state.panelMode = "admin";
 
-  if (panelModeEl && panelModeEl.value !== mode) {
-    panelModeEl.value = mode;
+  if (panelModeEl) {
+    panelModeEl.value = "admin";
+    panelModeEl.disabled = true;
   }
 
-  setElementHidden(adminPanelEl, mode !== "admin");
-  setElementHidden(userActionsPanelEl, false);
+  setElementHidden(adminPanelEl, false);
+  setElementHidden(userActionsPanelEl, true);
 
   if (panelModeStatusEl) {
     const lang = getCurrentDisplayLanguage();
-    panelModeStatusEl.textContent = mode === "admin"
-      ? t("panel.mode.status.admin", lang)
-      : t("panel.mode.status.user", lang);
+    panelModeStatusEl.textContent = t("panel.mode.status.adminOnly", lang);
   }
 }
 
@@ -856,7 +833,7 @@ function getCurrentUserQuestion() {
 
 
 function getCurrentTriggerSource() {
-  return state.panelMode === "admin" ? "admin" : "user";
+  return "admin";
 }
 
 async function notifyRuntime(message, { level = "info" } = {}) {
@@ -2515,6 +2492,11 @@ async function setCurrentFlowStepFromAdmin() {
   }
 }
 
+function getSelectedFlowControlLabel(controlSelection) {
+  const control = controlSelection?.control || null;
+  return pickFirstNonEmptyString(control?.label, control?.id, "Flow Control");
+}
+
 async function activateSelectedFlowControlFromAdmin() {
   if (state.panelMode !== "admin") {
     log("Board Flow: Diese Admin-Aktion ist nur im Admin-Modus verfügbar.");
@@ -2530,7 +2512,7 @@ async function activateSelectedFlowControlFromAdmin() {
 
   const control = controlSelection.control;
   if (!control?.runProfileId) {
-    log("Board Flow: Der selektierte Button hat keine runProfileId und kann nicht fachlich aktiviert werden.");
+    log("Board Flow: Der selektierte Button hat keine runProfileId und kann nicht fachlich freigeschaltet werden.");
     return;
   }
 
@@ -2543,7 +2525,68 @@ async function activateSelectedFlowControlFromAdmin() {
   nextFlow = await saveBoardFlowAndCache(nextFlow);
   const nextControl = BoardFlow.findFlowControlByItemId(nextFlow, controlSelection.item.id) || nextFlow.controls?.[control.id] || control;
 
-  log("Board Flow: Button aktiv gesetzt: '" + (nextControl?.label || control.label || control.id) + "' in " + (nextFlow.label || nextFlow.id) + ".");
+  log("Board Flow: Button freigeschaltet: '" + getSelectedFlowControlLabel({ control: nextControl }) + "' in " + (nextFlow.label || nextFlow.id) + ".");
+  renderFlowAuthoringControls();
+  await refreshSelectionStatusFromItems(selection || []);
+}
+
+async function markSelectedFlowControlDoneFromAdmin() {
+  if (state.panelMode !== "admin") {
+    log("Board Flow: Diese Admin-Aktion ist nur im Admin-Modus verfügbar.");
+    return;
+  }
+
+  const selection = await Board.getSelection(log).catch(() => []);
+  const controlSelection = await resolveSelectedFlowControl(selection || []);
+  if (!controlSelection) {
+    log("Board Flow: Bitte genau einen platzierten Flow-Button selektieren.");
+    return;
+  }
+
+  const control = controlSelection.control;
+  if (!control?.runProfileId) {
+    log("Board Flow: Der selektierte Button hat keine runProfileId und kann nicht als erledigt markiert werden.");
+    return;
+  }
+
+  if (control.state === "done") {
+    log("Board Flow: Der selektierte Button ist bereits als erledigt markiert.");
+    return;
+  }
+
+  let nextFlow = BoardFlow.markFlowControlDone(controlSelection.flow, control.id);
+  nextFlow = await saveBoardFlowAndCache(nextFlow);
+  const nextControl = BoardFlow.findFlowControlByItemId(nextFlow, controlSelection.item.id) || nextFlow.controls?.[control.id] || control;
+
+  log("Board Flow: Button als erledigt markiert: '" + getSelectedFlowControlLabel({ control: nextControl }) + "' in " + (nextFlow.label || nextFlow.id) + ".");
+  renderFlowAuthoringControls();
+  await refreshSelectionStatusFromItems(selection || []);
+}
+
+async function resetSelectedFlowControlFromAdmin() {
+  if (state.panelMode !== "admin") {
+    log("Board Flow: Diese Admin-Aktion ist nur im Admin-Modus verfügbar.");
+    return;
+  }
+
+  const selection = await Board.getSelection(log).catch(() => []);
+  const controlSelection = await resolveSelectedFlowControl(selection || []);
+  if (!controlSelection) {
+    log("Board Flow: Bitte genau einen platzierten Flow-Button selektieren.");
+    return;
+  }
+
+  const control = controlSelection.control;
+  if (!control?.runProfileId) {
+    log("Board Flow: Der selektierte Button hat keine runProfileId und kann nicht zurückgesetzt werden.");
+    return;
+  }
+
+  let nextFlow = BoardFlow.resetFlowControlState(controlSelection.flow, control.id);
+  nextFlow = await saveBoardFlowAndCache(nextFlow);
+  const nextControl = BoardFlow.findFlowControlByItemId(nextFlow, controlSelection.item.id) || nextFlow.controls?.[control.id] || control;
+
+  log("Board Flow: Button zurückgesetzt: '" + getSelectedFlowControlLabel({ control: nextControl }) + "' in " + (nextFlow.label || nextFlow.id) + ". Neuer Status: " + (nextControl?.state || "disabled") + ".");
   renderFlowAuthoringControls();
   await refreshSelectionStatusFromItems(selection || []);
 }
@@ -2701,10 +2744,15 @@ async function runAgentFromFlowControl(flow, control, selectedItem) {
   };
   await saveBoardFlowAndCache(nextFlow);
 
+  const resolvedUserText = await resolveBoardUserSeedText(
+    healthyFlow.anchorInstanceId || healthyControl.anchorInstanceId || targetInstanceIds[0] || null,
+    getCurrentUserQuestion()
+  );
+
   log("Board Flow Trigger: '" + sourceLabel + "' → " + runProfile.triggerKey + " | Ziele: " + (targetInstanceLabels.join(", ") || "(keine)"));
   try {
     const runResult = runProfile.triggerKey.startsWith("global.")
-      ? await runGlobalAgent(null, getCurrentUserQuestion(), {
+      ? await runGlobalAgent(null, resolvedUserText, {
           triggerContext,
           sourceLabel,
           promptRuntimeOverride,
@@ -2718,7 +2766,7 @@ async function runAgentFromFlowControl(flow, control, selectedItem) {
           sourceLabel,
           promptRuntimeOverride,
           runMode: buildRunModeFromTriggerKey(runProfile.triggerKey),
-          userText: getCurrentUserQuestion()
+          userText: resolvedUserText
         });
 
     if (!runResult?.ok) {
@@ -2799,6 +2847,7 @@ async function loadBoardExerciseState() {
   applyStaticUiLanguage(state.boardConfig.displayLanguage);
   renderCanvasTypePicker();
   renderExerciseControls();
+  await syncAllChatApplyButtonsForCurrentStep();
   await syncBoardChromeLanguage(state.boardConfig.displayLanguage);
 }
 
@@ -2847,6 +2896,7 @@ async function onExercisePackChange() {
 
   renderCanvasTypePicker();
   renderExerciseControls();
+  await syncAllChatApplyButtonsForCurrentStep();
 
   log("Exercise Pack gesetzt: " + (selectedPack ? packLabelWithStep(selectedPack, nextStepId) : t("exercise.context.pack.none", lang)));
 }
@@ -2872,6 +2922,7 @@ async function onExerciseStepChange() {
     await syncExerciseStepToBoardFlow(validStepId, { packTemplateId: pack.packTemplateId });
   }
   renderExerciseControls();
+  await syncAllChatApplyButtonsForCurrentStep();
 
   const step = Exercises.getExerciseStep(pack, validStepId, { lang });
   log("Exercise-Schritt gesetzt: " + (step?.label || validStepId || "(leer)"));
@@ -2894,7 +2945,7 @@ function buildTriggerSourceLabel(triggerContext) {
 }
 
 async function onPanelModeChange() {
-  setPanelMode(panelModeEl?.value || "admin");
+  setPanelMode("admin");
 }
 
 async function saveAdminOverrideFromUi() {
@@ -3081,6 +3132,7 @@ async function advanceExerciseStep() {
     await syncExerciseStepToBoardFlow(nextStep.id, { packTemplateId: pack.packTemplateId });
   }
   renderExerciseControls();
+  await syncAllChatApplyButtonsForCurrentStep();
 
   log(
     "Exercise-Schritt weitergeschaltet: " +
@@ -3194,13 +3246,11 @@ function initPanelButtons() {
   btnFlowCreateControlEl?.addEventListener("click", createFlowControlFromAdmin);
   btnFlowSetCurrentStepEl?.addEventListener("click", setCurrentFlowStepFromAdmin);
   btnFlowActivateSelectedControlEl?.addEventListener("click", activateSelectedFlowControlFromAdmin);
+  btnFlowCompleteSelectedControlEl?.addEventListener("click", markSelectedFlowControlDoneFromAdmin);
+  btnFlowResetSelectedControlEl?.addEventListener("click", resetSelectedFlowControlFromAdmin);
 
   document.getElementById("btn-insert-template")?.addEventListener("click", insertTemplateImage);
-  document.getElementById("btn-agent-selection")?.addEventListener("click", runAgentForCurrentSelection);
   btnMemoryClearAdminEl?.addEventListener("click", clearMemoryFromAdmin);
-  document.getElementById("btn-cluster-panel")?.addEventListener("click", clusterSelectionFromPanel);
-  document.getElementById("btn-classify-debug")?.addEventListener("click", () => classifyStickies({ silent: false }));
-  document.getElementById("btn-openai-classic")?.addEventListener("click", callOpenAIClassic);
 
   // optional exports for debugging/back-compat
   window.dtInsertTemplateImage = insertTemplateImage;
@@ -3219,6 +3269,8 @@ function initPanelButtons() {
   window.dtCreateFlowControl = createFlowControlFromAdmin;
   window.dtSetFlowStep = setCurrentFlowStepFromAdmin;
   window.dtActivateSelectedFlowControl = activateSelectedFlowControlFromAdmin;
+  window.dtMarkSelectedFlowControlDone = markSelectedFlowControlDoneFromAdmin;
+  window.dtResetSelectedFlowControl = resetSelectedFlowControlFromAdmin;
   window.dtClearMemory = clearMemoryFromAdmin;
 
   renderPanelMode();
@@ -3434,6 +3486,51 @@ async function loadPendingProposalForInstance(instanceId, { stepId = null } = {}
   return await Board.loadLatestPendingProposal({
     anchorInstanceId: instanceId,
     stepId: pickFirstNonEmptyString(stepId)
+  }, log);
+}
+
+
+async function hasPendingProposalForInstanceStep(instanceId, stepId) {
+  const proposal = await loadPendingProposalForInstance(instanceId, { stepId });
+  return !!proposal?.proposalId;
+}
+
+async function syncChatApplyButtonForInstance(instanceId, { stepId = null } = {}) {
+  const instance = instanceId ? (state.instancesById.get(instanceId) || null) : null;
+  if (!instance || !Board.hasCompleteChatInterfaceShapeIds(instance.chatInterface) || !Board.hasApplyChatInterfaceShapeId(instance.chatInterface)) {
+    return false;
+  }
+
+  const normalizedStepId = pickFirstNonEmptyString(stepId, getCurrentExerciseStepId());
+  const enabled = !!(normalizedStepId && await hasPendingProposalForInstanceStep(instanceId, normalizedStepId));
+  try {
+    await Board.syncChatApplyButtonState(instance.chatInterface, {
+      enabled,
+      lang: getCurrentDisplayLanguage()
+    }, log);
+  } catch (error) {
+    log("WARNUNG: Apply-Button konnte nicht synchronisiert werden: " + formatRuntimeErrorMessage(error));
+  }
+  return enabled;
+}
+
+async function syncChatApplyButtonsForInstanceIds(instanceIds, { stepId = null } = {}) {
+  for (const instanceId of normalizeTargetInstanceIds(instanceIds)) {
+    await syncChatApplyButtonForInstance(instanceId, { stepId });
+  }
+}
+
+async function syncAllChatApplyButtonsForCurrentStep() {
+  await syncChatApplyButtonsForInstanceIds(Array.from(state.instancesById.keys()), {
+    stepId: getCurrentExerciseStepId()
+  });
+}
+
+async function supersedePendingProposalsForInstanceStep(instanceId, stepId) {
+  if (!instanceId || !stepId) return [];
+  return await Board.supersedePendingProposals({
+    anchorInstanceId: instanceId,
+    stepId
   }, log);
 }
 
@@ -3749,6 +3846,19 @@ function normalizeAgentExerciseArtifacts(agentObj, triggerContext, sourceLabel =
   return { feedback, flowControlDirectives, evaluation };
 }
 
+
+function resolveAgentExecutionMode(agentObj, triggerContext, triggerIntent) {
+  const forcedExecutionMode = triggerIntent === "hint"
+    ? "none"
+    : (triggerIntent === "propose" ? "proposal_only" : null);
+
+  return ExerciseEngine.resolveEffectiveExecutionMode({
+    rawExecutionMode: agentObj?.executionMode,
+    forcedExecutionMode,
+    allowedExecutionModes: triggerContext?.allowedExecutionModes || ["none"]
+  });
+}
+
 async function persistExerciseRuntimeAfterAgentRun({
   triggerContext = null,
   flowControlDirectives = null,
@@ -3794,6 +3904,7 @@ async function ensureInstancesScanned(force = false) {
       instancesByImageId: state.instancesByImageId,
       instancesById: state.instancesById,
       hasGlobalBaseline: state.hasGlobalBaseline,
+      createChatInterface: !IS_HEADLESS,
       log
     });
     rebuildInstancesByLabelIndex();
@@ -3986,6 +4097,19 @@ async function onSelectionUpdate(event) {
     return;
   }
 
+  const chatApplySelection = await resolveSelectedChatApply(items);
+  if (chatApplySelection) {
+    const headlessShouldRun = shouldHeadlessHandleFlowControls();
+    const panelShouldRun = shouldPanelHandleFlowControls();
+
+    if (headlessShouldRun || panelShouldRun) {
+      await executeSelectedChatApply(chatApplySelection, items);
+    } else {
+      await refreshSelectionStatusFromItems(items);
+    }
+    return;
+  }
+
   const controlSelection = await resolveSelectedFlowControl(items);
   if (controlSelection) {
     const headlessShouldRun = shouldHeadlessHandleFlowControls();
@@ -4123,6 +4247,7 @@ Die Steuerung erfolgt jetzt über das Side Panel.`);
 
     await Board.zoomTo(backgroundShape || image, log);
     await refreshSelectionStatusFromBoard();
+    await syncChatApplyButtonForInstance(instance.instanceId);
   } catch (e) {
     log("Fehler beim Einfügen des Canvas: " + e.message);
   }
@@ -4906,6 +5031,23 @@ function normalizeChatQuestionText(rawContent) {
   return plain;
 }
 
+
+async function resolveBoardUserSeedText(instanceId, fallbackText = "") {
+  const fallback = pickFirstNonEmptyString(fallbackText, "") || "";
+  const instance = instanceId ? (state.instancesById.get(instanceId) || null) : null;
+  if (!instance || !Board.hasCompleteChatInterfaceShapeIds(instance.chatInterface)) {
+    return fallback;
+  }
+
+  try {
+    const rawInputContent = await Board.readChatInputContent(instance.chatInterface, log);
+    const normalized = normalizeChatQuestionText(rawInputContent);
+    return normalized || fallback;
+  } catch (_) {
+    return fallback;
+  }
+}
+
 function resolveResponseTargetInstanceId({ promptRuntimeOverride = null, targetInstanceIds = [], triggerInstanceId = null } = {}) {
   const runtime = (promptRuntimeOverride && typeof promptRuntimeOverride === "object") ? promptRuntimeOverride : null;
   const explicitAnchor = pickFirstNonEmptyString(runtime?.controlContext?.anchorInstanceId, runtime?.anchorInstanceId, triggerInstanceId);
@@ -5192,6 +5334,70 @@ async function executeSelectedChatSubmit(chatSelection, items) {
   await refreshSelectionStatusFromItems(items);
 }
 
+
+async function resolveSelectedChatApply(items) {
+  const list = Array.isArray(items) ? items : [];
+  if (list.length !== 1) return null;
+
+  const item = list[0];
+  const meta = await Board.readChatInterfaceMeta(item, log);
+  if (!meta || meta.role !== "apply") return null;
+
+  const instance = meta.instanceId ? state.instancesById.get(meta.instanceId) : null;
+  if (!instance) return null;
+  return { item, meta, instance };
+}
+
+async function executeSelectedChatApply(chatSelection, items) {
+  if (!chatSelection?.instance) {
+    await refreshSelectionStatusFromItems(items);
+    return;
+  }
+
+  const pack = getSelectedExercisePack();
+  const currentStep = getCurrentExerciseStep(pack);
+  const instanceId = chatSelection.instance.instanceId;
+  const currentStepId = currentStep?.id || null;
+  const lang = getCurrentDisplayLanguage();
+
+  if (!pack || !currentStep || !currentStepId) {
+    await notifyRuntime(t("exercise.action.help.noStep", lang), { level: "warning" });
+    await refreshSelectionStatusFromItems(items);
+    return;
+  }
+
+  const pendingProposal = await loadPendingProposalForInstance(instanceId, { stepId: currentStepId });
+  if (!pendingProposal?.proposalId) {
+    await notifyRuntime(t("chat.apply.noPending", lang), { level: "warning" });
+    await refreshSelectionStatusFromItems(items);
+    return;
+  }
+
+  const triggerContext = ExerciseEngine.resolveTriggerContext({
+    triggerKey: "selection.apply",
+    source: "user",
+    pack,
+    step: currentStep,
+    selectionCount: 1,
+    targetInstanceLabels: [chatSelection.instance.instanceLabel || instanceId],
+    boardConfig: state.boardConfig
+  });
+
+  if (!triggerContext.valid) {
+    await notifyRuntime(triggerContext.reason || t("chat.apply.noPending", lang), { level: "warning" });
+    await refreshSelectionStatusFromItems(items);
+    return;
+  }
+
+  await runAgentForSelectedInstances([instanceId], {
+    triggerContext,
+    runMode: buildRunModeFromTriggerKey(triggerContext.triggerKey),
+    sourceLabel: t("chat.apply", lang),
+    userText: getCurrentUserQuestion()
+  });
+  await refreshSelectionStatusFromItems(items);
+}
+
 function getPromptConfigForSelectedInstances(selectedInstanceIds) {
   const firstId = Array.isArray(selectedInstanceIds) && selectedInstanceIds.length ? selectedInstanceIds[0] : null;
   const firstInst = firstId ? state.instancesById.get(firstId) : null;
@@ -5235,10 +5441,10 @@ async function runAgentForSelectedInstances(selectedInstanceIds, options = {}) {
   const triggerContext = options.triggerContext || null;
   const parsedTrigger = triggerContext ? ExerciseEngine.parseTriggerKey(triggerContext.triggerKey) : null;
   const triggerIntent = parsedTrigger?.intent || null;
-  const isProposalRun = triggerIntent === "propose";
   const isApplyRun = triggerIntent === "apply";
+  const requiresSingleInstance = triggerIntent === "propose" || isApplyRun;
 
-  if ((isProposalRun || isApplyRun) && normalizedSelectedIds.length !== 1) {
+  if (requiresSingleInstance && normalizedSelectedIds.length !== 1) {
     const msg = "Proposal/Apply-Modus benötigt genau eine selektierte Canvas-Instanz.";
     logRuntimeNotice("precondition", msg);
     return buildRunFailureResult("precondition", msg);
@@ -5325,7 +5531,7 @@ async function runAgentForSelectedInstances(selectedInstanceIds, options = {}) {
       .map((label) => getInternalInstanceIdByLabel(label))
       .filter((id) => state.instancesById.has(id));
 
-    if ((isProposalRun || isApplyRun) && resolvedActiveIds.length !== 1) {
+    if (requiresSingleInstance && resolvedActiveIds.length !== 1) {
       const msg = sourceLabel + ": Proposal/Apply-Modus benötigt genau eine auflösbare Ziel-Instanz.";
       logRuntimeNotice("precondition", msg);
       finalBoardRunStatus = "aborted";
@@ -5344,7 +5550,7 @@ async function runAgentForSelectedInstances(selectedInstanceIds, options = {}) {
     const singleLabel = resolvedActiveLabels.length === 1 ? resolvedActiveLabels[0] : null;
     const singleInstanceId = resolvedActiveIds.length === 1 ? resolvedActiveIds[0] : null;
     const boardCatalog = buildBoardCatalogForSelectedInstances(resolvedActiveIds);
-    const memoryPayload = buildMemoryInjectionPayload({ proposalMode: isProposalRun === true });
+    const memoryPayload = buildMemoryInjectionPayload({ proposalMode: triggerIntent === "propose" });
     const expectedSignatureSnapshot = buildSignatureSnapshot(stateById, resolvedActiveIds);
     const flowPromptContext = resolveFlowPromptContext({
       promptRuntimeOverride,
@@ -5391,6 +5597,7 @@ async function runAgentForSelectedInstances(selectedInstanceIds, options = {}) {
           evaluation: null,
           sourceLabel
         });
+        await syncChatApplyButtonsForInstanceIds(resolvedActiveIds, { stepId: currentStepId });
         const msg = sourceLabel + ": Kein offener Vorschlag zum Anwenden vorhanden.";
         finalBoardRunStatus = "aborted";
         finalBoardRunMessage = msg;
@@ -5408,6 +5615,7 @@ async function runAgentForSelectedInstances(selectedInstanceIds, options = {}) {
           evaluation: null,
           sourceLabel
         });
+        await syncChatApplyButtonsForInstanceIds(resolvedActiveIds, { stepId: currentStepId });
         const msg = sourceLabel + ": Gespeicherter Vorschlag ist veraltet und wurde nicht angewendet.";
         finalBoardRunStatus = "aborted";
         finalBoardRunMessage = msg;
@@ -5453,33 +5661,20 @@ async function runAgentForSelectedInstances(selectedInstanceIds, options = {}) {
         }, actionResult);
       }
 
-      const applyRunProfileId = findRunProfileIdForStepTrigger(
-        resolveRunPackTemplateId(promptRuntimeOverride),
-        currentStepId,
-        "selection.apply"
-      );
-      const storedFlowDirectives = ExerciseEngine.normalizeFlowControlDirectivesBlock(proposal.flowControlDirectives);
-      const combinedFlowDirectives = {
-        unlockRunProfileIds: Array.isArray(storedFlowDirectives?.unlockRunProfileIds)
-          ? storedFlowDirectives.unlockRunProfileIds.slice()
-          : [],
-        completeRunProfileIds: Array.from(new Set([
-          ...(Array.isArray(storedFlowDirectives?.completeRunProfileIds) ? storedFlowDirectives.completeRunProfileIds : []),
-          applyRunProfileId
-        ].filter(Boolean)))
-      };
-
-      const flowDirectiveResult = await applyFlowControlDirectivesAfterAgentRun({
-        flowControlDirectives: combinedFlowDirectives,
-        promptRuntimeOverride,
-        targetInstanceIds: resolvedActiveIds,
-        sourceLabel
-      });
-
       await Board.updateProposalRecordStatus(proposal.proposalId, "applied", {
         appliedAt: new Date().toISOString(),
         actionStats: summarizeAppliedActions(actionResult)
       }, log);
+
+      const storedFlowDirectives = ExerciseEngine.normalizeFlowControlDirectivesBlock(proposal.flowControlDirectives);
+      const flowDirectiveResult = triggerContext
+        ? await applyFlowControlDirectivesAfterAgentRun({
+            flowControlDirectives: storedFlowDirectives,
+            promptRuntimeOverride,
+            targetInstanceIds: resolvedActiveIds,
+            sourceLabel
+          })
+        : null;
 
       const feedback = buildAppliedProposalFeedback(proposal, actionResult, getCurrentDisplayLanguage());
       const responseRenderResult = await renderAgentResponseToInstanceOutput({
@@ -5498,6 +5693,8 @@ async function runAgentForSelectedInstances(selectedInstanceIds, options = {}) {
         });
       }
 
+      await syncChatApplyButtonsForInstanceIds(resolvedActiveIds, { stepId: currentStepId });
+
       if (responseRenderResult?.outputShapeId) {
         log(sourceLabel + ": Antwort in Ausgabebox von '" + responseRenderResult.instanceLabel + "' geschrieben (Shape " + responseRenderResult.outputShapeId + ").");
       }
@@ -5508,7 +5705,8 @@ async function runAgentForSelectedInstances(selectedInstanceIds, options = {}) {
         sourceLabel,
         targetInstanceLabels: resolvedActiveLabels,
         actionResult,
-        proposalApplied: true
+        proposalApplied: true,
+        executionMode: "direct_apply"
       });
     }
 
@@ -5559,12 +5757,92 @@ async function runAgentForSelectedInstances(selectedInstanceIds, options = {}) {
       return buildRunFailureResult("invalid_json", msg, { rawOutputText: structuredResult.outputText || null });
     }
 
+    const executionMode = resolveAgentExecutionMode(agentObj, triggerContext, triggerIntent);
     const { feedback, flowControlDirectives, evaluation } = normalizeAgentExerciseArtifacts(agentObj, triggerContext, sourceLabel);
 
     log(sourceLabel + " analysis:");
     log(agentObj.analysis || "(keine analysis)");
+    log(sourceLabel + ": executionMode=" + executionMode + ".");
 
-    if (isProposalRun) {
+    if (executionMode === "none") {
+      if (Array.isArray(agentObj.actions) && agentObj.actions.length) {
+        log("INFO: " + sourceLabel + ": Actions werden ignoriert, da executionMode=none.");
+      }
+
+      await persistMemoryAfterAgentRun(agentObj, {
+        runMode,
+        trigger: triggerContext?.triggerKey || "generic",
+        targetInstanceLabels: resolvedActiveLabels,
+        userRequest: userText
+      }, {
+        appliedCount: 0,
+        skippedCount: 0,
+        infoCount: 0,
+        targetedInstanceCount: 0,
+        ...createEmptyActionExecutionStats()
+      });
+
+      const flowDirectiveResult = triggerContext
+        ? await applyFlowControlDirectivesAfterAgentRun({
+            flowControlDirectives,
+            promptRuntimeOverride,
+            targetInstanceIds: resolvedActiveIds,
+            sourceLabel
+          })
+        : null;
+
+      const appliedFlowControlDirectives = flowDirectiveResult?.flowControlDirectives || flowControlDirectives;
+      const responseRenderResult = await renderAgentResponseToInstanceOutput({
+        instanceId: resolveResponseTargetInstanceId({
+          promptRuntimeOverride,
+          targetInstanceIds: resolvedActiveIds,
+          triggerInstanceId: resolvedActiveIds.length === 1 ? resolvedActiveIds[0] : null
+        }),
+        feedback,
+        flowControlDirectives: appliedFlowControlDirectives,
+        evaluation,
+        sourceLabel
+      });
+
+      if (triggerContext) {
+        await persistExerciseRuntimeAfterAgentRun({
+          triggerContext,
+          flowControlDirectives: appliedFlowControlDirectives,
+          activeAnchorContext: flowDirectiveResult?.activeAnchorContext || activeAnchorContext
+        });
+      }
+
+      await syncChatApplyButtonsForInstanceIds(resolvedActiveIds, { stepId: currentStepId });
+
+      if (responseRenderResult?.outputShapeId) {
+        log(sourceLabel + ": Antwort in Ausgabebox von '" + responseRenderResult.instanceLabel + "' geschrieben (Shape " + responseRenderResult.outputShapeId + ").");
+      }
+
+      finalBoardRunStatus = "completed";
+      finalBoardRunMessage = sourceLabel + ": abgeschlossen.";
+      return buildRunSuccessResult({
+        sourceLabel,
+        targetInstanceLabels: resolvedActiveLabels,
+        actionResult: {
+          appliedCount: 0,
+          skippedCount: 0,
+          infoCount: 0,
+          targetedInstanceCount: 0,
+          ...createEmptyActionExecutionStats()
+        },
+        executionMode
+      });
+    }
+
+    if (executionMode === "proposal_only") {
+      if (resolvedActiveIds.length !== 1 || !singleInstanceId) {
+        const msg = sourceLabel + ": executionMode=proposal_only benötigt genau eine Ziel-Instanz.";
+        logRuntimeNotice("precondition", msg);
+        finalBoardRunStatus = "aborted";
+        finalBoardRunMessage = msg;
+        return buildRunFailureResult("precondition", msg);
+      }
+
       const executableActions = sanitizeProposalActionsForCurrentStep(agentObj.actions, {
         stepId: currentStepId,
         activeCanvasPayload: singleLabel ? activeCanvasStates[singleLabel] : null,
@@ -5573,7 +5851,6 @@ async function runAgentForSelectedInstances(selectedInstanceIds, options = {}) {
       }).filter((action) => action && action.type !== "inform");
 
       let proposalRecord = null;
-      let proposalDirectiveResult = null;
       if (executableActions.length) {
         proposalRecord = buildStoredProposalRecord({
           instanceId: singleInstanceId,
@@ -5584,7 +5861,11 @@ async function runAgentForSelectedInstances(selectedInstanceIds, options = {}) {
           promptRuntimeOverride,
           userRequest: userText,
           basedOnStateHash: stateById[singleInstanceId]?.signature?.stateHash || null,
-          agentObj,
+          agentObj: {
+            ...agentObj,
+            actions: executableActions,
+            executionMode
+          },
           feedback,
           flowControlDirectives,
           evaluation
@@ -5595,29 +5876,21 @@ async function runAgentForSelectedInstances(selectedInstanceIds, options = {}) {
           stepId: currentStepId,
           excludeProposalId: proposalRecord.proposalId
         }, log);
+      }
 
-        const applyRunProfileId = findRunProfileIdForStepTrigger(
-          resolveRunPackTemplateId(promptRuntimeOverride),
-          currentStepId,
-          "selection.apply"
-        );
-        if (applyRunProfileId) {
-          proposalDirectiveResult = await applyFlowControlDirectivesAfterAgentRun({
-            flowControlDirectives: {
-              unlockRunProfileIds: [applyRunProfileId],
-              completeRunProfileIds: []
-            },
+      const flowDirectiveResult = triggerContext
+        ? await applyFlowControlDirectivesAfterAgentRun({
+            flowControlDirectives,
             promptRuntimeOverride,
             targetInstanceIds: resolvedActiveIds,
             sourceLabel
-          });
-        }
-      }
+          })
+        : null;
 
       const responseRenderResult = await renderAgentResponseToInstanceOutput({
         instanceId: singleInstanceId,
         feedback,
-        flowControlDirectives: null,
+        flowControlDirectives: flowDirectiveResult?.flowControlDirectives || null,
         evaluation,
         sourceLabel
       });
@@ -5625,10 +5898,12 @@ async function runAgentForSelectedInstances(selectedInstanceIds, options = {}) {
       if (triggerContext) {
         await persistExerciseRuntimeAfterAgentRun({
           triggerContext,
-          flowControlDirectives: proposalDirectiveResult?.flowControlDirectives || null,
-          activeAnchorContext: proposalDirectiveResult?.activeAnchorContext || activeAnchorContext
+          flowControlDirectives: flowDirectiveResult?.flowControlDirectives || null,
+          activeAnchorContext: flowDirectiveResult?.activeAnchorContext || activeAnchorContext
         });
       }
+
+      await syncChatApplyButtonsForInstanceIds(resolvedActiveIds, { stepId: currentStepId });
 
       if (responseRenderResult?.outputShapeId) {
         log(sourceLabel + ": Antwort in Ausgabebox von '" + responseRenderResult.instanceLabel + "' geschrieben (Shape " + responseRenderResult.outputShapeId + ").");
@@ -5649,7 +5924,8 @@ async function runAgentForSelectedInstances(selectedInstanceIds, options = {}) {
           infoCount: 0,
           targetedInstanceCount: 1,
           ...createEmptyActionExecutionStats()
-        }
+        },
+        executionMode
       });
     }
 
@@ -5701,6 +5977,12 @@ async function runAgentForSelectedInstances(selectedInstanceIds, options = {}) {
       inst.lastChangedAt = nowIso;
     }
 
+    if (currentStepId) {
+      for (const instanceId of resolvedActiveIds) {
+        await supersedePendingProposalsForInstanceStep(instanceId, currentStepId);
+      }
+    }
+
     await persistMemoryAfterAgentRun(agentObj, {
       runMode,
       trigger: triggerContext?.triggerKey || "generic",
@@ -5738,6 +6020,8 @@ async function runAgentForSelectedInstances(selectedInstanceIds, options = {}) {
       });
     }
 
+    await syncChatApplyButtonsForInstanceIds(resolvedActiveIds, { stepId: currentStepId });
+
     if (responseRenderResult?.outputShapeId) {
       log(sourceLabel + ": Antwort in Ausgabebox von '" + responseRenderResult.instanceLabel + "' geschrieben (Shape " + responseRenderResult.outputShapeId + ").");
     }
@@ -5748,7 +6032,8 @@ async function runAgentForSelectedInstances(selectedInstanceIds, options = {}) {
     return buildRunSuccessResult({
       sourceLabel,
       targetInstanceLabels: resolvedActiveLabels,
-      actionResult
+      actionResult,
+      executionMode
     });
   } catch (e) {
     const msg = "Exception beim " + sourceLabel + "-Run: " + formatRuntimeErrorMessage(e);
@@ -5765,211 +6050,6 @@ async function runAgentForSelectedInstances(selectedInstanceIds, options = {}) {
     }
     releaseAgentRunLock(runLock);
   }
-}
-
-function resolveOwnerInstanceIdForStickyReference(stickyRef) {
-  if (!stickyRef) return null;
-  const resolvedStickyId = Catalog.resolveStickyId(stickyRef, state.aliasState);
-  if (!resolvedStickyId) return null;
-  return state.stickyOwnerCache?.get(resolvedStickyId) || null;
-}
-
-function validateNormalizedAction(action) {
-  if (!action || typeof action !== "object" || !action.type) {
-    return { ok: false, message: "Unbekanntes oder nicht unterstütztes Action-Schema." };
-  }
-
-  if (action.type === "move_sticky") {
-    const targetArea = pickFirstNonEmptyString(action.targetArea, action.area);
-    if (!action.stickyId) return { ok: false, message: "move_sticky ohne stickyId." };
-    if (!targetArea) return { ok: false, message: "move_sticky ohne targetArea." };
-    return { ok: true, action: { ...action, targetArea } };
-  }
-
-  if (action.type === "create_sticky") {
-    const area = pickFirstNonEmptyString(action.area, action.targetArea);
-    const color = action.color == null ? null : normalizeStickyColorToken(action.color);
-    const checked = action.checked == null ? null : action.checked === true;
-    if (!action.text) return { ok: false, message: "create_sticky ohne text." };
-    if (!area) return { ok: false, message: "create_sticky ohne area." };
-    if (action.color != null && !color) return { ok: false, message: "create_sticky mit ungültiger color." };
-    return { ok: true, action: { ...action, area, targetArea: area, color, checked } };
-  }
-
-  if (action.type === "delete_sticky") {
-    if (!action.stickyId) return { ok: false, message: "delete_sticky ohne stickyId." };
-    return { ok: true, action };
-  }
-
-  if (action.type === "set_sticky_color") {
-    const color = normalizeStickyColorToken(action.color);
-    if (!action.stickyId) return { ok: false, message: "set_sticky_color ohne stickyId." };
-    if (!color) return { ok: false, message: "set_sticky_color ohne gültige color." };
-    return { ok: true, action: { ...action, color } };
-  }
-
-  if (action.type === "set_check_status") {
-    if (!action.stickyId) return { ok: false, message: "set_check_status ohne stickyId." };
-    if (typeof action.checked !== "boolean") return { ok: false, message: "set_check_status ohne checked=true/false." };
-    return { ok: true, action: { ...action, checked: action.checked === true } };
-  }
-
-  if (action.type === "create_connector") {
-    if (!action.fromStickyId || !action.toStickyId) {
-      return { ok: false, message: "create_connector ohne fromStickyId/toStickyId." };
-    }
-    return { ok: true, action: { ...action, directed: action.directed !== false } };
-  }
-
-  if (action.type === "inform") {
-    return { ok: true, action };
-  }
-
-  return { ok: true, action };
-}
-
-function resolveActionInstanceId(action, { candidateInstanceIds = null, triggerInstanceId = null, sourceLabel = "Agent" } = {}) {
-  const candidateIds = Array.from(new Set((candidateInstanceIds || []).filter((id) => state.instancesById.has(id))));
-
-  const explicitInstanceIdByLabel = action?.instanceLabel
-    ? getInternalInstanceIdByLabel(action.instanceLabel)
-    : null;
-
-  const explicitInstanceId = explicitInstanceIdByLabel || ((action?.instanceId && state.instancesById.has(action.instanceId)) ? action.instanceId : null);
-
-  if (action?.instanceLabel && !explicitInstanceIdByLabel) {
-    logRuntimeNotice("skipped_action", sourceLabel + ": Unbekanntes instanceLabel '" + action.instanceLabel + "' in Action-Output.");
-  }
-
-  const ownerInstanceIds = Array.from(new Set([
-    resolveOwnerInstanceIdForStickyReference(action?.stickyId),
-    resolveOwnerInstanceIdForStickyReference(action?.fromStickyId),
-    resolveOwnerInstanceIdForStickyReference(action?.toStickyId)
-  ].filter(Boolean)));
-
-  if (ownerInstanceIds.length > 1) {
-    logRuntimeNotice("skipped_action", sourceLabel + ": Action referenziert Sticky Notes aus mehreren Instanzen – übersprungen.");
-    return null;
-  }
-
-  const ownerInstanceId = ownerInstanceIds[0] || null;
-  const ownerInstanceLabel = ownerInstanceId ? getInstanceLabelByInternalId(ownerInstanceId) : null;
-
-  if (ownerInstanceId && explicitInstanceId && explicitInstanceId !== ownerInstanceId) {
-    log(
-      "WARNUNG: " + sourceLabel + "-Action referenziert Sticky(s) mit Instanz " +
-      (action.instanceLabel || getInstanceLabelByInternalId(explicitInstanceId) || explicitInstanceId) +
-      ", gehört aber zu " + (ownerInstanceLabel || ownerInstanceId) + ". Verwende Eigentümer-Instanz."
-    );
-  }
-
-  const preferredInstanceId = ownerInstanceId || explicitInstanceId || null;
-  if (preferredInstanceId) {
-    if (candidateIds.length > 0 && !candidateIds.includes(preferredInstanceId)) {
-      logRuntimeNotice(
-        "skipped_action",
-        sourceLabel + ": Abgeleitete Ziel-Instanz " +
-        (getInstanceLabelByInternalId(preferredInstanceId) || preferredInstanceId) +
-        " liegt außerhalb des erlaubten Zielsets – Action übersprungen."
-      );
-      return null;
-    }
-    return preferredInstanceId;
-  }
-
-  if (candidateIds.length === 1) return candidateIds[0];
-  if (triggerInstanceId && candidateIds.includes(triggerInstanceId)) return triggerInstanceId;
-  return null;
-}
-
-async function applyResolvedAgentActions(actions, { candidateInstanceIds, triggerInstanceId = null, sourceLabel = "Agent" }) {
-  if (!Array.isArray(actions) || actions.length === 0) {
-    log(sourceLabel + ": Keine Actions geliefert.");
-    return {
-      appliedCount: 0,
-      skippedCount: 0,
-      infoCount: 0,
-      targetedInstanceCount: 0,
-      ...createEmptyActionExecutionStats()
-    };
-  }
-
-  const grouped = new Map();
-  const aggregatedExecutionStats = createEmptyActionExecutionStats();
-  let appliedCount = 0;
-  let skippedCount = 0;
-  let infoCount = 0;
-
-  for (const rawAction of actions) {
-    let action = normalizeAgentAction(rawAction);
-
-    if (!action) {
-      skippedCount++;
-      logRuntimeNotice("skipped_action", sourceLabel + ": Unbekanntes oder nicht unterstütztes Action-Schema – übersprungen.", rawAction);
-      continue;
-    }
-
-    if (action.type === "create_connector" && action.reverseDirection) {
-      action = {
-        ...action,
-        fromStickyId: action.toStickyId,
-        toStickyId: action.fromStickyId,
-        reverseDirection: false
-      };
-    }
-
-    const validation = validateNormalizedAction(action);
-    if (!validation.ok) {
-      skippedCount++;
-      logRuntimeNotice("skipped_action", sourceLabel + ": " + validation.message + " – übersprungen.", rawAction);
-      continue;
-    }
-    action = validation.action || action;
-
-    if (action.type === "inform") {
-      infoCount++;
-      log(sourceLabel + " info:");
-      log(action.message || "(keine Nachricht)");
-      continue;
-    }
-
-    const targetInstanceId = resolveActionInstanceId(action, {
-      candidateInstanceIds,
-      triggerInstanceId,
-      sourceLabel
-    });
-
-    if (!targetInstanceId) {
-      skippedCount++;
-      logRuntimeNotice("skipped_action", sourceLabel + ": Keine Ziel-Instanz für Action ableitbar – übersprungen.", rawAction);
-      continue;
-    }
-
-    if (!grouped.has(targetInstanceId)) grouped.set(targetInstanceId, []);
-    grouped.get(targetInstanceId).push({
-      ...action,
-      instanceId: targetInstanceId,
-      instanceLabel: getInstanceLabelByInternalId(targetInstanceId) || action.instanceLabel || null
-    });
-    appliedCount++;
-  }
-
-  for (const [instanceId, instanceActions] of grouped.entries()) {
-    log(sourceLabel + ": Wende " + instanceActions.length + " Action(s) auf Instanz " + (getInstanceLabelByInternalId(instanceId) || instanceId) + " an.");
-    const executionStats = await applyAgentActionsToInstance(instanceId, instanceActions);
-    mergeActionExecutionStats(aggregatedExecutionStats, executionStats);
-  }
-
-  const totalSkippedCount = skippedCount + Number(aggregatedExecutionStats.skippedActionCount || 0);
-
-  return {
-    appliedCount,
-    skippedCount: totalSkippedCount,
-    infoCount,
-    targetedInstanceCount: grouped.size,
-    ...aggregatedExecutionStats,
-    skippedActionCount: totalSkippedCount
-  };
 }
 
 // --------------------------------------------------------------------
@@ -6359,18 +6439,14 @@ function sanitizeProposalActionsForCurrentStep(actions, {
   const boardHasContent = promptPayloadHasVisibleContent(activeCanvasPayload);
   const explicitExamples = userExplicitlyAskedForExampleStickies(userText);
   const logSafe = typeof logFn === "function" ? logFn : (() => {});
-
-  if (!boardHasContent && !explicitExamples) {
-    if (normalizedActions.length) {
-      logSafe("INFO: Step-0-Proposal auf leerem Canvas wird textlich gehalten; konkrete Vorschlags-Actions werden verworfen, solange keine expliziten Beispiel-Stickies angefordert wurden.");
-    }
-    return [];
-  }
-
   const allowedAreas = new Set(["header", "sorted_out_left"]);
   const sanitized = [];
+  let createdHeaderCount = 0;
+  let createdSupportCount = 0;
+
   for (const action of normalizedActions) {
-    if (action.type === "inform") continue;
+    if (!action || action.type === "inform") continue;
+
     if (action.type === "create_sticky") {
       const area = pickFirstNonEmptyString(action.area, action.targetArea);
       if (!allowedAreas.has(area)) {
@@ -6381,6 +6457,23 @@ function sanitizeProposalActionsForCurrentStep(actions, {
         logSafe("INFO: Step-0-Proposal verwirft Platzhalter-/Meta-Sticky: " + String(action.text || "(leer)"));
         continue;
       }
+
+      if (!boardHasContent && !explicitExamples) {
+        if (area === "header") {
+          if (createdHeaderCount >= 1) {
+            logSafe("INFO: Step-0-Proposal auf leerem Canvas begrenzt Header-Vorschläge auf eine Sticky.");
+            continue;
+          }
+          createdHeaderCount += 1;
+        } else {
+          if (createdSupportCount >= 2) {
+            logSafe("INFO: Step-0-Proposal auf leerem Canvas begrenzt Scope-/Annahmen-Vorschläge auf zwei Stickies.");
+            continue;
+          }
+          createdSupportCount += 1;
+        }
+      }
+
       sanitized.push(action);
       continue;
     }

@@ -1,4 +1,4 @@
-import { DT_IMAGE_META_KEY_INSTANCE, DT_CANVAS_DEFS, DT_SORTED_OUT_REGION_WIDTH_PX, DT_SORTED_OUT_BUFFER_WIDTH_PX } from "../config.js?v=20260308-batch76";
+import { DT_IMAGE_META_KEY_INSTANCE, DT_CANVAS_DEFS, DT_SORTED_OUT_REGION_WIDTH_PX, DT_SORTED_OUT_BUFFER_WIDTH_PX } from "../config.js?v=20260309-batch9";
 import { isFiniteNumber } from "../utils.js?v=20260301-step11-hotfix2";
 import { ensureMiroReady, getBoard } from "./sdk.js?v=20260308-batch76";
 import {
@@ -13,8 +13,10 @@ import {
   normalizeChatInterfaceShapeIds,
   hasCompleteChatInterfaceShapeIds,
   createChatInterfaceForInstance,
-  removeChatInterfaceShapes
-} from "./chat-interface.js?v=20260306-batch6";
+  removeChatInterfaceShapes,
+  hasApplyChatInterfaceShapeId,
+  ensureChatApplyShapeForInstance
+} from "./chat-interface.js?v=20260309-batch9";
 import {
   loadBaselineSignatureForImageId,
   removeBaselineSignatureForImageId
@@ -434,10 +436,15 @@ export async function registerInstanceFromImage(image, {
     }
 
 
-    if (createChatInterface && !hasCompleteChatInterfaceShapeIds(instance.chatInterface)) {
+    if (createChatInterface) {
       try {
-        const shapeIds = await createChatInterfaceForInstance(instance, log, { lang: displayLanguage });
-        instance.chatInterface = normalizeCanvasInstanceChatInterface(shapeIds);
+        if (!hasCompleteChatInterfaceShapeIds(instance.chatInterface)) {
+          const shapeIds = await createChatInterfaceForInstance(instance, log, { lang: displayLanguage });
+          instance.chatInterface = normalizeCanvasInstanceChatInterface(shapeIds);
+        } else if (!hasApplyChatInterfaceShapeId(instance.chatInterface)) {
+          const shapeIds = await ensureChatApplyShapeForInstance(instance, instance.chatInterface, log, { lang: displayLanguage });
+          instance.chatInterface = normalizeCanvasInstanceChatInterface(shapeIds);
+        }
         await writeCanvasInstanceMeta(image, {
           version: 2,
           canvasTypeId: detectedCanvasTypeId,
@@ -447,7 +454,7 @@ export async function registerInstanceFromImage(image, {
         }, templateCatalog, defaultTemplateId, log);
       } catch (e) {
         if (typeof log === "function") {
-          log("WARNUNG: Chat-Interface konnte für Instanz " + (instance.instanceLabel || instance.instanceId) + " nicht erstellt werden: " + e.message);
+          log("WARNUNG: Chat-Interface konnte für Instanz " + (instance.instanceLabel || instance.instanceId) + " nicht erstellt oder ergänzt werden: " + e.message);
         }
       }
     }
@@ -494,10 +501,15 @@ export async function registerInstanceFromImage(image, {
     log("Neue Canvas-Instanz registriert: " + instance.instanceLabel + " (Bild-ID " + image.id + ")");
   }
 
-  if (createChatInterface && !hasCompleteChatInterfaceShapeIds(instance.chatInterface)) {
+  if (createChatInterface) {
     try {
-      const shapeIds = await createChatInterfaceForInstance(instance, log, { lang: displayLanguage });
-      instance.chatInterface = normalizeCanvasInstanceChatInterface(shapeIds);
+      if (!hasCompleteChatInterfaceShapeIds(instance.chatInterface)) {
+        const shapeIds = await createChatInterfaceForInstance(instance, log, { lang: displayLanguage });
+        instance.chatInterface = normalizeCanvasInstanceChatInterface(shapeIds);
+      } else if (!hasApplyChatInterfaceShapeId(instance.chatInterface)) {
+        const shapeIds = await ensureChatApplyShapeForInstance(instance, instance.chatInterface, log, { lang: displayLanguage });
+        instance.chatInterface = normalizeCanvasInstanceChatInterface(shapeIds);
+      }
       await writeCanvasInstanceMeta(image, {
         version: 2,
         canvasTypeId: detectedCanvasTypeId,
@@ -507,7 +519,7 @@ export async function registerInstanceFromImage(image, {
       }, templateCatalog, defaultTemplateId, log);
     } catch (e) {
       if (typeof log === "function") {
-        log("WARNUNG: Chat-Interface konnte für Instanz " + (instance.instanceLabel || instance.instanceId) + " nicht erstellt werden: " + e.message);
+        log("WARNUNG: Chat-Interface konnte für Instanz " + (instance.instanceLabel || instance.instanceId) + " nicht erstellt oder ergänzt werden: " + e.message);
       }
     }
   }
@@ -559,7 +571,7 @@ export async function scanTemplateInstances({
         hasGlobalBaseline,
         canvasTypeId,
         log,
-        createChatInterface: false
+        createChatInterface
       });
     }
   }

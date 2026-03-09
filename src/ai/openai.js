@@ -1,4 +1,4 @@
-import { OPENAI_ENDPOINT } from "../config.js?v=20260307-batch75";
+import { OPENAI_ENDPOINT } from "../config.js?v=20260309-batch9";
 
 function nullableStringSchema(description = "") {
   return {
@@ -50,6 +50,11 @@ const AGENT_ACTION_SCHEMA = strictObjectSchema({
 
 const AGENT_RESPONSE_JSON_SCHEMA = strictObjectSchema({
     analysis: { type: "string", description: "Kurze Analyse des aktuellen Board-Zustands." },
+    executionMode: {
+      type: "string",
+      enum: ["none", "direct_apply", "proposal_only"],
+      description: "Bestimmt, ob keine Actions, direkte Anwendung oder nur ein Vorschlag zurückgegeben wird."
+    },
     actions: {
       type: "array",
       items: AGENT_ACTION_SCHEMA

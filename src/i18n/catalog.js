@@ -15,6 +15,10 @@ export const UI_STRINGS = Object.freeze({
     de: "User-Modus aktiv. Die Übungsaktionen bleiben sichtbar, Admin-Steuerung ist ausgeblendet.",
     en: "User mode is active. Exercise actions stay visible while admin controls are hidden."
   },
+  "panel.mode.status.adminOnly": {
+    de: "Admin-Panel aktiv. User-Aktionen laufen über Board-Buttons und Chatflächen.",
+    en: "Admin panel active. User actions run via board buttons and chat surfaces."
+  },
 
   "user.text.label": { de: "Frage / Aufgabe für den Agenten", en: "Question / task for the agent" },
   "user.text.placeholder": {
@@ -69,8 +73,8 @@ export const UI_STRINGS = Object.freeze({
   "admin.stepTrigger.label": { de: "Erlaubter Trigger", en: "Allowed trigger" },
   "admin.stepTrigger.run": { de: "Trigger ausführen", en: "Run trigger" },
   "admin.stepTrigger.help": {
-    de: "Führt jeden im aktuellen Schritt erlaubten Trigger direkt aus. Versteckte Trigger bleiben so testbar, ohne im User-Panel prominent zu erscheinen.",
-    en: "Runs any trigger that is allowed in the current step directly. Hidden triggers stay testable without being prominent in the user panel."
+    de: "Führt jeden im aktuellen Schritt erlaubten Trigger direkt aus. Versteckte Trigger bleiben so testbar, ohne als Standard-Board-Interaktion prominent zu erscheinen.",
+    en: "Runs any trigger that is allowed in the current step directly. Hidden triggers stay testable without becoming part of the default board interaction."
   },
 
   "section.flowControls": { de: "Board Flow Controls", en: "Board flow controls" },
@@ -87,7 +91,18 @@ export const UI_STRINGS = Object.freeze({
   "flow.controlLabel.label": { de: "Button-Label", en: "Button label" },
   "flow.controlLabel.placeholder": { de: "z. B. Prüfen", en: "e.g. Check" },
   "flow.createControl": { de: "Control erzeugen", en: "Create control" },
-  "flow.setCurrentStep": { de: "Schritt aktiv setzen", en: "Set current step" },
+  "flow.setCurrentStep": { de: "Aktiven Schritt des Flows setzen", en: "Set active flow step" },
+  "flow.activateSelectedControl": { de: "Selektierten Flow-Button freischalten", en: "Unlock selected flow button" },
+  "flow.completeSelectedControl": { de: "Selektierten Flow-Button als erledigt markieren", en: "Mark selected flow button as done" },
+  "flow.resetSelectedControl": { de: "Selektierten Flow-Button zurücksetzen", en: "Reset selected flow button" },
+  "flow.admin.stepHelp": {
+    de: "Setzt den aktuellen Schritt des relevanten Flows auf das gewählte Step Template und ergänzt bei Bedarf die Default-Buttons dieses Schritts.",
+    en: "Sets the current step of the relevant flow to the selected step template and seeds that step’s default buttons when needed."
+  },
+  "flow.admin.controlHelp": {
+    de: "Freischalten wirkt nur auf den selektierten Flow-Button. Erledigt markiert ihn als done. Zurücksetzen entfernt manuelle Freischaltungen oder Done-Markierungen und stellt den modellseitigen Zustand wieder her.",
+    en: "Unlock only affects the selected flow button. Done marks it as done. Reset clears manual unlock or done markers and restores the model-driven state."
+  },
   "flow.authoring.status.empty": { de: "Noch keine Flow-Information geladen.", en: "No flow information loaded yet." },
   "flow.noStepTemplates": { de: "Keine Step Templates", en: "No step templates" },
   "flow.noRunProfiles": { de: "Keine Run Profiles", en: "No run profiles" },
@@ -98,6 +113,11 @@ export const UI_STRINGS = Object.freeze({
   "button.clusterPanel": { de: "Auswahl clustern (Side-Panel)", en: "Cluster selection (side panel)" },
   "button.classifyDebug": { de: "Stickies klassifizieren (Debug)", en: "Classify stickies (debug)" },
   "button.openaiClassic": { de: "Klassischer OpenAI-Call", en: "Classic OpenAI call" },
+  "button.memoryClear": { de: "Memory löschen", en: "Clear memory" },
+  "button.memoryClear.help": {
+    de: "Löscht kumulativen Memory-State und Memory-Log, nicht aber Board-Flows, gespeicherte Proposals oder andere Board-Artefakte.",
+    en: "Clears cumulative memory state and memory log, but not board flows, stored proposals, or other board artifacts."
+  },
 
   "canvasType.datentreiber-3boxes.name": { de: "Datentreiber 3-Boxes", en: "Datentreiber 3-Boxes" },
   "canvasType.datentreiber-analytics-ai-use-case.name": { de: "Analytics & AI Use Case", en: "Analytics & AI Use Case" },
@@ -178,6 +198,10 @@ export const UI_STRINGS = Object.freeze({
   "chat.inputPlaceholder": { de: "Frage hier eingeben …", en: "Enter question here …" },
   "chat.outputPlaceholder": { de: "Agentenantwort erscheint hier.", en: "The agent’s answer appears here." },
   "chat.submit": { de: "Submit", en: "Submit" },
+  "chat.apply": { de: "Vorschläge anwenden", en: "Apply suggestions" },
+  "chat.apply.disabled": { de: "Kein Vorschlag gespeichert", en: "No saved proposal yet" },
+  "chat.apply.ready": { de: "Gespeicherten Vorschlag jetzt auf das Board anwenden", en: "Apply the saved proposal to the board now" },
+  "chat.apply.noPending": { de: "Für diesen Schritt liegt aktuell kein offener Vorschlag vor.", en: "There is currently no pending proposal for this step." },
 
   "feedback.heading.evaluation": { de: "Bewertung", en: "Evaluation" },
   "feedback.heading.rubric": { de: "Rubrik", en: "Rubric" },
@@ -313,9 +337,9 @@ export const METHOD_I18N_OVERRIDES = Object.freeze({
       uiHint: { en: "Use this before moving from preparation into the user needs analysis." }
     }),
     "analytics.fit.step0.hint": Object.freeze({
-      label: { en: "Start preparation" },
-      summary: { en: "Helps teams begin with focus, scope, and open assumptions on this canvas." },
-      uiHint: { en: "A useful first button when a team is just starting on a blank canvas." }
+      label: { en: "Give hint" },
+      summary: { en: "Gives a short orientation on what should happen next in preparation and focus without creating board suggestions." },
+      uiHint: { en: "Use this when a team needs a short textual hint, not concrete sticky-note suggestions." }
     }),
     "analytics.fit.step0.coach": Object.freeze({
       label: { en: "Coach focus" },
@@ -323,9 +347,9 @@ export const METHOD_I18N_OVERRIDES = Object.freeze({
       uiHint: { en: "Use this when participants need help narrowing the use case and surfacing assumptions." }
     }),
     "analytics.fit.step0.propose": Object.freeze({
-      label: { en: "Generate focus suggestions" },
-      summary: { en: "Generates concrete but not-yet-applied suggestions for focus, scope, and open assumptions." },
-      uiHint: { en: "Use this when you want concrete board suggestions before applying anything." }
+      label: { en: "Start preparation" },
+      summary: { en: "Generates a concrete, not-yet-applied starter proposal for focus, scope, and open assumptions in this step." },
+      uiHint: { en: "Use this when the board should receive a visible preparation proposal that can be applied afterwards." }
     }),
     "analytics.fit.step0.apply": Object.freeze({
       label: { en: "Apply suggestions" },
@@ -338,9 +362,9 @@ export const METHOD_I18N_OVERRIDES = Object.freeze({
       uiHint: { en: "Use this when the right-hand side already has substance and you want to know whether step 2 can start." }
     }),
     "analytics.fit.step1.hint": Object.freeze({
-      label: { en: "Start user needs analysis" },
-      summary: { en: "Provides the next sensible work step in the user needs analysis, including wording prompts." },
-      uiHint: { en: "Useful when a team is stuck in the problem space or needs a clear next move." }
+      label: { en: "Give hint" },
+      summary: { en: "Gives a short textual hint for the next sensible move in the user needs analysis without creating board suggestions." },
+      uiHint: { en: "Use this when the team only needs orientation, not a concrete proposal." }
     }),
     "analytics.fit.step1.coach": Object.freeze({
       label: { en: "Coach user needs analysis" },
@@ -348,9 +372,9 @@ export const METHOD_I18N_OVERRIDES = Object.freeze({
       uiHint: { en: "Use this when participants should keep thinking for themselves instead of getting a ready-made answer." }
     }),
     "analytics.fit.step1.propose": Object.freeze({
-      label: { en: "Generate user-analysis suggestions" },
-      summary: { en: "Generates concrete but not-yet-applied suggestions for focus, structure, and prioritization in the user needs analysis." },
-      uiHint: { en: "Use this when you want concrete board suggestions before applying anything." }
+      label: { en: "Start user needs analysis" },
+      summary: { en: "Generates a concrete, not-yet-applied starter proposal for the user needs analysis in this step." },
+      uiHint: { en: "Use this when the board should receive a visible user-analysis proposal that can be applied afterwards." }
     }),
     "analytics.fit.step1.apply": Object.freeze({
       label: { en: "Apply suggestions" },
@@ -363,9 +387,9 @@ export const METHOD_I18N_OVERRIDES = Object.freeze({
       uiHint: { en: "Use this when the left-hand side has substance and you want to know whether fit validation can begin." }
     }),
     "analytics.fit.step2.hint": Object.freeze({
-      label: { en: "Start solution design" },
-      summary: { en: "Provides the next sensible derivation step on the left-hand side." },
-      uiHint: { en: "Useful when the user needs analysis is already decent and the team now needs a clear next move on the solution side." }
+      label: { en: "Give hint" },
+      summary: { en: "Gives a short textual hint for the next sensible move on the solution side without creating board suggestions." },
+      uiHint: { en: "Use this when the team only needs orientation, not a concrete proposal." }
     }),
     "analytics.fit.step2.coach": Object.freeze({
       label: { en: "Coach solution design" },
@@ -373,9 +397,9 @@ export const METHOD_I18N_OVERRIDES = Object.freeze({
       uiHint: { en: "Use this when participants should derive the left-hand side themselves instead of receiving a ready-made design." }
     }),
     "analytics.fit.step2.propose": Object.freeze({
-      label: { en: "Generate solution suggestions" },
-      summary: { en: "Generates concrete but not-yet-applied suggestions for variant choice and left-side derivation." },
-      uiHint: { en: "Use this when you want concrete board suggestions before applying anything." }
+      label: { en: "Start solution design" },
+      summary: { en: "Generates a concrete, not-yet-applied starter proposal for solution design in this step." },
+      uiHint: { en: "Use this when the board should receive a visible solution-design proposal that can be applied afterwards." }
     }),
     "analytics.fit.step2.apply": Object.freeze({
       label: { en: "Apply suggestions" },

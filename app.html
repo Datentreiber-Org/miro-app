@@ -156,15 +156,7 @@
   <div id="app-root">
   <h1 data-i18n="panel.heading">Datentreiber Canvas – Panel</h1>
 
-  <div class="row">
-    <label for="panel-mode" data-i18n="panel.mode.label">Panel-Modus</label>
-    <select id="panel-mode">
-      <option value="user" data-i18n="panel.mode.user">User-Modus</option>
-      <option value="admin" data-i18n="panel.mode.admin">Admin-Modus</option>
-    </select>
-  </div>
-
-  <div id="panel-mode-status" data-i18n="panel.mode.status.admin">Panel-Modus wird geladen ...</div>
+  <div id="panel-mode-status" data-i18n="panel.mode.status.adminOnly">Admin-Panel aktiv. User-Aktionen laufen über Board-Buttons und Chatflächen.</div>
 
   <div class="row">
     <label for="board-language" data-i18n="board.language.label">App- und Boardsprache</label>
@@ -183,25 +175,6 @@
   <div id="exercise-step-instruction" data-i18n="status.exerciseInstruction.empty">Noch keine sichtbare Schrittanweisung geladen.</div>
   <div id="exercise-recommendation-status" data-i18n="status.recommendation.empty">Noch keine Button-Freischaltungen gespeichert.</div>
   <div id="selection-status" data-i18n="status.selection.loading">Selektion wird geladen ...</div>
-
-  <div class="panel-section" id="user-actions-panel">
-    <div class="panel-section-title" data-i18n="section.exerciseActions">Empfohlene Aktionen</div>
-    <div class="panel-section-title helper-text" id="exercise-primary-actions-title" data-i18n="section.exerciseActionsPrimary">Primäre Aktionen</div>
-    <div id="exercise-primary-actions" class="btn-row"></div>
-
-    <div class="panel-section-title helper-text" id="exercise-secondary-actions-title" data-i18n="exercise.action.secondaryHeading">Weitere Aktionen</div>
-    <div id="exercise-secondary-actions" class="btn-row"></div>
-
-    <div class="panel-section-title helper-text" id="exercise-proposal-title" data-i18n="section.exerciseActionsProposal">Vorschläge</div>
-    <div id="exercise-proposal-actions" class="btn-row"></div>
-
-    <div class="btn-row">
-      <button id="btn-exercise-next-step" data-i18n="exercise.action.nextStep">Nächster Schritt </button>
-    </div>
-    <div id="exercise-action-help" class="helper-text" data-i18n="exercise.action.help.default">
-      Die Übungsaktionen arbeiten auf den aktuell selektierten Canvas-Instanzen. Ohne Selektion erscheint ein Warnhinweis im Log.
-    </div>
-  </div>
 
   <div class="panel-section" id="admin-panel">
     <div class="panel-section-title" data-i18n="section.adminControl">Admin-Steuerung</div>
@@ -293,9 +266,16 @@
 
       <div class="btn-row">
         <button id="btn-flow-create-control" data-i18n="flow.createControl">Control erzeugen</button>
-        <button id="btn-flow-set-current-step" data-i18n="flow.setCurrentStep">Schritt aktiv setzen</button>
-        <button id="btn-flow-activate-selected-control">Selektierten Button aktiv setzen</button>
+        <button id="btn-flow-set-current-step" data-i18n="flow.setCurrentStep">Aktiven Schritt des Flows setzen</button>
       </div>
+      <div class="helper-text" data-i18n="flow.admin.stepHelp">Setzt den aktuellen Schritt des relevanten Flows auf das gewählte Step Template und ergänzt bei Bedarf die Default-Buttons dieses Schritts.</div>
+
+      <div class="btn-row">
+        <button id="btn-flow-activate-selected-control" data-i18n="flow.activateSelectedControl">Selektierten Flow-Button freischalten</button>
+        <button id="btn-flow-complete-selected-control" data-i18n="flow.completeSelectedControl">Selektierten Flow-Button als erledigt markieren</button>
+        <button id="btn-flow-reset-selected-control" data-i18n="flow.resetSelectedControl">Selektierten Flow-Button zurücksetzen</button>
+      </div>
+      <div class="helper-text" data-i18n="flow.admin.controlHelp">Freischalten wirkt nur auf den selektierten Flow-Button. Erledigt markiert ihn als done. Zurücksetzen entfernt manuelle Freischaltungen oder Done-Markierungen und stellt den modellseitigen Zustand wieder her.</div>
       <div id="flow-authoring-status" class="helper-text" data-i18n="flow.authoring.status.empty">Noch keine Flow-Information geladen.</div>
     </div>
 
@@ -304,20 +284,14 @@
     </div>
 
     <div class="btn-row">
-      <button id="btn-agent-selection" data-i18n="button.agentSelection">Instanz-Agent (Selektion)</button>
-      <button id="btn-memory-clear-admin">Memory löschen</button>
+      <button id="btn-memory-clear-admin" data-i18n="button.memoryClear">Memory löschen</button>
     </div>
-
-    <div class="btn-row">
-      <button id="btn-cluster-panel" data-i18n="button.clusterPanel">Auswahl clustern (Side-Panel)</button>
-      <button id="btn-classify-debug" data-i18n="button.classifyDebug">Stickies klassifizieren (Debug)</button>
-      <button id="btn-openai-classic" data-i18n="button.openaiClassic">Klassischer OpenAI-Call</button>
-    </div>
+    <div class="helper-text" data-i18n="button.memoryClear.help">Löscht kumulativen Memory-State und Memory-Log, nicht aber Board-Flows, gespeicherte Proposals oder andere Board-Artefakte.</div>
   </div>
 
   <pre id="log"></pre>
 
   </div>
-  <script type="module" src="./src/main.js?v=20260311-batch83fix1"></script>
+  <script type="module" src="./src/main.js?v=20260309-batch9"></script>
 </body>
 </html>

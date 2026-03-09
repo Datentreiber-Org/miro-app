@@ -322,3 +322,53 @@ export function forceFlowControlActive(flow, controlId) {
     updatedAt: new Date().toISOString()
   });
 }
+
+export function markFlowControlDone(flow, controlId) {
+  const normalized = normalizeBoardFlow(flow);
+  const wanted = asNonEmptyString(controlId);
+  const control = wanted ? normalized.controls?.[wanted] : null;
+  if (!control) return normalized;
+  if (!control.runProfileId) return normalized;
+
+  const unlockedRunProfileIds = new Set(uniqueStrings(normalized?.runtime?.unlockedRunProfileIds || []));
+  const doneRunProfileIds = new Set(uniqueStrings(normalized?.runtime?.doneRunProfileIds || []));
+
+  unlockedRunProfileIds.delete(control.runProfileId);
+  doneRunProfileIds.add(control.runProfileId);
+
+  return syncFlowControlStatesWithCurrentStep({
+    ...normalized,
+    runtime: {
+      ...normalized.runtime,
+      unlockedRunProfileIds: Array.from(unlockedRunProfileIds),
+      doneRunProfileIds: Array.from(doneRunProfileIds),
+      lastDirectiveAt: new Date().toISOString()
+    },
+    updatedAt: new Date().toISOString()
+  });
+}
+
+export function resetFlowControlState(flow, controlId) {
+  const normalized = normalizeBoardFlow(flow);
+  const wanted = asNonEmptyString(controlId);
+  const control = wanted ? normalized.controls?.[wanted] : null;
+  if (!control) return normalized;
+  if (!control.runProfileId) return normalized;
+
+  const unlockedRunProfileIds = new Set(uniqueStrings(normalized?.runtime?.unlockedRunProfileIds || []));
+  const doneRunProfileIds = new Set(uniqueStrings(normalized?.runtime?.doneRunProfileIds || []));
+
+  unlockedRunProfileIds.delete(control.runProfileId);
+  doneRunProfileIds.delete(control.runProfileId);
+
+  return syncFlowControlStatesWithCurrentStep({
+    ...normalized,
+    runtime: {
+      ...normalized.runtime,
+      unlockedRunProfileIds: Array.from(unlockedRunProfileIds),
+      doneRunProfileIds: Array.from(doneRunProfileIds),
+      lastDirectiveAt: new Date().toISOString()
+    },
+    updatedAt: new Date().toISOString()
+  });
+}

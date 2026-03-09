@@ -3,16 +3,18 @@ import {
   getDefaultCanvasTypeIdForPack,
   getPackDefaults,
   getStepTriggerConfig
-} from "../exercises/registry.js?v=20260311-batch83fix1";
-import { getPromptModulesByIds } from "../exercises/library.js?v=20260311-batch83fix1";
-import { parseTriggerKey } from "../runtime/exercise-engine.js?v=20260311-batch83fix1";
-import { normalizeUiLanguage } from "../i18n/index.js?v=20260306-batch6";
+} from "../exercises/registry.js?v=20260309-batch9";
+import { getPromptModulesByIds } from "../exercises/library.js?v=20260309-batch9";
+import { parseTriggerKey } from "../runtime/exercise-engine.js?v=20260309-batch9";
+import { normalizeUiLanguage } from "../i18n/index.js?v=20260309-batch9";
 
 function asNonEmptyString(value) {
   if (typeof value !== "string") return null;
   const trimmed = value.trim();
   return trimmed || null;
 }
+
+const KNOWN_EXECUTION_MODES = Object.freeze(["none", "direct_apply", "proposal_only"]);
 
 function normalizeUniqueStrings(values) {
   if (!Array.isArray(values)) return [];
@@ -34,6 +36,13 @@ function sanitizeBoardMode(value) {
 
 function sanitizeRunMode(value) {
   return asNonEmptyString(value) || "generic";
+}
+
+function normalizeAllowedExecutionModes(values, fallback = ["none"]) {
+  const allowed = normalizeUniqueStrings(values).filter((value) => KNOWN_EXECUTION_MODES.includes(value));
+  if (allowed.length) return allowed;
+  const normalizedFallback = normalizeUniqueStrings(fallback).filter((value) => KNOWN_EXECUTION_MODES.includes(value));
+  return normalizedFallback.length ? normalizedFallback : ["none"];
 }
 
 function getCanvasTypeDisplayName(templateCatalog, canvasTypeId) {
@@ -124,11 +133,8 @@ function buildBoardMechanicsBlock({
 
   const allowedActions = normalizeUniqueStrings(exerciseContext?.allowedActions || []);
   const hasAllowedActionsArray = Array.isArray(exerciseContext?.allowedActions);
-  const mutationPolicy = asNonEmptyString(exerciseContext?.mutationPolicy);
 
-  if (mutationPolicy === "none") {
-    lines.push("- In diesem Run sind Board-Mutationen nicht freigegeben. Plane daher weder set_sticky_color noch set_check_status oder create_sticky als Action, sondern benenne Hinweise nur im feedback.");
-  } else if (hasAllowedActionsArray) {
+  if (hasAllowedActionsArray) {
     if (!allowedActions.includes("set_sticky_color")) {
       lines.push("- set_sticky_color ist in diesem Run nicht explizit freigegeben. Nutze es daher nicht.");
     }
@@ -139,6 +145,31 @@ function buildBoardMechanicsBlock({
 
   if (normalizeUniqueStrings(involvedCanvasTypeIds).includes(ANALYTICS_AI_USE_CASE_CANVAS_TYPE_ID)) {
     lines.push("- Für Analytics & AI Use Case können Sorted-out-Bereiche genutzt werden, um alternative, zurückgestellte oder nicht weiterverfolgte Sticky Notes seitlich zu parken, ohne sie zu löschen.");
+  }
+
+  return lines.join("\n");
+}
+
+function buildExecutionModePolicyBlock(exerciseContext = null) {
+  const allowedExecutionModes = normalizeAllowedExecutionModes(exerciseContext?.allowedExecutionModes, ["none"]);
+  const lines = [
+    "Execution-Mode-Policy:",
+    `- allowedExecutionModes: ${allowedExecutionModes.join(", ")}`,
+    "- Wähle executionMode immer explizit: none, direct_apply oder proposal_only.",
+    "- none bedeutet: keine Board-Mutation und actions=[].",
+    "- direct_apply bedeutet: actions sind für direkte Anwendung gedacht.",
+    "- proposal_only bedeutet: actions sind konkrete Vorschläge, werden aber noch nicht angewendet.",
+    "- Halte dich strikt an allowedExecutionModes dieses Runs."
+  ];
+
+  if (!allowedExecutionModes.includes("direct_apply")) {
+    lines.push("- direct_apply ist in diesem Run nicht freigegeben.");
+  }
+  if (!allowedExecutionModes.includes("proposal_only")) {
+    lines.push("- proposal_only ist in diesem Run nicht freigegeben.");
+  }
+  if (allowedExecutionModes.length === 1 && allowedExecutionModes[0] === "none") {
+    lines.push("- In diesem Run bleibt das Board unverändert; gib nur feedback und memoryEntry aus.");
   }
 
   return lines.join("\n");
@@ -219,6 +250,7 @@ function applyAdminOverrideToExerciseContext(exerciseContext) {
     ...src,
     adminOverrideActive: true,
     allowedActions: [...ADMIN_OVERRIDE_ALLOWED_ACTIONS],
+    allowedExecutionModes: ["none", "direct_apply", "proposal_only"],
     mutationPolicy: "full"
   };
 }
@@ -227,7 +259,8 @@ function applyAdminOverrideToTriggerContext(triggerContext) {
   const src = (triggerContext && typeof triggerContext === "object") ? triggerContext : {};
   return {
     ...src,
-    mutationPolicy: "full"
+    mutationPolicy: "full",
+    allowedExecutionModes: ["none", "direct_apply", "proposal_only"]
   };
 }
 
@@ -259,6 +292,7 @@ function buildModePromptBlock(runMode, triggerContext) {
   if (parsed?.intent) lines.push(`- triggerIntent: ${parsed.intent}`);
   if (triggerContext?.mutationPolicy) lines.push(`- mutationPolicy: ${triggerContext.mutationPolicy}`);
   if (triggerContext?.feedbackPolicy) lines.push(`- feedbackPolicy: ${triggerContext.feedbackPolicy}`);
+  if (Array.isArray(triggerContext?.allowedExecutionModes) && triggerContext.allowedExecutionModes.length) lines.push(`- allowedExecutionModes: ${triggerContext.allowedExecutionModes.join(", ")}`);
 
   return lines.join("\n");
 }
@@ -298,6 +332,7 @@ function buildRunProfilePromptBlock(runProfile) {
   if (asNonEmptyString(runProfile?.defaultScopeType)) lines.push(`- defaultScopeType: ${runProfile.defaultScopeType}`);
   if (asNonEmptyString(runProfile?.mutationPolicy)) lines.push(`- mutationPolicyOverride: ${runProfile.mutationPolicy}`);
   if (asNonEmptyString(runProfile?.feedbackPolicy)) lines.push(`- feedbackPolicyOverride: ${runProfile.feedbackPolicy}`);
+  if (Array.isArray(runProfile?.allowedExecutionModes) && runProfile.allowedExecutionModes.length) lines.push(`- allowedExecutionModes: ${runProfile.allowedExecutionModes.join(", ")}`);
   if (Array.isArray(runProfile?.allowedActions) && runProfile.allowedActions.length) {
     lines.push(`- allowedActions: ${runProfile.allowedActions.join(", ")}`);
   }
@@ -387,6 +422,7 @@ export function buildExerciseContext({
       currentStepLabel: asNonEmptyString(flowStep?.label),
       visibleInstruction: visibleInstruction || null,
       allowedActions: normalizeUniqueStrings(runProfile?.allowedActions || []),
+      allowedExecutionModes: normalizeAllowedExecutionModes(triggerContext?.allowedExecutionModes || runProfile?.allowedExecutionModes || ["none"]),
       triggerKey: triggerContext?.triggerKey || "generic",
       triggerSource: triggerContext?.source || "system",
       triggerScope: parsed?.scope || null,
@@ -423,6 +459,7 @@ export function buildExerciseContext({
       currentStepLabel: null,
       visibleInstruction: null,
       allowedActions: [],
+      allowedExecutionModes: normalizeAllowedExecutionModes(triggerContext?.allowedExecutionModes || ["none"]),
       triggerKey: triggerContext?.triggerKey || "generic",
       triggerSource: triggerContext?.source || "system",
       triggerScope: parsed?.scope || null,
@@ -458,6 +495,7 @@ export function buildExerciseContext({
     currentStepLabel: asNonEmptyString(currentStep?.label),
     visibleInstruction: asNonEmptyString(currentStep?.visibleInstruction),
     allowedActions: stepAllowedActions,
+    allowedExecutionModes: normalizeAllowedExecutionModes(triggerContext?.allowedExecutionModes || ["none"]),
     triggerKey: triggerContext?.triggerKey || "generic",
     triggerSource: triggerContext?.source || "system",
     triggerScope: parsed?.scope || null,
@@ -543,6 +581,11 @@ export function composePrompt({
   });
   if (boardMechanicsBlock) {
     systemBlocks.push(boardMechanicsBlock);
+  }
+
+  const executionModePolicyBlock = buildExecutionModePolicyBlock(exerciseContext);
+  if (executionModePolicyBlock) {
+    systemBlocks.push(executionModePolicyBlock);
   }
 
   systemBlocks.push(buildReadableAreaNamingBlock());
