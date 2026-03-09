@@ -1,4 +1,4 @@
-import { UI_STRINGS } from "./catalog.js?v=20260309-batch9";
+import { UI_STRINGS } from "./catalog.js?v=20260309-batch91hotfix1";
 
 export const SUPPORTED_UI_LANGUAGES = Object.freeze(["de", "en"]);
 export const DEFAULT_UI_LANGUAGE = "de";

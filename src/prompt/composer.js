@@ -3,10 +3,10 @@ import {
   getDefaultCanvasTypeIdForPack,
   getPackDefaults,
   getStepTriggerConfig
-} from "../exercises/registry.js?v=20260309-batch9";
-import { getPromptModulesByIds } from "../exercises/library.js?v=20260309-batch9";
-import { parseTriggerKey } from "../runtime/exercise-engine.js?v=20260309-batch9";
-import { normalizeUiLanguage } from "../i18n/index.js?v=20260309-batch9";
+} from "../exercises/registry.js?v=20260309-batch91hotfix1";
+import { getPromptModulesByIds } from "../exercises/library.js?v=20260309-batch91hotfix1";
+import { parseTriggerKey } from "../runtime/exercise-engine.js?v=20260309-batch91hotfix1";
+import { normalizeUiLanguage } from "../i18n/index.js?v=20260309-batch91hotfix1";
 
 function asNonEmptyString(value) {
   if (typeof value !== "string") return null;

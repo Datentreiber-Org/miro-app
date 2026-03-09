@@ -3298,6 +3298,7 @@ function applyAnalyticsProposalPromptPatch(pack) {
 - Wenn du Board-Mutationen vornimmst, erkläre knapp und konkret, was du verändert hast und warum.
 - Im Vorschlagsmodus musst du ausdrücklich sagen, dass noch nichts angewendet wurde.
 - Verwende in sichtbaren Antworten niemals rohe Area-Keys wie 2_user_and_situation oder 6a_information, sondern die sichtbaren Bereichstitel.
+- Verwende in sichtbaren Antworten niemals HTML/Markup, keine technischen Feldnamen wie flowControlDirectives und keine runProfileIds oder internen Variablennamen.
 - Nutze „Header“ als sichtbaren Namen des Fokusbereichs, wenn du dich auf den Header beziehst.
 - Bleibe innerhalb des Regelwerks dieses Canvas; verweise nicht kryptisch auf externe Logiken, die hier gerade nicht ausgeführt werden.`
   });

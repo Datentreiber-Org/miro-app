@@ -2,9 +2,9 @@ import {
   DT_SHAPE_META_KEY_CHAT_INTERFACE,
   DT_CHAT_INTERFACE_LAYOUT,
   DT_CHAT_INTERFACE_STYLES
-} from "../config.js?v=20260309-batch9";
+} from "../config.js?v=20260309-batch91hotfix1";
 
-import { normalizeUiLanguage, t, allLocaleVariants } from "../i18n/index.js?v=20260309-batch9";
+import { normalizeUiLanguage, t, allLocaleVariants } from "../i18n/index.js?v=20260309-batch91hotfix1";
 import { ensureMiroReady, getBoard } from "./sdk.js?v=20260308-batch76";
 import { asTrimmedString } from "./helpers.js?v=20260305-batch05";
 import { getItemById, removeItemById } from "./items.js?v=20260305-batch05";
@@ -106,20 +106,21 @@ export function isKnownChatPlaceholderContent(rawText, role) {
 }
 
 export function buildChatApplyContent({ enabled = false, lang = "de" } = {}) {
-  const label = getChatPlaceholderText("apply", lang);
-  const hint = enabled ? t("chat.apply.ready", normalizeUiLanguage(lang)) : t("chat.apply.disabled", normalizeUiLanguage(lang));
-  return `<p><strong>${label}</strong><br><small>${hint}</small></p>`;
+  const uiLang = normalizeUiLanguage(lang);
+  const label = getChatPlaceholderText("apply", uiLang);
+  const hint = enabled ? t("chat.apply.ready", uiLang) : t("chat.apply.disabled", uiLang);
+  return [label, hint].filter(Boolean).join("\n");
 }
 
 function getInitialContent(role, lang = "de") {
   const normalizedRole = normalizeChatRole(role) || "output";
   if (normalizedRole === "submit") {
-    return `<p><strong>${getChatPlaceholderText(normalizedRole, lang)}</strong></p>`;
+    return getChatPlaceholderText(normalizedRole, lang);
   }
   if (normalizedRole === "apply") {
     return buildChatApplyContent({ enabled: false, lang });
   }
-  return `<p>${getChatPlaceholderText(normalizedRole, lang)}</p>`;
+  return getChatPlaceholderText(normalizedRole, lang);
 }
 
 export function computeChatInterfaceLayout(instance) {

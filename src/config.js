@@ -178,16 +178,16 @@ export const DT_FLOW_CONTROL_STATE_STYLES = Object.freeze({
 export const DT_CHAT_INTERFACE_LAYOUT = Object.freeze({
   outerGapXPx: 260,
   columnGapXPx: 88,
-  submitGapYPx: 44,
-  applyGapYPx: 24,
+  submitGapYPx: 32,
+  applyGapYPx: 32,
   outputHeightPerCanvasHeight: 0.5,
   outputWidthPerCanvasHeight: 0.54,
   inputWidthPerOutputWidth: 0.9,
-  inputHeightPerOutputHeight: 0.52,
+  inputHeightPerOutputHeight: 0.66,
   submitWidthPerInputWidth: 0.72,
   submitHeightPx: 88,
   applyWidthPerOutputWidth: 0.92,
-  applyHeightPx: 76,
+  applyHeightPx: 88,
   minOutputWidthPx: 420,
   maxOutputWidthPx: 720,
   minInputWidthPx: 360,
@@ -203,18 +203,18 @@ export const DT_CHAT_INTERFACE_STYLES = Object.freeze({
     fillColor: "#dfe8e4",
     borderColor: "#7c8a86",
     textColor: "#111827",
-    fontSize: 18,
+    fontSize: 16,
     textAlign: "left",
-    textAlignVertical: "top",
+    textAlignVertical: "middle",
     borderWidth: 2
   }),
   output: Object.freeze({
     fillColor: "#e9e8f5",
     borderColor: "#8b89a7",
     textColor: "#111827",
-    fontSize: 18,
+    fontSize: 16,
     textAlign: "left",
-    textAlignVertical: "top",
+    textAlignVertical: "middle",
     borderWidth: 2
   }),
   submit: Object.freeze({
@@ -588,6 +588,8 @@ Antworte ausschließlich mit einem JSON-Objekt in diesem Format:
 Regeln für feedback:
 - feedback ist für Exercise-Läufe Pflicht.
 - Nutze nur menschenlesbare Sprache. Keine technischen IDs, keine Rohkoordinaten.
+- Verwende in sichtbaren Antworten niemals HTML, XML, Markdown-Listen, <ul>/<li>-Tags oder ähnliche Markup-Syntax.
+- Nenne in sichtbaren Antworten niemals runProfileIds, flowControlDirectives-Feldnamen, Variablennamen oder andere interne Bezeichner.
 - sections ist optional, aber empfohlen.
 - Wenn exerciseContext.feedbackPolicy = panel, bleibt feedback dennoch Pflicht; die App entscheidet über die Darstellung.
 

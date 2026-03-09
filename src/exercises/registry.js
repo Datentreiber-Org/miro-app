@@ -18,4 +18,4 @@ export {
   resolveNamedTransition,
   listRunProfilesForStep,
   listRunProfilesForStepSurface
-} from "./method-catalog.js?v=20260309-batch9";
+} from "./method-catalog.js?v=20260309-batch91hotfix1";

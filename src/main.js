@@ -12,19 +12,19 @@ import {
   DT_CHECK_TAG_COLOR,
   normalizeStickyColorToken,
   STICKY_LAYOUT
-} from "./config.js?v=20260309-batch9";
+} from "./config.js?v=20260309-batch91hotfix1";
 
 import { createLogger, stripHtml, extractUnderlinedText, isFiniteNumber } from "./utils.js?v=20260301-step11-hotfix2";
-import { normalizeUiLanguage, t, getLocaleForLanguage } from "./i18n/index.js?v=20260309-batch9";
+import { normalizeUiLanguage, t, getLocaleForLanguage } from "./i18n/index.js?v=20260309-batch91hotfix1";
 
-import * as Board from "./miro/board.js?v=20260309-batch9";
+import * as Board from "./miro/board.js?v=20260309-batch91hotfix1";
 import * as Catalog from "./domain/catalog.js?v=20260311-batch83fix1";
 import * as OpenAI from "./ai/openai.js?v=20260309-batch9";
 import * as Memory from "./runtime/memory.js?v=20260301-step11-hotfix2";
-import * as Exercises from "./exercises/registry.js?v=20260309-batch9";
-import * as ExerciseLibrary from "./exercises/library.js?v=20260309-batch9";
-import * as PromptComposer from "./prompt/composer.js?v=20260309-batch9";
-import * as ExerciseEngine from "./runtime/exercise-engine.js?v=20260309-batch9";
+import * as Exercises from "./exercises/registry.js?v=20260309-batch91hotfix1";
+import * as ExerciseLibrary from "./exercises/library.js?v=20260309-batch91hotfix1";
+import * as PromptComposer from "./prompt/composer.js?v=20260309-batch91hotfix1";
+import * as ExerciseEngine from "./runtime/exercise-engine.js?v=20260309-batch91hotfix1";
 import * as BoardFlow from "./runtime/board-flow.js?v=20260309-batch87";
 import * as PanelBridge from "./runtime/panel-bridge.js?v=20260305-schemafix2";
 import { buildPayloadMappingHint } from "./app/payload-hints.js?v=20260305-batch06";
@@ -323,7 +323,7 @@ async function resolveCurrentRunActor() {
 
 function buildBusyIndicatorContent(sourceLabel) {
   const lang = getCurrentDisplayLanguage();
-  return "<p><strong>" + t("busyIndicator.title", lang) + "</strong><br>" + String(sourceLabel || t("busyIndicator.defaultSource", lang)) + "</p>";
+  return [t("busyIndicator.title", lang), String(sourceLabel || t("busyIndicator.defaultSource", lang))].filter(Boolean).join("\n");
 }
 
 async function removeRunStatusItems(itemIds) {
@@ -1520,10 +1520,10 @@ function getSelectedFlowRunProfileId(packTemplate = getSelectedFlowPackTemplate(
   if (!packTemplate) return null;
   const requestedId = (flowRunProfileEl?.value || "").trim() || null;
   const exact = requestedId ? ExerciseLibrary.getRunProfileById(requestedId) : null;
-  if (exact && exact.packTemplateId === packTemplate.id && (!stepTemplate || exact.stepTemplateId === stepTemplate.id)) {
+  if (exact && !isSidecarOnlyRunProfile(exact) && exact.packTemplateId === packTemplate.id && (!stepTemplate || exact.stepTemplateId === stepTemplate.id)) {
     return exact.id;
   }
-  return ExerciseLibrary.listRunProfilesForPack(packTemplate, { stepTemplateId: stepTemplate?.id || null })[0]?.id || null;
+  return listAuthorableRunProfilesForPack(packTemplate, { stepTemplateId: stepTemplate?.id || null })[0]?.id || null;
 }
 
 function getSelectedFlowRunProfile(packTemplate = getSelectedFlowPackTemplate(), stepTemplate = getSelectedFlowStepTemplate(packTemplate), options = {}) {
@@ -1582,7 +1582,7 @@ function renderFlowRunProfilePicker() {
   const packTemplate = getSelectedFlowPackTemplate({ lang });
   const stepTemplate = getSelectedFlowStepTemplate(packTemplate, { lang });
   const selectedProfileId = getSelectedFlowRunProfileId(packTemplate, stepTemplate);
-  const profiles = ExerciseLibrary.listRunProfilesForPack(packTemplate, { stepTemplateId: stepTemplate?.id || null, lang });
+  const profiles = listAuthorableRunProfilesForPack(packTemplate, { stepTemplateId: stepTemplate?.id || null, lang });
 
   flowRunProfileEl.textContent = "";
   if (!profiles.length) {
@@ -1912,6 +1912,16 @@ function getRunProfilePanelRoleRank(runProfileId) {
   return 3;
 }
 
+function isSidecarOnlyRunProfile(runProfile) {
+  const triggerKey = ExerciseEngine.normalizeTriggerKey(runProfile?.triggerKey);
+  return triggerKey === "selection.apply" || triggerKey === "global.apply";
+}
+
+function listAuthorableRunProfilesForPack(packTemplate, { stepTemplateId = null, lang = getCurrentDisplayLanguage() } = {}) {
+  return ExerciseLibrary.listRunProfilesForPack(packTemplate, { stepTemplateId, lang })
+    .filter((runProfile) => !isSidecarOnlyRunProfile(runProfile));
+}
+
 function getFlowControlDisplayBucket(flow, control) {
   const currentStepId = pickFirstNonEmptyString(flow?.runtime?.currentStepId);
   const boardGroup = getRunProfileSurfaceMeta(control?.runProfileId).boardGroup;
@@ -2147,7 +2157,7 @@ async function findOrCreateBoardFlowForPack(packTemplateId, anchorInstanceId, { 
 function buildFlowControlCatalogForPackTemplate(packTemplate) {
   if (!packTemplate?.id) return [];
   const lang = getCurrentDisplayLanguage();
-  return ExerciseLibrary.listRunProfilesForPack(packTemplate.id, { lang })
+  return listAuthorableRunProfilesForPack(packTemplate.id, { lang })
     .map((runProfile) => {
       const stepTemplate = ExerciseLibrary.getStepTemplateForPack(packTemplate.id, runProfile?.stepTemplateId, { lang });
       return {
@@ -2341,9 +2351,13 @@ async function applyFlowControlDirectivesAfterAgentRun({
 
   for (const runProfileId of directives.unlockRunProfileIds || []) {
     const runProfile = ExerciseLibrary.getRunProfileById(runProfileId);
-    if (!runProfile || runProfile.packTemplateId !== packTemplateId) {
+    if (!runProfile || runProfile.packTemplateId !== packTemplateId || isSidecarOnlyRunProfile(runProfile)) {
       result.skippedRunProfileIds.push(runProfileId);
-      log("WARNUNG: Unbekannte oder unpassende unlockRunProfileId übersprungen: " + runProfileId);
+      if (runProfile && isSidecarOnlyRunProfile(runProfile)) {
+        log("INFO: Sidecar-Only-RunProfile wird nicht als Board-Button freigeschaltet: " + runProfileId);
+      } else {
+        log("WARNUNG: Unbekannte oder unpassende unlockRunProfileId übersprungen: " + runProfileId);
+      }
       continue;
     }
     validUnlockRunProfileIds.push(runProfileId);
@@ -2351,9 +2365,13 @@ async function applyFlowControlDirectivesAfterAgentRun({
 
   for (const runProfileId of directives.completeRunProfileIds || []) {
     const runProfile = ExerciseLibrary.getRunProfileById(runProfileId);
-    if (!runProfile || runProfile.packTemplateId !== packTemplateId) {
+    if (!runProfile || runProfile.packTemplateId !== packTemplateId || isSidecarOnlyRunProfile(runProfile)) {
       result.skippedRunProfileIds.push(runProfileId);
-      log("WARNUNG: Unbekannte oder unpassende completeRunProfileId übersprungen: " + runProfileId);
+      if (runProfile && isSidecarOnlyRunProfile(runProfile)) {
+        log("INFO: Sidecar-Only-RunProfile wird nicht als Board-Button erledigt markiert: " + runProfileId);
+      } else {
+        log("WARNUNG: Unbekannte oder unpassende completeRunProfileId übersprungen: " + runProfileId);
+      }
       continue;
     }
     validCompleteRunProfileIds.push(runProfileId);
@@ -2447,7 +2465,11 @@ async function createFlowControlFromAdmin() {
 
   try {
     const { anchorInstanceId, scope } = await resolveAuthoringScopeFromCurrentSelection(packTemplate, flowScopeTypeEl?.value || runProfile.defaultScopeType);
-    let flow = await findOrCreateBoardFlowForPack(packTemplate.id, anchorInstanceId, { preferredStepId: stepTemplate.id, seedDefaults: true });
+    let flow = await findOrCreateBoardFlowForPack(packTemplate.id, anchorInstanceId, { preferredStepId: stepTemplate.id, seedDefaults: false });
+    if (BoardFlow.findFlowControlsByRunProfileId(flow, runProfile.id).length) {
+      log("Board Flow: Für dieses Run Profile existiert bereits ein Button auf dieser Instanz. Kein Duplikat erzeugt.");
+      return;
+    }
     const inputLabel = ((flowControlLabelEl?.value || "").trim());
     const autoLabel = (flowControlLabelEl?.dataset.autoLabel || pickFirstNonEmptyString(runProfile.label, t("flow.defaultControlLabel", lang)) || "").trim();
     const nextLabel = inputLabel || autoLabel || t("flow.defaultControlLabel", lang);
@@ -6050,6 +6072,211 @@ async function runAgentForSelectedInstances(selectedInstanceIds, options = {}) {
     }
     releaseAgentRunLock(runLock);
   }
+}
+
+function resolveOwnerInstanceIdForStickyReference(stickyRef) {
+  if (!stickyRef) return null;
+  const resolvedStickyId = Catalog.resolveStickyId(stickyRef, state.aliasState);
+  if (!resolvedStickyId) return null;
+  return state.stickyOwnerCache?.get(resolvedStickyId) || null;
+}
+
+function validateNormalizedAction(action) {
+  if (!action || typeof action !== "object" || !action.type) {
+    return { ok: false, message: "Unbekanntes oder nicht unterstütztes Action-Schema." };
+  }
+
+  if (action.type === "move_sticky") {
+    const targetArea = pickFirstNonEmptyString(action.targetArea, action.area);
+    if (!action.stickyId) return { ok: false, message: "move_sticky ohne stickyId." };
+    if (!targetArea) return { ok: false, message: "move_sticky ohne targetArea." };
+    return { ok: true, action: { ...action, targetArea } };
+  }
+
+  if (action.type === "create_sticky") {
+    const area = pickFirstNonEmptyString(action.area, action.targetArea);
+    const color = action.color == null ? null : normalizeStickyColorToken(action.color);
+    const checked = action.checked == null ? null : action.checked === true;
+    if (!action.text) return { ok: false, message: "create_sticky ohne text." };
+    if (!area) return { ok: false, message: "create_sticky ohne area." };
+    if (action.color != null && !color) return { ok: false, message: "create_sticky mit ungültiger color." };
+    return { ok: true, action: { ...action, area, targetArea: area, color, checked } };
+  }
+
+  if (action.type === "delete_sticky") {
+    if (!action.stickyId) return { ok: false, message: "delete_sticky ohne stickyId." };
+    return { ok: true, action };
+  }
+
+  if (action.type === "set_sticky_color") {
+    const color = normalizeStickyColorToken(action.color);
+    if (!action.stickyId) return { ok: false, message: "set_sticky_color ohne stickyId." };
+    if (!color) return { ok: false, message: "set_sticky_color ohne gültige color." };
+    return { ok: true, action: { ...action, color } };
+  }
+
+  if (action.type === "set_check_status") {
+    if (!action.stickyId) return { ok: false, message: "set_check_status ohne stickyId." };
+    if (typeof action.checked !== "boolean") return { ok: false, message: "set_check_status ohne checked=true/false." };
+    return { ok: true, action: { ...action, checked: action.checked === true } };
+  }
+
+  if (action.type === "create_connector") {
+    if (!action.fromStickyId || !action.toStickyId) {
+      return { ok: false, message: "create_connector ohne fromStickyId/toStickyId." };
+    }
+    return { ok: true, action: { ...action, directed: action.directed !== false } };
+  }
+
+  if (action.type === "inform") {
+    return { ok: true, action };
+  }
+
+  return { ok: true, action };
+}
+
+function resolveActionInstanceId(action, { candidateInstanceIds = null, triggerInstanceId = null, sourceLabel = "Agent" } = {}) {
+  const candidateIds = Array.from(new Set((candidateInstanceIds || []).filter((id) => state.instancesById.has(id))));
+
+  const explicitInstanceIdByLabel = action?.instanceLabel
+    ? getInternalInstanceIdByLabel(action.instanceLabel)
+    : null;
+
+  const explicitInstanceId = explicitInstanceIdByLabel || ((action?.instanceId && state.instancesById.has(action.instanceId)) ? action.instanceId : null);
+
+  if (action?.instanceLabel && !explicitInstanceIdByLabel) {
+    logRuntimeNotice("skipped_action", sourceLabel + ": Unbekanntes instanceLabel '" + action.instanceLabel + "' in Action-Output.");
+  }
+
+  const ownerInstanceIds = Array.from(new Set([
+    resolveOwnerInstanceIdForStickyReference(action?.stickyId),
+    resolveOwnerInstanceIdForStickyReference(action?.fromStickyId),
+    resolveOwnerInstanceIdForStickyReference(action?.toStickyId)
+  ].filter(Boolean)));
+
+  if (ownerInstanceIds.length > 1) {
+    logRuntimeNotice("skipped_action", sourceLabel + ": Action referenziert Sticky Notes aus mehreren Instanzen – übersprungen.");
+    return null;
+  }
+
+  const ownerInstanceId = ownerInstanceIds[0] || null;
+  const ownerInstanceLabel = ownerInstanceId ? getInstanceLabelByInternalId(ownerInstanceId) : null;
+
+  if (ownerInstanceId && explicitInstanceId && explicitInstanceId !== ownerInstanceId) {
+    log(
+      "WARNUNG: " + sourceLabel + "-Action referenziert Sticky(s) mit Instanz " +
+      (action.instanceLabel || getInstanceLabelByInternalId(explicitInstanceId) || explicitInstanceId) +
+      ", gehört aber zu " + (ownerInstanceLabel || ownerInstanceId) + ". Verwende Eigentümer-Instanz."
+    );
+  }
+
+  const preferredInstanceId = ownerInstanceId || explicitInstanceId || null;
+  if (preferredInstanceId) {
+    if (candidateIds.length > 0 && !candidateIds.includes(preferredInstanceId)) {
+      logRuntimeNotice(
+        "skipped_action",
+        sourceLabel + ": Abgeleitete Ziel-Instanz " +
+        (getInstanceLabelByInternalId(preferredInstanceId) || preferredInstanceId) +
+        " liegt außerhalb des erlaubten Zielsets – Action übersprungen."
+      );
+      return null;
+    }
+    return preferredInstanceId;
+  }
+
+  if (candidateIds.length === 1) return candidateIds[0];
+  if (triggerInstanceId && candidateIds.includes(triggerInstanceId)) return triggerInstanceId;
+  return null;
+}
+
+async function applyResolvedAgentActions(actions, { candidateInstanceIds, triggerInstanceId = null, sourceLabel = "Agent" }) {
+  if (!Array.isArray(actions) || actions.length === 0) {
+    log(sourceLabel + ": Keine Actions geliefert.");
+    return {
+      appliedCount: 0,
+      skippedCount: 0,
+      infoCount: 0,
+      targetedInstanceCount: 0,
+      ...createEmptyActionExecutionStats()
+    };
+  }
+
+  const grouped = new Map();
+  const aggregatedExecutionStats = createEmptyActionExecutionStats();
+  let appliedCount = 0;
+  let skippedCount = 0;
+  let infoCount = 0;
+
+  for (const rawAction of actions) {
+    let action = normalizeAgentAction(rawAction);
+
+    if (!action) {
+      skippedCount++;
+      logRuntimeNotice("skipped_action", sourceLabel + ": Unbekanntes oder nicht unterstütztes Action-Schema – übersprungen.", rawAction);
+      continue;
+    }
+
+    if (action.type === "create_connector" && action.reverseDirection) {
+      action = {
+        ...action,
+        fromStickyId: action.toStickyId,
+        toStickyId: action.fromStickyId,
+        reverseDirection: false
+      };
+    }
+
+    const validation = validateNormalizedAction(action);
+    if (!validation.ok) {
+      skippedCount++;
+      logRuntimeNotice("skipped_action", sourceLabel + ": " + validation.message + " – übersprungen.", rawAction);
+      continue;
+    }
+    action = validation.action || action;
+
+    if (action.type === "inform") {
+      infoCount++;
+      log(sourceLabel + " info:");
+      log(action.message || "(keine Nachricht)");
+      continue;
+    }
+
+    const targetInstanceId = resolveActionInstanceId(action, {
+      candidateInstanceIds,
+      triggerInstanceId,
+      sourceLabel
+    });
+
+    if (!targetInstanceId) {
+      skippedCount++;
+      logRuntimeNotice("skipped_action", sourceLabel + ": Keine Ziel-Instanz für Action ableitbar – übersprungen.", rawAction);
+      continue;
+    }
+
+    if (!grouped.has(targetInstanceId)) grouped.set(targetInstanceId, []);
+    grouped.get(targetInstanceId).push({
+      ...action,
+      instanceId: targetInstanceId,
+      instanceLabel: getInstanceLabelByInternalId(targetInstanceId) || action.instanceLabel || null
+    });
+    appliedCount++;
+  }
+
+  for (const [instanceId, instanceActions] of grouped.entries()) {
+    log(sourceLabel + ": Wende " + instanceActions.length + " Action(s) auf Instanz " + (getInstanceLabelByInternalId(instanceId) || instanceId) + " an.");
+    const executionStats = await applyAgentActionsToInstance(instanceId, instanceActions);
+    mergeActionExecutionStats(aggregatedExecutionStats, executionStats);
+  }
+
+  const totalSkippedCount = skippedCount + Number(aggregatedExecutionStats.skippedActionCount || 0);
+
+  return {
+    appliedCount,
+    skippedCount: totalSkippedCount,
+    infoCount,
+    targetedInstanceCount: grouped.size,
+    ...aggregatedExecutionStats,
+    skippedActionCount: totalSkippedCount
+  };
 }
 
 // --------------------------------------------------------------------

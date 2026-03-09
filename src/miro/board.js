@@ -33,12 +33,12 @@ export {
   normalizeBoardRunState,
   loadBoardRunState,
   saveBoardRunState
-} from "./storage.js?v=20260309-batch81";
+} from "./storage.js?v=20260309-batch91hotfix1";
 
 export {
   buildAgentFeedbackContent,
   buildQuestionAnswerContent
-} from "./feedback.js?v=20260306-batch6";
+} from "./feedback.js?v=20260309-batch91hotfix1";
 
 export {
   normalizeChatInterfaceShapeIds,
@@ -59,7 +59,7 @@ export {
   isKnownChatPlaceholderContent,
   syncChatPlaceholdersForLanguage,
   syncChatApplyButtonState
-} from "./chat-interface.js?v=20260309-batch9";
+} from "./chat-interface.js?v=20260309-batch91hotfix1";
 
 export {
   getSelection,
@@ -101,4 +101,4 @@ export {
   findInstanceByRect,
   registerInstanceFromImage,
   scanTemplateInstances
-} from "./instances.js?v=20260308-batch76";
+} from "./instances.js?v=20260309-batch91hotfix1";
