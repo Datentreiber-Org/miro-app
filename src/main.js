@@ -1298,9 +1298,7 @@ function renderRunProfileButtonGroup(containerEl, runProfiles = []) {
     const button = document.createElement("button");
     button.type = "button";
     button.textContent = runProfile.label || runProfile.id;
-    button.title = [runProfile.summary, runProfile.uiHint].filter(Boolean).join("
-
-");
+    button.title = [runProfile.summary, runProfile.uiHint].filter(Boolean).join("\n\n");
     button.dataset.dtAgentRun = "1";
     button.dataset.runProfileId = runProfile.id;
     button.disabled = state.agentRunLock || runProfile.disabled === true;
@@ -1413,8 +1411,7 @@ function renderRecommendationStatus() {
     }));
   }
 
-  exerciseRecommendationStatusEl.textContent = lines.join("
-");
+  exerciseRecommendationStatusEl.textContent = lines.join("\n");
 }
 
 function renderExerciseActionSurface() {
@@ -1453,8 +1450,7 @@ function renderExerciseActionSurface() {
         lines.push(t("exercise.action.applyUnavailable", lang));
       }
     }
-    exerciseActionHelpEl.textContent = lines.filter(Boolean).join("
-");
+    exerciseActionHelpEl.textContent = lines.filter(Boolean).join("\n");
   }
 
 }
