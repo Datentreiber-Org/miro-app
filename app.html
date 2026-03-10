@@ -260,6 +260,14 @@
       </div>
 
       <div class="row">
+        <label>
+          <input type="checkbox" id="flow-static-layout-toggle" checked />
+          <span data-i18n="flow.staticLayout.label">Statisches Button-Layout verwenden</span>
+        </label>
+        <div class="helper-text" data-i18n="flow.staticLayout.help">Wenn aktiv, darf der Agent vorhandene Buttons nur freischalten oder als erledigt markieren. Es werden keine fehlenden Buttons automatisch erzeugt und keine bestehenden Buttons automatisch neu positioniert.</div>
+      </div>
+
+      <div class="row">
         <label for="flow-control-label" data-i18n="flow.controlLabel.label">Button-Label</label>
         <input type="text" id="flow-control-label" data-i18n-placeholder="flow.controlLabel.placeholder" placeholder="z. B. Prüfen" />
       </div>
@@ -292,6 +300,6 @@
   <pre id="log"></pre>
 
   </div>
-  <script type="module" src="./src/main.js?v=20260309-batch91hotfix1"></script>
+  <script type="module" src="./src/main.js?v=20260310-batch92"></script>
 </body>
 </html>

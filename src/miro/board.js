@@ -33,12 +33,12 @@ export {
   normalizeBoardRunState,
   loadBoardRunState,
   saveBoardRunState
-} from "./storage.js?v=20260309-batch91hotfix1";
+} from "./storage.js?v=20260310-batch92";
 
 export {
   buildAgentFeedbackContent,
   buildQuestionAnswerContent
-} from "./feedback.js?v=20260309-batch91hotfix1";
+} from "./feedback.js?v=20260310-batch92";
 
 export {
   normalizeChatInterfaceShapeIds,
@@ -58,8 +58,9 @@ export {
   getChatPlaceholderVariants,
   isKnownChatPlaceholderContent,
   syncChatPlaceholdersForLanguage,
-  syncChatApplyButtonState
-} from "./chat-interface.js?v=20260309-batch91hotfix1";
+  syncChatApplyButtonState,
+  syncChatInterfaceLayoutForInstance
+} from "./chat-interface.js?v=20260310-batch92";
 
 export {
   getSelection,
@@ -92,7 +93,7 @@ export {
   computeSuggestedFlowControlPosition,
   createFlowControlShape,
   syncFlowControlShapeAppearance
-} from "./flow-controls.js?v=20260306-batch6";
+} from "./flow-controls.js?v=20260310-batch92";
 
 export {
   computeTemplateGeometry,
@@ -101,4 +102,4 @@ export {
   findInstanceByRect,
   registerInstanceFromImage,
   scanTemplateInstances
-} from "./instances.js?v=20260309-batch91hotfix1";
+} from "./instances.js?v=20260310-batch92";

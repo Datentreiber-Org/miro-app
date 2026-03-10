@@ -15,10 +15,10 @@ import {
   DT_DEFAULT_FEEDBACK_CHANNEL,
   DT_DEFAULT_APP_ADMIN_POLICY,
   DT_MEMORY_RECENT_LOG_LIMIT
-} from "../config.js?v=20260309-batch81";
+} from "../config.js?v=20260310-batch92";
 
 import { normalizeBoardFlow } from "../runtime/board-flow.js?v=20260306-batch6";
-import { normalizeUiLanguage } from "../i18n/index.js?v=20260306-batch6";
+import { normalizeUiLanguage } from "../i18n/index.js?v=20260310-batch92";
 import { ensureMiroReady, getBoard } from "./sdk.js?v=20260307-batch75";
 import { compareItemIdsAsc, normalizePositiveInt, asTrimmedString } from "./helpers.js?v=20260305-batch05";
 
@@ -228,7 +228,7 @@ export function normalizeBoardConfig(rawConfig, { defaultCanvasTypeId = null } =
     .filter(Boolean)));
 
   return {
-    version: 3,
+    version: 4,
     boardMode,
     exercisePackId: exercisePackId || null,
     defaultCanvasTypeId: normalizedDefaultCanvasTypeId || null,
@@ -238,7 +238,8 @@ export function normalizeBoardConfig(rawConfig, { defaultCanvasTypeId = null } =
     appAdminPolicy,
     appAdminUserIds,
     displayLanguage: normalizeUiLanguage(src.displayLanguage),
-    systemTagIds: normalizeBoardSystemTagIds(src.systemTagIds)
+    systemTagIds: normalizeBoardSystemTagIds(src.systemTagIds),
+    staticFlowControlLayout: src.staticFlowControlLayout !== false
   };
 }
 

@@ -12,19 +12,19 @@ import {
   DT_CHECK_TAG_COLOR,
   normalizeStickyColorToken,
   STICKY_LAYOUT
-} from "./config.js?v=20260309-batch91hotfix1";
+} from "./config.js?v=20260310-batch92";
 
 import { createLogger, stripHtml, extractUnderlinedText, isFiniteNumber } from "./utils.js?v=20260301-step11-hotfix2";
-import { normalizeUiLanguage, t, getLocaleForLanguage } from "./i18n/index.js?v=20260309-batch91hotfix1";
+import { normalizeUiLanguage, t, getLocaleForLanguage } from "./i18n/index.js?v=20260310-batch92";
 
-import * as Board from "./miro/board.js?v=20260309-batch91hotfix1";
+import * as Board from "./miro/board.js?v=20260310-batch92";
 import * as Catalog from "./domain/catalog.js?v=20260311-batch83fix1";
 import * as OpenAI from "./ai/openai.js?v=20260309-batch9";
 import * as Memory from "./runtime/memory.js?v=20260301-step11-hotfix2";
-import * as Exercises from "./exercises/registry.js?v=20260309-batch91hotfix1";
-import * as ExerciseLibrary from "./exercises/library.js?v=20260309-batch91hotfix1";
-import * as PromptComposer from "./prompt/composer.js?v=20260309-batch91hotfix1";
-import * as ExerciseEngine from "./runtime/exercise-engine.js?v=20260309-batch91hotfix1";
+import * as Exercises from "./exercises/registry.js?v=20260310-batch92";
+import * as ExerciseLibrary from "./exercises/library.js?v=20260310-batch92";
+import * as PromptComposer from "./prompt/composer.js?v=20260310-batch92";
+import * as ExerciseEngine from "./runtime/exercise-engine.js?v=20260310-batch92";
 import * as BoardFlow from "./runtime/board-flow.js?v=20260309-batch87";
 import * as PanelBridge from "./runtime/panel-bridge.js?v=20260305-schemafix2";
 import { buildPayloadMappingHint } from "./app/payload-hints.js?v=20260305-batch06";
@@ -128,6 +128,7 @@ const flowStepTemplateEl = document.getElementById("flow-step-template");
 const flowRunProfileEl = document.getElementById("flow-run-profile");
 const flowScopeTypeEl = document.getElementById("flow-scope-type");
 const flowControlLabelEl = document.getElementById("flow-control-label");
+const flowStaticLayoutToggleEl = document.getElementById("flow-static-layout-toggle");
 const flowAuthoringStatusEl = document.getElementById("flow-authoring-status");
 const btnFlowCreateControlEl = document.getElementById("btn-flow-create-control");
 const btnFlowSetCurrentStepEl = document.getElementById("btn-flow-set-current-step");
@@ -231,6 +232,10 @@ function formatRunFailure(runResult) {
   if (runResult.errorType) parts.push(String(runResult.errorType));
   if (runResult.message) parts.push(String(runResult.message));
   return parts.join(": ") || "Unbekannter Fehler";
+}
+
+function isStaticFlowControlLayoutEnabled() {
+  return state.boardConfig?.staticFlowControlLayout !== false;
 }
 
 function getManagedAgentRunButtons() {
@@ -1661,7 +1666,8 @@ function renderFlowAuthoringStatus() {
     t("flow.status.stepTemplate", lang, { value: stepTemplate?.label || t("flow.status.none", lang) }),
     t("flow.status.runProfile", lang, { value: runProfile?.label || t("flow.status.none", lang) }),
     t("flow.status.selectedCanvas", lang, { value: selectedLabels.join(", ") || t("flow.status.selectedCanvas.none", lang) }),
-    t("flow.status.scope", lang, { value: scopeLabel })
+    t("flow.status.scope", lang, { value: scopeLabel }),
+    t("flow.status.layoutMode", lang, { value: t(isStaticFlowControlLayoutEnabled() ? "flow.layoutMode.static" : "flow.layoutMode.dynamic", lang) })
   ];
   if (runProfile?.summary) lines.push(t("flow.status.profileEffect", lang, { value: runProfile.summary }));
   if (runProfile?.uiHint) lines.push(t("flow.status.adminHint", lang, { value: runProfile.uiHint }));
@@ -1672,6 +1678,9 @@ function renderFlowAuthoringControls({ forceLabelSync = false } = {}) {
   renderFlowPackTemplatePicker();
   renderFlowStepTemplatePicker();
   renderFlowRunProfilePicker();
+  if (flowStaticLayoutToggleEl) {
+    flowStaticLayoutToggleEl.checked = isStaticFlowControlLayoutEnabled();
+  }
   syncFlowControlLabelFromRunProfile({ force: forceLabelSync });
   renderFlowAuthoringStatus();
 }
@@ -1886,7 +1895,7 @@ async function loadBoardFlows() {
     if (healthyFlow?.id) entries.push([healthyFlow.id, healthyFlow]);
   }
   state.boardFlowsById = new Map(entries);
-  await syncAllBoardFlowVisuals();
+  await syncAllBoardFlowVisuals({ reflow: !isStaticFlowControlLayoutEnabled() });
   renderFlowAuthoringStatus();
 }
 
@@ -1995,9 +2004,10 @@ async function syncBoardFlowVisuals(flow, { reflow = false } = {}) {
   return flow;
 }
 
-async function syncAllBoardFlowVisuals() {
+async function syncAllBoardFlowVisuals({ reflow = false } = {}) {
+  const shouldReflow = !!reflow && !isStaticFlowControlLayoutEnabled();
   for (const flow of state.boardFlowsById.values()) {
-    await syncBoardFlowVisuals(flow, { reflow: false });
+    await syncBoardFlowVisuals(flow, { reflow: shouldReflow });
   }
 }
 
@@ -2029,7 +2039,7 @@ function getExistingBoardFlowForPack(packTemplateId, anchorInstanceId) {
 async function saveBoardFlowAndCache(flow, { reflow = false } = {}) {
   const saved = await Board.saveBoardFlow(flow, log);
   state.boardFlowsById.set(saved.id, saved);
-  await syncBoardFlowVisuals(saved, { reflow });
+  await syncBoardFlowVisuals(saved, { reflow: !!reflow && !isStaticFlowControlLayoutEnabled() });
   renderFlowAuthoringStatus();
   return saved;
 }
@@ -2066,6 +2076,9 @@ async function ensureDefaultBoardControlsForStep(flow, stepId) {
   if (!flow?.id || !flow?.anchorInstanceId || !normalizedStepId) {
     return { flow, createdRunProfileIds: [], skippedRunProfileIds: [] };
   }
+  if (isStaticFlowControlLayoutEnabled()) {
+    return { flow, createdRunProfileIds: [], skippedRunProfileIds: [] };
+  }
 
   const runProfileIds = ExerciseLibrary.listRunProfilesForStepSurface(flow.packTemplateId, normalizedStepId, {
     seedByDefaultOnly: true,
@@ -2097,7 +2110,7 @@ async function syncExerciseStepToBoardFlow(stepId, { packTemplateId = null, anch
   nextFlow = ensured.flow;
 
   if (stepChanged || ensured.createdRunProfileIds.length) {
-    nextFlow = await saveBoardFlowAndCache(nextFlow, { reflow: true });
+    nextFlow = await saveBoardFlowAndCache(nextFlow, { reflow: !isStaticFlowControlLayoutEnabled() });
   } else {
     state.boardFlowsById.set(nextFlow.id, nextFlow);
   }
@@ -2113,6 +2126,7 @@ async function findOrCreateBoardFlowForPack(packTemplateId, anchorInstanceId, { 
     throw new Error("Pack Template konnte nicht gefunden werden: " + String(packTemplateId || "(leer)"));
   }
   const selectedStepId = pickFirstNonEmptyString(preferredStepId, getSelectedFlowStepTemplateId(packTemplate));
+  const shouldSeedDefaults = !!seedDefaults && !isStaticFlowControlLayoutEnabled();
 
   const existing = normalizedAnchorInstanceId ? getExistingBoardFlowForPack(normalizedPackTemplateId, normalizedAnchorInstanceId) : null;
   if (existing) {
@@ -2122,11 +2136,11 @@ async function findOrCreateBoardFlowForPack(packTemplateId, anchorInstanceId, { 
       preferredStepId: selectedStepId,
       forcePreferredWhenNoControls: true
     });
-    if (seedDefaults) {
+    if (shouldSeedDefaults) {
       const ensured = await ensureDefaultBoardControlsForStep(healthyExisting, healthyExisting.runtime?.currentStepId || selectedStepId);
       healthyExisting = ensured.flow;
       if (ensured.createdRunProfileIds.length) {
-        healthyExisting = await saveBoardFlowAndCache(healthyExisting, { reflow: true });
+        healthyExisting = await saveBoardFlowAndCache(healthyExisting, { reflow: !isStaticFlowControlLayoutEnabled() });
       } else {
         state.boardFlowsById.set(healthyExisting.id, healthyExisting);
       }
@@ -2146,12 +2160,12 @@ async function findOrCreateBoardFlowForPack(packTemplateId, anchorInstanceId, { 
   });
 
   let createdRunProfileIds = [];
-  if (seedDefaults) {
+  if (shouldSeedDefaults) {
     const ensured = await ensureDefaultBoardControlsForStep(flow, flow.runtime?.currentStepId || selectedStepId);
     flow = ensured.flow;
     createdRunProfileIds = ensured.createdRunProfileIds;
   }
-  return await saveBoardFlowAndCache(flow, { reflow: createdRunProfileIds.length > 0 });
+  return await saveBoardFlowAndCache(flow, { reflow: createdRunProfileIds.length > 0 && !isStaticFlowControlLayoutEnabled() });
 }
 
 function buildFlowControlCatalogForPackTemplate(packTemplate) {
@@ -2390,15 +2404,20 @@ async function applyFlowControlDirectivesAfterAgentRun({
     return result;
   }
 
-  if (!flow && flowContext.anchorInstanceId) {
+  const staticLayout = isStaticFlowControlLayoutEnabled();
+
+  if (!flow && flowContext.anchorInstanceId && !staticLayout) {
     flow = await findOrCreateBoardFlowForPack(packTemplateId, flowContext.anchorInstanceId);
   }
 
   if (!flow) {
+    if (staticLayout && (validUnlockRunProfileIds.length || validCompleteRunProfileIds.length)) {
+      log("INFO: Statisches Button-Layout aktiv – ohne vorhandenen Flow werden Flow-Control-Directives nicht materialisiert.");
+    }
     return result;
   }
 
-  if (validUnlockRunProfileIds.length && flowContext.anchorInstanceId) {
+  if (validUnlockRunProfileIds.length && flowContext.anchorInstanceId && !staticLayout) {
     const ensured = await ensureFlowControlsForRunProfiles({
       flow,
       anchorInstanceId: flowContext.anchorInstanceId,
@@ -2407,13 +2426,20 @@ async function applyFlowControlDirectivesAfterAgentRun({
     flow = ensured.flow;
     result.createdRunProfileIds.push(...ensured.createdRunProfileIds);
     result.skippedRunProfileIds.push(...ensured.skippedRunProfileIds);
+  } else if (validUnlockRunProfileIds.length && staticLayout) {
+    const missingRunProfileIds = validUnlockRunProfileIds.filter((runProfileId) => !BoardFlow.findFlowControlsByRunProfileId(flow, runProfileId).length);
+    if (missingRunProfileIds.length) {
+      result.skippedRunProfileIds.push(...missingRunProfileIds);
+      log("INFO: Statisches Button-Layout aktiv – fehlende Buttons werden nicht erzeugt: " + missingRunProfileIds.join(", ") + ".");
+    }
+    validUnlockRunProfileIds.splice(0, validUnlockRunProfileIds.length, ...validUnlockRunProfileIds.filter((runProfileId) => BoardFlow.findFlowControlsByRunProfileId(flow, runProfileId).length));
   }
 
   flow = BoardFlow.applyFlowControlDirectives(flow, {
     unlockRunProfileIds: validUnlockRunProfileIds,
     completeRunProfileIds: validCompleteRunProfileIds
   });
-  flow = await saveBoardFlowAndCache(flow, { reflow: result.createdRunProfileIds.length > 0 });
+  flow = await saveBoardFlowAndCache(flow, { reflow: result.createdRunProfileIds.length > 0 && !isStaticFlowControlLayoutEnabled() });
 
   if (result.createdRunProfileIds.length || validUnlockRunProfileIds.length || validCompleteRunProfileIds.length) {
     log(
@@ -2482,7 +2508,7 @@ async function createFlowControlFromAdmin() {
       labelMode,
       scope
     });
-    flow = await saveBoardFlowAndCache(flow, { reflow: true });
+    flow = await saveBoardFlowAndCache(flow, { reflow: !isStaticFlowControlLayoutEnabled() });
 
     log("Board Flow Control erzeugt: '" + nextLabel + "' für " + (getInstanceLabelByInternalId(anchorInstanceId) || anchorInstanceId) + " | Scope=" + scope.type + ".");
     renderFlowAuthoringControls();
@@ -2502,11 +2528,11 @@ async function setCurrentFlowStepFromAdmin() {
 
   try {
     const { anchorInstanceId } = await resolveAuthoringScopeFromCurrentSelection(packTemplate, "fixed_instances");
-    let flow = await findOrCreateBoardFlowForPack(packTemplate.id, anchorInstanceId, { preferredStepId: stepTemplate.id, seedDefaults: true });
+    let flow = await findOrCreateBoardFlowForPack(packTemplate.id, anchorInstanceId, { preferredStepId: stepTemplate.id, seedDefaults: !isStaticFlowControlLayoutEnabled() });
     flow = BoardFlow.setFlowCurrentStep(flow, stepTemplate.id);
     const ensuredDefaults = await ensureDefaultBoardControlsForStep(flow, stepTemplate.id);
     flow = ensuredDefaults.flow;
-    flow = await saveBoardFlowAndCache(flow, { reflow: true });
+    flow = await saveBoardFlowAndCache(flow, { reflow: !isStaticFlowControlLayoutEnabled() });
     log("Board Flow: Aktiver Schritt gesetzt auf '" + (stepTemplate.label || stepTemplate.id) + "' für " + (flow.label || flow.id) + ".");
     renderFlowAuthoringControls();
   } catch (e) {
@@ -2984,6 +3010,14 @@ async function clearAdminOverrideFromUi() {
   log("Admin-Override geleert.");
 }
 
+async function onStaticFlowLayoutToggleChange() {
+  const nextValue = flowStaticLayoutToggleEl?.checked !== false;
+  await persistBoardConfig({ staticFlowControlLayout: nextValue });
+  await syncAllBoardFlowVisuals({ reflow: !nextValue });
+  renderExerciseControls();
+  log("Board Flow Layout-Modus gesetzt: " + (nextValue ? "statisch" : "dynamisch") + ".");
+}
+
 async function runExerciseTriggerRequest(request) {
   const pack = getSelectedExercisePack();
   const currentStep = getCurrentExerciseStep(pack);
@@ -3259,6 +3293,7 @@ function initPanelButtons() {
     updateFlowControlLabelDirtyState();
     renderFlowAuthoringStatus();
   });
+  flowStaticLayoutToggleEl?.addEventListener("change", onStaticFlowLayoutToggleChange);
 
   document.getElementById("btn-save-admin-override")?.addEventListener("click", saveAdminOverrideFromUi);
   document.getElementById("btn-clear-admin-override")?.addEventListener("click", clearAdminOverrideFromUi);
@@ -3326,6 +3361,7 @@ async function afterMiroReady() {
   await ensureInstancesScanned(true);
   await loadMemoryRuntimeState();
   await loadBoardExerciseState();
+  await syncAllChatInterfacesLayout();
   await loadBoardFlows();
   renderFlowAuthoringControls({ forceLabelSync: true });
   await registerHeadlessClusterCustomAction();
@@ -3511,6 +3547,19 @@ async function loadPendingProposalForInstance(instanceId, { stepId = null } = {}
   }, log);
 }
 
+
+async function syncAllChatInterfacesLayout() {
+  for (const instance of state.instancesById.values()) {
+    if (!Board.hasCompleteChatInterfaceShapeIds(instance.chatInterface)) continue;
+    try {
+      await Board.syncChatInterfaceLayoutForInstance(instance, instance.chatInterface, log, {
+        lang: getCurrentDisplayLanguage()
+      });
+    } catch (error) {
+      log("WARNUNG: Chat-Layout konnte nicht synchronisiert werden: " + formatRuntimeErrorMessage(error));
+    }
+  }
+}
 
 async function hasPendingProposalForInstanceStep(instanceId, stepId) {
   const proposal = await loadPendingProposalForInstance(instanceId, { stepId });

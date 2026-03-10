@@ -6,7 +6,7 @@ import {
 } from "../config.js?v=20260309-batch9";
 
 import { METHOD_I18N_OVERRIDES } from "../i18n/catalog.js?v=20260309-batch9";
-import { normalizeUiLanguage, pickLocalized } from "../i18n/index.js?v=20260309-batch9";
+import { normalizeUiLanguage, pickLocalized } from "../i18n/index.js?v=20260310-batch92";
 
 function asNonEmptyString(value) {
   if (typeof value !== "string") return null;

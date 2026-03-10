@@ -88,6 +88,11 @@ export const UI_STRINGS = Object.freeze({
   "flow.scope.label": { de: "Scope", en: "Scope" },
   "flow.scope.fixed": { de: "Selektierte Instanzen", en: "Selected instances" },
   "flow.scope.global": { de: "Global (alle passenden Instanzen)", en: "Global (all matching instances)" },
+  "flow.staticLayout.label": { de: "Statisches Button-Layout verwenden", en: "Use static button layout" },
+  "flow.staticLayout.help": { de: "Wenn aktiv, darf der Agent vorhandene Buttons nur freischalten oder als erledigt markieren. Es werden keine fehlenden Buttons automatisch erzeugt und keine bestehenden Buttons automatisch neu positioniert.", en: "When enabled, the agent may only unlock existing buttons or mark them as done. Missing buttons will not be created automatically and existing buttons will not be repositioned automatically." },
+  "flow.status.layoutMode": { de: "Button-Layout: {value}", en: "Button layout: {value}" },
+  "flow.layoutMode.static": { de: "statisch", en: "static" },
+  "flow.layoutMode.dynamic": { de: "dynamisch", en: "dynamic" },
   "flow.controlLabel.label": { de: "Button-Label", en: "Button label" },
   "flow.controlLabel.placeholder": { de: "z. B. Prüfen", en: "e.g. Check" },
   "flow.createControl": { de: "Control erzeugen", en: "Create control" },
@@ -96,8 +101,8 @@ export const UI_STRINGS = Object.freeze({
   "flow.completeSelectedControl": { de: "Selektierten Flow-Button als erledigt markieren", en: "Mark selected flow button as done" },
   "flow.resetSelectedControl": { de: "Selektierten Flow-Button zurücksetzen", en: "Reset selected flow button" },
   "flow.admin.stepHelp": {
-    de: "Setzt den aktuellen Schritt des relevanten Flows auf das gewählte Step Template und ergänzt bei Bedarf die Default-Buttons dieses Schritts.",
-    en: "Sets the current step of the relevant flow to the selected step template and seeds that step’s default buttons when needed."
+    de: "Setzt den aktuellen Schritt des relevanten Flows auf das gewählte Step Template. Bei dynamischem Layout können dabei bei Bedarf Default-Buttons dieses Schritts ergänzt werden.",
+    en: "Sets the current step of the relevant flow to the selected step template. In dynamic layout mode, the step’s default buttons can be seeded when needed."
   },
   "flow.admin.controlHelp": {
     de: "Freischalten wirkt nur auf den selektierten Flow-Button. Erledigt markiert ihn als done. Zurücksetzen entfernt manuelle Freischaltungen oder Done-Markierungen und stellt den modellseitigen Zustand wieder her.",

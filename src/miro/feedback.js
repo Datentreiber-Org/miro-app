@@ -1,5 +1,5 @@
 import { asTrimmedString } from "./helpers.js?v=20260305-batch05";
-import { normalizeUiLanguage, t } from "../i18n/index.js?v=20260309-batch91hotfix1";
+import { normalizeUiLanguage, t } from "../i18n/index.js?v=20260310-batch92";
 
 function normalizeVisibleText(value) {
   const raw = String(value ?? "");
@@ -14,11 +14,20 @@ function normalizeVisibleText(value) {
     .replace(/&#39;/gi, "'")
     .replace(/&quot;/gi, '"')
     .replace(/\r/g, "")
-    .replace(/[ 	]+\n/g, "\n")
-    .replace(/\n[ 	]+/g, "\n")
+    .replace(/[ \t]+\n/g, "\n")
+    .replace(/\n[ \t]+/g, "\n")
     .replace(/\n{3,}/g, "\n\n")
-    .replace(/[ 	]{2,}/g, " ")
+    .replace(/[ \t]{2,}/g, " ")
     .trim();
+}
+
+function escapeShapeText(value) {
+  return String(value ?? "")
+    .replace(/&/g, "&amp;")
+    .replace(/</g, "&lt;")
+    .replace(/>/g, "&gt;")
+    .replace(/"/g, "&quot;")
+    .replace(/'/g, "&#39;");
 }
 
 function uniqueBullets(bullets) {
@@ -27,24 +36,40 @@ function uniqueBullets(bullets) {
     .filter(Boolean)));
 }
 
-function buildBulletSection(heading, bullets) {
-  const cleanBullets = uniqueBullets(bullets);
-  if (!cleanBullets.length) return "";
-
-  const lines = [];
-  const cleanHeading = normalizeVisibleText(asTrimmedString(heading));
-  if (cleanHeading) lines.push(cleanHeading);
-  for (const bullet of cleanBullets) {
-    lines.push("• " + bullet);
-  }
-  return lines.join("\n");
+function splitIntoParagraphs(text) {
+  return normalizeVisibleText(text)
+    .split(/\n{2,}/)
+    .map((entry) => entry.trim())
+    .filter(Boolean);
 }
 
-function buildEvaluationText(evaluation, lang = "de") {
+function renderParagraphText(text) {
+  return escapeShapeText(String(text || "").trim()).replace(/\n/g, "<br>");
+}
+
+function buildShapeHeading(text) {
+  const clean = normalizeVisibleText(asTrimmedString(text));
+  if (!clean) return "";
+  return `<p><strong>${renderParagraphText(clean)}</strong></p>`;
+}
+
+function buildShapeParagraphs(text) {
+  return splitIntoParagraphs(text)
+    .map((paragraph) => `<p>${renderParagraphText(paragraph)}</p>`)
+    .join("");
+}
+
+function buildShapeBulletParagraphs(bullets) {
+  return uniqueBullets(bullets)
+    .map((bullet) => `<p>• ${renderParagraphText(bullet)}</p>`)
+    .join("");
+}
+
+function buildEvaluationHtml(evaluation, lang = "de") {
   const uiLang = normalizeUiLanguage(lang);
   if (!evaluation || typeof evaluation !== "object") return "";
 
-  const parts = [];
+  const chunks = [];
   const score = evaluation.score;
   const scale = normalizeVisibleText(asTrimmedString(evaluation.scale));
   const verdict = normalizeVisibleText(asTrimmedString(evaluation.verdict));
@@ -55,7 +80,8 @@ function buildEvaluationText(evaluation, lang = "de") {
     if (scale) scoreParts.push(scale);
     const summary = [scoreParts.join(" / ") || null, verdict || null].filter(Boolean).join(" – ");
     if (summary) {
-      parts.push(t("feedback.heading.evaluation", uiLang) + "\n" + summary);
+      chunks.push(buildShapeHeading(t("feedback.heading.evaluation", uiLang)));
+      chunks.push(buildShapeParagraphs(summary));
     }
   }
 
@@ -74,11 +100,12 @@ function buildEvaluationText(evaluation, lang = "de") {
       .filter(Boolean);
 
     if (bullets.length) {
-      parts.push(buildBulletSection(t("feedback.heading.rubric", uiLang), bullets));
+      chunks.push(buildShapeHeading(t("feedback.heading.rubric", uiLang)));
+      chunks.push(buildShapeBulletParagraphs(bullets));
     }
   }
 
-  return parts.join("\n\n");
+  return chunks.filter(Boolean).join("");
 }
 
 export function buildAgentFeedbackContent({ feedback, flowControlDirectives, evaluation, lang = "de" } = {}) {
@@ -88,23 +115,26 @@ export function buildAgentFeedbackContent({ feedback, flowControlDirectives, eva
   const sections = Array.isArray(feedback?.sections) ? feedback.sections : [];
 
   const chunks = [];
-  if (title) chunks.push(title);
-  if (summary) chunks.push(summary);
+  if (title) chunks.push(buildShapeHeading(title));
+  if (summary) chunks.push(buildShapeParagraphs(summary));
 
   for (const section of sections) {
-    const block = buildBulletSection(asTrimmedString(section?.heading), section?.bullets);
-    if (block) chunks.push(block);
+    const headingHtml = buildShapeHeading(asTrimmedString(section?.heading));
+    const bulletsHtml = buildShapeBulletParagraphs(section?.bullets);
+    if (headingHtml) chunks.push(headingHtml);
+    if (bulletsHtml) chunks.push(bulletsHtml);
   }
 
-  const evaluationText = buildEvaluationText(evaluation, uiLang);
-  if (evaluationText) chunks.push(evaluationText);
+  const evaluationHtml = buildEvaluationHtml(evaluation, uiLang);
+  if (evaluationHtml) chunks.push(evaluationHtml);
 
-  const text = chunks.filter(Boolean).join("\n\n");
-  return text || t("feedback.noAgentResponse", uiLang);
+  const html = chunks.filter(Boolean).join("");
+  return html || buildShapeParagraphs(t("feedback.noAgentResponse", uiLang));
 }
 
 export function buildQuestionAnswerContent({ answer, lang = "de" } = {}) {
   const uiLang = normalizeUiLanguage(lang);
   const text = normalizeVisibleText(asTrimmedString(answer) || t("feedback.noAnswer", uiLang));
-  return text || t("feedback.noAnswer", uiLang);
+  const html = buildShapeParagraphs(text || t("feedback.noAnswer", uiLang));
+  return html || buildShapeParagraphs(t("feedback.noAnswer", uiLang));
 }

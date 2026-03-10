@@ -148,12 +148,12 @@ export function normalizeStickyColorToken(value) {
 export const DT_FLOW_SCOPE_TYPES = Object.freeze(["fixed_instances", "global"]);
 export const DT_FLOW_CONTROL_STATES = Object.freeze(["active", "disabled", "done"]);
 export const DT_FLOW_CONTROL_LAYOUT = Object.freeze({
-  widthPx: 180,
-  heightPx: 52,
-  gapXPx: 24,
-  laneGapYPx: 18,
-  offsetFromCanvasBottomPx: 120,
-  historyLaneOffsetYPx: 110
+  widthPx: 300,
+  heightPx: 84,
+  gapXPx: 30,
+  laneGapYPx: 20,
+  offsetFromCanvasBottomPx: 130,
+  historyLaneOffsetYPx: 120
 });
 
 export const DT_FLOW_CONTROL_STATE_STYLES = Object.freeze({
@@ -178,24 +178,21 @@ export const DT_FLOW_CONTROL_STATE_STYLES = Object.freeze({
 export const DT_CHAT_INTERFACE_LAYOUT = Object.freeze({
   outerGapXPx: 260,
   columnGapXPx: 88,
-  submitGapYPx: 32,
-  applyGapYPx: 32,
+  submitGapYPx: 28,
+  buttonStackGapYPx: 22,
   outputHeightPerCanvasHeight: 0.5,
   outputWidthPerCanvasHeight: 0.54,
   inputWidthPerOutputWidth: 0.9,
   inputHeightPerOutputHeight: 0.66,
   submitWidthPerInputWidth: 0.72,
   submitHeightPx: 88,
-  applyWidthPerOutputWidth: 0.92,
-  applyHeightPx: 88,
+  applyHeightPx: 108,
   minOutputWidthPx: 420,
   maxOutputWidthPx: 720,
   minInputWidthPx: 360,
   maxInputWidthPx: 640,
   minSubmitWidthPx: 220,
-  maxSubmitWidthPx: 340,
-  minApplyWidthPx: 240,
-  maxApplyWidthPx: 520
+  maxSubmitWidthPx: 340
 });
 
 export const DT_CHAT_INTERFACE_STYLES = Object.freeze({
@@ -203,18 +200,18 @@ export const DT_CHAT_INTERFACE_STYLES = Object.freeze({
     fillColor: "#dfe8e4",
     borderColor: "#7c8a86",
     textColor: "#111827",
-    fontSize: 16,
+    fontSize: 18,
     textAlign: "left",
-    textAlignVertical: "middle",
+    textAlignVertical: "top",
     borderWidth: 2
   }),
   output: Object.freeze({
     fillColor: "#e9e8f5",
     borderColor: "#8b89a7",
     textColor: "#111827",
-    fontSize: 16,
+    fontSize: 18,
     textAlign: "left",
-    textAlignVertical: "middle",
+    textAlignVertical: "top",
     borderWidth: 2
   }),
   submit: Object.freeze({
@@ -230,7 +227,7 @@ export const DT_CHAT_INTERFACE_STYLES = Object.freeze({
     fillColor: "#bfdbfe",
     borderColor: "#2563eb",
     textColor: "#0f172a",
-    fontSize: 20,
+    fontSize: 24,
     textAlign: "center",
     textAlignVertical: "middle",
     borderWidth: 2
@@ -239,7 +236,7 @@ export const DT_CHAT_INTERFACE_STYLES = Object.freeze({
     fillColor: "#e5e7eb",
     borderColor: "#9ca3af",
     textColor: "#4b5563",
-    fontSize: 20,
+    fontSize: 24,
     textAlign: "center",
     textAlignVertical: "middle",
     borderWidth: 2
@@ -604,7 +601,7 @@ Regeln für executionMode:
 
 Regeln für flowControlDirectives:
 - unlockRunProfileIds und completeRunProfileIds enthalten ausschließlich runProfileIds aus flowControlCatalog.
-- unlockRunProfileIds schaltet vorhandene Buttons frei; fehlende Buttons darf die App im passenden Anchor-Kontext erzeugen.
+- unlockRunProfileIds schaltet nur vorhandene Buttons frei. Wenn ein Button nicht existiert, bleibt die Direktive folgenlos.
 - completeRunProfileIds markiert vorhandene Buttons als erledigt.
 - Nutze flowControlDirectives nur sparsam und nur dann, wenn dies didaktisch wirklich sinnvoll ist.
 

@@ -2,9 +2,9 @@ import {
   DT_SHAPE_META_KEY_CHAT_INTERFACE,
   DT_CHAT_INTERFACE_LAYOUT,
   DT_CHAT_INTERFACE_STYLES
-} from "../config.js?v=20260309-batch91hotfix1";
+} from "../config.js?v=20260310-batch92";
 
-import { normalizeUiLanguage, t, allLocaleVariants } from "../i18n/index.js?v=20260309-batch91hotfix1";
+import { normalizeUiLanguage, t, allLocaleVariants } from "../i18n/index.js?v=20260310-batch92";
 import { ensureMiroReady, getBoard } from "./sdk.js?v=20260308-batch76";
 import { asTrimmedString } from "./helpers.js?v=20260305-batch05";
 import { getItemById, removeItemById } from "./items.js?v=20260305-batch05";
@@ -23,6 +23,33 @@ function normalizeChatRole(value) {
 function normalizeShapeId(value) {
   const normalized = asTrimmedString(value);
   return normalized || null;
+}
+
+function escapeShapeText(value) {
+  return String(value ?? "")
+    .replace(/&/g, "&amp;")
+    .replace(/</g, "&lt;")
+    .replace(/>/g, "&gt;")
+    .replace(/"/g, "&quot;")
+    .replace(/'/g, "&#39;");
+}
+
+function buildShapeParagraph(text, { strong = false } = {}) {
+  const clean = asTrimmedString(text);
+  if (!clean) return "";
+  const escaped = escapeShapeText(clean).replace(/\n/g, "<br>");
+  return strong ? `<p><strong>${escaped}</strong></p>` : `<p>${escaped}</p>`;
+}
+
+function buildShapeTextBlock(text) {
+  const clean = String(text ?? "").trim();
+  if (!clean) return "";
+  return clean
+    .split(/\n{2,}/)
+    .map((entry) => entry.trim())
+    .filter(Boolean)
+    .map((entry) => buildShapeParagraph(entry))
+    .join("");
 }
 
 export function normalizeChatInterfaceShapeIds(rawShapeIds) {
@@ -105,22 +132,31 @@ export function isKnownChatPlaceholderContent(rawText, role) {
   return getChatPlaceholderVariants(role).some((value) => normalizeComparableChatText(value) === comparable);
 }
 
+function isKnownApplyStateContent(rawText, enabled) {
+  const comparable = normalizeComparableChatText(rawText);
+  if (!comparable) return false;
+  return ["de", "en"].some((lang) => normalizeComparableChatText(buildChatApplyContent({ enabled, lang })) === comparable);
+}
+
 export function buildChatApplyContent({ enabled = false, lang = "de" } = {}) {
   const uiLang = normalizeUiLanguage(lang);
   const label = getChatPlaceholderText("apply", uiLang);
   const hint = enabled ? t("chat.apply.ready", uiLang) : t("chat.apply.disabled", uiLang);
-  return [label, hint].filter(Boolean).join("\n");
+  return [
+    buildShapeParagraph(label, { strong: true }),
+    buildShapeParagraph(hint)
+  ].join("");
 }
 
 function getInitialContent(role, lang = "de") {
   const normalizedRole = normalizeChatRole(role) || "output";
   if (normalizedRole === "submit") {
-    return getChatPlaceholderText(normalizedRole, lang);
+    return buildShapeParagraph(getChatPlaceholderText(normalizedRole, lang), { strong: true });
   }
   if (normalizedRole === "apply") {
     return buildChatApplyContent({ enabled: false, lang });
   }
-  return getChatPlaceholderText(normalizedRole, lang);
+  return buildShapeTextBlock(getChatPlaceholderText(normalizedRole, lang));
 }
 
 export function computeChatInterfaceLayout(instance) {
@@ -147,11 +183,7 @@ export function computeChatInterfaceLayout(instance) {
     DT_CHAT_INTERFACE_LAYOUT.maxSubmitWidthPx
   );
   const submitHeight = DT_CHAT_INTERFACE_LAYOUT.submitHeightPx;
-  const applyWidth = clamp(
-    outputWidth * DT_CHAT_INTERFACE_LAYOUT.applyWidthPerOutputWidth,
-    DT_CHAT_INTERFACE_LAYOUT.minApplyWidthPx,
-    DT_CHAT_INTERFACE_LAYOUT.maxApplyWidthPx
-  );
+  const applyWidth = submitWidth;
   const applyHeight = DT_CHAT_INTERFACE_LAYOUT.applyHeightPx;
 
   const canvasRight = geom.x + geom.width / 2;
@@ -161,10 +193,10 @@ export function computeChatInterfaceLayout(instance) {
   const inputY = canvasTop + inputHeight / 2;
   const submitX = inputX;
   const submitY = canvasTop + inputHeight + DT_CHAT_INTERFACE_LAYOUT.submitGapYPx + submitHeight / 2;
+  const applyX = inputX;
+  const applyY = submitY + submitHeight / 2 + DT_CHAT_INTERFACE_LAYOUT.buttonStackGapYPx + applyHeight / 2;
   const outputX = canvasRight + DT_CHAT_INTERFACE_LAYOUT.outerGapXPx + inputWidth + DT_CHAT_INTERFACE_LAYOUT.columnGapXPx + outputWidth / 2;
   const outputY = canvasTop + outputHeight / 2;
-  const applyX = outputX;
-  const applyY = canvasTop + outputHeight + DT_CHAT_INTERFACE_LAYOUT.applyGapYPx + applyHeight / 2;
 
   return {
     input: { x: inputX, y: inputY, width: inputWidth, height: inputHeight },
@@ -298,7 +330,6 @@ export async function readChatInputContent(shapeIds, log) {
   return typeof item.content === "string" ? item.content : "";
 }
 
-
 export async function syncChatPlaceholdersForLanguage(shapeIds, nextLang, log) {
   const lang = normalizeUiLanguage(nextLang);
 
@@ -326,6 +357,42 @@ export async function syncChatApplyButtonState(shapeIds, { enabled = false, lang
   };
   await item.sync();
   return item;
+}
+
+export async function syncChatInterfaceLayoutForInstance(instance, shapeIds, log, { lang = "de" } = {}) {
+  await ensureMiroReady(log);
+  const normalizedShapeIds = normalizeChatInterfaceShapeIds(shapeIds);
+  const layout = computeChatInterfaceLayout(instance);
+  if (!layout) return null;
+
+  const roles = [
+    { role: "input", id: normalizedShapeIds.inputShapeId, geom: layout.input },
+    { role: "submit", id: normalizedShapeIds.submitShapeId, geom: layout.submit },
+    { role: "output", id: normalizedShapeIds.outputShapeId, geom: layout.output },
+    { role: "apply", id: normalizedShapeIds.applyShapeId, geom: layout.apply }
+  ];
+
+  for (const entry of roles) {
+    if (!entry.id || !entry.geom) continue;
+    const item = await getItemById(entry.id, log);
+    if (!item?.sync) continue;
+
+    item.x = entry.geom.x;
+    item.y = entry.geom.y;
+    item.width = entry.geom.width;
+    item.height = entry.geom.height;
+
+    const rawContent = typeof item.content === "string" ? item.content : "";
+    const applyEnabled = entry.role === "apply" ? isKnownApplyStateContent(rawContent, true) : false;
+    const nextStyle = entry.role === "apply" ? getApplyShapeStyle(applyEnabled) : getShapeStyle(entry.role);
+    item.style = {
+      ...(item.style || {}),
+      ...nextStyle
+    };
+    await item.sync();
+  }
+
+  return normalizedShapeIds;
 }
 
 export async function writeChatOutputContent(shapeIds, content, log) {

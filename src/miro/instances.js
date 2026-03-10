@@ -1,4 +1,4 @@
-import { DT_IMAGE_META_KEY_INSTANCE, DT_CANVAS_DEFS, DT_SORTED_OUT_REGION_WIDTH_PX, DT_SORTED_OUT_BUFFER_WIDTH_PX } from "../config.js?v=20260309-batch91hotfix1";
+import { DT_IMAGE_META_KEY_INSTANCE, DT_CANVAS_DEFS, DT_SORTED_OUT_REGION_WIDTH_PX, DT_SORTED_OUT_BUFFER_WIDTH_PX } from "../config.js?v=20260310-batch92";
 import { isFiniteNumber } from "../utils.js?v=20260301-step11-hotfix2";
 import { ensureMiroReady, getBoard } from "./sdk.js?v=20260308-batch76";
 import {
@@ -16,7 +16,7 @@ import {
   removeChatInterfaceShapes,
   hasApplyChatInterfaceShapeId,
   ensureChatApplyShapeForInstance
-} from "./chat-interface.js?v=20260309-batch91hotfix1";
+} from "./chat-interface.js?v=20260310-batch92";
 import {
   loadBaselineSignatureForImageId,
   removeBaselineSignatureForImageId
