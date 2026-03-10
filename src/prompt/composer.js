@@ -3,8 +3,8 @@ import {
   getDefaultCanvasTypeIdForPack,
   getPackDefaults,
   getStepTriggerConfig
-} from "../exercises/registry.js?v=20260309-batch91hotfix1";
-import { getPromptModulesByIds } from "../exercises/library.js?v=20260309-batch91hotfix1";
+} from "../exercises/registry.js?v=20260312-batch10prompt1";
+import { getPromptModulesByIds } from "../exercises/library.js?v=20260312-batch10prompt1";
 import { parseTriggerKey } from "../runtime/exercise-engine.js?v=20260309-batch91hotfix1";
 import { normalizeUiLanguage } from "../i18n/index.js?v=20260309-batch91hotfix1";
 
@@ -59,39 +59,6 @@ function resolvePromptStepId({ currentStep = null, flowStep = null, exerciseCont
     || null;
 }
 
-function buildConnectorPermissionAddendum(exerciseContext) {
-  const hasAllowedActionsArray = Array.isArray(exerciseContext?.allowedActions);
-  const allowedActions = normalizeUniqueStrings(exerciseContext?.allowedActions || []);
-  const mutationPolicy = asNonEmptyString(exerciseContext?.mutationPolicy);
-
-  if (mutationPolicy === "none" || (hasAllowedActionsArray && !allowedActions.includes("create_connector"))) {
-    return "- In diesem Run sind Connector-Mutationen nicht freigegeben oder nicht der richtige Schwerpunkt. Gib deshalb keine create_connector-Actions aus; benenne nötige Relationen höchstens im feedback.";
-  }
-
-  return null;
-}
-
-function buildConnectorPolicyBlock({
-  exerciseContext = null
-} = {}) {
-  const lines = [
-    "Zentrale Connector-Policy:",
-    "- Connectoren sind sparsame, methodische Beziehungen und niemals Default-Dekoration.",
-    "- Plane Connectoren nur, wenn eine explizite Relation sichtbar werden soll: Beitrag, Ursache/Wirkung, Ablauf/Reihenfolge, Unterstützung, Feedback-Loop oder validierte Fit-/Traceability-Beziehung.",
-    "- Plane KEINE Connectoren nur wegen gleicher Area, gleicher Farbe, thematischer Nähe, Clusterzugehörigkeit, Brainstorm-Sammlung, Alternativsammlung oder räumlicher Nähe.",
-    "- Nicht jede Sticky Note braucht einen Connector. Unverbundene Stickies sind korrekt, wenn sie Sammlung, Alternative, Beobachtung, Hypothese oder offene Frage repräsentieren.",
-    "- Bevorzuge wenige, gut lesbare Kanten statt dichten Netzen."
-  ];
-
-  const permissionAddendum = buildConnectorPermissionAddendum(exerciseContext);
-  if (permissionAddendum) {
-    lines.push(permissionAddendum);
-  }
-
-  return lines.join("\n");
-}
-
-
 export function buildOutputLanguageBlock(displayLanguage, { questionMode = false } = {}) {
   const normalizedLanguage = normalizeUiLanguage(displayLanguage);
   const languageLabel = normalizedLanguage === "en" ? "English" : "Deutsch";
@@ -111,40 +78,27 @@ export function buildOutputLanguageBlock(displayLanguage, { questionMode = false
   return lines.join("\n");
 }
 
-function buildBoardMechanicsBlock({
-  involvedCanvasTypeIds = [],
-  exerciseContext = null
-} = {}) {
-  const lines = [
-    "Mechanische Board-Regeln:",
-    "- Jede Canvas-Instanz hat zusätzlich zwei seitliche Off-Canvas-Bereiche: sorted_out_left und sorted_out_right.",
-    "- Diese Sorted-out-Bereiche liegen vollständig außerhalb der sichtbaren Canvas-Fläche und dienen zum bewussten Parken oder Aussortieren von Sticky Notes.",
-    "- Verwende für Sorted-out ausschließlich die Area-Keys sorted_out_left oder sorted_out_right. Die App übernimmt die tatsächliche Platzierung.",
-    "- Die Footer-/Legend-Region ist im agentischen Katalog bewusst ausgeblendet. Interpretiere fehlende Footer-Stickies nicht als leeres Board.",
-    "- Sticky-Objekte können ein Feld color tragen. Nutze ausschließlich unterstützte Miro-Farbwerte: gray, light_yellow, yellow, orange, light_green, green, dark_green, cyan, light_pink, pink, violet, red, light_blue, blue, dark_blue, black.",
-    "- Neue farbige Sticky Notes: create_sticky mit color verwenden.",
-    "- Bestehende Sticky Notes umfärben: set_sticky_color mit stickyId und color verwenden.",
-    "- Sticky-Objekte können ein Feld checked=true/false tragen. checked beschreibt einen sichtbaren Validierungsmarker der App.",
-    "- Neue geprüfte Sticky Notes: create_sticky mit checked=true verwenden.",
-    "- Bestehende Sticky Notes markieren oder entmarkieren: set_check_status mit stickyId und checked=true/false verwenden.",
-    "- Verwende checked nur für bewusst validierte, bestätigte oder geprüfte Inhalte, nicht als allgemeine Priorisierung oder Dekoration.",
-    "- Verwende keine Hex-Farben, keine freien Farbnamen und keine roh-UI-nahen Tag-IDs im Agent-Output."
-  ];
-
+function buildBoardMechanicsBlock({ exerciseContext = null } = {}) {
   const allowedActions = normalizeUniqueStrings(exerciseContext?.allowedActions || []);
   const hasAllowedActionsArray = Array.isArray(exerciseContext?.allowedActions);
+  const lines = [
+    "Board- und Action-Grenzen dieses Laufs:",
+    "- Verwende nur Vertragstypen und nur passende Area-Keys aus activeCanvasState/activeCanvasStates.",
+    "- sorted_out_left und sorted_out_right sind Off-Canvas-Parkbereiche.",
+    "- Nutze color und checked nur dann, wenn der aktuelle Schritt diese Mechaniken wirklich braucht."
+  ];
 
-  if (hasAllowedActionsArray) {
+  if (hasAllowedActionsArray && allowedActions.length) {
+    lines.splice(1, 0, `- In diesem Run freigegebene Action-Typen: ${allowedActions.join(", ")}.`);
+    if (!allowedActions.includes("create_connector")) {
+      lines.push("- create_connector ist in diesem Run nicht freigegeben.");
+    }
     if (!allowedActions.includes("set_sticky_color")) {
-      lines.push("- set_sticky_color ist in diesem Run nicht explizit freigegeben. Nutze es daher nicht.");
+      lines.push("- set_sticky_color ist in diesem Run nicht freigegeben.");
     }
     if (!allowedActions.includes("set_check_status")) {
-      lines.push("- set_check_status ist in diesem Run nicht explizit freigegeben. Nutze es daher nicht.");
+      lines.push("- set_check_status ist in diesem Run nicht freigegeben.");
     }
-  }
-
-  if (normalizeUniqueStrings(involvedCanvasTypeIds).includes(ANALYTICS_AI_USE_CASE_CANVAS_TYPE_ID)) {
-    lines.push("- Für Analytics & AI Use Case können Sorted-out-Bereiche genutzt werden, um alternative, zurückgestellte oder nicht weiterverfolgte Sticky Notes seitlich zu parken, ohne sie zu löschen.");
   }
 
   return lines.join("\n");
@@ -153,28 +107,20 @@ function buildBoardMechanicsBlock({
 function buildExecutionModePolicyBlock(exerciseContext = null) {
   const allowedExecutionModes = normalizeAllowedExecutionModes(exerciseContext?.allowedExecutionModes, ["none"]);
   const lines = [
-    "Execution-Mode-Policy:",
+    "Commit-Modus dieses Laufs:",
     `- allowedExecutionModes: ${allowedExecutionModes.join(", ")}`,
-    "- Wähle executionMode immer explizit: none, direct_apply oder proposal_only.",
-    "- none bedeutet: keine Board-Mutation und actions=[].",
-    "- direct_apply bedeutet: actions sind für direkte Anwendung gedacht.",
-    "- proposal_only bedeutet: actions sind konkrete Vorschläge, werden aber noch nicht angewendet.",
-    "- Halte dich strikt an allowedExecutionModes dieses Runs."
+    "- none = keine Board-Mutation und actions=[].",
+    "- direct_apply = actions sind für direkte Anwendung gedacht.",
+    "- proposal_only = actions sind konkrete Vorschläge, werden aber noch nicht angewendet.",
+    "- Wähle executionMode nur innerhalb der freigegebenen allowedExecutionModes."
   ];
 
-  if (!allowedExecutionModes.includes("direct_apply")) {
-    lines.push("- direct_apply ist in diesem Run nicht freigegeben.");
-  }
-  if (!allowedExecutionModes.includes("proposal_only")) {
-    lines.push("- proposal_only ist in diesem Run nicht freigegeben.");
-  }
-  if (allowedExecutionModes.length === 1 && allowedExecutionModes[0] === "none") {
-    lines.push("- In diesem Run bleibt das Board unverändert; gib nur feedback und memoryEntry aus.");
+  if (allowedExecutionModes.length === 1) {
+    lines.push(`- Dieser Run ist auf ${allowedExecutionModes[0]} festgelegt.`);
   }
 
   return lines.join("\n");
 }
-
 function normalizePendingProposalForPrompt(value) {
   if (!value || typeof value !== "object") return null;
   const status = asNonEmptyString(value.status) || null;
@@ -273,7 +219,8 @@ function buildCanvasTypePromptBlocks(involvedCanvasTypeIds, templateCatalog) {
     if (!promptContext) continue;
 
     const displayName = getCanvasTypeDisplayName(templateCatalog, canvasTypeId) || canvasTypeId;
-    blocks.push(`Canvas-Typ-Kontext (${displayName}):\n${promptContext}`);
+    blocks.push(`Canvas-Weltmodell (${displayName}):
+${promptContext}`);
   }
 
   return blocks;
@@ -307,7 +254,18 @@ function mapAllowedCanvasTypes(canvasTypeIds, templateCatalog) {
 function buildPackTemplatePromptBlock(packTemplate) {
   const prompt = asNonEmptyString(packTemplate?.globalPrompt);
   if (!prompt) return null;
-  return `Pack-Template-Kontext (${packTemplate?.label || packTemplate?.id || "Pack Template"}):\n${prompt}`;
+  return `Pack-Workflow (${packTemplate?.label || packTemplate?.id || "Pack"}):
+${prompt}`;
+}
+
+function buildExerciseStepPromptBlock(step) {
+  if (!step || typeof step !== "object") return null;
+  const lines = [];
+  const instruction = asNonEmptyString(step?.visibleInstruction);
+  if (instruction) lines.push(`- sichtbareInstruktion: ${instruction}`);
+  if (!lines.length) return null;
+  return `Schritt-Kontext (${step?.label || step?.id || "aktueller Schritt"}):
+${lines.join("\n")}`;
 }
 
 function buildFlowStepPromptBlock(flowStep) {
@@ -318,34 +276,44 @@ function buildFlowStepPromptBlock(flowStep) {
   if (instruction) lines.push(`- sichtbareInstruktion: ${instruction}`);
   if (summary) lines.push(`- stepSummary: ${summary}`);
   if (!lines.length) return null;
-  return `Flow-Schritt (${flowStep?.label || flowStep?.id || "aktueller Schritt"}):\n${lines.join("\n")}`;
+  return `Schritt-Kontext (${flowStep?.label || flowStep?.id || "aktueller Schritt"}):
+${lines.join("\n")}`;
 }
 
-function buildRunProfilePromptBlock(runProfile) {
-  if (!runProfile || typeof runProfile !== "object") return null;
-  const lines = [
-    `- id: ${runProfile.id || "(leer)"}`,
-    `- triggerKey: ${runProfile.triggerKey || "(leer)"}`
-  ];
+function buildTriggerPromptBlock({ triggerPrompt = null, triggerKey = null, label = null } = {}) {
+  const prompt = asNonEmptyString(triggerPrompt);
+  if (!prompt) return null;
+  const titleParts = [asNonEmptyString(triggerKey), asNonEmptyString(label)].filter(Boolean);
+  const title = titleParts.length ? titleParts.join(" · ") : "aktueller Trigger";
+  return `Trigger-Kontext (${title}):
+${prompt}`;
+}
 
-  if (asNonEmptyString(runProfile?.summary)) lines.push(`- summary: ${runProfile.summary}`);
-  if (asNonEmptyString(runProfile?.defaultScopeType)) lines.push(`- defaultScopeType: ${runProfile.defaultScopeType}`);
-  if (asNonEmptyString(runProfile?.mutationPolicy)) lines.push(`- mutationPolicyOverride: ${runProfile.mutationPolicy}`);
-  if (asNonEmptyString(runProfile?.feedbackPolicy)) lines.push(`- feedbackPolicyOverride: ${runProfile.feedbackPolicy}`);
-  if (Array.isArray(runProfile?.allowedExecutionModes) && runProfile.allowedExecutionModes.length) lines.push(`- allowedExecutionModes: ${runProfile.allowedExecutionModes.join(", ")}`);
-  if (Array.isArray(runProfile?.allowedActions) && runProfile.allowedActions.length) {
-    lines.push(`- allowedActions: ${runProfile.allowedActions.join(", ")}`);
-  }
-  return `Run-Profile (${runProfile?.label || runProfile?.id || "Run Profile"}):\n${lines.join("\n")}`;
+function getPromptModulePriority(module) {
+  const id = asNonEmptyString(module?.id) || "";
+  if (id.includes('.shared.method_guardrails')) return 10;
+  if (/\.focus_/.test(id)) return 20;
+  if (/\.state_model$/.test(id)) return 30;
+  if (/\.exit_criteria$/.test(id)) return 40;
+  if (/\.trigger_behavior$/.test(id)) return 50;
+  if (/\.proposal_/.test(id) || /\.bootstrap_/.test(id) || /\.diverge_/.test(id) || /\.attach_/.test(id) || /\.choose_/.test(id) || /\.prune_/.test(id) || /\.question_/.test(id) || /focus_cross_instance_review/.test(id)) return 60;
+  if (id.includes('.shared.sorted_out_semantics') || id.includes('.shared.validation_and_color_semantics') || id.includes('.shared.soft_reference_hints') || id.includes('.shared.no_handoff_boundary')) return 70;
+  if (id.includes('.shared.feedback_contract')) return 80;
+  if (id.includes('.shared.step_status_rules')) return 85;
+  if (id.includes('.shared.hint_style') || id.includes('.shared.coach_style') || id.includes('.shared.check_style') || id.includes('.shared.review_style') || id.includes('.shared.synthesis_style') || id.includes('.shared.question_style')) return 90;
+  return 75;
 }
 
 function buildPromptModuleBlocks(promptModules) {
   return (Array.isArray(promptModules) ? promptModules : [])
+    .slice()
+    .sort((a, b) => getPromptModulePriority(a) - getPromptModulePriority(b) || String(a?.label || a?.id || '').localeCompare(String(b?.label || b?.id || ''), undefined, { sensitivity: 'base' }))
     .map((module) => {
       const prompt = asNonEmptyString(module?.prompt);
       if (!prompt) return null;
-      const title = asNonEmptyString(module?.label) || asNonEmptyString(module?.id) || "Prompt-Modul";
-      return `Prompt-Modul (${title}):\n${prompt}`;
+      const title = asNonEmptyString(module?.label) || asNonEmptyString(module?.id) || "Promptblock";
+      return `${title}:
+${prompt}`;
     })
     .filter(Boolean);
 }
@@ -376,6 +344,13 @@ function resolveStepTriggerPromptModules(currentStep, triggerContext, displayLan
   });
 }
 
+function resolveStepTriggerPromptText(currentStep, triggerContext) {
+  const stepTriggerConfig = currentStep && triggerContext
+    ? getStepTriggerConfig(currentStep, triggerContext.triggerKey)
+    : null;
+  return asNonEmptyString(stepTriggerConfig?.prompt);
+}
+
 function buildControlContextBlock(controlContext) {
   if (!controlContext || typeof controlContext !== "object") return null;
   const lines = [];
@@ -387,7 +362,8 @@ function buildControlContextBlock(controlContext) {
     lines.push(`- targetInstanceLabels: ${controlContext.targetInstanceLabels.join(", ")}`);
   }
   if (!lines.length) return null;
-  return `Control-Kontext:\n${lines.join("\n")}`;
+  return `Control-Kontext:
+${lines.join("\n")}`;
 }
 
 export function buildExerciseContext({
@@ -542,7 +518,6 @@ export function composePrompt({
     systemBlocks.push(String(baseSystemPrompt).trim());
   }
 
-  systemBlocks.push(buildModePromptBlock(runMode, effectiveTriggerContext));
   systemBlocks.push(buildOutputLanguageBlock(boardConfig?.displayLanguage, { questionMode }));
 
   for (const block of buildCanvasTypePromptBlocks(involvedCanvasTypeIds, templateCatalog)) {
@@ -565,18 +540,21 @@ export function composePrompt({
     ? applyAdminOverrideToExerciseContext(rawExerciseContext)
     : rawExerciseContext;
 
-  const connectorPolicyBlock = buildConnectorPolicyBlock({
-    involvedCanvasTypeIds,
-    exerciseContext,
-    currentStep,
-    flowStep
-  });
-  if (connectorPolicyBlock) {
-    systemBlocks.push(connectorPolicyBlock);
+  if (hasFlowContext) {
+    const packBlock = buildPackTemplatePromptBlock(packTemplate);
+    if (packBlock) systemBlocks.push(packBlock);
+  } else {
+    const exerciseGlobalPrompt = asNonEmptyString(exercisePack?.globalPrompt);
+    if (exerciseGlobalPrompt) {
+      systemBlocks.push(`Pack-Workflow (${exercisePack.label || exercisePack.id}):
+${exerciseGlobalPrompt}`);
+    }
   }
 
+  systemBlocks.push(buildModePromptBlock(runMode, effectiveTriggerContext));
+  systemBlocks.push(buildReadableAreaNamingBlock());
+
   const boardMechanicsBlock = buildBoardMechanicsBlock({
-    involvedCanvasTypeIds,
     exerciseContext
   });
   if (boardMechanicsBlock) {
@@ -588,58 +566,62 @@ export function composePrompt({
     systemBlocks.push(executionModePolicyBlock);
   }
 
-  systemBlocks.push(buildReadableAreaNamingBlock());
-
-  const proposalModeBlock = buildProposalModeBlock({
-    exerciseContext,
-    pendingProposal,
-    questionMode
-  });
-  if (proposalModeBlock) {
-    systemBlocks.push(proposalModeBlock);
-  }
-
   if (hasFlowContext) {
-    const packBlock = buildPackTemplatePromptBlock(packTemplate);
-    if (packBlock) systemBlocks.push(packBlock);
-
     const stepBlock = buildFlowStepPromptBlock(flowStep);
     if (stepBlock) systemBlocks.push(stepBlock);
 
-    const runProfileBlock = buildRunProfilePromptBlock(runProfile);
-    if (runProfileBlock) systemBlocks.push(runProfileBlock);
+    const flowTriggerPromptBlock = buildTriggerPromptBlock({
+      triggerPrompt: runProfile?.triggerPrompt,
+      triggerKey: runProfile?.triggerKey || effectiveTriggerContext?.triggerKey,
+      label: runProfile?.label || flowStep?.label
+    });
+    if (flowTriggerPromptBlock) systemBlocks.push(flowTriggerPromptBlock);
 
-    for (const block of buildPromptModuleBlocks(explicitPromptModules)) {
+    const combinedPromptModules = mergePromptModules(explicitPromptModules);
+    for (const block of buildPromptModuleBlocks(combinedPromptModules)) {
       systemBlocks.push(block);
     }
+
+    const proposalModeBlock = buildProposalModeBlock({
+      exerciseContext,
+      pendingProposal,
+      questionMode
+    });
+    if (proposalModeBlock) systemBlocks.push(proposalModeBlock);
 
     const controlBlock = buildControlContextBlock(controlContext);
     if (controlBlock) systemBlocks.push(controlBlock);
   } else {
-    const exerciseGlobalPrompt = asNonEmptyString(exercisePack?.globalPrompt);
-    if (exerciseGlobalPrompt) {
-      systemBlocks.push(`Exercise-Pack-Kontext (${exercisePack.label || exercisePack.id}):\n${exerciseGlobalPrompt}`);
-    }
+    const stepBlock = buildExerciseStepPromptBlock(currentStep);
+    if (stepBlock) systemBlocks.push(stepBlock);
 
-    const stepTriggerConfig = currentStep && triggerContext
-      ? getStepTriggerConfig(currentStep, triggerContext.triggerKey)
-      : null;
-    const stepPrompt = asNonEmptyString(stepTriggerConfig?.prompt);
+    const stepTriggerPrompt = resolveStepTriggerPromptText(currentStep, effectiveTriggerContext);
+    const stepTriggerPromptBlock = buildTriggerPromptBlock({
+      triggerPrompt: stepTriggerPrompt,
+      triggerKey: effectiveTriggerContext?.triggerKey,
+      label: currentStep?.label
+    });
+    if (stepTriggerPromptBlock) systemBlocks.push(stepTriggerPromptBlock);
+
     const stepTriggerPromptModules = resolveStepTriggerPromptModules(
       currentStep,
-      triggerContext,
+      effectiveTriggerContext,
       boardConfig?.displayLanguage
     );
     const combinedPromptModules = mergePromptModules(explicitPromptModules, stepTriggerPromptModules);
 
-    if (stepPrompt) {
-      systemBlocks.push(`Schritt-Kontext (${currentStep?.label || currentStep?.id || "aktueller Schritt"}):\n${stepPrompt}`);
-    }
-
     for (const block of buildPromptModuleBlocks(combinedPromptModules)) {
       systemBlocks.push(block);
     }
+
+    const proposalModeBlock = buildProposalModeBlock({
+      exerciseContext,
+      pendingProposal,
+      questionMode
+    });
+    if (proposalModeBlock) systemBlocks.push(proposalModeBlock);
   }
+
   if (normalizedAdminOverrideText) {
     systemBlocks.push(buildAdminOverridePromptBlock(normalizedAdminOverrideText));
   }

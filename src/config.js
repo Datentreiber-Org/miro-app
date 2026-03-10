@@ -24,17 +24,28 @@ export const DT_TEMPLATE_CATALOG = {
     assetHeightPx: 3219,
     insertWidthPx: 4550,
     promptContext: `
-Dieser Canvas-Typ hat drei Body-Bereiche plus Header und Footer.
+Canvas-Weltmodell für Datentreiber 3-Boxes:
+- Dieses Canvas hat einen Header als Fokusanker und drei inhaltliche Arbeitsboxen: left, middle und right.
+- Sorted-out links/rechts sind Off-Canvas-Parkbereiche für Alternativen, verworfene Ideen oder spätere Themen.
+
 Verwende für area bzw. targetArea ausschließlich diese Area-Keys:
-- header = Header: Fokus oder Arbeitstitel des Canvas.
+- header = Header: Fokus, Arbeitstitel oder Leitfrage des Canvas.
 - left = Box 1 (links)
 - middle = Box 2 (Mitte)
 - right = Box 3 (rechts)
 - sorted_out_left = seitlicher Sorted-out-Bereich links außerhalb des sichtbaren Canvas
 - sorted_out_right = seitlicher Sorted-out-Bereich rechts außerhalb des sichtbaren Canvas
-Sticky Notes müssen inhaltlich sinnvoll diesen Bereichen zugeordnet werden.
-Die Sorted-out-Bereiche dienen zum bewussten Parken, Aussortieren oder späteren Wiederaufgreifen von Notizen; sie sind kein normaler Arbeitsbereich innerhalb der sichtbaren Canvas-Fläche.
-Plane Connectoren nur dann, wenn eine konkrete fachliche Beziehung explizit sichtbar gemacht werden soll. Bloße thematische Nähe, Brainstorm-Sammlungen oder Cluster sind kein automatischer Grund für Connectoren.`.trim()
+
+Canvas-Semantik:
+- Der Header setzt den gemeinsamen Fokus. Ohne klaren Header fehlt dem restlichen Canvas der Arbeitsanker.
+- Die drei Boxen sind gleichwertige Arbeitsflächen; ihre genaue Bedeutung ergibt sich aus dem aktiven Pack oder der sichtbaren Aufgabenstellung.
+- Sorted-out ist kein normaler Arbeitsbereich, sondern ein bewusster Parkplatz.
+
+Menschlicher Workflow:
+1) Fokus im Header klären.
+2) Inhalte in left/middle/right sammeln oder strukturieren.
+3) Alternativen oder Nebenthemen bewusst in Sorted-out parken.
+4) Nur explizite Beziehungen sichtbar machen; Sammlungen bleiben standardmäßig unverbunden.`.trim()
   },
   [ANALYTICS_AI_USE_CASE_TEMPLATE_ID]: {
     canvasTypeId: ANALYTICS_AI_USE_CASE_TEMPLATE_ID,
@@ -46,7 +57,10 @@ Plane Connectoren nur dann, wenn eine konkrete fachliche Beziehung explizit sich
     assetHeightPx: 3219,
     insertWidthPx: 4550,
     promptContext: `
-Dieser Canvas-Typ ist das Analytics & AI Use Case Canvas.
+Canvas-Weltmodell für Analytics & AI Use Case:
+- Dieses Canvas beschreibt einen Use Case in vier logisch aufeinander aufbauenden Ebenen: Fokus, Problemraum, Lösungsraum und Fit.
+- Die rechte Seite beschreibt den Problemraum aus Nutzersicht; die linke Seite leitet daraus die Lösungsperspektive ab; das Feld Check verdichtet den validierten Fit erst am Ende.
+- Sorted-out links/rechts sind Off-Canvas-Parkbereiche für Alternativen, Nebenthemen oder bewusst zurückgestellte Inhalte.
 
 Verwende für area bzw. targetArea ausschließlich diese Area-Keys:
 - header = Header: Fokus, Use-Case-Name oder konkreter Arbeitstitel dieses Canvas.
@@ -63,12 +77,28 @@ Verwende für area bzw. targetArea ausschließlich diese Area-Keys:
 - sorted_out_left = seitlicher Sorted-out-Bereich links außerhalb des sichtbaren Canvas
 - sorted_out_right = seitlicher Sorted-out-Bereich rechts außerhalb des sichtbaren Canvas
 
-Canvas-Invarianten:
-- Rechte Seite = Problemraum; linke Seite = Lösungsperspektive; 8_check kommt zuletzt.
+Canvas-Semantik:
+- header setzt den Fokusanker. Ohne klaren Header fehlt dem gesamten Canvas die gemeinsame Arbeitshypothese.
+- 2_user_and_situation, 3_objectives_and_results, 4_decisions_and_actions, 5a_user_gains und 5b_user_pains bilden gemeinsam den Problemraum.
+- 4_decisions_and_actions ist der methodische Drehpunkt zwischen Problemraum und Lösungsraum.
+- 6_solutions, 6a_information, 6b_functions und 7_benefits bilden gemeinsam den Lösungsraum.
+- 8_check ist kein Sammelbereich für neue Ideen, sondern ein spätes Verdichtungsfeld für belastbare Fit-Aussagen.
 - Objectives & Results beschreibt Outcomes; Decisions & Actions beschreibt Verhalten oder Auswahlhandlungen.
 - User Gains kommen aus Nutzersicht; Benefits kommen aus der Lösungsperspektive.
-- Sorted-out links/rechts dienen zum bewussten Parken außerhalb der sichtbaren Canvas-Fläche.
-- Die Footer-/Legend-Region ist nicht Teil des Agentenkatalogs und kein zu füllender Arbeitsbereich.`.trim()
+- Die Footer-/Legend-Region ist nicht Teil des Agentenkatalogs und kein zu füllender Arbeitsbereich.
+
+Menschlicher Workflow auf diesem Canvas:
+1) Fokus im Header klären und Scope/Annahmen sichtbar machen.
+2) Rechten Problemraum aufbauen: User & Situation → Objectives & Results → Decisions & Actions → Gains/Pains.
+3) Linken Lösungsraum aus dem Problemraum ableiten: Solutions → Information → Functions → Benefits.
+4) Erst dann belastbare Fit-Aussagen im Feld Check verdichten.
+
+Typische Arbeitslogik:
+- Rechte Seite vor linker Seite, Check zuletzt.
+- Nicht jedes Feld muss sofort gefüllt sein; gute Arbeit entsteht in kleinen, anschlussfähigen Schritten.
+- Alternative Nutzer, Varianten oder Nebenthemen werden eher geparkt als gelöscht.
+- Gains/Pains sind standardmäßig keine Benefits und Benefits sind nicht automatisch validierter Fit.
+- Connectoren sind nie Default-Dekoration, sondern nur selektive Sichtbarmachung expliziter Beziehungen.`.trim()
   }
 };
 
@@ -474,19 +504,12 @@ export const DT_CANVAS_DEFS = {
 };
 
 function buildExerciseContextBindingBlock() {
-  return `
-Wenn exerciseContext vorhanden ist, ist er verbindlich:
-- exerciseContext.triggerKey beschreibt den aktuellen Ausführungsmodus, z.B. selection.check oder global.review.
-- exerciseContext.triggerIntent, exerciseContext.mutationPolicy, exerciseContext.feedbackPolicy und exerciseContext.allowedExecutionModes sind verbindliche Ausführungsrichtlinien.
-- Halte dich an exerciseContext.allowedActions. Erfinde keine Action-Typen außerhalb des Vertrags.
-- Wähle deinen Commit-Modus explizit über executionMode: none, direct_apply oder proposal_only.
-- Für Exercise-Läufe ist feedback Pflicht. Feedback ist die sichtbare Erklärung für Nutzer und Facilitators.
-- feedback.title enthält niemals eine Nummerierung; die App rendert die sichtbare Antwort selbst in die instanzgebundene Ausgabebox.
-- flowControlDirectives sind app-seitige Freischaltungen für Board-Buttons. Nutze sie sparsam und nur dann, wenn didaktisch sinnvoll ein weiterer Button freigeschaltet oder als erledigt markiert werden soll.
-- Verwende in flowControlDirectives ausschließlich runProfileIds aus flowControlCatalog.
-- Wenn flowControlCatalog oder boardFlowState fehlen, lasse flowControlDirectives leer.
-- Wenn exerciseContext.triggerKey auf ".grade" endet, ist evaluation Pflicht.
-- Wenn keine Button-Freischaltung oder Erledigung nötig ist, setze beide Arrays in flowControlDirectives auf [].`.trim();
+  return `Wenn exerciseContext vorhanden ist, ist er verbindlich:
+- exerciseContext.triggerKey und exerciseContext.triggerIntent beschreiben den Modus dieses Laufs.
+- exerciseContext.allowedActions und exerciseContext.allowedExecutionModes sind harte Grenzen.
+- Wähle executionMode immer explizit und nur innerhalb von exerciseContext.allowedExecutionModes.
+- Für Exercise-Läufe ist feedback Pflicht.
+- flowControlDirectives dürfen nur vorhandene Buttons freischalten oder als erledigt markieren.`.trim();
 }
 
 function buildActionReferenceRulesBlock({ instanceLabelRule = null } = {}) {
@@ -509,32 +532,27 @@ function buildActionReferenceRulesBlock({ instanceLabelRule = null } = {}) {
 function buildConnectorRulesBlock({ forbidAltNames = false } = {}) {
   const lines = [
     'Regeln für create_connector:',
+    '- Verwende create_connector nur für explizite methodische Beziehungen.',
+    '- Gleiche Area, thematische Nähe, Brainstorm-Sammlungen, Cluster oder Varianten reichen nicht als Connector-Grund.',
     '- fromStickyId und toStickyId müssen bestehende Sticky-IDs oder refId-Werte aus derselben Antwort sein.',
-    '- directed=true = Pfeil von fromStickyId nach toStickyId.',
-    '- directed=false = Verbindung ohne Pfeil.',
-    '- Nutze create_connector nur für explizite Relationslogik: Beitrag, Ursache/Wirkung, Ablauf/Reihenfolge, Unterstützung, Feedback-Loop oder validierte Fit-/Traceability-Beziehung.',
-    '- Erzeuge keine Connectoren nur wegen gleicher Area, gleicher Farbe, thematischer Nähe, Clusterzugehörigkeit, Brainstorm-Sammlung oder alternativer Varianten.',
-    '- Nicht jede Sticky Note braucht einen Connector. Bevorzuge wenige, gut lesbare Kanten statt dichten Netzen.',
+    '- directed=true = Pfeil von fromStickyId nach toStickyId; directed=false = Verbindung ohne Pfeil.',
     '- Wenn neue Stickies verbunden werden sollen, gib zuerst create_sticky und danach create_connector aus.'
   ];
 
   if (forbidAltNames) {
-    lines.push('- Verwende KEINE alternativen Action-Namen wie createStickyNote, moveSticky, deleteStickyNote oder createConnection.');
+    lines.push('- Verwende keine alternativen Action-Namen außerhalb des Vertrags.');
   }
 
   return lines.join("\n");
 }
 
 function buildCommonAgentContractBlock(modeLabel) {
-  return `
-${buildExerciseContextBindingBlock()}
+  return `${buildExerciseContextBindingBlock()}
 
 Antworte ausschließlich mit einem JSON-Objekt in diesem Format:
 - Gib niemals Markdown, keine Code-Fences und keine Vor- oder Nachbemerkungen aus.
-- Der API-Call erzwingt zusätzlich ein JSON-Schema. Deshalb müssen alle Top-Level-Felder immer vorhanden sein.
-- Wenn flowControlDirectives oder evaluation inhaltlich leer sind, liefere dennoch das Objekt mit leeren Arrays bzw. null/leer gemäß Schema.
+- Alle Top-Level-Felder müssen immer vorhanden sein.
 {
-
   "analysis": "kurze Erklärung in natürlicher Sprache",
   "executionMode": "proposal_only",
   "actions": [ ... ],
@@ -557,106 +575,52 @@ Antworte ausschließlich mit einem JSON-Objekt in diesem Format:
       {
         "heading": "Beobachtungen",
         "bullets": ["Kurzer Punkt 1", "Kurzer Punkt 2"]
-      },
-      {
-        "heading": "Empfehlungen",
-        "bullets": ["Nächster sinnvoller Hinweis"]
       }
     ]
   },
   "flowControlDirectives": {
-    "unlockRunProfileIds": ["analytics.fit.step1.hint"],
+    "unlockRunProfileIds": [],
     "completeRunProfileIds": []
   },
   "evaluation": {
     "score": 72,
     "scale": "0-100",
     "verdict": "solide, aber noch unvollständig",
-    "rubric": [
-      {
-        "criterion": "Korrekte Platzierung",
-        "status": "mostly_met",
-        "comment": "Die meisten Stickies liegen korrekt, einzelne Ausnahmen bleiben."
-      }
-    ]
+    "rubric": []
   }
 }
 
-Regeln für feedback:
-- feedback ist für Exercise-Läufe Pflicht.
-- Nutze nur menschenlesbare Sprache. Keine technischen IDs, keine Rohkoordinaten.
-- Verwende in sichtbaren Antworten niemals HTML, XML, Markdown-Listen, <ul>/<li>-Tags oder ähnliche Markup-Syntax.
-- Nenne in sichtbaren Antworten niemals runProfileIds, flowControlDirectives-Feldnamen, Variablennamen oder andere interne Bezeichner.
-- sections ist optional, aber empfohlen.
-- Wenn exerciseContext.feedbackPolicy = panel, bleibt feedback dennoch Pflicht; die App entscheidet über die Darstellung.
-
-Regeln für executionMode:
-- executionMode ist Pflicht.
-- none bedeutet: keine Board-Mutation, actions bleibt leer [].
-- direct_apply bedeutet: actions beschreiben konkrete Änderungen, die direkt angewendet werden sollen.
-- proposal_only bedeutet: actions beschreiben konkrete Vorschläge, die gespeichert, aber noch nicht angewendet werden.
-- Wenn exerciseContext.allowedExecutionModes vorhanden ist, wähle executionMode ausschließlich aus dieser Liste.
-- Wenn exerciseContext.triggerIntent = hint, liefere executionMode = none und actions = [].
-- Wenn exerciseContext.triggerIntent = propose, liefere executionMode = proposal_only.
-
-Regeln für flowControlDirectives:
-- unlockRunProfileIds und completeRunProfileIds enthalten ausschließlich runProfileIds aus flowControlCatalog.
-- unlockRunProfileIds schaltet nur vorhandene Buttons frei. Wenn ein Button nicht existiert, bleibt die Direktive folgenlos.
-- completeRunProfileIds markiert vorhandene Buttons als erledigt.
-- Nutze flowControlDirectives nur sparsam und nur dann, wenn dies didaktisch wirklich sinnvoll ist.
-
-Regeln für evaluation:
-- evaluation ist optional, außer bei Triggern vom Typ *.grade.
-- Nutze evaluation nur für qualitative Bewertung, nicht für technische Board-Diagnosen.
-
-Regeln für memoryEntry:
-- memoryEntry ist Pflicht.
-- summary beschreibt semantisch, was in diesem Lauf passiert bzw. entschieden wurde.
-- workSteps enthält kurze semantische Arbeitsschritte; jeder Eintrag darf optional ein instanceLabel enthalten.
-- decisionsAdded/decisionsRemoved beschreiben aktive methodische oder inhaltliche Festlegungen, nicht technische Details.
-- openIssuesAdded/openIssuesResolved beschreiben offene fachliche Punkte.
-- Referenziere dort niemals Sticky-IDs, keine Rohkoordinaten und keine internen technischen IDs. Referenziere Canvas ausschließlich über instanceLabel.
-- Wenn es für ein Feld nichts zu melden gibt, setze ein leeres Array [] oder null/leer, aber lasse memoryEntry nicht weg.
-- Falls du keine Board-Mutationen vorschlägst, setze actions auf ein leeres Array [], liefere aber trotzdem analysis, memoryEntry und feedback.
-
-Mechanische Zusatzregeln für Actions:
-- create_sticky darf optional ein Feld color mit einer Miro-Sticky-Farbe tragen: gray, light_yellow, yellow, orange, light_green, green, dark_green, cyan, light_pink, pink, violet, red, light_blue, blue, dark_blue, black.
-- create_sticky darf optional checked=true setzen; die App markiert die Sticky dann sichtbar als geprüft.
-- set_sticky_color ändert die Farbe einer bestehenden Sticky und benötigt stickyId plus color.
-- set_check_status ändert den sichtbaren Prüfstatus einer bestehenden Sticky und benötigt stickyId plus checked=true/false.
-- Verwende keine Hex-Farben und keine freien Farbnamen außerhalb der unterstützten Miro-Palette.
-- checked beschreibt einen sichtbaren Validierungsmarker der App. Nutze ihn nur, wenn ein Inhalt bewusst als geprüft, validiert oder bestätigt markiert werden soll.
+Vertragsregeln:
+- analysis erklärt kurz, was du im aktuellen Lauf erkannt oder entschieden hast.
+- feedback ist für Menschen geschrieben: klar, konkret, ohne technische IDs, runProfileIds oder Roh-Keys.
+- executionMode ist Pflicht: none, direct_apply oder proposal_only.
+- none bedeutet actions=[].
+- direct_apply bedeutet: actions sind für direkte Anwendung gedacht.
+- proposal_only bedeutet: actions sind konkrete Vorschläge, werden aber noch nicht angewendet.
+- evaluation ist nur für Bewertungsmodi zwingend; sonst leer oder knapp halten.
+- memoryEntry ist Pflicht und verdichtet semantisch, was in diesem Lauf passiert ist.
+- Referenziere in memoryEntry Canvas nur über instanceLabel.
+- Verwende color nur mit unterstützten Miro-Farbwerten.
+- Verwende checked nur für bewusst validierte Inhalte.
+- flowControlDirectives sind optional und dürfen die eigentliche Board-Arbeit nicht ersetzen.
 
 Zusatz für ${modeLabel}:
-- flowControlDirectives und evaluation dürfen niemals die eigentliche Board-Manipulation ersetzen; actions, memoryEntry und feedback bleiben gleichwertige Bestandteile des Outputs.`.trim();
+- actions, memoryEntry und feedback bleiben gleichwertige Bestandteile des Outputs.`.trim();
 }
 
 function buildSelectionSystemPrompt() {
-  return `
-Du bist ein Facilitation-Bot für Miro-Workshops.
-Du siehst:
-- eine oder mehrere selektierte Canvas-Instanzen mit Sticky Notes als JSON unter activeCanvasState bzw. activeCanvasStates
-- einen Board-Katalog mit allen weiteren Instanzen (nur als Zusammenfassung)
-- ein aktuelles Gedächtnisobjekt unter memoryState
-- eine kleine Verlaufsliste jüngerer Gedächtniseinträge unter recentMemoryLogEntries
-- optional einen Übungs-/Trainingskontext unter exerciseContext.
-- optional einen kleinen Button-Katalog unter flowControlCatalog sowie den aktuellen Board-Button-Zustand unter boardFlowState.
+  return `Du bist ein Facilitation-Bot für Miro-Workshops.
+Du arbeitest strikt auf Basis des gelieferten JSON-Kontexts.
+Du siehst je nach Lauf:
+- eine oder mehrere aktive Canvas-Instanzen unter activeCanvasState bzw. activeCanvasStates,
+- einen Board-Katalog als Überblick,
+- memoryState und recentMemoryLogEntries,
+- optional exerciseContext sowie optional flowControlCatalog und boardFlowState.
 
-Die genaue fachliche Bedeutung der Canvas-Instanzen wird in nachgelagerten Canvas-Typ-Kontextblöcken erklärt. Verlasse dich nicht auf stillschweigendes Vorwissen über einen bestimmten Canvas-Typ.
-
-Deine Aufgabe besteht aus vier koordinierten Teilen:
-1) sinnvolle Sticky Notes planen, verschieben, ergänzen oder löschen,
-2) nur dann semantische Beziehungen zwischen Sticky Notes als sichtbare Connectoren auf dem Board planen, wenn sie methodisch wirklich nötig sind,
-3) den semantischen Arbeitsschritt dieses Laufs als memoryEntry verdichten,
-4) ein verständliches feedback für Menschen erzeugen.
-
-Standardregel für Connectoren:
-- Plane Connectoren nicht automatisch.
-- Eine gemeinsame Area, Farbe, thematische Nähe, Clusterzugehörigkeit, Brainstorm-Sammlung, Alternativsammlung oder das bloße Gefühl "das gehört zusammen" reicht nicht aus.
-- Plane Connectoren nur dann, wenn eine explizite methodische Relation sichtbar gemacht werden soll, z. B. Beitrag, Ursache/Wirkung, Ablauf/Reihenfolge, Unterstützung einer Entscheidung/Handlung, Feedback-Loop oder validierter Problem-Solution-Fit.
-- Nicht jede Sticky Note braucht einen eingehenden oder ausgehenden Connector. Unverbundene Stickies sind korrekt, wenn sie Sammlung, Alternative, Beobachtung oder Hypothese repräsentieren.
-- Wenn mehrere getrennte Gruppen erzeugt werden, verbinde nur die Stickies innerhalb derselben klaren Relationsgruppe. Verbinde verschiedene Gruppen nur dann miteinander, wenn der aktuelle Kontext das ausdrücklich verlangt.
-- Bevorzuge wenige, lesbare Kanten statt dichten Netzen.
+Deine Kernaufgabe in instanzbezogenen Läufen:
+1) sinnvolle Board-Aktionen als actions planen,
+2) den Arbeitsschritt semantisch als memoryEntry verdichten,
+3) verständliches feedback für Menschen formulieren.
 
 ${buildActionReferenceRulesBlock({
   instanceLabelRule: 'Wenn activeCanvasStates mehr als eine Instanz enthält, muss jede mutierende Action zusätzlich ein Feld "instanceLabel" enthalten. Der Wert muss exakt einem Label aus selectedInstanceLabels bzw. den Schlüsseln von activeCanvasStates entsprechen.'
@@ -664,7 +628,7 @@ ${buildActionReferenceRulesBlock({
 
 ${buildConnectorRulesBlock()}
 
-${buildCommonAgentContractBlock("selection / instanzbezogenen Agentenlauf")}`;
+${buildCommonAgentContractBlock("selection / instanzbezogenen Agentenlauf")}`.trim();
 }
 
 // --------------------------------------------------------------------
@@ -683,32 +647,24 @@ export const DT_PROMPT_CATALOG = {
 // Globaler Agent (Modus A)
 // --------------------------------------------------------------------
 export const DT_GLOBAL_SYSTEM_PROMPT = `
-Du bist ein Facilitation-Bot für Miro-Workshops mit globalem Überblick über alle Canvas-Instanzen.
-Du siehst:
-- einen Board-Katalog mit allen Instanzen (boardCatalog)
-- detaillierte JSON-Daten zu allen aktiven Instanzen (activeCanvasStates)
-- optionale Changes seit dem letzten Agent-Run (activeInstanceChangesSinceLastAgent)
-- ein aktuelles Gedächtnisobjekt unter memoryState
-- eine kleine Verlaufsliste jüngerer Gedächtniseinträge unter recentMemoryLogEntries
-- optional einen Übungs-/Trainingskontext unter exerciseContext.
-- optional einen kleinen Button-Katalog unter flowControlCatalog sowie den aktuellen Board-Button-Zustand unter boardFlowState.
+Du bist ein Facilitation-Bot für Miro-Workshops mit globalem Überblick über alle relevanten Canvas-Instanzen.
+Du arbeitest strikt auf Basis des gelieferten JSON-Kontexts.
+Du siehst je nach Lauf:
+- boardCatalog als Überblick,
+- activeCanvasStates für die aktuell relevanten Instanzen,
+- optional activeInstanceChangesSinceLastAgent,
+- memoryState und recentMemoryLogEntries,
+- optional exerciseContext sowie optional flowControlCatalog und boardFlowState.
 
-Analysiere die Gesamtsituation auf dem Board, schlage sinnvolle nächste Schritte vor und formuliere bei Bedarf Board-Aktionen als JSON.
-Dabei sind Sticky Notes, Connectoren, memoryEntry und feedback koordinierte Bestandteile der Aufgabe; Connectoren bleiben dabei optional und nie Selbstzweck.
-
-Standardregel für Connectoren:
-- Plane Connectoren nicht automatisch.
-- Eine gemeinsame Area, Farbe, thematische Nähe, Clusterzugehörigkeit, Brainstorm-Sammlung, Alternativsammlung oder das bloße Gefühl "das gehört zusammen" reicht nicht aus.
-- Plane Connectoren nur dann, wenn eine explizite methodische Relation sichtbar gemacht werden soll, z. B. Beitrag, Ursache/Wirkung, Ablauf/Reihenfolge, Unterstützung, Feedback-Loop oder validierter Problem-Solution-Fit.
-- Nicht jede Sticky Note braucht einen eingehenden oder ausgehenden Connector. Unverbundene Stickies sind korrekt, wenn sie Sammlung, Alternative oder Beobachtung repräsentieren.
-- Verbinde nur die logisch zusammengehörigen Stickies innerhalb derselben klaren Relationsgruppe. Erzeuge keine Verbindungen zwischen unabhängigen Gruppen oder Instanzen, außer die Anfrage verlangt es ausdrücklich.
-- Bevorzuge wenige, lesbare Kanten statt dichten Netzen.
+Deine Kernaufgabe in globalen Läufen:
+1) die Gesamtsituation über mehrere Instanzen analysieren,
+2) daraus sinnvolle actions ableiten,
+3) den Arbeitsschritt semantisch als memoryEntry verdichten,
+4) verständliches feedback für Menschen formulieren.
 
 ${buildActionReferenceRulesBlock({
-  instanceLabelRule: 'Jede mutierende Action muss genau eine Ziel-Instanz angeben. Verwende dafür das Feld "instanceLabel" und nur Werte, die als Labels in activeInstanceLabels bzw. als Schlüssel in activeCanvasStates vorhanden sind.'
+  instanceLabelRule: 'Jede mutierende Action muss genau eine Ziel-Instanz über das Feld "instanceLabel" angeben. Verwende nur Labels aus activeCanvasStates bzw. activeInstanceLabels.'
 })}
-
-Verwende für Actions nur die Vertragstypen move_sticky, create_sticky, delete_sticky, create_connector, set_sticky_color, set_check_status und optional inform.
 
 ${buildConnectorRulesBlock({ forbidAltNames: true })}
 

@@ -3,7 +3,7 @@ import {
   DT_DEFAULT_FEEDBACK_CHANNEL,
   DT_TRIGGER_KEYS,
   DT_EXECUTION_MODES
-} from "../config.js?v=20260309-batch9";
+} from "../config.js?v=20260312-batch10prompt1";
 
 import { METHOD_I18N_OVERRIDES } from "../i18n/catalog.js?v=20260309-batch9";
 import { normalizeUiLanguage, pickLocalized } from "../i18n/index.js?v=20260310-batch92";
@@ -284,6 +284,7 @@ function buildFlowControlProjection(packDef, stepDef, triggerProfile) {
     packTemplateId: asNonEmptyString(packDef?.packTemplateId),
     stepTemplateId: asNonEmptyString(stepDef?.id),
     triggerKey: normalizeTriggerKey(triggerProfile?.triggerKey),
+    triggerPrompt: asNonEmptyString(triggerProfile?.prompt),
     moduleIds: normalizeUniqueStrings([
       ...(Array.isArray(triggerProfile?.moduleIds) ? triggerProfile.moduleIds : []),
       ...(Array.isArray(flowControl?.moduleIds) ? flowControl.moduleIds : [])
@@ -2015,6 +2016,193 @@ Methodische Regeln:
 - Berücksichtige dabei Fit Clarity, Fit Evidence, Consistency, Actionability, Overall Coherence und angemessene Sparsamkeit bei Connectoren.
 - Liefere zusätzlich eine evaluation mit Rubrik.`);
 
+  pack.exerciseGlobalPrompt = `Use Case Fit Sprint – Gesamtworkflow:
+- Step 0 Preparation & Focus: Fokus im Header setzen, Scope und offene Annahmen sichtbar machen, Nebenthemen bewusst parken.
+- Step 1 User Needs Analysis: den rechten Problemraum in dieser Reihenfolge aufbauen: User & Situation → Objectives & Results → Decisions & Actions → Gains/Pains.
+- Step 2 Solution Design: den linken Lösungsraum aus dem Problemraum ableiten: Solutions → Information → Functions → Benefits.
+- Step 3 Fit Validation & Minimum Desired Product: nur am Ende validieren, reduzieren und im Feld Check verdichten.
+
+Übergreifende Leitidee:
+- Arbeite immer mit dem kleinsten sinnvollen nächsten Schritt statt mit einem Vollausbau des ganzen Canvas.
+- Rechte Seite vor linker Seite, Check zuletzt.
+- Divergenz ist erlaubt, aber Alternativen sollen fokussiert oder bewusst in Sorted-out geparkt werden.
+- Diese Übung endet vor einem echten Cross-Canvas-Handoff.`;
+
+  pack.packTemplateGlobalPrompt = `Pack-Workflow "Use Case Fit Sprint":
+- Step 0 klärt Fokus, Scope und offene Annahmen.
+- Step 1 baut den Problemraum auf der rechten Seite tragfähig auf.
+- Step 2 leitet daraus die linke Lösungsperspektive ab.
+- Step 3 validiert und verdichtet den Fit im Feld Check.
+- Springe nicht vorschnell in spätere Schritte; jede Phase baut auf der vorherigen auf.`;
+
+  setPromptModuleText(pack, "analytics.fit.shared.method_guardrails", {
+    summary: "Knappes methodisches Grundmodell für das Analytics-&-AI-Canvas.",
+    prompt: `Methodische Leitplanken:
+- Arbeite strikt auf Basis des sichtbaren Boardzustands und des aktuellen Schritts.
+- Jede Sticky Note soll möglichst genau eine Aussage tragen.
+- Nutze den kleinsten sinnvollen nächsten Schritt statt eines Komplettneuaufbaus.
+- Rechte Seite erklärt den Problemraum, linke Seite leitet die Lösung ab, Check verdichtet erst am Ende.
+- Erfinde keine unnötigen Architekturen, Toollisten oder KI-Floskeln ohne klaren Bezug zur Nutzerarbeit.
+- Parke Alternativen lieber bewusst in Sorted-out, statt sie unklar im Kern mitzuschleppen.`
+  });
+
+  setPromptModuleText(pack, "analytics.fit.shared.feedback_contract", {
+    summary: "Sichtbarer Antwortvertrag mit klarer, triggergerechter Nutzeransprache.",
+    prompt: `Sichtbarer Antwortvertrag:
+- Formuliere für Menschen, nicht für den technischen Vertrag.
+- Gute sichtbare Antworten folgen dieser Reihenfolge: kurze Kernaussage → was du auf dem Board siehst → warum das jetzt wichtig ist → nächster sinnvoller Schritt oder konkreter Vorschlag.
+- Wenn executionMode = none, bleibe rein orientierend oder diagnostisch.
+- Wenn executionMode = proposal_only, sage ausdrücklich, dass noch nichts angewendet wurde und was Apply tun würde.
+- Wenn executionMode = direct_apply, sage klar, was geändert wurde und warum.
+- Verwende nur sichtbare Bereichstitel, keine Roh-Keys, keine runProfileIds, keine technischen Feldnamen und keine internen Variablennamen.`
+  });
+
+  setPromptModuleText(pack, "analytics.fit.shared.proposal_mode", {
+    summary: "Erklärt Vorschläge als sichtbaren, noch nicht angewendeten Commit-Modus.",
+    prompt: `Vorschlagsmodus:
+- executionMode = proposal_only bedeutet: actions sind konkrete Vorschläge, aber noch nicht angewendet.
+- Vorschläge müssen im feedback immer sichtbar erklären, was vorgeschlagen wird, warum das im aktuellen Schritt sinnvoll ist und was nach Apply passieren würde.
+- Nutze vorhandenen Board-Inhalt plus optionalen Chat-Seed, um kleine, anschlussfähige Vorschläge zu machen.
+- Vermeide Tutorial-Platzhalter, Meta-Texte oder rein illustrative Dummy-Inhalte.`
+  });
+
+  setPromptModuleText(pack, "analytics.fit.shared.hint_style", {
+    summary: "Reiner Hinweisstil ohne versteckte Board-Vorschläge.",
+    prompt: `Hinweisstil:
+- Nutze executionMode = none und actions = [].
+- Gib 1 bis 3 konkrete nächste Schritte, Satzanfänge oder Fokushinweise.
+- Materialisiere keine Sticky Notes und keine impliziten Apply-Vorschläge.
+- Wenn ein Bereich leer ist, gib eine gute Startreihenfolge; wenn Material da ist, knüpfe daran an.`
+  });
+
+  setPromptModuleText(pack, "analytics.fit.shared.coach_style", {
+    summary: "Sokratischer Stil mit genau einem Mikroschritt.",
+    prompt: `Coach-Stil:
+- Arbeite mit 3 bis 5 Leitfragen und genau einem Mikroschritt.
+- Hilf dem Nutzer zu denken, statt die komplette Lösung vorwegzunehmen.
+- executionMode ist meist none; kleine direkte Eingriffe nur, wenn der aktuelle Zustand und Trigger das wirklich rechtfertigen.`
+  });
+
+  setPromptModuleText(pack, "analytics.fit.shared.check_style", {
+    summary: "Prüft Reifegrad und unterscheidet kleine direkte Korrekturen von größeren Vorschlägen.",
+    prompt: `Check-Stil:
+- Prüfe Reifegrad, nicht nur Vollständigkeit.
+- Sage klar: was bereits tragfähig ist, was fehlt und ob der Schritt weitertragfähig ist.
+- Kleine, klare Korrekturen dürfen direkt erfolgen; größere Eingriffe gib eher als proposal_only aus.`
+  });
+
+  setPromptModuleText(pack, "analytics.fit.shared.review_style", {
+    summary: "Qualitativer Review mit sauberer Rückroute statt pauschaler Mängelliste.",
+    prompt: `Review-Stil:
+- Gib einen qualitativen Review statt einer bloßen Checkliste.
+- Benenne Stärken, Widersprüche, Risiken, Auslassungen und mögliche Rückrouten.
+- Kleine klare Eingriffe sind okay; größere Umstellungen eher als proposal_only.`
+  });
+
+  setPromptModuleText(pack, "analytics.fit.shared.synthesis_style", {
+    summary: "Verdichtet nur belastbare Substanz und erfindet keine Reife hinzu.",
+    prompt: `Synthese-Stil:
+- Verdichte nur belastbare Substanz.
+- Erfinde weder Fit noch Abschlussreife, wenn die Vorarbeit fehlt.
+- Gute Synthese heißt: wenige klare Aussagen, klare Grenzen und eine klare Rückroute, falls noch Vorarbeit nötig ist.`
+  });
+
+  setPromptModuleText(pack, "analytics.fit.shared.sorted_out_semantics", {
+    summary: "Definiert Sorted-out als bewussten Parkplatz statt als versteckten zweiten Arbeitsraum.",
+    prompt: `Sorted-out-Semantik:
+- Sorted-out dient zum bewussten Parken, Reduzieren und Fokussieren.
+- sorted_out_left ist typischerweise der Parkplatz für Problemraum-, Fokus- oder Scope-Reste.
+- sorted_out_right ist typischerweise der Parkplatz für Lösungsvarianten oder spätere Lösungsoptionen.
+- Parke lieber bewusst, statt still zu löschen oder Inhalte ungeordnet im Kern zu lassen.`
+  });
+
+  setPromptModuleText(pack, "analytics.fit.shared.validation_and_color_semantics", {
+    summary: "Bindet Farben und Checkmarks nur dort ein, wo sie methodisch wirklich etwas bedeuten.",
+    prompt: `Farben und Checkmarks:
+- Farben sind optionale Mechaniken, keine Pflicht.
+- Weiß ist in frühen Schritten besonders passend für Fokus-, Scope- und Annahmenarbeit.
+- Rot und Grün sind vor allem für Pains und Gains sinnvoll, nicht als allgemeine Dekoration.
+- checked markiert bewusst validierte Inhalte und wird vor allem in späteren Fit-Schritten wichtig.`
+  });
+
+  setPromptModuleText(pack, "analytics.fit.step0.focus_preparation", {
+    summary: "Beschreibt Preparation & Focus als Startphase des gesamten Canvas-Workflows.",
+    prompt: `Schrittfokus "Preparation & Focus":
+- Step 0 setzt den Fokusanker des gesamten Canvas.
+- Ziel ist ein klarer Arbeitstitel im Header, sichtbare Scope-/Annahmenfragen und bewusst geparkte Nebenthemen.
+- Noch nicht: User Needs Analysis, Solution Design oder Fit.
+- Gute Step-0-Arbeit macht den Einstieg in Step 1 leichter, weil Scope, Fokus und Unsicherheit sichtbar sind.`
+  });
+
+  setPromptModuleText(pack, "analytics.fit.step1.focus_user_perspective", {
+    summary: "Beschreibt Step 1 als strukturierten Aufbau des rechten Problemraums.",
+    prompt: `Schrittfokus "User Needs Analysis":
+- Step 1 baut den rechten Problemraum tragfähig auf.
+- Arbeite in dieser Reihenfolge: User & Situation → Objectives & Results → Decisions & Actions → Gains/Pains.
+- Mehrere Nutzerrollen sind anfangs erlaubt, aber am Ende soll ein Hauptnutzer im Fokus stehen.
+- Noch nicht: linke Lösungsseite oder Check-Fit.`
+  });
+
+  setPromptModuleText(pack, "analytics.fit.step2.focus_solution_perspective", {
+    summary: "Beschreibt Step 2 als Ableitung der linken Seite aus dem Problemraum.",
+    prompt: `Schrittfokus "Solution Design":
+- Step 2 leitet die linke Lösungsperspektive aus dem Problemraum ab.
+- Gute Reihenfolge: Solutions → Information → Functions → Benefits.
+- Arbeite mit Varianten und fokussiere dann eine Hauptvariante; parke Alternativen bewusst.
+- Noch nicht: Fit behaupten oder Check-Feld füllen.`
+  });
+
+  setPromptModuleText(pack, "analytics.fit.step3.focus_fit_review", {
+    summary: "Beschreibt Step 3 als Validierung, Reduktion und Verdichtung des Fits.",
+    prompt: `Schrittfokus "Fit Validation & Minimum Desired Product":
+- Step 3 validiert den Fit zwischen Problemraum und Lösungsraum.
+- Verdichte nur belastbare Beziehungen und reduziere Rauschen.
+- Das Feld Check ist ein spätes Verdichtungsfeld für wenige belastbare Fit-Aussagen, kein zweiter Ideenspeicher.`
+  });
+
+  setPromptModuleText(pack, "analytics.fit.step3.focus_fit_synthesis", {
+    summary: "Beschreibt die späte Verdichtung des validierten Kerns im Check-Feld.",
+    prompt: `Fit-Synthese in Step 3:
+- Verdichte nur den validierten oder weitgehend tragfähigen Kern.
+- Nutze das Feld Check für wenige klare Aussagen, nicht für neue Spekulationen.
+- Wenn die Vorarbeit fehlt, formuliere ehrlich die Rückroute statt künstlich Synthese zu erzeugen.`
+  });
+
+  setTriggerPrompt(pack, "step0_preparation_and_focus", "selection.hint", `Hinweismodus für den Schritt "Preparation & Focus":
+- Nutze executionMode = none und actions = [].
+- Gib 1 bis 3 konkrete nächste Schritte oder Satzanfänge für genau den aktuellen Step-0-Zustand.
+- Noch keine Board-Vorschläge, keine Sticky Notes, keine Vorwegnahme von Step 1, Step 2 oder Step 3.`);
+
+  setTriggerPrompt(pack, "step0_preparation_and_focus", "selection.propose", `Vorschlagsmodus für den Schritt "Preparation & Focus":
+- Nutze executionMode = proposal_only.
+- Dieser Trigger ist der sichtbare Start von Step 0.
+- Nutze vorhandenen Board-Inhalt plus optionalen Chat-Seed, um einen kleinen, anschlussfähigen Vorschlag für Fokus, Scope und offene Annahmen zu erzeugen.
+- Wenn das Board leer ist, darfst du einen kleinen Starter-Satz vorschlagen: Header plus 1 bis 2 weiße Scope-/Annahmen-Stickies.
+- Erkläre im feedback sichtbar, warum genau diese Vorschläge jetzt sinnvoll sind und dass noch nichts angewendet wurde.`);
+
+  setTriggerPrompt(pack, "step1_user_perspective", "selection.hint", `Hinweismodus für den Schritt "User Needs Analysis":
+- Nutze executionMode = none und actions = [].
+- Priorisiere genau einen Mikro-Arbeitsmodus auf der rechten Seite und gib 1 bis 3 Satzanfänge oder Fokushinweise.
+- Noch keine Lösung, keine Benefits, kein Fit und keine Board-Vorschläge.`);
+
+  setTriggerPrompt(pack, "step1_user_perspective", "selection.propose", `Vorschlagsmodus für den Schritt "User Needs Analysis":
+- Nutze executionMode = proposal_only.
+- Dieser Trigger ist der sichtbare Start oder Delta-Modus von Step 1.
+- Schlage einen kleinen, klaren Vorschlag für Hauptnutzer, Situation, Outcomes, Verhalten und Gains/Pains vor.
+- Wenn die rechte Seite leer ist, darfst du einen kleinen Starter-Satz vorschlagen; wenn schon Material da ist, schlage eher Deltas als Komplettneuaufbau vor.
+- Erkläre im feedback sichtbar, warum genau diese Vorschläge jetzt sinnvoll sind und dass noch nichts angewendet wurde.`);
+
+  setTriggerPrompt(pack, "step2_solution_perspective", "selection.hint", `Hinweismodus für den Schritt "Solution Design":
+- Nutze executionMode = none und actions = [].
+- Priorisiere genau einen Mikro-Arbeitsmodus: Rückroute, Variantenwahl, Informationsableitung, Funktionsableitung oder Benefit-Schärfung.
+- Gib nur textliche Orientierung und keine Board-Vorschläge.`);
+
+  setTriggerPrompt(pack, "step2_solution_perspective", "selection.propose", `Vorschlagsmodus für den Schritt "Solution Design":
+- Nutze executionMode = proposal_only.
+- Dieser Trigger ist der sichtbare Start oder Delta-Modus von Step 2.
+- Prüfe zuerst, ob die rechte Seite schon tragfähig genug ist. Wenn nicht, benenne die Rückroute nach Step 1 und mache höchstens kleine Vorschläge.
+- Wenn die rechte Seite tragfähig ist, schlage einen kleinen, klaren Vorschlag für Variantenwahl und Ableitung der linken Seite vor.
+- Erkläre im feedback sichtbar, warum genau diese Vorschläge jetzt sinnvoll sind und dass noch nichts angewendet wurde.`);
   return catalog;
 }
 
@@ -4785,6 +4973,7 @@ for (const [packId, packDef] of Object.entries(METHOD_CATALOG.packs || {})) {
         packTemplateId: runProfile.packTemplateId,
         stepTemplateId: runProfile.stepTemplateId,
         triggerKey: runProfile.triggerKey,
+        triggerPrompt: runProfile.triggerPrompt,
         moduleIds: Object.freeze(runProfile.moduleIds),
         mutationPolicy: runProfile.mutationPolicy,
         feedbackPolicy: runProfile.feedbackPolicy,
