@@ -26,7 +26,7 @@ import * as ExerciseLibrary from "./exercises/library.js?v=20260312-batch10promp
 import * as PromptComposer from "./prompt/composer.js?v=20260312-batch10prompt1";
 import * as ExerciseEngine from "./runtime/exercise-engine.js?v=20260310-batch92";
 import * as BoardFlow from "./runtime/board-flow.js?v=20260309-batch87";
-import * as PanelBridge from "./runtime/panel-bridge.js?v=20260305-schemafix2";
+import * as PanelBridge from "./runtime/panel-bridge.js?v=20260310-batch10-2";
 import { buildPayloadMappingHint } from "./app/payload-hints.js?v=20260305-batch06";
 import { getInsertWidthPxForCanvasType, computeTemplateInsertPosition } from "./app/template-insertion.js?v=20260308-batch76";
 import {
@@ -95,6 +95,10 @@ const state = {
     hasPendingProposalForCurrentStep: false,
     pendingProposalInstanceIds: []
   },
+
+  // Runtime lease / ownership
+  runtimeIdentity: null,
+  panelRuntimeBridgeLifecycleInstalled: false,
 
   // Re-entrancy guard
   handlingSelection: false,
@@ -783,10 +787,105 @@ function getPanelUserText() {
   return (el?.value || "").trim();
 }
 
+function buildRuntimeId() {
+  try {
+    if (window.crypto && typeof window.crypto.randomUUID === "function") {
+      return RUNTIME_CONTEXT + "-" + window.crypto.randomUUID();
+    }
+  } catch (_) {}
+
+  return RUNTIME_CONTEXT + "-" + Date.now().toString(36) + "-" + Math.random().toString(36).slice(2, 10);
+}
+
+function buildFallbackBoardScopeId() {
+  const referrer = pickFirstNonEmptyString(document.referrer);
+  if (referrer) return "referrer:" + encodeURIComponent(referrer);
+
+  try {
+    const url = new URL(window.location.href);
+    url.search = "";
+    url.hash = "";
+    return "location:" + encodeURIComponent(url.toString());
+  } catch (_) {}
+
+  const pathname = pickFirstNonEmptyString(window.location.pathname);
+  if (pathname) return "location:" + encodeURIComponent(pathname);
+  return "runtime:" + RUNTIME_CONTEXT;
+}
+
+async function ensureRuntimeIdentity() {
+  if (state.runtimeIdentity?.boardScopeId && state.runtimeIdentity?.runtimeId) {
+    return state.runtimeIdentity;
+  }
+
+  let boardScopeId = pickFirstNonEmptyString(state.runtimeIdentity?.boardScopeId);
+  let runtimeId = pickFirstNonEmptyString(state.runtimeIdentity?.runtimeId);
+  let claimedAtMs = Number(state.runtimeIdentity?.claimedAtMs || 0);
+
+  if (!runtimeId) runtimeId = buildRuntimeId();
+  if (!Number.isFinite(claimedAtMs) || claimedAtMs <= 0) claimedAtMs = Date.now();
+
+  if (!boardScopeId) {
+    try {
+      const board = Board.getBoard();
+      if (typeof board?.getInfo === "function") {
+        const boardInfo = await board.getInfo();
+        boardScopeId = pickFirstNonEmptyString(boardInfo?.id != null ? String(boardInfo.id) : null);
+      }
+    } catch (error) {
+      log("WARNUNG: Board-ID konnte für die Runtime-Lease nicht geladen werden: " + formatRuntimeErrorMessage(error));
+    }
+  }
+
+  if (!boardScopeId) {
+    boardScopeId = buildFallbackBoardScopeId();
+    log("WARNUNG: Runtime-Lease nutzt einen Fallback-Board-Scope, weil keine Board-ID verfügbar war.");
+  }
+
+  state.runtimeIdentity = {
+    boardScopeId,
+    runtimeId,
+    ownerType: IS_HEADLESS ? "headless" : "panel",
+    claimedAtMs
+  };
+
+  return state.runtimeIdentity;
+}
+
+function getRuntimeBoardScopeId() {
+  return pickFirstNonEmptyString(state.runtimeIdentity?.boardScopeId);
+}
+
 function startPanelRuntimeBridge() {
-  PanelBridge.startPanelHeartbeat();
+  if (IS_HEADLESS) return null;
+
+  const identity = state.runtimeIdentity || null;
+  if (!identity?.boardScopeId || !identity?.runtimeId) return null;
+
+  return PanelBridge.startPanelRuntimeLease({
+    boardScopeId: identity.boardScopeId,
+    runtimeId: identity.runtimeId,
+    ownerType: identity.ownerType || "panel",
+    claimedAtMs: identity.claimedAtMs
+  });
+}
+
+function stopPanelRuntimeBridge() {
+  if (IS_HEADLESS) return;
+
+  const identity = state.runtimeIdentity || null;
+  PanelBridge.stopPanelRuntimeLease({
+    boardScopeId: identity?.boardScopeId || null,
+    runtimeId: identity?.runtimeId || null
+  });
+}
+
+function installPanelRuntimeBridgeLifecycle() {
+  if (IS_HEADLESS || state.panelRuntimeBridgeLifecycleInstalled) return;
+
+  state.panelRuntimeBridgeLifecycleInstalled = true;
   window.addEventListener("beforeunload", () => {
-    PanelBridge.stopPanelHeartbeat();
+    stopPanelRuntimeBridge();
   }, { once: true });
 }
 
@@ -999,11 +1098,21 @@ async function registerHeadlessClusterCustomAction() {
 }
 
 function shouldHeadlessHandleFlowControls() {
-  return IS_HEADLESS && !PanelBridge.isPanelHeartbeatFresh();
+  if (!IS_HEADLESS) return false;
+
+  const boardScopeId = getRuntimeBoardScopeId();
+  if (!boardScopeId) return true;
+  return !PanelBridge.isBoardRuntimeLeaseFresh(boardScopeId);
 }
 
 function shouldPanelHandleFlowControls() {
-  return !IS_HEADLESS;
+  if (IS_HEADLESS) return false;
+
+  const boardScopeId = getRuntimeBoardScopeId();
+  const runtimeId = pickFirstNonEmptyString(state.runtimeIdentity?.runtimeId);
+  if (!boardScopeId || !runtimeId) return false;
+
+  return PanelBridge.isRuntimeLeaseOwner(boardScopeId, runtimeId);
 }
 
 function buildBoardConfigPatchForPack(pack) {
@@ -3262,7 +3371,7 @@ function initPanelButtons() {
   state.panelMode = loadPersistedPanelMode();
   applyRuntimeSettingsToUi();
   applyStaticUiLanguage(getCurrentDisplayLanguage());
-  startPanelRuntimeBridge();
+  installPanelRuntimeBridgeLifecycle();
   renderCanvasTypePicker();
   renderExerciseControls();
 
@@ -3351,6 +3460,11 @@ if (!IS_HEADLESS) initPanelButtons();
 async function afterMiroReady() {
   if (state.initialized) return;
   state.initialized = true;
+
+  await ensureRuntimeIdentity();
+  if (!IS_HEADLESS) {
+    startPanelRuntimeBridge();
+  }
 
   // Baseline meta laden
   const meta = await Board.loadPersistedBaselineMeta(log);

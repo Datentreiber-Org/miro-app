@@ -1,11 +1,12 @@
 const PANEL_RUNTIME_STORAGE_KEY = "dt-panel-runtime-settings-v1";
 const PANEL_RUNTIME_SECRETS_KEY = "dt-panel-runtime-secrets-v1";
-const PANEL_HEARTBEAT_STORAGE_KEY = "dt-panel-runtime-heartbeat-v1";
+const PANEL_RUNTIME_LEASE_STORAGE_KEY_PREFIX = "dt-runtime-lease-v2::";
 
-export const PANEL_HEARTBEAT_INTERVAL_MS = 1500;
-export const PANEL_HEARTBEAT_STALE_AFTER_MS = 4500;
+export const PANEL_RUNTIME_LEASE_REFRESH_INTERVAL_MS = 1500;
+export const PANEL_RUNTIME_LEASE_STALE_AFTER_MS = 4500;
 
-let heartbeatTimer = null;
+let leaseTimer = null;
+let activeLeaseIdentity = null;
 
 function getLocalStorage() {
   try {
@@ -38,6 +39,11 @@ function asNonEmptyString(value) {
   return trimmed || null;
 }
 
+function normalizePositiveTimestampMs(value) {
+  const numeric = Number(value);
+  return Number.isFinite(numeric) && numeric > 0 ? Math.floor(numeric) : 0;
+}
+
 function normalizeRuntimeSettings(rawSettings) {
   const src = (rawSettings && typeof rawSettings === "object") ? rawSettings : {};
   return {
@@ -48,12 +54,27 @@ function normalizeRuntimeSettings(rawSettings) {
   };
 }
 
-function normalizeHeartbeat(rawHeartbeat) {
-  const src = (rawHeartbeat && typeof rawHeartbeat === "object") ? rawHeartbeat : {};
-  const touchedAt = Number(src.touchedAtMs || src.touchedAt || 0);
+function normalizeBoardScopeId(value) {
+  return asNonEmptyString(value);
+}
+
+function normalizeRuntimeId(value) {
+  return asNonEmptyString(value);
+}
+
+function normalizeLeaseOwnerType(value) {
+  return asNonEmptyString(value) || "panel";
+}
+
+function normalizeRuntimeLease(rawLease) {
+  const src = (rawLease && typeof rawLease === "object") ? rawLease : {};
   return {
-    version: 1,
-    touchedAtMs: Number.isFinite(touchedAt) && touchedAt > 0 ? touchedAt : 0
+    version: 2,
+    boardScopeId: normalizeBoardScopeId(src.boardScopeId || src.boardId),
+    runtimeId: normalizeRuntimeId(src.runtimeId),
+    ownerType: normalizeLeaseOwnerType(src.ownerType),
+    claimedAtMs: normalizePositiveTimestampMs(src.claimedAtMs || src.claimedAt),
+    touchedAtMs: normalizePositiveTimestampMs(src.touchedAtMs || src.touchedAt)
   };
 }
 
@@ -71,6 +92,41 @@ function writeStorageJson(storage, key, value) {
 function removeStorageKey(storage, key) {
   if (!storage || !key) return;
   storage.removeItem(key);
+}
+
+function runtimeLeaseStorageKey(boardScopeId) {
+  const normalizedBoardScopeId = normalizeBoardScopeId(boardScopeId);
+  if (!normalizedBoardScopeId) return null;
+  return PANEL_RUNTIME_LEASE_STORAGE_KEY_PREFIX + normalizedBoardScopeId;
+}
+
+function isLeaseFresh(lease, { maxAgeMs = PANEL_RUNTIME_LEASE_STALE_AFTER_MS } = {}) {
+  const normalizedLease = normalizeRuntimeLease(lease);
+  if (!normalizedLease.touchedAtMs) return false;
+
+  const normalizedMaxAgeMs = Number(maxAgeMs || PANEL_RUNTIME_LEASE_STALE_AFTER_MS);
+  const effectiveMaxAgeMs = Number.isFinite(normalizedMaxAgeMs) && normalizedMaxAgeMs > 0
+    ? normalizedMaxAgeMs
+    : PANEL_RUNTIME_LEASE_STALE_AFTER_MS;
+
+  return (Date.now() - normalizedLease.touchedAtMs) <= effectiveMaxAgeMs;
+}
+
+function canLeaseBeReplaced(currentLease, nextLease) {
+  const current = normalizeRuntimeLease(currentLease);
+  const next = normalizeRuntimeLease(nextLease);
+
+  if (!next.boardScopeId || !next.runtimeId) return false;
+  if (!current.boardScopeId || current.boardScopeId !== next.boardScopeId) return true;
+  if (current.runtimeId === next.runtimeId) return true;
+  if (!isLeaseFresh(current)) return true;
+
+  const currentClaimedAtMs = normalizePositiveTimestampMs(current.claimedAtMs);
+  const nextClaimedAtMs = normalizePositiveTimestampMs(next.claimedAtMs);
+
+  if (!currentClaimedAtMs) return true;
+  if (!nextClaimedAtMs) return false;
+  return nextClaimedAtMs >= currentClaimedAtMs;
 }
 
 export function loadRuntimeSettings() {
@@ -114,31 +170,98 @@ export function clearRuntimeSettings() {
   removeStorageKey(getSessionStorage(), PANEL_RUNTIME_SECRETS_KEY);
 }
 
-export function touchPanelHeartbeat() {
-  const normalized = normalizeHeartbeat({ touchedAtMs: Date.now() });
-  writeStorageJson(getLocalStorage(), PANEL_HEARTBEAT_STORAGE_KEY, normalized);
-  return normalized;
+export function readBoardRuntimeLease(boardScopeId) {
+  const storageKey = runtimeLeaseStorageKey(boardScopeId);
+  if (!storageKey) return null;
+
+  const lease = normalizeRuntimeLease(readStorageJson(getLocalStorage(), storageKey));
+  return lease.boardScopeId ? lease : null;
 }
 
-export function isPanelHeartbeatFresh({ maxAgeMs = PANEL_HEARTBEAT_STALE_AFTER_MS } = {}) {
-  const heartbeat = normalizeHeartbeat(readStorageJson(getLocalStorage(), PANEL_HEARTBEAT_STORAGE_KEY));
-  if (!heartbeat.touchedAtMs) return false;
-  return (Date.now() - heartbeat.touchedAtMs) <= Number(maxAgeMs || PANEL_HEARTBEAT_STALE_AFTER_MS);
-}
+export function refreshPanelRuntimeLease({ boardScopeId = null, runtimeId = null, ownerType = "panel", claimedAtMs = 0 } = {}) {
+  const normalizedClaimedAtMs = normalizePositiveTimestampMs(claimedAtMs) || Date.now();
+  const nextLease = normalizeRuntimeLease({
+    boardScopeId,
+    runtimeId,
+    ownerType,
+    claimedAtMs: normalizedClaimedAtMs,
+    touchedAtMs: Date.now()
+  });
 
-export function startPanelHeartbeat() {
-  stopPanelHeartbeat();
-  touchPanelHeartbeat();
-  heartbeatTimer = window.setInterval(() => {
-    touchPanelHeartbeat();
-  }, PANEL_HEARTBEAT_INTERVAL_MS);
-  return heartbeatTimer;
-}
-
-export function stopPanelHeartbeat() {
-  if (heartbeatTimer) {
-    window.clearInterval(heartbeatTimer);
-    heartbeatTimer = null;
+  if (!nextLease.boardScopeId || !nextLease.runtimeId) {
+    return { ok: false, lease: null };
   }
-  removeStorageKey(getLocalStorage(), PANEL_HEARTBEAT_STORAGE_KEY);
+
+  const currentLease = readBoardRuntimeLease(nextLease.boardScopeId);
+  if (!canLeaseBeReplaced(currentLease, nextLease)) {
+    return { ok: false, lease: currentLease };
+  }
+
+  const storageKey = runtimeLeaseStorageKey(nextLease.boardScopeId);
+  if (!storageKey) {
+    return { ok: false, lease: null };
+  }
+
+  const writtenLease = writeStorageJson(getLocalStorage(), storageKey, nextLease);
+  const confirmedLease = readBoardRuntimeLease(nextLease.boardScopeId) || normalizeRuntimeLease(writtenLease);
+  return {
+    ok: !!(confirmedLease && confirmedLease.runtimeId === nextLease.runtimeId),
+    lease: confirmedLease || null
+  };
+}
+
+export function isBoardRuntimeLeaseFresh(boardScopeId, { maxAgeMs = PANEL_RUNTIME_LEASE_STALE_AFTER_MS } = {}) {
+  const lease = readBoardRuntimeLease(boardScopeId);
+  return isLeaseFresh(lease, { maxAgeMs });
+}
+
+export function isRuntimeLeaseOwner(boardScopeId, runtimeId, { maxAgeMs = PANEL_RUNTIME_LEASE_STALE_AFTER_MS } = {}) {
+  const normalizedRuntimeId = normalizeRuntimeId(runtimeId);
+  if (!normalizedRuntimeId) return false;
+
+  const lease = readBoardRuntimeLease(boardScopeId);
+  return !!(lease && lease.runtimeId === normalizedRuntimeId && isLeaseFresh(lease, { maxAgeMs }));
+}
+
+export function startPanelRuntimeLease({ boardScopeId = null, runtimeId = null, ownerType = "panel", claimedAtMs = 0 } = {}) {
+  stopPanelRuntimeLease();
+
+  const identity = {
+    boardScopeId: normalizeBoardScopeId(boardScopeId),
+    runtimeId: normalizeRuntimeId(runtimeId),
+    ownerType: normalizeLeaseOwnerType(ownerType),
+    claimedAtMs: normalizePositiveTimestampMs(claimedAtMs) || Date.now()
+  };
+
+  if (!identity.boardScopeId || !identity.runtimeId) return null;
+
+  activeLeaseIdentity = identity;
+  refreshPanelRuntimeLease(identity);
+
+  leaseTimer = window.setInterval(() => {
+    if (!activeLeaseIdentity) return;
+    refreshPanelRuntimeLease(activeLeaseIdentity);
+  }, PANEL_RUNTIME_LEASE_REFRESH_INTERVAL_MS);
+
+  return { ...activeLeaseIdentity };
+}
+
+export function stopPanelRuntimeLease(identity = null) {
+  if (leaseTimer) {
+    window.clearInterval(leaseTimer);
+    leaseTimer = null;
+  }
+
+  const target = (identity && typeof identity === "object") ? identity : activeLeaseIdentity;
+  const boardScopeId = normalizeBoardScopeId(target?.boardScopeId);
+  const runtimeId = normalizeRuntimeId(target?.runtimeId);
+
+  if (boardScopeId && runtimeId) {
+    const currentLease = readBoardRuntimeLease(boardScopeId);
+    if (currentLease && currentLease.runtimeId === runtimeId) {
+      removeStorageKey(getLocalStorage(), runtimeLeaseStorageKey(boardScopeId));
+    }
+  }
+
+  activeLeaseIdentity = null;
 }
