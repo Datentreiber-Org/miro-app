@@ -10,12 +10,13 @@ import {
   DT_STORAGE_KEY_BOARD_FLOW_INDEX,
   DT_STORAGE_KEY_BOARD_FLOW_PREFIX,
   DT_STORAGE_KEY_RUN_STATE,
+  DT_STORAGE_KEY_ACTIVE_PROPOSAL_PREFIX,
   DT_STORAGE_KEY_PROPOSAL_INDEX,
   DT_STORAGE_KEY_PROPOSAL_PREFIX,
   DT_DEFAULT_FEEDBACK_CHANNEL,
   DT_DEFAULT_APP_ADMIN_POLICY,
   DT_MEMORY_RECENT_LOG_LIMIT
-} from "../config.js?v=20260310-batch92";
+} from "../config.js?v=20260310-batch10-1";
 
 import { normalizeBoardFlow } from "../runtime/board-flow.js?v=20260306-batch6";
 import { normalizeUiLanguage } from "../i18n/index.js?v=20260310-batch92";
@@ -268,6 +269,53 @@ const BOARD_ANCHOR_LAYOUT = {
   height: 8
 };
 
+const SUPPORTED_BOARD_ANCHOR_VERSIONS = Object.freeze([1, 2, 3, 4]);
+
+function isSupportedBoardAnchorVersion(version) {
+  return SUPPORTED_BOARD_ANCHOR_VERSIONS.includes(Number(version));
+}
+
+function isBoardAnchorMeta(meta) {
+  return !!(meta && typeof meta === "object" && isSupportedBoardAnchorVersion(meta.version));
+}
+
+function pickCanonicalBoardAnchor(anchors) {
+  const normalized = Array.isArray(anchors) ? anchors.filter(Boolean).slice() : [];
+  normalized.sort(compareItemIdsAsc);
+  return normalized[0] || null;
+}
+
+async function removeBoardAnchorItem(item, log) {
+  await ensureMiroReady(log);
+  if (!item?.id) return false;
+
+  const board = getBoard();
+  if (!board?.remove) return false;
+
+  try {
+    await board.remove(item);
+    if (typeof log === "function") {
+      log("WARNUNG: Zusätzlicher Board-Anchor entfernt (Item " + item.id + ").");
+    }
+    return true;
+  } catch (e) {
+    if (typeof log === "function") {
+      log("WARNUNG: Zusätzlicher Board-Anchor konnte nicht entfernt werden (Item " + item.id + "): " + e.message);
+    }
+    return false;
+  }
+}
+
+async function cleanupDuplicateBoardAnchors(anchors, canonical, log) {
+  if (!canonical?.id) return canonical || null;
+
+  const duplicates = (Array.isArray(anchors) ? anchors : []).filter((anchor) => anchor?.id && anchor.id !== canonical.id);
+  for (const duplicate of duplicates) {
+    await removeBoardAnchorItem(duplicate, log);
+  }
+  return canonical;
+}
+
 export async function isBoardAnchorItem(item, log) {
   await ensureMiroReady(log);
 
@@ -275,7 +323,7 @@ export async function isBoardAnchorItem(item, log) {
 
   try {
     const meta = await item.getMetadata(DT_ANCHOR_META_KEY_BOARD);
-    return !!(meta && typeof meta === "object" && (meta.version === 1 || meta.version === 2 || meta.version === 3));
+    return isBoardAnchorMeta(meta);
   } catch (_) {
     return false;
   }
@@ -300,18 +348,13 @@ async function listBoardAnchorItems(log) {
     if (!shape?.getMetadata) continue;
     try {
       const meta = await shape.getMetadata(DT_ANCHOR_META_KEY_BOARD);
-      if (meta && typeof meta === "object" && (meta.version === 1 || meta.version === 2 || meta.version === 3)) {
+      if (isBoardAnchorMeta(meta)) {
         anchors.push(shape);
       }
     } catch (_) {}
   }
 
   anchors.sort(compareItemIdsAsc);
-
-  if (anchors.length > 1 && typeof log === "function") {
-    log("WARNUNG: Mehrere Board-Anchors gefunden. Verwende Item " + anchors[0].id + ".");
-  }
-
   return anchors;
 }
 
@@ -355,23 +398,51 @@ async function createBoardAnchorItem(log) {
 export async function ensureBoardAnchor({ defaultCanvasTypeId = null, log } = {}) {
   await ensureMiroReady(log);
 
-  const existingAnchors = await listBoardAnchorItems(log);
-  if (existingAnchors.length > 0) {
-    return existingAnchors[0];
+  let anchors = await listBoardAnchorItems(log);
+  let createdAnchor = null;
+
+  if (!anchors.length) {
+    createdAnchor = await createBoardAnchorItem(log);
+    const initialConfig = normalizeBoardConfig(null, { defaultCanvasTypeId });
+
+    try {
+      if (createdAnchor?.setMetadata) {
+        await createdAnchor.setMetadata(DT_ANCHOR_META_KEY_BOARD, initialConfig);
+      }
+    } catch (e) {
+      if (typeof log === "function") log("Fehler beim Initialisieren des Board-Anchors: " + e.message);
+    }
+
+    anchors = await listBoardAnchorItems(log);
+    if (!anchors.length && createdAnchor) {
+      anchors = [createdAnchor];
+    }
   }
 
-  const anchor = await createBoardAnchorItem(log);
-  const initialConfig = normalizeBoardConfig(null, { defaultCanvasTypeId });
+  const canonical = pickCanonicalBoardAnchor(anchors);
+  if (!canonical) {
+    throw new Error("Board-Anchor konnte nicht sichergestellt werden.");
+  }
 
+  await cleanupDuplicateBoardAnchors(anchors, canonical, log);
+
+  let rawMeta = null;
   try {
-    if (anchor?.setMetadata) {
-      await anchor.setMetadata(DT_ANCHOR_META_KEY_BOARD, initialConfig);
+    rawMeta = canonical?.getMetadata ? await canonical.getMetadata(DT_ANCHOR_META_KEY_BOARD) : null;
+  } catch (e) {
+    if (typeof log === "function") log("Fehler beim Lesen der Board-Konfiguration aus dem Anchor: " + e.message);
+  }
+
+  const normalized = normalizeBoardConfig(rawMeta, { defaultCanvasTypeId });
+  try {
+    if (canonical?.setMetadata && JSON.stringify(rawMeta || null) !== JSON.stringify(normalized)) {
+      await canonical.setMetadata(DT_ANCHOR_META_KEY_BOARD, normalized);
     }
   } catch (e) {
-    if (typeof log === "function") log("Fehler beim Initialisieren des Board-Anchors: " + e.message);
+    if (typeof log === "function") log("Fehler beim Normalisieren des Board-Anchors: " + e.message);
   }
 
-  return anchor;
+  return canonical;
 }
 
 export async function loadBoardConfigFromAnchor({ defaultCanvasTypeId = null, log } = {}) {
@@ -704,6 +775,13 @@ function proposalRecordKey(proposalId) {
   return DT_STORAGE_KEY_PROPOSAL_PREFIX + String(proposalId);
 }
 
+function activeProposalKey(anchorInstanceId, stepId = null) {
+  const normalizedAnchorInstanceId = asTrimmedString(anchorInstanceId);
+  const normalizedStepId = asTrimmedString(stepId) || "__default__";
+  if (!normalizedAnchorInstanceId) return null;
+  return DT_STORAGE_KEY_ACTIVE_PROPOSAL_PREFIX + normalizedAnchorInstanceId + "::" + normalizedStepId;
+}
+
 function buildProposalRecordId() {
   return "p-" + Date.now().toString(36) + "-" + Math.floor(Math.random() * 1e9).toString(36);
 }
@@ -750,7 +828,7 @@ export function normalizeProposalRecord(rawRecord) {
   };
 }
 
-async function loadProposalIndex(log) {
+async function loadLegacyProposalIndex(log) {
   await ensureMiroReady(log);
   const col = getStorageCollection();
   if (!col) return [];
@@ -761,55 +839,54 @@ async function loadProposalIndex(log) {
       return uniqueIds(value.proposalIds.map((id) => String(id)).filter(Boolean));
     }
   } catch (e) {
-    if (typeof log === "function") log("Fehler beim Laden des Proposal-Index: " + e.message);
+    if (typeof log === "function") log("Fehler beim Laden des Legacy-Proposal-Index: " + e.message);
   }
 
   return [];
 }
 
-async function saveProposalIndex(proposalIds, log) {
+export async function purgeLegacyProposalStorage(log) {
   await ensureMiroReady(log);
   const col = getStorageCollection();
-  if (!col) return uniqueIds(proposalIds || []);
+  if (!col) return { removedProposalIds: [], removedIndex: false };
 
-  const normalizedProposalIds = uniqueIds((proposalIds || []).map((id) => String(id)).filter(Boolean));
-  try {
-    await col.set(DT_STORAGE_KEY_PROPOSAL_INDEX, {
-      version: 1,
-      proposalIds: normalizedProposalIds
-    });
-  } catch (e) {
-    if (typeof log === "function") log("Fehler beim Speichern des Proposal-Index: " + e.message);
+  const proposalIds = await loadLegacyProposalIndex(log);
+  const removedProposalIds = [];
+  for (const proposalId of proposalIds) {
+    try {
+      await col.remove(proposalRecordKey(proposalId));
+      removedProposalIds.push(proposalId);
+    } catch (_) {}
   }
-  return normalizedProposalIds;
+
+  let removedIndex = false;
+  try {
+    await col.remove(DT_STORAGE_KEY_PROPOSAL_INDEX);
+    removedIndex = true;
+  } catch (_) {}
+
+  return { removedProposalIds, removedIndex };
 }
 
-function compareProposalRecordsDesc(a, b) {
-  const aTs = asTrimmedString(a?.updatedAt) || asTrimmedString(a?.createdAt) || "";
-  const bTs = asTrimmedString(b?.updatedAt) || asTrimmedString(b?.createdAt) || "";
-  if (aTs !== bTs) return bTs.localeCompare(aTs);
-  return String(b?.proposalId || "").localeCompare(String(a?.proposalId || ""));
-}
-
-export async function loadProposalRecord(proposalId, log) {
+export async function loadActiveProposal({ anchorInstanceId = null, stepId = null } = {}, log) {
   await ensureMiroReady(log);
-  const normalizedId = asTrimmedString(proposalId);
-  if (!normalizedId) return null;
+  const storageKey = activeProposalKey(anchorInstanceId, stepId);
+  if (!storageKey) return null;
 
   const col = getStorageCollection();
   if (!col) return null;
 
   try {
-    const raw = await col.get(proposalRecordKey(normalizedId));
+    const raw = await col.get(storageKey);
     const normalized = normalizeProposalRecord(raw);
-    return normalized.proposalId ? normalized : null;
+    return normalized.proposalId && normalized.status === "pending" ? normalized : null;
   } catch (e) {
-    if (typeof log === "function") log("Fehler beim Laden des Proposal-Records '" + normalizedId + "': " + e.message);
+    if (typeof log === "function") log("Fehler beim Laden des Active-Proposal-Slots '" + storageKey + "': " + e.message);
     return null;
   }
 }
 
-export async function saveProposalRecord(record, log) {
+export async function saveActiveProposal(record, log) {
   await ensureMiroReady(log);
   const col = getStorageCollection();
   const nowIso = new Date().toISOString();
@@ -818,86 +895,37 @@ export async function saveProposalRecord(record, log) {
     proposalId: asTrimmedString(record?.proposalId) || buildProposalRecordId(),
     createdAt: asTrimmedString(record?.createdAt) || nowIso,
     updatedAt: nowIso,
-    status: normalizeProposalStatus(record?.status)
+    status: "pending"
   });
 
-  if (!normalized.proposalId) return null;
+  const storageKey = activeProposalKey(normalized.anchorInstanceId, normalized.stepId);
+  if (!storageKey || !normalized.proposalId) return null;
   if (!col) return normalized;
 
   try {
-    await col.set(proposalRecordKey(normalized.proposalId), normalized);
-    const index = await loadProposalIndex(log);
-    if (!index.includes(normalized.proposalId)) {
-      index.push(normalized.proposalId);
-      await saveProposalIndex(index, log);
-    }
+    await col.set(storageKey, normalized);
   } catch (e) {
-    if (typeof log === "function") log("Fehler beim Speichern des Proposal-Records '" + normalized.proposalId + "': " + e.message);
+    if (typeof log === "function") log("Fehler beim Speichern des Active-Proposal-Slots '" + storageKey + "': " + e.message);
   }
 
   return normalized;
 }
 
-export async function listProposalRecords(filters = {}, log) {
+export async function clearActiveProposal({ anchorInstanceId = null, stepId = null } = {}, log) {
   await ensureMiroReady(log);
+  const storageKey = activeProposalKey(anchorInstanceId, stepId);
+  if (!storageKey) return false;
+
   const col = getStorageCollection();
-  if (!col) return [];
+  if (!col) return false;
 
-  const normalizedAnchorInstanceId = asTrimmedString(filters?.anchorInstanceId);
-  const normalizedStepId = asTrimmedString(filters?.stepId);
-  const normalizedStatuses = new Set(uniqueIds(Array.isArray(filters?.statuses) ? filters.statuses.map((value) => asTrimmedString(value)).filter(Boolean) : []));
-  const proposalIds = await loadProposalIndex(log);
-  if (!proposalIds.length) return [];
-
-  const records = [];
-  for (const proposalId of proposalIds) {
-    const record = await loadProposalRecord(proposalId, log);
-    if (!record?.proposalId) continue;
-    if (normalizedAnchorInstanceId && record.anchorInstanceId !== normalizedAnchorInstanceId) continue;
-    if (normalizedStepId && record.stepId !== normalizedStepId) continue;
-    if (normalizedStatuses.size && !normalizedStatuses.has(record.status)) continue;
-    records.push(record);
+  try {
+    await col.remove(storageKey);
+    return true;
+  } catch (e) {
+    if (typeof log === "function") log("Fehler beim Entfernen des Active-Proposal-Slots '" + storageKey + "': " + e.message);
+    return false;
   }
-
-  records.sort(compareProposalRecordsDesc);
-  return records;
-}
-
-export async function updateProposalRecordStatus(proposalId, status, patch = {}, log) {
-  const record = await loadProposalRecord(proposalId, log);
-  if (!record) return null;
-  return await saveProposalRecord({
-    ...record,
-    ...(patch && typeof patch === "object" ? patch : {}),
-    proposalId: record.proposalId,
-    createdAt: record.createdAt,
-    status: normalizeProposalStatus(status)
-  }, log);
-}
-
-export async function supersedePendingProposals({ anchorInstanceId = null, stepId = null, excludeProposalId = null } = {}, log) {
-  const records = await listProposalRecords({
-    anchorInstanceId,
-    stepId,
-    statuses: ["pending"]
-  }, log);
-
-  const supersededIds = [];
-  for (const record of records) {
-    if (!record?.proposalId || record.proposalId === excludeProposalId) continue;
-    await updateProposalRecordStatus(record.proposalId, "superseded", {}, log);
-    supersededIds.push(record.proposalId);
-  }
-  return supersededIds;
-}
-
-export async function loadLatestPendingProposal({ anchorInstanceId = null, stepId = null } = {}, log) {
-  const records = await listProposalRecords({
-    anchorInstanceId,
-    stepId,
-    statuses: ["pending"]
-  }, log);
-  return records[0] || null;
 }
 
 export async function loadMemoryLog(log) {

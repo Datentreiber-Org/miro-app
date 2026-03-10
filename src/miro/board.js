@@ -21,19 +21,17 @@ export {
   loadMemoryLog,
   appendMemoryLogEntry,
   normalizeProposalRecord,
-  loadProposalRecord,
-  saveProposalRecord,
-  listProposalRecords,
-  updateProposalRecordStatus,
-  supersedePendingProposals,
-  loadLatestPendingProposal,
+  purgeLegacyProposalStorage,
+  loadActiveProposal,
+  saveActiveProposal,
+  clearActiveProposal,
   loadBoardFlow,
   saveBoardFlow,
   listBoardFlows,
   normalizeBoardRunState,
   loadBoardRunState,
   saveBoardRunState
-} from "./storage.js?v=20260310-batch92";
+} from "./storage.js?v=20260310-batch10-1";
 
 export {
   buildAgentFeedbackContent,
@@ -64,6 +62,8 @@ export {
 
 export {
   getSelection,
+  selectItems,
+  deselectItems,
   getItems,
   getItemsById,
   getItemById,
@@ -84,7 +84,7 @@ export {
   setStickyNoteTagPresence,
   setStickyNoteFillColor,
   getBoardBaseContext
-} from "./items.js?v=20260308-batch76";
+} from "./items.js?v=20260310-batch10-1";
 
 export {
   readFlowControlMeta,

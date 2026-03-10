@@ -12,6 +12,28 @@ export async function getSelection(log) {
   return board?.getSelection ? (await board.getSelection()) : [];
 }
 
+export async function selectItems(filter = null, log) {
+  await ensureMiroReady(log);
+  const board = getBoard();
+  if (!board?.select) return [];
+
+  const selected = filter == null ? await board.select() : await board.select(filter);
+  if (Array.isArray(selected)) return selected;
+  if (selected) return [selected];
+  return [];
+}
+
+export async function deselectItems(filter = null, log) {
+  await ensureMiroReady(log);
+  const board = getBoard();
+  if (!board?.deselect) return [];
+
+  const deselected = filter == null ? await board.deselect() : await board.deselect(filter);
+  if (Array.isArray(deselected)) return deselected;
+  if (deselected) return [deselected];
+  return [];
+}
+
 export async function getItems(query, log) {
   await ensureMiroReady(log);
   const board = getBoard();

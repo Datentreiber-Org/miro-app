@@ -115,6 +115,7 @@ export const DT_STORAGE_KEY_EXERCISE_RUNTIME = "dt-exercise-runtime-v1";
 export const DT_STORAGE_KEY_BOARD_FLOW_INDEX = "dt-board-flow-index-v1";
 export const DT_STORAGE_KEY_BOARD_FLOW_PREFIX = "dt-board-flow-v1:";
 export const DT_STORAGE_KEY_RUN_STATE = "dt-run-state-v1";
+export const DT_STORAGE_KEY_ACTIVE_PROPOSAL_PREFIX = "dt-active-proposal-v1:";
 export const DT_STORAGE_KEY_PROPOSAL_INDEX = "dt-proposal-index-v1";
 export const DT_STORAGE_KEY_PROPOSAL_PREFIX = "dt-proposal-v1:";
 export const DT_SHAPE_META_KEY_FLOW_CONTROL = "dt-flow-control-v1";

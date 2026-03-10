@@ -12,12 +12,12 @@ import {
   DT_CHECK_TAG_COLOR,
   normalizeStickyColorToken,
   STICKY_LAYOUT
-} from "./config.js?v=20260312-batch10prompt1";
+} from "./config.js?v=20260310-batch10-1";
 
 import { createLogger, stripHtml, extractUnderlinedText, isFiniteNumber } from "./utils.js?v=20260301-step11-hotfix2";
 import { normalizeUiLanguage, t, getLocaleForLanguage } from "./i18n/index.js?v=20260310-batch92";
 
-import * as Board from "./miro/board.js?v=20260310-batch92";
+import * as Board from "./miro/board.js?v=20260310-batch10-1";
 import * as Catalog from "./domain/catalog.js?v=20260311-batch83fix1";
 import * as OpenAI from "./ai/openai.js?v=20260309-batch9";
 import * as Memory from "./runtime/memory.js?v=20260301-step11-hotfix2";
@@ -3361,6 +3361,7 @@ async function afterMiroReady() {
   await ensureInstancesScanned(true);
   await loadMemoryRuntimeState();
   await loadBoardExerciseState();
+  await Board.purgeLegacyProposalStorage(log);
   await syncAllChatInterfacesLayout();
   await loadBoardFlows();
   renderFlowAuthoringControls({ forceLabelSync: true });
@@ -3541,7 +3542,7 @@ function simplifyProposalForPrompt(proposal, instanceId = null) {
 
 async function loadPendingProposalForInstance(instanceId, { stepId = null } = {}) {
   if (!instanceId || !state.instancesById.has(instanceId)) return null;
-  return await Board.loadLatestPendingProposal({
+  return await Board.loadActiveProposal({
     anchorInstanceId: instanceId,
     stepId: pickFirstNonEmptyString(stepId)
   }, log);
@@ -3597,9 +3598,9 @@ async function syncAllChatApplyButtonsForCurrentStep() {
   });
 }
 
-async function supersedePendingProposalsForInstanceStep(instanceId, stepId) {
-  if (!instanceId || !stepId) return [];
-  return await Board.supersedePendingProposals({
+async function clearPendingProposalForInstanceStep(instanceId, stepId) {
+  if (!instanceId || !stepId) return false;
+  return await Board.clearActiveProposal({
     anchorInstanceId: instanceId,
     stepId
   }, log);
@@ -4131,12 +4132,41 @@ async function refreshSelectionStatusFromBoard() {
   return await refreshSelectionStatusFromItems(selection || []);
 }
 
+async function restoreSelectionAfterBoardButtonRun(instanceId = null) {
+  const instance = instanceId ? (state.instancesById.get(instanceId) || null) : null;
+  const imageId = pickFirstNonEmptyString(instance?.imageId ? String(instance.imageId) : null);
+
+  state.handlingSelection = true;
+  try {
+    if (imageId) {
+      await Board.selectItems({ id: imageId }, log);
+    } else {
+      await Board.deselectItems(null, log);
+    }
+    await new Promise((resolve) => window.setTimeout(resolve, 0));
+  } catch (error) {
+    log("WARNUNG: Board-Selektion konnte nach Button-Run nicht zurückgesetzt werden: " + formatRuntimeErrorMessage(error));
+    try {
+      await Board.deselectItems(null, log);
+      await new Promise((resolve) => window.setTimeout(resolve, 0));
+    } catch (_) {}
+  } finally {
+    state.handlingSelection = false;
+  }
+}
+
 async function executeSelectedFlowControl(controlSelection, items) {
+  const anchorInstanceId = pickFirstNonEmptyString(
+    controlSelection?.flow?.anchorInstanceId,
+    controlSelection?.control?.anchorInstanceId
+  );
   const now = Date.now();
   if (
     state.lastTriggeredFlowControlItemId === controlSelection.item.id &&
     now - Number(state.lastTriggeredFlowControlAt || 0) < 1200
   ) {
+    await restoreSelectionAfterBoardButtonRun(anchorInstanceId);
+    await refreshSelectionStatusFromBoard();
     return;
   }
 
@@ -4146,8 +4176,9 @@ async function executeSelectedFlowControl(controlSelection, items) {
   try {
     await runAgentFromFlowControl(controlSelection.flow, controlSelection.control, controlSelection.item);
   } finally {
+    await restoreSelectionAfterBoardButtonRun(anchorInstanceId);
     state.flowControlRunLock = false;
-    await refreshSelectionStatusFromItems(items);
+    await refreshSelectionStatusFromBoard();
   }
 }
 
@@ -5398,11 +5429,13 @@ async function executeSelectedChatSubmit(chatSelection, items) {
     return;
   }
 
+  const instanceId = chatSelection.instance.instanceId;
   const rawInputContent = await Board.readChatInputContent(chatSelection.instance.chatInterface, log);
-  await runQuestionCallForInstance(chatSelection.instance.instanceId, rawInputContent, {
+  await runQuestionCallForInstance(instanceId, rawInputContent, {
     sourceLabel: t("question.source.canvas", getCurrentDisplayLanguage())
   });
-  await refreshSelectionStatusFromItems(items);
+  await restoreSelectionAfterBoardButtonRun(instanceId);
+  await refreshSelectionStatusFromBoard();
 }
 
 
@@ -5433,14 +5466,16 @@ async function executeSelectedChatApply(chatSelection, items) {
 
   if (!pack || !currentStep || !currentStepId) {
     await notifyRuntime(t("exercise.action.help.noStep", lang), { level: "warning" });
-    await refreshSelectionStatusFromItems(items);
+    await restoreSelectionAfterBoardButtonRun(instanceId);
+    await refreshSelectionStatusFromBoard();
     return;
   }
 
   const pendingProposal = await loadPendingProposalForInstance(instanceId, { stepId: currentStepId });
   if (!pendingProposal?.proposalId) {
     await notifyRuntime(t("chat.apply.noPending", lang), { level: "warning" });
-    await refreshSelectionStatusFromItems(items);
+    await restoreSelectionAfterBoardButtonRun(instanceId);
+    await refreshSelectionStatusFromBoard();
     return;
   }
 
@@ -5456,7 +5491,8 @@ async function executeSelectedChatApply(chatSelection, items) {
 
   if (!triggerContext.valid) {
     await notifyRuntime(triggerContext.reason || t("chat.apply.noPending", lang), { level: "warning" });
-    await refreshSelectionStatusFromItems(items);
+    await restoreSelectionAfterBoardButtonRun(instanceId);
+    await refreshSelectionStatusFromBoard();
     return;
   }
 
@@ -5466,7 +5502,8 @@ async function executeSelectedChatApply(chatSelection, items) {
     sourceLabel: t("chat.apply", lang),
     userText: getCurrentUserQuestion()
   });
-  await refreshSelectionStatusFromItems(items);
+  await restoreSelectionAfterBoardButtonRun(instanceId);
+  await refreshSelectionStatusFromBoard();
 }
 
 function getPromptConfigForSelectedInstances(selectedInstanceIds) {
@@ -5654,7 +5691,7 @@ async function runAgentForSelectedInstances(selectedInstanceIds, options = {}) {
     };
 
     if (isApplyRun) {
-      const proposal = await Board.loadLatestPendingProposal({
+      const proposal = await Board.loadActiveProposal({
         anchorInstanceId: singleInstanceId,
         stepId: currentStepId
       }, log);
@@ -5677,7 +5714,10 @@ async function runAgentForSelectedInstances(selectedInstanceIds, options = {}) {
 
       const currentHash = stateById[singleInstanceId]?.signature?.stateHash || null;
       if (proposal.basedOnStateHash && proposal.basedOnStateHash !== currentHash) {
-        await Board.updateProposalRecordStatus(proposal.proposalId, "stale", { staleAt: new Date().toISOString() }, log);
+        await Board.clearActiveProposal({
+          anchorInstanceId: singleInstanceId,
+          stepId: currentStepId
+        }, log);
         const feedback = buildStaleProposalFeedback(sourceLabel, getCurrentDisplayLanguage());
         await renderAgentResponseToInstanceOutput({
           instanceId: singleInstanceId,
@@ -5732,9 +5772,9 @@ async function runAgentForSelectedInstances(selectedInstanceIds, options = {}) {
         }, actionResult);
       }
 
-      await Board.updateProposalRecordStatus(proposal.proposalId, "applied", {
-        appliedAt: new Date().toISOString(),
-        actionStats: summarizeAppliedActions(actionResult)
+      await Board.clearActiveProposal({
+        anchorInstanceId: singleInstanceId,
+        stepId: currentStepId
       }, log);
 
       const storedFlowDirectives = ExerciseEngine.normalizeFlowControlDirectivesBlock(proposal.flowControlDirectives);
@@ -5941,11 +5981,11 @@ async function runAgentForSelectedInstances(selectedInstanceIds, options = {}) {
           flowControlDirectives,
           evaluation
         });
-        await Board.saveProposalRecord(proposalRecord, log);
-        await Board.supersedePendingProposals({
+        await Board.saveActiveProposal(proposalRecord, log);
+      } else {
+        await Board.clearActiveProposal({
           anchorInstanceId: singleInstanceId,
-          stepId: currentStepId,
-          excludeProposalId: proposalRecord.proposalId
+          stepId: currentStepId
         }, log);
       }
 
@@ -6050,7 +6090,7 @@ async function runAgentForSelectedInstances(selectedInstanceIds, options = {}) {
 
     if (currentStepId) {
       for (const instanceId of resolvedActiveIds) {
-        await supersedePendingProposalsForInstanceStep(instanceId, currentStepId);
+        await clearPendingProposalForInstanceStep(instanceId, currentStepId);
       }
     }
 
@@ -6665,17 +6705,6 @@ async function runGlobalAgent(triggerInstanceId, userText, options = {}) {
     }
     releaseAgentRunLock(runLock);
   }
-}function looksLikePlaceholderStickyText(text) {
-  const value = pickFirstNonEmptyString(text);
-  if (!value) return false;
-  const trimmed = value.trim();
-  if (!trimmed) return false;
-  if (/\[[^\]]+\]/.test(trimmed)) return true;
-  if (/^\(\s*header\s*\)/i.test(trimmed)) return true;
-  if (/^offene frage/i.test(trimmed)) return true;
-  if (/^geparkt/i.test(trimmed)) return true;
-  if (/^parkplatz/i.test(trimmed)) return true;
-  return false;
 }
 
 function promptPayloadHasVisibleContent(promptPayload) {
@@ -6729,11 +6758,6 @@ function sanitizeProposalActionsForCurrentStep(actions, {
         logSafe("INFO: Step-0-Proposal verwirft create_sticky außerhalb von Header oder Sorted-out links: " + String(area || "(leer)"));
         continue;
       }
-      if (looksLikePlaceholderStickyText(action.text)) {
-        logSafe("INFO: Step-0-Proposal verwirft Platzhalter-/Meta-Sticky: " + String(action.text || "(leer)"));
-        continue;
-      }
-
       if (!boardHasContent && !explicitExamples) {
         if (area === "header") {
           if (createdHeaderCount >= 1) {
