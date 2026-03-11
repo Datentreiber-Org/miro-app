@@ -32,7 +32,7 @@ export function normalizeFlowControl(rawControl) {
     itemId: src.itemId == null ? null : String(src.itemId),
     label: asNonEmptyString(src.label),
     labelMode: normalizeFlowLabelMode(src.labelMode),
-    runProfileId: asNonEmptyString(src.runProfileId),
+    endpointId: asNonEmptyString(src.endpointId) || asNonEmptyString(src.runProfileId),
     stepId: asNonEmptyString(src.stepId),
     anchorInstanceId: asNonEmptyString(src.anchorInstanceId),
     scope: normalizeFlowScope(src.scope),
@@ -63,8 +63,8 @@ function normalizeFlowRuntime(rawRuntime, fallbackStepId = null) {
     status: asNonEmptyString(src.status) || "active",
     lastTriggeredControlId: asNonEmptyString(src.lastTriggeredControlId),
     lastTriggeredAt: asNonEmptyString(src.lastTriggeredAt),
-    unlockedRunProfileIds: uniqueStrings(src.unlockedRunProfileIds),
-    doneRunProfileIds: uniqueStrings(src.doneRunProfileIds),
+    unlockedEndpointIds: uniqueStrings(src.unlockedEndpointIds || src.unlockedRunProfileIds),
+    doneEndpointIds: uniqueStrings(src.doneEndpointIds || src.doneRunProfileIds),
     lastDirectiveAt: asNonEmptyString(src.lastDirectiveAt)
   };
 }
@@ -86,7 +86,7 @@ export function normalizeBoardFlow(rawFlow) {
     id: asNonEmptyString(src.id),
     label: asNonEmptyString(src.label),
     labelMode: normalizeFlowLabelMode(src.labelMode),
-    packTemplateId: asNonEmptyString(src.packTemplateId),
+    exercisePackId: asNonEmptyString(src.exercisePackId) || asNonEmptyString(src.packTemplateId),
     anchorInstanceId: asNonEmptyString(src.anchorInstanceId),
     steps,
     controls,
@@ -98,15 +98,15 @@ export function normalizeBoardFlow(rawFlow) {
   return syncFlowControlStatesWithCurrentStep(normalized);
 }
 
-export function createBoardFlowFromPackTemplate(packTemplate, overrides = {}) {
-  const steps = (Object.values((packTemplate?.stepTemplates && typeof packTemplate.stepTemplates === "object") ? packTemplate.stepTemplates : {}) || [])
+export function createBoardFlowFromPack(pack, overrides = {}) {
+  const steps = (Object.values((pack?.steps && typeof pack.steps === "object") ? pack.steps : {}) || [])
     .slice()
     .sort((a, b) => Number(a.order || 0) - Number(b.order || 0))
     .map((step) => normalizeFlowStep({
       id: step.id,
       label: step.label,
       order: step.order,
-      instruction: step.instruction,
+      instruction: step.visibleInstruction || step.instruction,
       controlIds: []
     }));
 
@@ -114,8 +114,8 @@ export function createBoardFlowFromPackTemplate(packTemplate, overrides = {}) {
   return normalizeBoardFlow({
     version: 1,
     id: asNonEmptyString(overrides.id) || null,
-    label: asNonEmptyString(overrides.label) || asNonEmptyString(packTemplate?.label) || null,
-    packTemplateId: asNonEmptyString(overrides.packTemplateId) || asNonEmptyString(packTemplate?.id),
+    label: asNonEmptyString(overrides.label) || asNonEmptyString(pack?.label) || null,
+    exercisePackId: asNonEmptyString(overrides.exercisePackId) || asNonEmptyString(overrides.packTemplateId) || asNonEmptyString(pack?.id),
     anchorInstanceId: asNonEmptyString(overrides.anchorInstanceId),
     steps,
     controls: {},
@@ -124,13 +124,17 @@ export function createBoardFlowFromPackTemplate(packTemplate, overrides = {}) {
       status: "active",
       lastTriggeredControlId: null,
       lastTriggeredAt: null,
-      unlockedRunProfileIds: [],
-      doneRunProfileIds: [],
+      unlockedEndpointIds: [],
+      doneEndpointIds: [],
       lastDirectiveAt: null
     },
     createdAt: asNonEmptyString(overrides.createdAt) || new Date().toISOString(),
     updatedAt: new Date().toISOString()
   });
+}
+
+export function createBoardFlowFromPackTemplate(packTemplate, overrides = {}) {
+  return createBoardFlowFromPack(packTemplate, overrides);
 }
 
 export function createFlowControlRecord(payload = {}) {
@@ -139,7 +143,7 @@ export function createFlowControlRecord(payload = {}) {
     itemId: payload.itemId,
     label: payload.label,
     labelMode: payload.labelMode,
-    runProfileId: payload.runProfileId,
+    endpointId: payload.endpointId || payload.runProfileId,
     stepId: payload.stepId,
     anchorInstanceId: payload.anchorInstanceId,
     scope: payload.scope,
@@ -164,11 +168,15 @@ export function listFlowControlsForStep(flow, stepId) {
   return Object.values(normalized.controls).filter((control) => control.stepId === wanted);
 }
 
-export function findFlowControlsByRunProfileId(flow, runProfileId) {
+export function findFlowControlsByEndpointId(flow, endpointId) {
   const normalized = normalizeBoardFlow(flow);
-  const wanted = asNonEmptyString(runProfileId);
+  const wanted = asNonEmptyString(endpointId);
   if (!wanted) return [];
-  return Object.values(normalized.controls).filter((control) => control.runProfileId === wanted);
+  return Object.values(normalized.controls).filter((control) => control.endpointId === wanted);
+}
+
+export function findFlowControlsByRunProfileId(flow, runProfileId) {
+  return findFlowControlsByEndpointId(flow, runProfileId);
 }
 
 export function findFlowControlByItemId(flow, itemId) {
@@ -181,16 +189,16 @@ export function findFlowControlByItemId(flow, itemId) {
 export function syncFlowControlStatesWithCurrentStep(flow) {
   const normalized = (flow && flow.version === 1) ? { ...flow } : normalizeBoardFlow(flow);
   const currentStepId = asNonEmptyString(normalized?.runtime?.currentStepId);
-  const unlockedRunProfileIds = new Set(uniqueStrings(normalized?.runtime?.unlockedRunProfileIds));
-  const doneRunProfileIds = new Set(uniqueStrings(normalized?.runtime?.doneRunProfileIds));
+  const unlockedEndpointIds = new Set(uniqueStrings(normalized?.runtime?.unlockedEndpointIds));
+  const doneEndpointIds = new Set(uniqueStrings(normalized?.runtime?.doneEndpointIds));
   const controls = {};
 
   for (const [controlId, rawControl] of Object.entries((normalized?.controls && typeof normalized.controls === "object") ? normalized.controls : {})) {
     const control = normalizeFlowControl({ id: controlId, ...rawControl });
     let nextState = "disabled";
-    if (control.runProfileId && doneRunProfileIds.has(control.runProfileId)) {
+    if (control.endpointId && doneEndpointIds.has(control.endpointId)) {
       nextState = "done";
-    } else if (control.runProfileId && unlockedRunProfileIds.has(control.runProfileId)) {
+    } else if (control.endpointId && unlockedEndpointIds.has(control.endpointId)) {
       nextState = "active";
     } else if (control.stepId && currentStepId && control.stepId === currentStepId) {
       nextState = "active";
@@ -252,28 +260,28 @@ export function setFlowCurrentStep(flow, stepId) {
 
 export function applyFlowControlDirectives(flow, directives = {}) {
   const normalized = normalizeBoardFlow(flow);
-  const unlockRunProfileIds = uniqueStrings(directives.unlockRunProfileIds || []);
-  const completeRunProfileIds = uniqueStrings(directives.completeRunProfileIds || []);
-  const nextUnlocked = new Set(uniqueStrings(normalized?.runtime?.unlockedRunProfileIds || []));
-  const nextDone = new Set(uniqueStrings(normalized?.runtime?.doneRunProfileIds || []));
+  const unlockEndpointIds = uniqueStrings(directives.unlockEndpointIds || directives.unlockRunProfileIds || []);
+  const completeEndpointIds = uniqueStrings(directives.completeEndpointIds || directives.completeRunProfileIds || []);
+  const nextUnlocked = new Set(uniqueStrings(normalized?.runtime?.unlockedEndpointIds || []));
+  const nextDone = new Set(uniqueStrings(normalized?.runtime?.doneEndpointIds || []));
 
-  for (const runProfileId of unlockRunProfileIds) {
-    if (!runProfileId) continue;
-    if (!nextDone.has(runProfileId)) nextUnlocked.add(runProfileId);
+  for (const endpointId of unlockEndpointIds) {
+    if (!endpointId) continue;
+    if (!nextDone.has(endpointId)) nextUnlocked.add(endpointId);
   }
 
-  for (const runProfileId of completeRunProfileIds) {
-    if (!runProfileId) continue;
-    nextDone.add(runProfileId);
-    nextUnlocked.delete(runProfileId);
+  for (const endpointId of completeEndpointIds) {
+    if (!endpointId) continue;
+    nextDone.add(endpointId);
+    nextUnlocked.delete(endpointId);
   }
 
   return syncFlowControlStatesWithCurrentStep({
     ...normalized,
     runtime: {
       ...normalized.runtime,
-      unlockedRunProfileIds: Array.from(nextUnlocked),
-      doneRunProfileIds: Array.from(nextDone),
+      unlockedEndpointIds: Array.from(nextUnlocked),
+      doneEndpointIds: Array.from(nextDone),
       lastDirectiveAt: new Date().toISOString()
     },
     updatedAt: new Date().toISOString()
@@ -303,13 +311,13 @@ export function forceFlowControlActive(flow, controlId) {
   const wanted = asNonEmptyString(controlId);
   const control = wanted ? normalized.controls?.[wanted] : null;
   if (!control) return normalized;
-  if (!control.runProfileId) return normalized;
+  if (!control.endpointId) return normalized;
 
-  const unlockedRunProfileIds = new Set(uniqueStrings(normalized?.runtime?.unlockedRunProfileIds || []));
-  const doneRunProfileIds = new Set(uniqueStrings(normalized?.runtime?.doneRunProfileIds || []));
+  const unlockedEndpointIds = new Set(uniqueStrings(normalized?.runtime?.unlockedEndpointIds || []));
+  const doneEndpointIds = new Set(uniqueStrings(normalized?.runtime?.doneEndpointIds || []));
 
-  doneRunProfileIds.delete(control.runProfileId);
-  unlockedRunProfileIds.add(control.runProfileId);
+  doneEndpointIds.delete(control.endpointId);
+  unlockedEndpointIds.add(control.endpointId);
 
   return syncFlowControlStatesWithCurrentStep({
     ...normalized,
@@ -328,13 +336,13 @@ export function markFlowControlDone(flow, controlId) {
   const wanted = asNonEmptyString(controlId);
   const control = wanted ? normalized.controls?.[wanted] : null;
   if (!control) return normalized;
-  if (!control.runProfileId) return normalized;
+  if (!control.endpointId) return normalized;
 
-  const unlockedRunProfileIds = new Set(uniqueStrings(normalized?.runtime?.unlockedRunProfileIds || []));
-  const doneRunProfileIds = new Set(uniqueStrings(normalized?.runtime?.doneRunProfileIds || []));
+  const unlockedEndpointIds = new Set(uniqueStrings(normalized?.runtime?.unlockedEndpointIds || []));
+  const doneEndpointIds = new Set(uniqueStrings(normalized?.runtime?.doneEndpointIds || []));
 
-  unlockedRunProfileIds.delete(control.runProfileId);
-  doneRunProfileIds.add(control.runProfileId);
+  unlockedEndpointIds.delete(control.endpointId);
+  doneEndpointIds.add(control.endpointId);
 
   return syncFlowControlStatesWithCurrentStep({
     ...normalized,
@@ -353,13 +361,13 @@ export function resetFlowControlState(flow, controlId) {
   const wanted = asNonEmptyString(controlId);
   const control = wanted ? normalized.controls?.[wanted] : null;
   if (!control) return normalized;
-  if (!control.runProfileId) return normalized;
+  if (!control.endpointId) return normalized;
 
-  const unlockedRunProfileIds = new Set(uniqueStrings(normalized?.runtime?.unlockedRunProfileIds || []));
-  const doneRunProfileIds = new Set(uniqueStrings(normalized?.runtime?.doneRunProfileIds || []));
+  const unlockedEndpointIds = new Set(uniqueStrings(normalized?.runtime?.unlockedEndpointIds || []));
+  const doneEndpointIds = new Set(uniqueStrings(normalized?.runtime?.doneEndpointIds || []));
 
-  unlockedRunProfileIds.delete(control.runProfileId);
-  doneRunProfileIds.delete(control.runProfileId);
+  unlockedEndpointIds.delete(control.endpointId);
+  doneEndpointIds.delete(control.endpointId);
 
   return syncFlowControlStatesWithCurrentStep({
     ...normalized,

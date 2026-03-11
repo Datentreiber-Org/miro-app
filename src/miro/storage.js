@@ -16,9 +16,9 @@ import {
   DT_DEFAULT_FEEDBACK_CHANNEL,
   DT_DEFAULT_APP_ADMIN_POLICY,
   DT_MEMORY_RECENT_LOG_LIMIT
-} from "../config.js?v=20260310-batch10-1";
+} from "../config.js?v=20260310-batch10-3b";
 
-import { normalizeBoardFlow } from "../runtime/board-flow.js?v=20260306-batch6";
+import { normalizeBoardFlow } from "../runtime/board-flow.js?v=20260310-batch10-3b";
 import { normalizeUiLanguage } from "../i18n/index.js?v=20260310-batch92";
 import { ensureMiroReady, getBoard } from "./sdk.js?v=20260307-batch75";
 import { compareItemIdsAsc, normalizePositiveInt, asTrimmedString } from "./helpers.js?v=20260305-batch05";
@@ -253,11 +253,11 @@ export function normalizeExerciseRuntime(rawRuntime) {
     lastTriggerKey: asTrimmedString(src.lastTriggerKey),
     lastTriggerSource: asTrimmedString(src.lastTriggerSource),
     lastTriggerAt: asTrimmedString(src.lastTriggerAt),
-    lastFlowDirectiveUnlockRunProfileIds: uniqueIds(Array.isArray(src.lastFlowDirectiveUnlockRunProfileIds) ? src.lastFlowDirectiveUnlockRunProfileIds : []),
-    lastFlowDirectiveCompleteRunProfileIds: uniqueIds(Array.isArray(src.lastFlowDirectiveCompleteRunProfileIds) ? src.lastFlowDirectiveCompleteRunProfileIds : []),
+    lastFlowDirectiveUnlockEndpointIds: uniqueIds(Array.isArray(src.lastFlowDirectiveUnlockEndpointIds) ? src.lastFlowDirectiveUnlockEndpointIds : (Array.isArray(src.lastFlowDirectiveUnlockEndpointIds) ? src.lastFlowDirectiveUnlockEndpointIds : [])),
+    lastFlowDirectiveCompleteEndpointIds: uniqueIds(Array.isArray(src.lastFlowDirectiveCompleteEndpointIds) ? src.lastFlowDirectiveCompleteEndpointIds : (Array.isArray(src.lastFlowDirectiveCompleteEndpointIds) ? src.lastFlowDirectiveCompleteEndpointIds : [])),
     lastFlowDirectiveAt: asTrimmedString(src.lastFlowDirectiveAt),
     lastActiveAnchorInstanceId: asTrimmedString(src.lastActiveAnchorInstanceId),
-    lastActivePackTemplateId: asTrimmedString(src.lastActivePackTemplateId),
+    lastActiveExercisePackId: asTrimmedString(src.lastActiveExercisePackId) || asTrimmedString(src.lastActiveExercisePackId),
     lastUpdatedAt: asTrimmedString(src.lastUpdatedAt)
   };
 }
@@ -808,12 +808,12 @@ export function normalizeProposalRecord(rawRecord) {
     anchorInstanceLabel: asTrimmedString(src.anchorInstanceLabel),
     targetInstanceLabels,
     canvasTypeId: asTrimmedString(src.canvasTypeId),
-    packTemplateId: asTrimmedString(src.packTemplateId),
+    exercisePackId: asTrimmedString(src.exercisePackId) || asTrimmedString(src.packTemplateId),
     stepId: asTrimmedString(src.stepId),
     stepLabel: asTrimmedString(src.stepLabel),
     triggerKey: asTrimmedString(src.triggerKey),
     triggerSource: asTrimmedString(src.triggerSource),
-    runProfileId: asTrimmedString(src.runProfileId),
+    endpointId: asTrimmedString(src.endpointId) || asTrimmedString(src.runProfileId),
     controlId: asTrimmedString(src.controlId),
     basedOnStateHash: asTrimmedString(src.basedOnStateHash),
     basedOnHeaderSummary: asTrimmedString(src.basedOnHeaderSummary),

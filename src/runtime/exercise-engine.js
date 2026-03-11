@@ -5,13 +5,13 @@ import {
   DT_FEEDBACK_CHANNELS,
   DT_MUTATION_POLICIES,
   DT_EXECUTION_MODES
-} from "../config.js?v=20260309-batch9";
+} from "../config.js?v=20260310-batch10-3b";
 import {
   getPackDefaults,
   getStepTriggerConfig,
   listStepTransitions,
   resolveNamedTransition
-} from "../exercises/registry.js?v=20260309-batch9";
+} from "../exercises/registry.js?v=20260310-batch10-3b";
 
 function asNonEmptyString(value) {
   if (typeof value !== "string") return null;
@@ -262,7 +262,90 @@ export function buildTriggerConfigFromRunProfile(runProfile) {
     mutationPolicy: normalizeMutationPolicy(runProfile?.mutationPolicy, defaults.mutationPolicy || "none"),
     feedbackPolicy: normalizeFeedbackPolicy(runProfile?.feedbackPolicy, defaults.feedbackPolicy || "text"),
     allowedExecutionModes: normalizeAllowedExecutionModes(runProfile?.allowedExecutionModes, defaults.allowedExecutionModes || ["none"]),
-    allowedActions: normalizeUniqueStrings(runProfile?.allowedActions || [])
+    allowedActions: normalizeUniqueStrings(runProfile?.allowedActions || []),
+    prompt: asNonEmptyString(runProfile?.triggerPrompt)
+  };
+}
+
+export function resolveEndpointContext({
+  endpoint = null,
+  pack = null,
+  step = null,
+  source = "system",
+  selectionCount = 0,
+  targetInstanceLabels = [],
+  boardConfig = null
+} = {}) {
+  const triggerKey = normalizeTriggerKey(endpoint?.triggerKey);
+  const normalizedSource = normalizeTriggerSource(source);
+  const normalizedTargets = normalizeUniqueStrings(targetInstanceLabels);
+
+  if (!endpoint?.id || !triggerKey) {
+    return {
+      valid: false,
+      reason: "Endpoint enthält keinen gültigen Trigger-Key.",
+      endpointId: asNonEmptyString(endpoint?.id),
+      triggerKey: triggerKey || null,
+      scope: null,
+      intent: null,
+      source: normalizedSource,
+      targetInstanceLabels: normalizedTargets
+    };
+  }
+
+  const defaults = getTriggerDefault(triggerKey);
+  if (!defaults) {
+    return {
+      valid: false,
+      reason: `Für Trigger ${triggerKey} existiert keine ausführbare Standardkonfiguration.`,
+      endpointId: endpoint.id,
+      triggerKey,
+      scope: null,
+      intent: null,
+      source: normalizedSource,
+      targetInstanceLabels: normalizedTargets
+    };
+  }
+
+  const parsed = parseTriggerKey(triggerKey);
+  const requiresSelection = endpoint?.scope?.requiresSelection === true || defaults.requiresSelection === true;
+  const hasSelection = Number(selectionCount) > 0 && normalizedTargets.length > 0;
+  const runCfg = (endpoint?.run && typeof endpoint.run === "object") ? endpoint.run : endpoint;
+
+  if (requiresSelection && !hasSelection) {
+    return {
+      valid: false,
+      reason: `Trigger ${triggerKey} erwartet mindestens eine Ziel-Instanz.`,
+      endpointId: endpoint.id,
+      triggerKey,
+      scope: parsed?.scope || asNonEmptyString(endpoint?.scope?.type) || null,
+      intent: parsed?.intent || null,
+      source: normalizedSource,
+      requiresSelection: true,
+      mutationPolicy: normalizeMutationPolicy(runCfg?.mutationPolicy, defaults.mutationPolicy || "none"),
+      feedbackPolicy: normalizeFeedbackPolicy(runCfg?.feedbackPolicy, boardConfig?.feedbackChannelDefault || defaults.feedbackPolicy || "text"),
+      allowedExecutionModes: normalizeAllowedExecutionModes(runCfg?.allowedExecutionModes, defaults.allowedExecutionModes || ["none"]),
+      allowedActions: normalizeUniqueStrings(runCfg?.allowedActions || step?.allowedActions || []),
+      prompt: asNonEmptyString(endpoint?.prompt?.text || endpoint?.triggerPrompt),
+      targetInstanceLabels: normalizedTargets
+    };
+  }
+
+  const packDefaults = getPackDefaults(pack);
+  return {
+    valid: true,
+    endpointId: endpoint.id,
+    triggerKey,
+    scope: parsed?.scope || asNonEmptyString(endpoint?.scope?.type) || null,
+    intent: parsed?.intent || null,
+    source: normalizedSource,
+    requiresSelection,
+    mutationPolicy: normalizeMutationPolicy(runCfg?.mutationPolicy, defaults.mutationPolicy || "none"),
+    feedbackPolicy: normalizeFeedbackPolicy(runCfg?.feedbackPolicy, packDefaults.feedbackChannel || boardConfig?.feedbackChannelDefault || defaults.feedbackPolicy || "text"),
+    allowedExecutionModes: normalizeAllowedExecutionModes(runCfg?.allowedExecutionModes, defaults.allowedExecutionModes || ["none"]),
+    allowedActions: normalizeUniqueStrings(runCfg?.allowedActions || step?.allowedActions || []),
+    prompt: asNonEmptyString(endpoint?.prompt?.text || endpoint?.triggerPrompt),
+    targetInstanceLabels: normalizedTargets
   };
 }
 
@@ -317,7 +400,7 @@ export function resolveTriggerContextForRunProfile({
     feedbackPolicy: normalizeFeedbackPolicy(triggerConfig.feedbackPolicy, boardConfig?.feedbackChannelDefault || "text"),
     allowedExecutionModes: triggerConfig.allowedExecutionModes,
     allowedActions: triggerConfig.allowedActions,
-    prompt: null,
+    prompt: triggerConfig.prompt || null,
     targetInstanceLabels: normalizedTargets
   };
 }
@@ -353,16 +436,16 @@ export function normalizeFeedbackBlock(rawFeedback, { fallbackTitle = null, fall
 
 export function normalizeFlowControlDirectivesBlock(rawDirectives) {
   const src = (rawDirectives && typeof rawDirectives === "object") ? rawDirectives : {};
-  const unlockRunProfileIds = normalizeUniqueStrings(src.unlockRunProfileIds || []);
-  const completeRunProfileIds = normalizeUniqueStrings(src.completeRunProfileIds || []);
+  const unlockEndpointIds = normalizeUniqueStrings(src.unlockEndpointIds || []);
+  const completeEndpointIds = normalizeUniqueStrings(src.completeEndpointIds || []);
 
-  if (!unlockRunProfileIds.length && !completeRunProfileIds.length) {
+  if (!unlockEndpointIds.length && !completeEndpointIds.length) {
     return null;
   }
 
   return {
-    unlockRunProfileIds,
-    completeRunProfileIds
+    unlockEndpointIds,
+    completeEndpointIds
   };
 }
 

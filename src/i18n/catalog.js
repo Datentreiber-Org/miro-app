@@ -213,8 +213,8 @@ export const UI_STRINGS = Object.freeze({
   "feedback.heading.flowActions": { de: "Button-Aktionen", en: "Button actions" },
   "feedback.noAgentResponse": { de: "Keine Agentenantwort verfügbar.", en: "No agent response available." },
   "feedback.noAnswer": { de: "Keine Antwort verfügbar.", en: "No answer available." },
-  "feedback.flowAction.unlock": { de: "Button freischalten: {runProfileId}", en: "Unlock button: {runProfileId}" },
-  "feedback.flowAction.complete": { de: "Button erledigt markieren: {runProfileId}", en: "Mark button as done: {runProfileId}" },
+  "feedback.flowAction.unlock": { de: "Button freischalten: {endpointId}", en: "Unlock button: {endpointId}" },
+  "feedback.flowAction.complete": { de: "Button erledigt markieren: {endpointId}", en: "Mark button as done: {endpointId}" },
 
   "runtime.initial.loaded": { de: "Panel-JS geladen: {time}", en: "Panel JS loaded: {time}" },
   "runtime.initial.waitForMiro": { de: "Warte auf Miro SDK (Board.ensureMiroReady) ...", en: "Waiting for Miro SDK (Board.ensureMiroReady) ..." },

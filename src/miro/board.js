@@ -31,7 +31,7 @@ export {
   normalizeBoardRunState,
   loadBoardRunState,
   saveBoardRunState
-} from "./storage.js?v=20260310-batch10-1";
+} from "./storage.js?v=20260310-batch10-3b";
 
 export {
   buildAgentFeedbackContent,
@@ -84,7 +84,7 @@ export {
   setStickyNoteTagPresence,
   setStickyNoteFillColor,
   getBoardBaseContext
-} from "./items.js?v=20260310-batch10-1";
+} from "./items.js?v=20260310-batch10-3b";
 
 export {
   readFlowControlMeta,

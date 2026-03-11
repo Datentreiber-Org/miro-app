@@ -108,7 +108,8 @@ function localizeExerciseStepProjection(step, packId, lang = "de") {
   return Object.freeze({
     ...step,
     label: applyLocalizedField(step.label, override.label, normalizedLang),
-    visibleInstruction: applyLocalizedField(step.visibleInstruction, override.visibleInstruction, normalizedLang)
+    visibleInstruction: applyLocalizedField(step.visibleInstruction, override.visibleInstruction, normalizedLang),
+    summary: applyLocalizedField(step.summary, override.summary, normalizedLang)
   });
 }
 
@@ -162,6 +163,36 @@ function localizeRunProfileProjection(runProfile, lang = "de") {
   });
 }
 
+function localizeEndpointProjection(endpoint, lang = "de") {
+  const normalizedLang = normalizeUiLanguage(lang);
+  if (!endpoint || normalizedLang === "de") return endpoint;
+  const override = getRunProfileOverride(endpoint.id);
+  if (!override) return endpoint;
+  return Object.freeze({
+    ...endpoint,
+    label: applyLocalizedField(endpoint.label, override.label, normalizedLang),
+    summary: applyLocalizedField(endpoint.summary, override.summary, normalizedLang),
+    uiHint: applyLocalizedField(endpoint.uiHint, override.uiHint, normalizedLang),
+    prompt: Object.freeze({
+      ...(endpoint.prompt && typeof endpoint.prompt === "object" ? endpoint.prompt : {}),
+      text: endpoint?.prompt?.text || endpoint?.triggerPrompt || null,
+      moduleIds: Object.freeze(normalizeUniqueStrings(endpoint?.prompt?.moduleIds || endpoint?.moduleIds || []))
+    }),
+    run: Object.freeze({
+      ...(endpoint.run && typeof endpoint.run === "object" ? endpoint.run : {}),
+      allowedExecutionModes: Object.freeze(normalizeAllowedExecutionModes(endpoint?.run?.allowedExecutionModes || endpoint?.allowedExecutionModes || ["none"])),
+      allowedActions: Object.freeze(augmentAllowedActions(endpoint?.run?.allowedActions || endpoint?.allowedActions))
+    }),
+    surface: Object.freeze({
+      ...(endpoint.surface && typeof endpoint.surface === "object" ? endpoint.surface : {}),
+      panelRole: normalizeRunProfilePanelRole(endpoint?.surface?.panelRole || endpoint?.panelRole),
+      boardGroup: normalizeRunProfileBoardGroup(endpoint?.surface?.boardGroup || endpoint?.boardGroup),
+      seedByDefault: endpoint?.surface?.seedByDefault === true || endpoint?.seedByDefault === true,
+      sidecarOnly: endpoint?.surface?.sidecarOnly === true
+    })
+  });
+}
+
 function localizePromptModuleProjection(moduleProjection, lang = "de") {
   const normalizedLang = normalizeUiLanguage(lang);
   if (!moduleProjection || normalizedLang === "de") return moduleProjection;
@@ -190,6 +221,15 @@ function getRawPackTemplate(packOrId) {
   }
   if (packOrId?.id && PACK_TEMPLATES[packOrId.id]) return PACK_TEMPLATES[packOrId.id];
   return packOrId && typeof packOrId === "object" ? packOrId : null;
+}
+
+function getRawEndpoint(endpointOrId) {
+  if (typeof endpointOrId === "string") {
+    const normalizedId = asNonEmptyString(endpointOrId);
+    return normalizedId && ENDPOINTS[normalizedId] ? ENDPOINTS[normalizedId] : null;
+  }
+  if (endpointOrId?.id && ENDPOINTS[endpointOrId.id]) return ENDPOINTS[endpointOrId.id];
+  return endpointOrId && typeof endpointOrId === "object" ? endpointOrId : null;
 }
 
 function normalizeTransitions(transitions) {
@@ -228,6 +268,7 @@ function buildExerciseStep(stepDef) {
     order: Number.isFinite(Number(stepDef?.order)) ? Number(stepDef.order) : 0,
     label: asNonEmptyString(stepDef?.label) || asNonEmptyString(stepDef?.id),
     visibleInstruction: asNonEmptyString(stepDef?.visibleInstruction),
+    summary: asNonEmptyString(stepDef?.flowSummary) || asNonEmptyString(stepDef?.summary),
     allowedActions: augmentAllowedActions(stepDef?.allowedActions),
     defaultEnterTrigger: normalizeTriggerKey(stepDef?.defaultEnterTrigger),
     allowedTriggers: Object.freeze(allowedTriggers),
@@ -302,6 +343,43 @@ function buildFlowControlProjection(packDef, stepDef, triggerProfile) {
   });
 }
 
+function buildEndpointProjection(packDef, stepDef, triggerProfile) {
+  const runProfile = buildFlowControlProjection(packDef, stepDef, triggerProfile);
+  if (!runProfile?.id) return null;
+
+  const normalizedTriggerKey = normalizeTriggerKey(runProfile.triggerKey) || normalizeTriggerKey(triggerProfile?.triggerKey);
+  const allowedExecutionModes = normalizeAllowedExecutionModes(runProfile.allowedExecutionModes || triggerProfile?.allowedExecutionModes || ["none"]);
+  const allowedActions = augmentAllowedActions(runProfile.allowedActions || []);
+  const scopeType = asNonEmptyString(runProfile.defaultScopeType) || "fixed_instances";
+
+  return Object.freeze({
+    ...runProfile,
+    exercisePackId: asNonEmptyString(packDef?.exercisePackId),
+    stepId: asNonEmptyString(stepDef?.id),
+    triggerKey: normalizedTriggerKey,
+    prompt: Object.freeze({
+      text: asNonEmptyString(runProfile.triggerPrompt),
+      moduleIds: Object.freeze(normalizeUniqueStrings(runProfile.moduleIds))
+    }),
+    scope: Object.freeze({
+      type: scopeType,
+      requiresSelection: normalizedTriggerKey ? normalizedTriggerKey.startsWith("selection.") : false
+    }),
+    run: Object.freeze({
+      mutationPolicy: asNonEmptyString(runProfile.mutationPolicy),
+      feedbackPolicy: asNonEmptyString(runProfile.feedbackPolicy),
+      allowedExecutionModes: Object.freeze(allowedExecutionModes),
+      allowedActions: Object.freeze(allowedActions)
+    }),
+    surface: Object.freeze({
+      panelRole: normalizeRunProfilePanelRole(runProfile.panelRole),
+      boardGroup: normalizeRunProfileBoardGroup(runProfile.boardGroup),
+      seedByDefault: runProfile.seedByDefault === true,
+      sidecarOnly: normalizedTriggerKey === "selection.apply" || normalizedTriggerKey === "global.apply"
+    })
+  });
+}
+
 function buildPackTemplateProjection(packDef, runProfilesForPack) {
   if (!asNonEmptyString(packDef?.packTemplateId)) return null;
 
@@ -331,7 +409,7 @@ function buildPackTemplateProjection(packDef, runProfilesForPack) {
     allowedCanvasTypeIds: normalizeUniqueStrings(packDef?.allowedCanvasTypeIds),
     globalPrompt: asNonEmptyString(packDef?.packTemplateGlobalPrompt),
     stepTemplates: Object.freeze(stepTemplates),
-    runProfileIds: Object.freeze(orderedRunProfiles.map((profile) => profile.id))
+    endpointIds: Object.freeze(orderedRunProfiles.map((profile) => profile.id))
   });
 }
 
@@ -2054,7 +2132,7 @@ Methodische Regeln:
 - Wenn executionMode = none, bleibe rein orientierend oder diagnostisch.
 - Wenn executionMode = proposal_only, sage ausdrücklich, dass noch nichts angewendet wurde und was Apply tun würde.
 - Wenn executionMode = direct_apply, sage klar, was geändert wurde und warum.
-- Verwende nur sichtbare Bereichstitel, keine Roh-Keys, keine runProfileIds, keine technischen Feldnamen und keine internen Variablennamen.`
+- Verwende nur sichtbare Bereichstitel, keine Roh-Keys, keine endpointIds, keine technischen Feldnamen und keine internen Variablennamen.`
   });
 
   setPromptModuleText(pack, "analytics.fit.shared.proposal_mode", {
@@ -3486,7 +3564,7 @@ function applyAnalyticsProposalPromptPatch(pack) {
 - Wenn du Board-Mutationen vornimmst, erkläre knapp und konkret, was du verändert hast und warum.
 - Im Vorschlagsmodus musst du ausdrücklich sagen, dass noch nichts angewendet wurde.
 - Verwende in sichtbaren Antworten niemals rohe Area-Keys wie 2_user_and_situation oder 6a_information, sondern die sichtbaren Bereichstitel.
-- Verwende in sichtbaren Antworten niemals HTML/Markup, keine technischen Feldnamen wie flowControlDirectives und keine runProfileIds oder internen Variablennamen.
+- Verwende in sichtbaren Antworten niemals HTML/Markup, keine technischen Feldnamen wie flowControlDirectives und keine endpointIds oder internen Variablennamen.
 - Nutze „Header“ als sichtbaren Namen des Fokusbereichs, wenn du dich auf den Header beziehst.
 - Bleibe innerhalb des Regelwerks dieses Canvas; verweise nicht kryptisch auf externe Logiken, die hier gerade nicht ausgeführt werden.`
   });
@@ -4945,6 +5023,7 @@ export const METHOD_CATALOG = createBatch8MethodCatalog(RAW_METHOD_CATALOG);
 const exercisePacks = {};
 const packTemplates = {};
 const runProfiles = {};
+const endpoints = {};
 const promptModules = {};
 
 for (const [packId, packDef] of Object.entries(METHOD_CATALOG.packs || {})) {
@@ -4964,30 +5043,11 @@ for (const [packId, packDef] of Object.entries(METHOD_CATALOG.packs || {})) {
   for (const [stepId, rawStepDef] of Object.entries((packDef?.steps && typeof packDef.steps === "object") ? packDef.steps : {})) {
     const stepDef = rawStepDef && typeof rawStepDef === "object" ? rawStepDef : {};
     for (const rawTriggerProfile of Object.values((stepDef?.triggerProfiles && typeof stepDef.triggerProfiles === "object") ? stepDef.triggerProfiles : {})) {
-      const runProfile = buildFlowControlProjection(packDef, { id: stepId, ...stepDef }, rawTriggerProfile);
-      if (!runProfile?.id) continue;
-      const finalProfile = Object.freeze({
-        id: runProfile.id,
-        label: runProfile.label,
-        summary: runProfile.summary,
-        packTemplateId: runProfile.packTemplateId,
-        stepTemplateId: runProfile.stepTemplateId,
-        triggerKey: runProfile.triggerKey,
-        triggerPrompt: runProfile.triggerPrompt,
-        moduleIds: Object.freeze(runProfile.moduleIds),
-        mutationPolicy: runProfile.mutationPolicy,
-        feedbackPolicy: runProfile.feedbackPolicy,
-        allowedExecutionModes: Object.freeze(runProfile.allowedExecutionModes || ["none"]),
-        defaultScopeType: runProfile.defaultScopeType,
-        allowedActions: Object.freeze(runProfile.allowedActions),
-        uiHint: runProfile.uiHint,
-        sortOrder: runProfile.sortOrder,
-        panelRole: runProfile.panelRole || null,
-        boardGroup: runProfile.boardGroup || "core",
-        seedByDefault: runProfile.seedByDefault === true
-      });
-      runProfiles[finalProfile.id] = finalProfile;
-      packRunProfiles.push(runProfile);
+      const endpoint = buildEndpointProjection(packDef, { id: stepId, ...stepDef }, rawTriggerProfile);
+      if (!endpoint?.id) continue;
+      endpoints[endpoint.id] = endpoint;
+      runProfiles[endpoint.id] = endpoint;
+      packRunProfiles.push(endpoint);
     }
   }
 
@@ -5000,7 +5060,8 @@ for (const [packId, packDef] of Object.entries(METHOD_CATALOG.packs || {})) {
 export const EXERCISE_PACKS = Object.freeze(exercisePacks);
 export const PROMPT_MODULES = Object.freeze(promptModules);
 export const PACK_TEMPLATES = Object.freeze(packTemplates);
-export const RUN_PROFILES = Object.freeze(runProfiles);
+export const ENDPOINTS = Object.freeze(endpoints);
+export const RUN_PROFILES = ENDPOINTS;
 
 export function normalizeExercisePackId(value) {
   const id = asNonEmptyString(value);
@@ -5186,33 +5247,38 @@ export function getStepTemplateForPack(packOrId, stepId, options = {}) {
 }
 
 export function listRunProfilesForPack(packOrId, options = {}) {
-  const pack = getRawPackTemplate(packOrId);
-  if (!pack) return [];
-
-  const stepTemplateId = asNonEmptyString(options?.stepTemplateId);
-  const lang = getMethodLanguage(options);
-  const profiles = normalizeUniqueStrings(pack.runProfileIds)
-    .map((id) => RUN_PROFILES[id])
-    .filter(Boolean)
-    .filter((profile) => !stepTemplateId || profile.stepTemplateId === stepTemplateId)
-    .map((profile) => localizeRunProfileProjection(profile, lang));
-
-  return profiles.slice().sort((a, b) => (
-    Number(a?.sortOrder ?? Number.MAX_SAFE_INTEGER) - Number(b?.sortOrder ?? Number.MAX_SAFE_INTEGER) ||
-    String(a?.label || a?.id || "").localeCompare(String(b?.label || b?.id || ""), undefined, { sensitivity: "base" })
-  ));
-}
-
-export function listRunProfilesForStep(packOrId, stepId, options = {}) {
-  const normalizedStepId = asNonEmptyString(stepId);
-  if (!normalizedStepId) return [];
-  return listRunProfilesForPack(packOrId, {
+  const pack = getRawExercisePack(packOrId);
+  if (!pack?.id) return [];
+  const stepId = asNonEmptyString(options?.stepTemplateId) || asNonEmptyString(options?.stepId);
+  return listEndpointsForPack(pack, {
     ...options,
-    stepTemplateId: normalizedStepId
+    stepId
   });
 }
 
-export function listRunProfilesForStepSurface(packOrId, stepId, options = {}) {
+export function listEndpointsForPack(packOrId, options = {}) {
+  const pack = getRawExercisePack(packOrId);
+  if (!pack?.id) return [];
+  const stepId = asNonEmptyString(options?.stepId);
+  const lang = getMethodLanguage(options);
+  return Object.values(ENDPOINTS)
+    .filter((endpoint) => endpoint?.exercisePackId === pack.id)
+    .filter((endpoint) => !stepId || endpoint?.stepId === stepId)
+    .map((endpoint) => localizeEndpointProjection(endpoint, lang))
+    .slice()
+    .sort((a, b) => Number(a?.sortOrder ?? Number.MAX_SAFE_INTEGER) - Number(b?.sortOrder ?? Number.MAX_SAFE_INTEGER) || String(a?.label || a?.id || "").localeCompare(String(b?.label || b?.id || ""), undefined, { sensitivity: "base" }));
+}
+
+export function listStepEndpoints(packOrId, stepId, options = {}) {
+  const normalizedStepId = asNonEmptyString(stepId);
+  if (!normalizedStepId) return [];
+  return listEndpointsForPack(packOrId, {
+    ...options,
+    stepId: normalizedStepId
+  });
+}
+
+export function listStepEndpointsForSurface(packOrId, stepId, options = {}) {
   const panelRole = options && Object.prototype.hasOwnProperty.call(options, "panelRole")
     ? normalizeRunProfilePanelRole(options.panelRole)
     : null;
@@ -5221,16 +5287,27 @@ export function listRunProfilesForStepSurface(packOrId, stepId, options = {}) {
     : null;
   const seedByDefaultOnly = options?.seedByDefaultOnly === true;
 
-  return listRunProfilesForStep(packOrId, stepId, options)
-    .filter((profile) => !panelRole || profile?.panelRole === panelRole)
-    .filter((profile) => !boardGroup || profile?.boardGroup === boardGroup)
-    .filter((profile) => !seedByDefaultOnly || profile?.seedByDefault === true);
+  return listStepEndpoints(packOrId, stepId, options)
+    .filter((endpoint) => !panelRole || endpoint?.surface?.panelRole === panelRole)
+    .filter((endpoint) => !boardGroup || endpoint?.surface?.boardGroup === boardGroup)
+    .filter((endpoint) => !seedByDefaultOnly || endpoint?.surface?.seedByDefault === true);
+}
+
+export function getEndpointById(id, options = {}) {
+  const endpoint = getRawEndpoint(id);
+  return localizeEndpointProjection(endpoint, getMethodLanguage(options));
+}
+
+export function listRunProfilesForStep(packOrId, stepId, options = {}) {
+  return listStepEndpoints(packOrId, stepId, options);
+}
+
+export function listRunProfilesForStepSurface(packOrId, stepId, options = {}) {
+  return listStepEndpointsForSurface(packOrId, stepId, options);
 }
 
 export function getRunProfileById(id, options = {}) {
-  const normalizedId = asNonEmptyString(id);
-  const profile = normalizedId && RUN_PROFILES[normalizedId] ? RUN_PROFILES[normalizedId] : null;
-  return localizeRunProfileProjection(profile, getMethodLanguage(options));
+  return getEndpointById(id, options);
 }
 
 export function getPromptModuleById(id, options = {}) {

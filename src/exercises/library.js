@@ -1,5 +1,12 @@
 export {
   PROMPT_MODULES,
+  ENDPOINTS,
+  getEndpointById,
+  listEndpointsForPack,
+  listStepEndpoints,
+  listStepEndpointsForSurface,
+  getPromptModuleById,
+  getPromptModulesByIds,
   PACK_TEMPLATES,
   RUN_PROFILES,
   listPackTemplates,
@@ -9,7 +16,5 @@ export {
   listRunProfilesForPack,
   listRunProfilesForStep,
   listRunProfilesForStepSurface,
-  getRunProfileById,
-  getPromptModuleById,
-  getPromptModulesByIds
-} from "./method-catalog.js?v=20260312-batch10prompt1";
+  getRunProfileById
+} from "./method-catalog.js?v=20260310-batch10-3b";

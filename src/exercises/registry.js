@@ -16,6 +16,11 @@ export {
   getDefaultEnterTrigger,
   listStepTransitions,
   resolveNamedTransition,
+  ENDPOINTS,
+  getEndpointById,
+  listEndpointsForPack,
+  listStepEndpoints,
+  listStepEndpointsForSurface,
   listRunProfilesForStep,
   listRunProfilesForStepSurface
-} from "./method-catalog.js?v=20260312-batch10prompt1";
+} from "./method-catalog.js?v=20260310-batch10-3b";

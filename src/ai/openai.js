@@ -87,8 +87,8 @@ const AGENT_RESPONSE_JSON_SCHEMA = strictObjectSchema({
       }
     }),
     flowControlDirectives: strictObjectSchema({
-      unlockRunProfileIds: { type: "array", items: { type: "string" }, description: "Run-Profile-IDs von Buttons, die freigeschaltet werden sollen." },
-      completeRunProfileIds: { type: "array", items: { type: "string" }, description: "Run-Profile-IDs von Buttons, die als erledigt markiert werden sollen." }
+      unlockEndpointIds: { type: "array", items: { type: "string" }, description: "Endpoint-IDs von Buttons, die freigeschaltet werden sollen." },
+      completeEndpointIds: { type: "array", items: { type: "string" }, description: "Endpoint-IDs von Buttons, die als erledigt markiert werden sollen." }
     }),
     evaluation: strictObjectSchema({
       score: nullableNumberSchema("Optionaler numerischer Score."),
