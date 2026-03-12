@@ -580,8 +580,8 @@ Antworte ausschließlich mit einem JSON-Objekt in diesem Format:
     ]
   },
   "flowControlDirectives": {
-    "unlockEndpointIds": [],
-    "completeEndpointIds": []
+    "unlockRunProfileIds": [],
+    "completeRunProfileIds": []
   },
   "evaluation": {
     "score": 72,
@@ -593,7 +593,7 @@ Antworte ausschließlich mit einem JSON-Objekt in diesem Format:
 
 Vertragsregeln:
 - analysis erklärt kurz, was du im aktuellen Lauf erkannt oder entschieden hast.
-- feedback ist für Menschen geschrieben: klar, konkret, ohne technische IDs, endpointIds oder Roh-Keys.
+- feedback ist für Menschen geschrieben: klar, konkret, ohne technische IDs, runProfileIds oder Roh-Keys.
 - executionMode ist Pflicht: none, direct_apply oder proposal_only.
 - none bedeutet actions=[].
 - direct_apply bedeutet: actions sind für direkte Anwendung gedacht.

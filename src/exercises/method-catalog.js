@@ -3,10 +3,10 @@ import {
   DT_DEFAULT_FEEDBACK_CHANNEL,
   DT_TRIGGER_KEYS,
   DT_EXECUTION_MODES
-} from "../config.js?v=20260312-batch10prompt1";
+} from "../config.js?v=20260312-batch11";
 
-import { METHOD_I18N_OVERRIDES } from "../i18n/catalog.js?v=20260309-batch9";
-import { normalizeUiLanguage, pickLocalized } from "../i18n/index.js?v=20260310-batch92";
+import { METHOD_I18N_OVERRIDES } from "../i18n/catalog.js?v=20260312-batch11";
+import { normalizeUiLanguage, pickLocalized } from "../i18n/index.js?v=20260312-batch11";
 
 function asNonEmptyString(value) {
   if (typeof value !== "string") return null;
@@ -109,6 +109,7 @@ function localizeExerciseStepProjection(step, packId, lang = "de") {
     ...step,
     label: applyLocalizedField(step.label, override.label, normalizedLang),
     visibleInstruction: applyLocalizedField(step.visibleInstruction, override.visibleInstruction, normalizedLang),
+    flowInstruction: applyLocalizedField(step.flowInstruction, override.flowInstruction, normalizedLang),
     summary: applyLocalizedField(step.summary, override.summary, normalizedLang)
   });
 }
@@ -244,12 +245,15 @@ function normalizeTransitions(transitions) {
     .filter((transition) => !!transition.toStepId);
 }
 
-function buildExerciseStep(stepDef) {
+function buildExerciseStep(stepDef, packDef = null) {
   const triggerProfiles = (stepDef?.triggerProfiles && typeof stepDef.triggerProfiles === "object") ? stepDef.triggerProfiles : {};
   const allowedTriggers = {};
+  const endpointIds = [];
   for (const [triggerKey, profile] of Object.entries(triggerProfiles)) {
     const normalizedTriggerKey = normalizeTriggerKey(triggerKey) || normalizeTriggerKey(profile?.triggerKey);
     if (!normalizedTriggerKey) continue;
+    const endpointId = asNonEmptyString(profile?.flowControl?.id)
+      || [asNonEmptyString(packDef?.exercisePackId), asNonEmptyString(stepDef?.id), normalizedTriggerKey].filter(Boolean).join("::");
     allowedTriggers[normalizedTriggerKey] = Object.freeze({
       triggerKey: normalizedTriggerKey,
       scope: asNonEmptyString(profile?.scope),
@@ -261,16 +265,24 @@ function buildExerciseStep(stepDef) {
       prompt: asNonEmptyString(profile?.prompt),
       moduleIds: Object.freeze(normalizeUniqueStrings(profile?.moduleIds))
     });
+    if (endpointId) endpointIds.push(endpointId);
   }
 
   return Object.freeze({
     id: asNonEmptyString(stepDef?.id),
+    exercisePackId: asNonEmptyString(packDef?.exercisePackId),
     order: Number.isFinite(Number(stepDef?.order)) ? Number(stepDef.order) : 0,
     label: asNonEmptyString(stepDef?.label) || asNonEmptyString(stepDef?.id),
     visibleInstruction: asNonEmptyString(stepDef?.visibleInstruction),
+    flowInstruction: asNonEmptyString(stepDef?.flowInstruction),
     summary: asNonEmptyString(stepDef?.flowSummary) || asNonEmptyString(stepDef?.summary),
+    stateModelText: asNonEmptyString(stepDef?.stateModelText),
+    exitCriteriaText: asNonEmptyString(stepDef?.exitCriteriaText),
+    questionModuleIds: Object.freeze(normalizeUniqueStrings(stepDef?.questionModuleIds)),
     allowedActions: augmentAllowedActions(stepDef?.allowedActions),
     defaultEnterTrigger: normalizeTriggerKey(stepDef?.defaultEnterTrigger),
+    allowedAfterTriggerKeys: Object.freeze(normalizeUniqueStrings(stepDef?.allowedAfterTriggerKeys || stepDef?.allowedAfterTriggers || (Array.isArray(stepDef?.transitions) ? stepDef.transitions.flatMap((transition) => transition?.allowedAfterTriggers || []) : []))),
+    endpointIds: Object.freeze(normalizeUniqueStrings(endpointIds)),
     allowedTriggers: Object.freeze(allowedTriggers),
     transitions: Object.freeze(normalizeTransitions(stepDef?.transitions))
   });
@@ -279,10 +291,12 @@ function buildExerciseStep(stepDef) {
 function buildExercisePackProjection(packDef) {
   const steps = {};
   for (const [stepId, stepDef] of Object.entries((packDef?.steps && typeof packDef.steps === "object") ? packDef.steps : {})) {
-    const step = buildExerciseStep({ id: stepId, ...stepDef });
+    const step = buildExerciseStep({ id: stepId, ...stepDef }, packDef);
     if (!step.id) continue;
     steps[step.id] = step;
   }
+
+  const allowedCanvasTypeIds = normalizeUniqueStrings(packDef?.allowedCanvasTypeIds || packDef?.allowedCanvasTypes);
 
   return Object.freeze({
     id: asNonEmptyString(packDef?.exercisePackId),
@@ -291,7 +305,8 @@ function buildExercisePackProjection(packDef) {
     description: asNonEmptyString(packDef?.description),
     boardMode: asNonEmptyString(packDef?.boardMode) || "exercise",
     packTemplateId: asNonEmptyString(packDef?.packTemplateId),
-    allowedCanvasTypes: normalizeUniqueStrings(packDef?.allowedCanvasTypeIds),
+    allowedCanvasTypeIds: Object.freeze(allowedCanvasTypeIds),
+    allowedCanvasTypes: Object.freeze(allowedCanvasTypeIds),
     defaultCanvasTypeId: asNonEmptyString(packDef?.defaultCanvasTypeId),
     defaultStepId: asNonEmptyString(packDef?.defaultStepId),
     defaults: Object.freeze({
@@ -301,6 +316,7 @@ function buildExercisePackProjection(packDef) {
       appAdminPolicy: asNonEmptyString(packDef?.defaults?.appAdminPolicy) || DT_DEFAULT_APP_ADMIN_POLICY
     }),
     globalPrompt: asNonEmptyString(packDef?.exerciseGlobalPrompt),
+    didacticGlobalPrompt: asNonEmptyString(packDef?.packTemplateGlobalPrompt),
     steps: Object.freeze(steps)
   });
 }
@@ -344,39 +360,55 @@ function buildFlowControlProjection(packDef, stepDef, triggerProfile) {
 }
 
 function buildEndpointProjection(packDef, stepDef, triggerProfile) {
-  const runProfile = buildFlowControlProjection(packDef, stepDef, triggerProfile);
-  if (!runProfile?.id) return null;
+  const flowControl = (triggerProfile?.flowControl && typeof triggerProfile.flowControl === "object") ? triggerProfile.flowControl : null;
+  const normalizedTriggerKey = normalizeTriggerKey(triggerProfile?.triggerKey);
+  if (!normalizedTriggerKey) return null;
 
-  const normalizedTriggerKey = normalizeTriggerKey(runProfile.triggerKey) || normalizeTriggerKey(triggerProfile?.triggerKey);
-  const allowedExecutionModes = normalizeAllowedExecutionModes(runProfile.allowedExecutionModes || triggerProfile?.allowedExecutionModes || ["none"]);
-  const allowedActions = augmentAllowedActions(runProfile.allowedActions || []);
-  const scopeType = asNonEmptyString(runProfile.defaultScopeType) || "fixed_instances";
+  const endpointId = asNonEmptyString(flowControl?.id)
+    || [asNonEmptyString(packDef?.exercisePackId), asNonEmptyString(stepDef?.id), normalizedTriggerKey].filter(Boolean).join("::");
+  const panelRole = normalizeRunProfilePanelRole(flowControl?.panelRole);
+  const scopeType = asNonEmptyString(flowControl?.defaultScopeType) || (normalizedTriggerKey.startsWith("global.") ? "global" : "fixed_instances");
+  const allowedExecutionModes = normalizeAllowedExecutionModes(flowControl?.allowedExecutionModes || triggerProfile?.allowedExecutionModes || ["none"]);
+  const allowedActions = augmentAllowedActions(flowControl?.allowedActions || stepDef?.allowedActions || []);
+  const moduleIds = normalizeUniqueStrings([
+    ...(Array.isArray(triggerProfile?.moduleIds) ? triggerProfile.moduleIds : []),
+    ...(Array.isArray(flowControl?.moduleIds) ? flowControl.moduleIds : [])
+  ]);
 
   return Object.freeze({
-    ...runProfile,
+    id: endpointId,
     exercisePackId: asNonEmptyString(packDef?.exercisePackId),
     stepId: asNonEmptyString(stepDef?.id),
+    label: asNonEmptyString(flowControl?.label) || normalizedTriggerKey,
+    summary: asNonEmptyString(flowControl?.summary),
+    uiHint: asNonEmptyString(flowControl?.uiHint),
+    order: Number.isFinite(Number(flowControl?.sortOrder)) ? Number(flowControl.sortOrder) : Number.MAX_SAFE_INTEGER,
+    sortOrder: Number.isFinite(Number(flowControl?.sortOrder)) ? Number(flowControl.sortOrder) : Number.MAX_SAFE_INTEGER,
     triggerKey: normalizedTriggerKey,
     prompt: Object.freeze({
-      text: asNonEmptyString(runProfile.triggerPrompt),
-      moduleIds: Object.freeze(normalizeUniqueStrings(runProfile.moduleIds))
+      text: asNonEmptyString(triggerProfile?.prompt),
+      moduleIds: Object.freeze(moduleIds)
     }),
     scope: Object.freeze({
       type: scopeType,
-      requiresSelection: normalizedTriggerKey ? normalizedTriggerKey.startsWith("selection.") : false
+      mode: scopeType === "global" ? "pack" : "selection",
+      requiresSelection: triggerProfile?.requiresSelection === true || normalizedTriggerKey.startsWith("selection."),
+      allowedCanvasTypeIds: Object.freeze(normalizeUniqueStrings(packDef?.allowedCanvasTypeIds || packDef?.allowedCanvasTypes))
     }),
     run: Object.freeze({
-      mutationPolicy: asNonEmptyString(runProfile.mutationPolicy),
-      feedbackPolicy: asNonEmptyString(runProfile.feedbackPolicy),
+      mutationPolicy: asNonEmptyString(flowControl?.mutationPolicy) || asNonEmptyString(triggerProfile?.mutationPolicy),
+      feedbackPolicy: asNonEmptyString(flowControl?.feedbackPolicy) || asNonEmptyString(triggerProfile?.feedbackPolicy),
       allowedExecutionModes: Object.freeze(allowedExecutionModes),
       allowedActions: Object.freeze(allowedActions)
     }),
     surface: Object.freeze({
-      panelRole: normalizeRunProfilePanelRole(runProfile.panelRole),
-      boardGroup: normalizeRunProfileBoardGroup(runProfile.boardGroup),
-      seedByDefault: runProfile.seedByDefault === true,
+      group: panelRole || "hidden",
+      panelRole,
+      boardGroup: normalizeRunProfileBoardGroup(flowControl?.boardGroup),
+      seedByDefault: flowControl?.seedByDefault === true,
       sidecarOnly: normalizedTriggerKey === "selection.apply" || normalizedTriggerKey === "global.apply"
-    })
+    }),
+    defaultScopeType: scopeType
   });
 }
 
@@ -5093,8 +5125,8 @@ export function getPackDefaults(packOrId) {
 
 export function getAllowedCanvasTypesForPack(packOrId) {
   const pack = getRawExercisePack(packOrId);
-  if (!pack || !Array.isArray(pack.allowedCanvasTypes)) return [];
-  return normalizeUniqueStrings(pack.allowedCanvasTypes);
+  if (!pack) return [];
+  return normalizeUniqueStrings(pack.allowedCanvasTypeIds || pack.allowedCanvasTypes || []);
 }
 
 export function getDefaultCanvasTypeIdForPack(packOrId) {

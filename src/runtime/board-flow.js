@@ -32,7 +32,7 @@ export function normalizeFlowControl(rawControl) {
     itemId: src.itemId == null ? null : String(src.itemId),
     label: asNonEmptyString(src.label),
     labelMode: normalizeFlowLabelMode(src.labelMode),
-    endpointId: asNonEmptyString(src.endpointId) || asNonEmptyString(src.runProfileId),
+    endpointId: asNonEmptyString(src.endpointId),
     stepId: asNonEmptyString(src.stepId),
     anchorInstanceId: asNonEmptyString(src.anchorInstanceId),
     scope: normalizeFlowScope(src.scope),
@@ -63,8 +63,8 @@ function normalizeFlowRuntime(rawRuntime, fallbackStepId = null) {
     status: asNonEmptyString(src.status) || "active",
     lastTriggeredControlId: asNonEmptyString(src.lastTriggeredControlId),
     lastTriggeredAt: asNonEmptyString(src.lastTriggeredAt),
-    unlockedEndpointIds: uniqueStrings(src.unlockedEndpointIds || src.unlockedRunProfileIds),
-    doneEndpointIds: uniqueStrings(src.doneEndpointIds || src.doneRunProfileIds),
+    unlockedEndpointIds: uniqueStrings(src.unlockedEndpointIds),
+    doneEndpointIds: uniqueStrings(src.doneEndpointIds),
     lastDirectiveAt: asNonEmptyString(src.lastDirectiveAt)
   };
 }
@@ -86,7 +86,7 @@ export function normalizeBoardFlow(rawFlow) {
     id: asNonEmptyString(src.id),
     label: asNonEmptyString(src.label),
     labelMode: normalizeFlowLabelMode(src.labelMode),
-    exercisePackId: asNonEmptyString(src.exercisePackId) || asNonEmptyString(src.packTemplateId),
+    exercisePackId: asNonEmptyString(src.exercisePackId),
     anchorInstanceId: asNonEmptyString(src.anchorInstanceId),
     steps,
     controls,
@@ -106,7 +106,7 @@ export function createBoardFlowFromPack(pack, overrides = {}) {
       id: step.id,
       label: step.label,
       order: step.order,
-      instruction: step.visibleInstruction || step.instruction,
+      instruction: step.flowInstruction || step.visibleInstruction || step.instruction,
       controlIds: []
     }));
 
@@ -115,7 +115,7 @@ export function createBoardFlowFromPack(pack, overrides = {}) {
     version: 1,
     id: asNonEmptyString(overrides.id) || null,
     label: asNonEmptyString(overrides.label) || asNonEmptyString(pack?.label) || null,
-    exercisePackId: asNonEmptyString(overrides.exercisePackId) || asNonEmptyString(overrides.packTemplateId) || asNonEmptyString(pack?.id),
+    exercisePackId: asNonEmptyString(overrides.exercisePackId) || asNonEmptyString(pack?.id),
     anchorInstanceId: asNonEmptyString(overrides.anchorInstanceId),
     steps,
     controls: {},
@@ -143,7 +143,7 @@ export function createFlowControlRecord(payload = {}) {
     itemId: payload.itemId,
     label: payload.label,
     labelMode: payload.labelMode,
-    endpointId: payload.endpointId || payload.runProfileId,
+    endpointId: payload.endpointId,
     stepId: payload.stepId,
     anchorInstanceId: payload.anchorInstanceId,
     scope: payload.scope,
@@ -323,8 +323,8 @@ export function forceFlowControlActive(flow, controlId) {
     ...normalized,
     runtime: {
       ...normalized.runtime,
-      unlockedRunProfileIds: Array.from(unlockedRunProfileIds),
-      doneRunProfileIds: Array.from(doneRunProfileIds),
+      unlockedEndpointIds: Array.from(unlockedEndpointIds),
+      doneEndpointIds: Array.from(doneEndpointIds),
       lastDirectiveAt: new Date().toISOString()
     },
     updatedAt: new Date().toISOString()
@@ -348,8 +348,8 @@ export function markFlowControlDone(flow, controlId) {
     ...normalized,
     runtime: {
       ...normalized.runtime,
-      unlockedRunProfileIds: Array.from(unlockedRunProfileIds),
-      doneRunProfileIds: Array.from(doneRunProfileIds),
+      unlockedEndpointIds: Array.from(unlockedEndpointIds),
+      doneEndpointIds: Array.from(doneEndpointIds),
       lastDirectiveAt: new Date().toISOString()
     },
     updatedAt: new Date().toISOString()
@@ -373,8 +373,8 @@ export function resetFlowControlState(flow, controlId) {
     ...normalized,
     runtime: {
       ...normalized.runtime,
-      unlockedRunProfileIds: Array.from(unlockedRunProfileIds),
-      doneRunProfileIds: Array.from(doneRunProfileIds),
+      unlockedEndpointIds: Array.from(unlockedEndpointIds),
+      doneEndpointIds: Array.from(doneEndpointIds),
       lastDirectiveAt: new Date().toISOString()
     },
     updatedAt: new Date().toISOString()

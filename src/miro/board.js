@@ -31,12 +31,12 @@ export {
   normalizeBoardRunState,
   loadBoardRunState,
   saveBoardRunState
-} from "./storage.js?v=20260310-batch10-3b";
+} from "./storage.js?v=20260312-batch11";
 
 export {
   buildAgentFeedbackContent,
   buildQuestionAnswerContent
-} from "./feedback.js?v=20260310-batch92";
+} from "./feedback.js?v=20260312-batch11";
 
 export {
   normalizeChatInterfaceShapeIds,
@@ -58,7 +58,7 @@ export {
   syncChatPlaceholdersForLanguage,
   syncChatApplyButtonState,
   syncChatInterfaceLayoutForInstance
-} from "./chat-interface.js?v=20260310-batch92";
+} from "./chat-interface.js?v=20260312-batch11";
 
 export {
   getSelection,
@@ -84,7 +84,7 @@ export {
   setStickyNoteTagPresence,
   setStickyNoteFillColor,
   getBoardBaseContext
-} from "./items.js?v=20260310-batch10-3b";
+} from "./items.js?v=20260312-batch11";
 
 export {
   readFlowControlMeta,
@@ -93,7 +93,7 @@ export {
   computeSuggestedFlowControlPosition,
   createFlowControlShape,
   syncFlowControlShapeAppearance
-} from "./flow-controls.js?v=20260310-batch92";
+} from "./flow-controls.js?v=20260312-batch11";
 
 export {
   computeTemplateGeometry,
@@ -102,4 +102,4 @@ export {
   findInstanceByRect,
   registerInstanceFromImage,
   scanTemplateInstances
-} from "./instances.js?v=20260310-batch92";
+} from "./instances.js?v=20260312-batch11";

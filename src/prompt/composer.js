@@ -3,10 +3,10 @@ import {
   getDefaultCanvasTypeIdForPack,
   getPackDefaults,
   getStepTriggerConfig
-} from "../exercises/registry.js?v=20260310-batch10-3b";
-import { getPromptModulesByIds } from "../exercises/library.js?v=20260310-batch10-3b";
-import { parseTriggerKey } from "../runtime/exercise-engine.js?v=20260310-batch10-3b";
-import { normalizeUiLanguage } from "../i18n/index.js?v=20260309-batch91hotfix1";
+} from "../exercises/registry.js?v=20260312-batch11";
+import { getPromptModulesByIds } from "../exercises/library.js?v=20260312-batch11";
+import { parseTriggerKey } from "../runtime/exercise-engine.js?v=20260312-batch11";
+import { normalizeUiLanguage } from "../i18n/index.js?v=20260312-batch111hotfix1";
 
 function asNonEmptyString(value) {
   if (typeof value !== "string") return null;
@@ -298,9 +298,18 @@ function buildDidacticEndpointPromptBundle({ pack = null, step = null, endpoint 
 ${packPrompt}`);
   }
 
+  const didacticPackPrompt = asNonEmptyString(pack?.didacticGlobalPrompt);
+  if (didacticPackPrompt) {
+    blocks.push(`Didaktischer Kontext (${pack?.label || pack?.id || "Pack"}):
+${didacticPackPrompt}`);
+  }
+
   const stepLines = [];
   if (asNonEmptyString(step?.visibleInstruction)) stepLines.push(`- sichtbareInstruktion: ${step.visibleInstruction}`);
+  if (asNonEmptyString(step?.flowInstruction)) stepLines.push(`- flowInstruction: ${step.flowInstruction}`);
   if (asNonEmptyString(step?.summary)) stepLines.push(`- stepSummary: ${step.summary}`);
+  if (asNonEmptyString(step?.stateModelText)) stepLines.push(`- stateModel: ${step.stateModelText}`);
+  if (asNonEmptyString(step?.exitCriteriaText)) stepLines.push(`- exitCriteria: ${step.exitCriteriaText}`);
   if (stepLines.length) {
     blocks.push(`Schritt-Kontext (${step?.label || step?.id || endpoint?.stepId || "aktueller Schritt"}):
 ${stepLines.join("\n")}`);
@@ -312,6 +321,39 @@ ${stepLines.join("\n")}`);
     const title = titleParts.length ? titleParts.join(" · ") : (asNonEmptyString(endpoint?.id) || "aktueller Endpunkt");
     blocks.push(`Endpunkt-Kontext (${title}):
 ${endpointPrompt}`);
+  }
+
+  const moduleBlocks = buildPromptModuleBlocks(promptModules);
+  if (moduleBlocks.length) {
+    blocks.push(moduleBlocks.join("\n\n"));
+  }
+
+  if (!blocks.length) return null;
+  return blocks.join("\n\n");
+}
+
+function buildDidacticQuestionPromptBundle({ pack = null, step = null, promptModules = [] } = {}) {
+  const blocks = [];
+
+  const packPrompt = asNonEmptyString(pack?.globalPrompt);
+  if (packPrompt) {
+    blocks.push(`Pack-Workflow (${pack?.label || pack?.id || "Pack"}):
+${packPrompt}`);
+  }
+
+  const didacticPackPrompt = asNonEmptyString(pack?.didacticGlobalPrompt);
+  if (didacticPackPrompt) {
+    blocks.push(`Didaktischer Kontext (${pack?.label || pack?.id || "Pack"}):
+${didacticPackPrompt}`);
+  }
+
+  const stepLines = [];
+  if (asNonEmptyString(step?.visibleInstruction)) stepLines.push(`- sichtbareInstruktion: ${step.visibleInstruction}`);
+  if (asNonEmptyString(step?.flowInstruction)) stepLines.push(`- flowInstruction: ${step.flowInstruction}`);
+  if (asNonEmptyString(step?.summary)) stepLines.push(`- stepSummary: ${step.summary}`);
+  if (stepLines.length) {
+    blocks.push(`Frage-Kontext (${step?.label || step?.id || "aktueller Schritt"}):
+${stepLines.join("\n")}`);
   }
 
   const moduleBlocks = buildPromptModuleBlocks(promptModules);
@@ -617,6 +659,20 @@ ${exerciseGlobalPrompt}`);
 
     const controlBlock = buildControlContextBlock(controlContext);
     if (controlBlock) systemBlocks.push(controlBlock);
+  } else if (questionMode) {
+    const didacticQuestionBundle = buildDidacticQuestionPromptBundle({
+      pack: exercisePack,
+      step: currentStep,
+      promptModules: explicitPromptModules
+    });
+    if (didacticQuestionBundle) systemBlocks.push(didacticQuestionBundle);
+
+    const proposalModeBlock = buildProposalModeBlock({
+      exerciseContext,
+      pendingProposal,
+      questionMode
+    });
+    if (proposalModeBlock) systemBlocks.push(proposalModeBlock);
   } else if (hasFlowContext) {
     const packBlock = buildPackTemplatePromptBlock(packTemplate);
     if (packBlock) systemBlocks.push(packBlock);

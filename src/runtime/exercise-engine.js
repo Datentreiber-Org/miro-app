@@ -5,13 +5,13 @@ import {
   DT_FEEDBACK_CHANNELS,
   DT_MUTATION_POLICIES,
   DT_EXECUTION_MODES
-} from "../config.js?v=20260310-batch10-3b";
+} from "../config.js?v=20260312-batch11";
 import {
   getPackDefaults,
   getStepTriggerConfig,
   listStepTransitions,
   resolveNamedTransition
-} from "../exercises/registry.js?v=20260310-batch10-3b";
+} from "../exercises/registry.js?v=20260312-batch11";
 
 function asNonEmptyString(value) {
   if (typeof value !== "string") return null;

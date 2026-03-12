@@ -12,21 +12,21 @@ import {
   DT_CHECK_TAG_COLOR,
   normalizeStickyColorToken,
   STICKY_LAYOUT
-} from "./config.js?v=20260310-batch10-3b";
+} from "./config.js?v=20260312-batch11";
 
 import { createLogger, stripHtml, extractUnderlinedText, isFiniteNumber } from "./utils.js?v=20260301-step11-hotfix2";
-import { normalizeUiLanguage, t, getLocaleForLanguage } from "./i18n/index.js?v=20260310-batch92";
+import { normalizeUiLanguage, t, getLocaleForLanguage } from "./i18n/index.js?v=20260312-batch11";
 
-import * as Board from "./miro/board.js?v=20260310-batch10-3b";
+import * as Board from "./miro/board.js?v=20260312-batch11";
 import * as Catalog from "./domain/catalog.js?v=20260311-batch83fix1";
-import * as OpenAI from "./ai/openai.js?v=20260310-batch10-3b";
+import * as OpenAI from "./ai/openai.js?v=20260312-batch11";
 import * as Memory from "./runtime/memory.js?v=20260301-step11-hotfix2";
-import * as Exercises from "./exercises/registry.js?v=20260310-batch10-3b";
-import * as ExerciseLibrary from "./exercises/library.js?v=20260310-batch10-3b";
-import * as PromptComposer from "./prompt/composer.js?v=20260310-batch10-3b";
-import * as ExerciseEngine from "./runtime/exercise-engine.js?v=20260310-batch10-3b";
-import * as BoardFlow from "./runtime/board-flow.js?v=20260310-batch10-3b";
-import * as PanelBridge from "./runtime/panel-bridge.js?v=20260310-batch10-2";
+import * as Exercises from "./exercises/registry.js?v=20260312-batch11";
+import * as ExerciseLibrary from "./exercises/library.js?v=20260312-batch11";
+import * as PromptComposer from "./prompt/composer.js?v=20260312-batch11";
+import * as ExerciseEngine from "./runtime/exercise-engine.js?v=20260312-batch11";
+import * as BoardFlow from "./runtime/board-flow.js?v=20260312-batch11";
+import * as PanelBridge from "./runtime/panel-bridge.js?v=20260312-batch11";
 import { buildPayloadMappingHint } from "./app/payload-hints.js?v=20260305-batch06";
 import { getInsertWidthPxForCanvasType, computeTemplateInsertPosition } from "./app/template-insertion.js?v=20260308-batch76";
 import {
@@ -670,14 +670,15 @@ async function syncBoardChromeLanguage(lang = getCurrentDisplayLanguage()) {
     let nextFlow = {
       ...normalizedFlow,
       steps: (normalizedFlow.steps || []).map((step) => {
-        const templateStep = packTemplate ? ExerciseLibrary.getStepTemplateForPack(packTemplate, step.id, { lang }) : null;
+        const packStep = exercisePack ? Exercises.getExerciseStep(exercisePack, step.id, { lang }) : null;
         let nextStep = step;
-        if (step?.labelMode !== "custom" && templateStep?.label && step.label !== templateStep.label) {
-          nextStep = { ...nextStep, label: templateStep.label };
+        if (step?.labelMode !== "custom" && packStep?.label && step.label !== packStep.label) {
+          nextStep = { ...nextStep, label: packStep.label };
           changed = true;
         }
-        if (!step?.instructionOverride && templateStep?.instruction && step.instruction !== templateStep.instruction) {
-          nextStep = { ...nextStep, instruction: templateStep.instruction };
+        const nextInstruction = pickFirstNonEmptyString(packStep?.flowInstruction, packStep?.visibleInstruction);
+        if (!step?.instructionOverride && nextInstruction && step.instruction !== nextInstruction) {
+          nextStep = { ...nextStep, instruction: nextInstruction };
           changed = true;
         }
         return nextStep;
@@ -1216,6 +1217,14 @@ async function ensureSystemCheckTagId() {
   return tagId;
 }
 
+async function syncDefaultCanvasTypeToBoardConfig(canvasTypeId) {
+  const normalizedCanvasTypeId = normalizeCanvasTypeId(canvasTypeId || getSelectedCanvasTypeId() || TEMPLATE_ID);
+  await persistBoardConfig({ defaultCanvasTypeId: normalizedCanvasTypeId });
+  renderCanvasTypePicker();
+  renderExerciseControls();
+  await refreshExerciseInteractionSurface();
+}
+
 async function persistExerciseRuntime(partialRuntime = {}) {
   const merged = Board.normalizeExerciseRuntime({
     ...(state.exerciseRuntime || {}),
@@ -1472,11 +1481,11 @@ function renderRecommendationStatus() {
     .filter(Boolean)
     .join(", ") || t("recommendation.lastUnlocked.none", lang);
 
-  lines.push(t("recommendation.primaryActions", lang, { value: formatRunProfileLabels(model.primaryProfiles) }));
-  lines.push(t("recommendation.secondaryActions", lang, { value: formatRunProfileLabels(model.secondaryProfiles) }));
-  if (model.proposalProfiles.length) {
+  lines.push(t("recommendation.primaryActions", lang, { value: formatRunProfileLabels(model.primaryEndpoints) }));
+  lines.push(t("recommendation.secondaryActions", lang, { value: formatRunProfileLabels(model.secondaryEndpoints) }));
+  if (model.proposalEndpoints.length) {
     lines.push(t("recommendation.proposalActions", lang, {
-      value: formatRunProfileLabels(model.proposalProfiles) + " · " + t(model.hasPendingProposalForCurrentStep ? "recommendation.proposalState.ready" : "recommendation.proposalState.missing", lang)
+      value: formatRunProfileLabels(model.proposalEndpoints) + " · " + t(model.hasPendingProposalForCurrentStep ? "recommendation.proposalState.ready" : "recommendation.proposalState.missing", lang)
     }));
   }
   if (model.nextTransition) {
@@ -1650,7 +1659,7 @@ function renderFlowPackTemplatePicker() {
   if (!flowPackTemplateEl) return;
   const lang = getCurrentDisplayLanguage();
   const selectedId = getSelectedFlowPackTemplateId();
-  const templates = ExerciseLibrary.listPackTemplates({ lang });
+  const templates = Exercises.listExercisePacks({ lang });
 
   flowPackTemplateEl.textContent = "";
   for (const template of templates) {
@@ -1668,13 +1677,13 @@ function renderFlowStepTemplatePicker() {
   const lang = getCurrentDisplayLanguage();
   const packTemplate = getSelectedFlowPackTemplate({ lang });
   const selectedStepId = getSelectedFlowStepTemplateId(packTemplate);
-  const steps = ExerciseLibrary.listStepTemplatesForPack(packTemplate, { lang });
+  const steps = Exercises.listExerciseSteps(packTemplate, { lang });
 
   flowStepTemplateEl.textContent = "";
   if (!steps.length) {
     const option = document.createElement("option");
     option.value = "";
-    option.textContent = t("flow.noStepTemplates", lang);
+    option.textContent = t("flow.noSteps", lang);
     flowStepTemplateEl.appendChild(option);
     flowStepTemplateEl.disabled = true;
     return;
@@ -1702,7 +1711,7 @@ function renderFlowRunProfilePicker() {
   if (!profiles.length) {
     const option = document.createElement("option");
     option.value = "";
-    option.textContent = t("flow.noRunProfiles", lang);
+    option.textContent = t("flow.noEndpoints", lang);
     flowRunProfileEl.appendChild(option);
     flowRunProfileEl.disabled = true;
     return;
@@ -1771,9 +1780,9 @@ function renderFlowAuthoringStatus() {
   const scopeLabel = scopeType === "global" ? t("flow.scope.global", lang) : t("flow.scope.fixed", lang);
   const lines = [
     t("flow.status.boardFlows", lang, { count: state.boardFlowsById.size }),
-    t("flow.status.packTemplate", lang, { value: packTemplate?.label || t("flow.status.none", lang) }),
-    t("flow.status.stepTemplate", lang, { value: stepTemplate?.label || t("flow.status.none", lang) }),
-    t("flow.status.runProfile", lang, { value: runProfile?.label || t("flow.status.none", lang) }),
+    t("flow.status.exercisePack", lang, { value: packTemplate?.label || t("flow.status.none", lang) }),
+    t("flow.status.step", lang, { value: stepTemplate?.label || t("flow.status.none", lang) }),
+    t("flow.status.endpoint", lang, { value: runProfile?.label || t("flow.status.none", lang) }),
     t("flow.status.selectedCanvas", lang, { value: selectedLabels.join(", ") || t("flow.status.selectedCanvas.none", lang) }),
     t("flow.status.scope", lang, { value: scopeLabel }),
     t("flow.status.layoutMode", lang, { value: t(isStaticFlowControlLayoutEnabled() ? "flow.layoutMode.static" : "flow.layoutMode.dynamic", lang) })
@@ -1800,7 +1809,7 @@ function mergeBoardFlowWithPackTemplate(flow, packTemplate, { lang = getCurrentD
     return { flow: normalizedFlow, changed: false };
   }
 
-  const templateSteps = ExerciseLibrary.listStepTemplatesForPack(packTemplate, { lang })
+  const templateSteps = Exercises.listExerciseSteps(packTemplate, { lang })
     .slice()
     .sort((a, b) => Number(a?.order || 0) - Number(b?.order || 0));
   if (!templateSteps.length) {
@@ -2845,7 +2854,7 @@ async function runAgentFromFlowControl(flow, control, selectedItem) {
     return;
   }
 
-  const targetInstanceIds = resolveTargetInstanceIdsFromFlowScope(healthyControl.scope, packTemplate);
+  const targetInstanceIds = resolveTargetInstanceIdsFromFlowScope(healthyControl.scope, exercisePack);
   const targetInstanceLabels = getInstanceLabelsFromIds(targetInstanceIds);
   const triggerContext = ExerciseEngine.resolveEndpointContext({
     endpoint,
@@ -2870,7 +2879,6 @@ async function runAgentFromFlowControl(flow, control, selectedItem) {
     endpoint,
     currentStep,
     exercisePack,
-    packTemplate,
     targetInstanceIds
   });
   const sourceLabel = healthyControl.label || endpoint.label || "Flow Control";
@@ -2915,83 +2923,33 @@ async function runExerciseTriggerRequest(request) {
 
   if (!pack) {
     log("Exercise-Modus: Kein Exercise Pack aktiv. Bitte im Admin-Modus zuerst ein Exercise Pack auswählen.");
-    return;
+    return null;
   }
 
   if (!currentStep) {
     log("Exercise-Modus: Kein aktiver Schritt vorhanden. Bitte im Admin-Modus einen gültigen Schritt setzen.");
-    return;
+    return null;
   }
 
   const source = ExerciseEngine.normalizeTriggerSource(request?.source || getCurrentTriggerSource());
   const triggerRequest = ExerciseEngine.buildTriggerRequest(request || {});
   if (!triggerRequest.triggerKey) {
     log("Exercise-Modus: Konnte keinen gültigen Trigger aus der Anfrage ableiten.");
-    return;
+    return null;
   }
 
-  const parsed = ExerciseEngine.parseTriggerKey(triggerRequest.triggerKey);
-  if (!parsed) {
-    log("Exercise-Modus: Trigger-Key ist ungültig: " + String(triggerRequest.triggerKey));
-    return;
-  }
-
-  let targetInstanceIds = [];
-  if (parsed.scope === "selection") {
-    const selectedInstanceIds = await refreshSelectionStatusFromBoard();
-    const allowedCanvasTypes = new Set(Exercises.getAllowedCanvasTypesForPack(pack));
-    targetInstanceIds = selectedInstanceIds.filter((instanceId) => {
-      const canvasTypeId = state.instancesById.get(instanceId)?.canvasTypeId || null;
-      return !allowedCanvasTypes.size || (canvasTypeId && allowedCanvasTypes.has(canvasTypeId));
-    });
-  } else if (parsed.scope === "global") {
-    const allowedCanvasTypes = new Set(Exercises.getAllowedCanvasTypesForPack(pack));
-    targetInstanceIds = Array.from(state.instancesById.keys()).filter((instanceId) => {
-      const canvasTypeId = state.instancesById.get(instanceId)?.canvasTypeId || null;
-      return !allowedCanvasTypes.size || (canvasTypeId && allowedCanvasTypes.has(canvasTypeId));
-    });
-  }
-
-  const targetInstanceLabels = targetInstanceIds
-    .map((instanceId) => getInstanceLabelByInternalId(instanceId))
-    .filter(Boolean);
-
-  const triggerContext = ExerciseEngine.resolveTriggerContext({
-    triggerKey: triggerRequest.triggerKey,
-    source,
-    pack,
-    step: currentStep,
-    selectionCount: targetInstanceIds.length,
-    targetInstanceLabels,
-    boardConfig: state.boardConfig
+  const endpoint = ExerciseLibrary.findStepEndpointByTriggerKey(pack, currentStep.id, triggerRequest.triggerKey, {
+    lang: getCurrentDisplayLanguage()
   });
-
-  if (!triggerContext.valid) {
-    log(buildTriggerSourceLabel(triggerContext) + ": " + (triggerContext.reason || "Trigger ist im aktuellen Kontext nicht ausführbar."));
-    return;
+  if (!endpoint) {
+    log("Exercise-Modus: Kein Endpoint für Trigger gefunden: " + String(triggerRequest.triggerKey));
+    return null;
   }
 
-  if (parsed.scope === "selection") {
-    await runAgentForSelectedInstances(targetInstanceIds, {
-      userText: getCurrentUserQuestion(),
-      runMode: buildRunModeFromTriggerKey(triggerContext.triggerKey),
-      triggerContext,
-      sourceLabel: buildTriggerSourceLabel(triggerContext)
-    });
-    return;
-  }
-
-  await runGlobalAgent(null, getCurrentUserQuestion(), {
-    runMode: buildRunModeFromTriggerKey(triggerContext.triggerKey),
-    triggerContext,
-    sourceLabel: buildTriggerSourceLabel(triggerContext),
-    forcedInstanceIds: targetInstanceIds,
-    updateGlobalBaseline: false,
-    forceTargetSet: true
-  });
+  return await runEndpoint(endpoint, { source });
 }
 
-async function runEndpoint(endpoint) {
+async function runEndpoint(endpoint, options = {}) {
   if (!endpoint?.id || !endpoint?.triggerKey) {
     log("Exercise-Modus: Endpoint konnte nicht gestartet werden – Endpoint oder Trigger fehlt.");
     return null;
@@ -3028,7 +2986,7 @@ async function runEndpoint(endpoint) {
     endpoint,
     pack: exercisePack,
     step: currentStep,
-    source: getCurrentTriggerSource(),
+    source: ExerciseEngine.normalizeTriggerSource(options?.source || getCurrentTriggerSource()),
     selectionCount: targetInstanceIds.length,
     targetInstanceLabels,
     boardConfig: state.boardConfig
@@ -3077,6 +3035,22 @@ async function runEndpointById(endpointId) {
   return await runEndpoint(endpoint);
 }
 
+async function runEndpointByTriggerKey(triggerKey, options = {}) {
+  const lang = getCurrentDisplayLanguage();
+  const exercisePack = getSelectedExercisePack({ lang });
+  const currentStep = getCurrentExerciseStep(exercisePack, { lang });
+  if (!exercisePack || !currentStep) {
+    log("Exercise-Modus: Kein Pack oder Schritt aktiv für Trigger-Run.");
+    return null;
+  }
+  const endpoint = ExerciseLibrary.findStepEndpointByTriggerKey(exercisePack, currentStep.id, triggerKey, { lang });
+  if (!endpoint?.id) {
+    log("Exercise-Modus: Endpoint für Trigger nicht gefunden: " + String(triggerKey || "(leer)"));
+    return null;
+  }
+  return await runEndpoint(endpoint, { source: options?.source || getCurrentTriggerSource() });
+}
+
 async function runExerciseRunProfile(runProfile) {
   return await runEndpoint(runProfile);
 }
@@ -3091,22 +3065,19 @@ async function runExerciseAdminTriggerSelection() {
     log("Exercise-Modus: Kein Admin-Trigger ausgewählt.");
     return null;
   }
-  return await runExerciseTriggerRequest({
-    triggerKey,
-    source: getCurrentTriggerSource()
-  });
+  return await runEndpointByTriggerKey(triggerKey, { source: getCurrentTriggerSource() });
 }
 
 async function runExerciseCheck() {
-  return await runExerciseTriggerRequest({ scope: "selection", intent: "check", source: getCurrentTriggerSource() });
+  return await runEndpointByTriggerKey("selection.check", { source: getCurrentTriggerSource() });
 }
 
 async function runExerciseHint() {
-  return await runExerciseTriggerRequest({ scope: "selection", intent: "hint", source: getCurrentTriggerSource() });
+  return await runEndpointByTriggerKey("selection.hint", { source: getCurrentTriggerSource() });
 }
 
 async function runExerciseAutocorrect() {
-  return await runExerciseTriggerRequest({ scope: "selection", intent: "autocorrect", source: getCurrentTriggerSource() });
+  return await runEndpointByTriggerKey("selection.autocorrect", { source: getCurrentTriggerSource() });
 }
 
 async function advanceExerciseStep() {
@@ -3283,8 +3254,8 @@ function initPanelButtons() {
   window.dtRunExerciseCheck = runExerciseCheck;
   window.dtRunExerciseHint = runExerciseHint;
   window.dtRunExerciseAutocorrect = runExerciseAutocorrect;
-  window.dtRunExerciseReview = () => runExerciseTriggerRequest({ scope: "selection", intent: "review", source: getCurrentTriggerSource() });
-  window.dtRunExerciseCoach = () => runExerciseTriggerRequest({ scope: "selection", intent: "coach", source: getCurrentTriggerSource() });
+  window.dtRunExerciseReview = () => runEndpointByTriggerKey("selection.review", { source: getCurrentTriggerSource() });
+  window.dtRunExerciseCoach = () => runEndpointByTriggerKey("selection.coach", { source: getCurrentTriggerSource() });
   window.dtRunExerciseTrigger = runExerciseTriggerRequest;
   window.dtAdvanceExerciseStep = advanceExerciseStep;
   window.dtCreateFlowControl = createFlowControlFromAdmin;
@@ -3355,6 +3326,177 @@ async function afterMiroReady() {
 // --------------------------------------------------------------------
 // Scan throttling + Instance scan
 // --------------------------------------------------------------------
+async function loadBoardExerciseState() {
+  const fallbackCanvasTypeId = normalizeCanvasTypeId(state.selectedCanvasTypeId || TEMPLATE_ID);
+  let loadedBoardConfig = await Board.loadBoardConfigFromAnchor({
+    defaultCanvasTypeId: fallbackCanvasTypeId,
+    log
+  });
+
+  let normalizedBoardConfig = Board.normalizeBoardConfig(loadedBoardConfig, {
+    defaultCanvasTypeId: fallbackCanvasTypeId
+  });
+
+  const normalizedPackId = Exercises.normalizeExercisePackId(normalizedBoardConfig.activeExercisePackId || normalizedBoardConfig.exercisePackId);
+  const pack = normalizedPackId ? Exercises.getExercisePackById(normalizedPackId, { lang: normalizedBoardConfig.displayLanguage || normalizedBoardConfig.lang }) : null;
+  const packDefaults = Exercises.getPackDefaults(pack);
+
+  normalizedBoardConfig = {
+    ...normalizedBoardConfig,
+    boardMode: normalizedPackId ? "exercise" : "generic",
+    exercisePackId: normalizedPackId || null,
+    activeExercisePackId: normalizedPackId || null,
+    feedbackChannelDefault: normalizedBoardConfig.feedbackChannelDefault || packDefaults.feedbackChannel,
+    userMayChangePack: normalizedBoardConfig.userMayChangePack === true ? true : packDefaults.userMayChangePack,
+    userMayChangeStep: normalizedBoardConfig.userMayChangeStep === true ? true : packDefaults.userMayChangeStep,
+    appAdminPolicy: normalizedBoardConfig.appAdminPolicy || packDefaults.appAdminPolicy
+  };
+
+  const allowedCanvasTypeIds = Exercises.getAllowedCanvasTypesForPack(pack);
+  let defaultCanvasTypeId = normalizeCanvasTypeId(normalizedBoardConfig.defaultCanvasTypeId || fallbackCanvasTypeId);
+  if (allowedCanvasTypeIds.length && !allowedCanvasTypeIds.includes(defaultCanvasTypeId)) {
+    defaultCanvasTypeId = normalizeCanvasTypeId(
+      Exercises.getDefaultCanvasTypeIdForPack(pack) || allowedCanvasTypeIds[0]
+    );
+  }
+
+  normalizedBoardConfig.defaultCanvasTypeId = defaultCanvasTypeId;
+  state.boardConfig = await Board.saveBoardConfigToAnchor(normalizedBoardConfig, {
+    defaultCanvasTypeId,
+    log
+  });
+  setSelectedCanvasTypeId(defaultCanvasTypeId);
+
+  state.exerciseRuntime = Board.normalizeExerciseRuntime(await Board.loadExerciseRuntime(log));
+
+  const currentPack = getSelectedExercisePack({ lang: state.boardConfig.displayLanguage || state.boardConfig.lang });
+  const nextStepId = currentPack ? getCurrentExerciseStepId(currentPack) : null;
+  if (state.exerciseRuntime.currentStepId !== nextStepId) {
+    state.exerciseRuntime = await Board.saveExerciseRuntime({
+      ...state.exerciseRuntime,
+      currentStepId: nextStepId
+    }, log);
+  }
+
+  applyStaticUiLanguage(state.boardConfig.displayLanguage || state.boardConfig.lang);
+  renderCanvasTypePicker();
+  renderExerciseControls();
+  await syncAllChatApplyButtonsForCurrentStep();
+  await syncBoardChromeLanguage(state.boardConfig.displayLanguage || state.boardConfig.lang);
+}
+
+async function onExercisePackChange() {
+  const lang = getCurrentDisplayLanguage();
+  const selectedPackId = Exercises.normalizeExercisePackId(exercisePackEl?.value);
+  const selectedPack = Exercises.getExercisePackById(selectedPackId, { lang });
+  const allowedCanvasTypeIds = Exercises.getAllowedCanvasTypesForPack(selectedPack);
+
+  let defaultCanvasTypeId = getSelectedCanvasTypeId();
+  if (selectedPack) {
+    defaultCanvasTypeId = normalizeCanvasTypeId(
+      Exercises.getDefaultCanvasTypeIdForPack(selectedPack) || defaultCanvasTypeId
+    );
+  }
+  if (allowedCanvasTypeIds.length && !allowedCanvasTypeIds.includes(defaultCanvasTypeId)) {
+    defaultCanvasTypeId = normalizeCanvasTypeId(allowedCanvasTypeIds[0]);
+  }
+
+  setSelectedCanvasTypeId(defaultCanvasTypeId);
+
+  await persistBoardConfig({
+    boardMode: selectedPack ? "exercise" : "generic",
+    exercisePackId: selectedPack?.id || null,
+    activeExercisePackId: selectedPack?.id || null,
+    defaultCanvasTypeId,
+    ...buildBoardConfigPatchForPack(selectedPack)
+  });
+
+  const nextStepId = selectedPack
+    ? (Exercises.getExerciseStep(selectedPack, state.exerciseRuntime?.currentStepId, { lang })?.id || Exercises.getDefaultStepId(selectedPack))
+    : null;
+
+  await persistExerciseRuntime({
+    currentStepId: nextStepId,
+    lastTriggerKey: null,
+    lastTriggerSource: null,
+    lastTriggerAt: null,
+    lastFlowDirectiveUnlockEndpointIds: [],
+    lastFlowDirectiveCompleteEndpointIds: [],
+    lastFlowDirectiveAt: null
+  });
+
+  if (selectedPack?.id && nextStepId) {
+    await syncExerciseStepToBoardFlow(nextStepId, { exercisePackId: selectedPack.id });
+  }
+
+  renderCanvasTypePicker();
+  renderExerciseControls();
+  await syncAllChatApplyButtonsForCurrentStep();
+
+  log("Exercise Pack gesetzt: " + (selectedPack ? packLabelWithStep(selectedPack, nextStepId) : t("exercise.context.pack.none", lang)));
+}
+
+async function onExerciseStepChange() {
+  const lang = getCurrentDisplayLanguage();
+  const pack = getSelectedExercisePack({ lang });
+  if (!pack) {
+    await persistExerciseRuntime({ currentStepId: null });
+    renderExerciseControls();
+    return;
+  }
+
+  const requestedStepId = exerciseStepEl?.value || null;
+  const validStepId = Exercises.getExerciseStep(pack, requestedStepId, { lang })?.id || Exercises.getDefaultStepId(pack);
+  await persistExerciseRuntime({
+    currentStepId: validStepId,
+    lastFlowDirectiveUnlockEndpointIds: [],
+    lastFlowDirectiveCompleteEndpointIds: [],
+    lastFlowDirectiveAt: null
+  });
+  if (pack?.id && validStepId) {
+    await syncExerciseStepToBoardFlow(validStepId, { exercisePackId: pack.id });
+  }
+  renderExerciseControls();
+  await syncAllChatApplyButtonsForCurrentStep();
+
+  const step = Exercises.getExerciseStep(pack, validStepId, { lang });
+  log("Exercise-Schritt gesetzt: " + (step?.label || validStepId || "(leer)"));
+}
+
+function buildRunModeFromTriggerKey(triggerKey) {
+  const parsed = ExerciseEngine.parseTriggerKey(triggerKey);
+  if (!parsed) return "exercise";
+  return `exercise-${parsed.scope}-${parsed.intent}`;
+}
+
+function buildTriggerSourceLabel(triggerContext) {
+  const parsed = triggerContext ? ExerciseEngine.parseTriggerKey(triggerContext.triggerKey) : null;
+  const lang = getCurrentDisplayLanguage();
+  if (!parsed) return t("sourceLabel.exerciseAgent", lang);
+
+  const scopeLabel = t("trigger.scope." + (parsed.scope === "global" ? "global" : "selection"), lang);
+  const intentLabel = t("trigger.intent." + (parsed.intent || ""), lang);
+  return `Exercise-${scopeLabel}-${intentLabel}`;
+}
+
+async function saveAdminOverrideFromUi() {
+  const text = (adminOverrideTextEl?.value || "").trim() || null;
+  await persistExerciseRuntime({ adminOverrideText: text, adminOverride: text });
+  renderExerciseControls();
+  log("Admin-Override gespeichert: " + (text ? ("" + text.length + " Zeichen") : "leer"));
+}
+
+async function clearAdminOverrideFromUi() {
+  if (adminOverrideTextEl) adminOverrideTextEl.value = "";
+  await persistExerciseRuntime({ adminOverrideText: null, adminOverride: null });
+  renderExerciseControls();
+  log("Admin-Override geleert.");
+}
+
+async function onPanelModeChange() {
+  setPanelMode("admin");
+}
+
 function rebuildInstancesByLabelIndex() {
   state.instancesByLabel = new Map();
 
@@ -3422,18 +3564,18 @@ function buildProposalId() {
 
 function resolveRunStepId(promptRuntimeOverride = null) {
   const runtime = (promptRuntimeOverride && typeof promptRuntimeOverride === "object") ? promptRuntimeOverride : null;
-  return pickFirstNonEmptyString(runtime?.flowStep?.id, getCurrentExerciseStepId());
+  return pickFirstNonEmptyString(runtime?.currentStep?.id, getCurrentExerciseStepId());
 }
 
 function resolveRunStepLabel(promptRuntimeOverride = null) {
   const runtime = (promptRuntimeOverride && typeof promptRuntimeOverride === "object") ? promptRuntimeOverride : null;
   const lang = getCurrentDisplayLanguage();
-  return pickFirstNonEmptyString(runtime?.flowStep?.label, getCurrentExerciseStep(undefined, { lang })?.label);
+  return pickFirstNonEmptyString(runtime?.currentStep?.label, getCurrentExerciseStep(undefined, { lang })?.label);
 }
 
 function resolveRunPackTemplateId(promptRuntimeOverride = null) {
   const runtime = (promptRuntimeOverride && typeof promptRuntimeOverride === "object") ? promptRuntimeOverride : null;
-  return pickFirstNonEmptyString(runtime?.packTemplate?.id, getSelectedExercisePackTemplateId());
+  return pickFirstNonEmptyString(runtime?.exercisePack?.id, getSelectedExercisePackId());
 }
 
 function buildAreaTitleFromAreaKey(areaKey, canvasTypeId = null) {
@@ -3641,12 +3783,12 @@ function buildStoredProposalRecord({
     anchorInstanceId: instance?.instanceId || instanceId || null,
     anchorInstanceLabel: instance?.instanceLabel || null,
     canvasTypeId: instance?.canvasTypeId || null,
-    exercisePackId: pickFirstNonEmptyString(exercisePackId, runtime?.packTemplate?.id),
+    exercisePackId: pickFirstNonEmptyString(exercisePackId, runtime?.exercisePack?.id),
     stepId: pickFirstNonEmptyString(stepId),
-    stepLabel: pickFirstNonEmptyString(stepLabel, runtime?.flowStep?.label),
+    stepLabel: pickFirstNonEmptyString(stepLabel, runtime?.currentStep?.label),
     triggerKey: triggerContext?.triggerKey || null,
     triggerSource: triggerContext?.source || null,
-    endpointId: controlContext?.endpointId || runtime?.runProfile?.id || null,
+    endpointId: controlContext?.endpointId || runtime?.endpoint?.id || null,
     controlId: controlContext?.controlId || null,
     userRequest: pickFirstNonEmptyString(userRequest),
     basedOnStateHash: pickFirstNonEmptyString(basedOnStateHash),
@@ -3804,10 +3946,7 @@ function composePromptForRun({
     templateCatalog: DT_TEMPLATE_CATALOG,
     boardConfig: state.boardConfig,
     exercisePack: runtime?.exercisePack || getSelectedExercisePack(),
-    currentStep: runtime?.currentStep || runtime?.flowStep || getCurrentExerciseStep(),
-    packTemplate: runtime?.packTemplate || null,
-    flowStep: runtime?.flowStep || runtime?.currentStep || null,
-    runProfile: runtime?.runProfile || runtime?.endpoint || null,
+    currentStep: runtime?.currentStep || getCurrentExerciseStep(),
     endpoint: runtime?.endpoint || null,
     promptModules: runtime?.promptModules || [],
     controlContext: runtime?.controlContext || null,
@@ -5136,26 +5275,26 @@ function buildQuestionPromptRuntimeOverride(instanceId) {
   if (!instance || getCurrentBoardMode() !== "exercise") {
     return {
       exercisePack: null,
-      packTemplate: null,
-      flowStep: null,
+      currentStep: null,
+      endpoint: null,
       promptModules: []
     };
   }
 
   const exercisePack = getSelectedExercisePack({ lang }) || null;
   const currentStepId = exercisePack ? getCurrentExerciseStepId(exercisePack) : null;
-  const flowStep = exercisePack && currentStepId
+  const currentStep = exercisePack && currentStepId
     ? Exercises.getExerciseStep(exercisePack, currentStepId, { lang })
     : null;
-  const questionModuleIds = Array.isArray(flowStep?.questionModuleIds)
-    ? flowStep.questionModuleIds
+  const questionModuleIds = Array.isArray(currentStep?.questionModuleIds)
+    ? currentStep.questionModuleIds
     : [];
   const promptModules = ExerciseLibrary.getPromptModulesByIds(questionModuleIds, { lang });
 
   return {
     exercisePack,
-    packTemplate,
-    flowStep,
+    currentStep,
+    endpoint: null,
     promptModules
   };
 }
@@ -5172,10 +5311,10 @@ async function buildQuestionPromptBundleForInstance(instanceId, userQuestion) {
 
   const runtime = buildQuestionPromptRuntimeOverride(instanceId);
   const flowPromptContext = resolveFlowPromptContext({
-    promptRuntimeOverride: runtime?.packTemplate
+    promptRuntimeOverride: runtime?.exercisePack
       ? {
-          packTemplate: runtime.packTemplate,
-          flowStep: runtime.flowStep,
+          exercisePack: runtime.exercisePack,
+          currentStep: runtime.currentStep,
           promptModules: runtime.promptModules,
           anchorInstanceId: instanceId
         }
@@ -5184,7 +5323,7 @@ async function buildQuestionPromptBundleForInstance(instanceId, userQuestion) {
   });
   const memoryPayload = buildMemoryInjectionPayload();
   const pendingProposal = await loadPendingProposalForInstance(instanceId, {
-    stepId: runtime?.flowStep?.id || null
+    stepId: runtime?.currentStep?.id || null
   });
   const instanceLabel = instance.instanceLabel || null;
   const boardCatalog = Catalog.buildBoardCatalogSummary(state.instancesById, {
@@ -5241,11 +5380,8 @@ async function buildQuestionPromptBundleForInstance(instanceId, userQuestion) {
     templateCatalog: DT_TEMPLATE_CATALOG,
     boardConfig: state.boardConfig,
     exercisePack: runtime?.exercisePack || null,
-    currentStep: runtime?.exercisePack && runtime?.flowStep?.id
-      ? Exercises.getExerciseStep(runtime.exercisePack, runtime.flowStep.id, { lang })
-      : getCurrentExerciseStep(undefined, { lang }),
-    packTemplate: runtime?.packTemplate || null,
-    flowStep: runtime?.flowStep || null,
+    currentStep: runtime?.currentStep || getCurrentExerciseStep(undefined, { lang }),
+    
     promptModules: runtime?.promptModules || [],
     questionMode: true
   });

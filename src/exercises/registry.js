@@ -15,12 +15,29 @@ export {
   isTriggerAllowedForStep,
   getDefaultEnterTrigger,
   listStepTransitions,
-  resolveNamedTransition,
+  resolveNamedTransition
+} from "./method-catalog.js?v=20260313-batch11";
+
+export {
+  PROMPT_MODULES,
   ENDPOINTS,
   getEndpointById,
   listEndpointsForPack,
   listStepEndpoints,
   listStepEndpointsForSurface,
+  findStepEndpointByTriggerKey,
+  listStepTriggerKeysFromEndpoints,
+  isSidecarOnlyEndpoint,
+  getPromptModuleById,
+  getPromptModulesByIds,
+  PACK_TEMPLATES,
+  RUN_PROFILES,
+  listPackTemplates,
+  getPackTemplateById,
+  listStepTemplatesForPack,
+  getStepTemplateForPack,
+  listRunProfilesForPack,
   listRunProfilesForStep,
-  listRunProfilesForStepSurface
-} from "./method-catalog.js?v=20260310-batch10-3b";
+  listRunProfilesForStepSurface,
+  getRunProfileById
+} from "./library.js?v=20260313-batch11";

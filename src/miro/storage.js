@@ -16,10 +16,10 @@ import {
   DT_DEFAULT_FEEDBACK_CHANNEL,
   DT_DEFAULT_APP_ADMIN_POLICY,
   DT_MEMORY_RECENT_LOG_LIMIT
-} from "../config.js?v=20260310-batch10-3b";
+} from "../config.js?v=20260312-batch11";
 
-import { normalizeBoardFlow } from "../runtime/board-flow.js?v=20260310-batch10-3b";
-import { normalizeUiLanguage } from "../i18n/index.js?v=20260310-batch92";
+import { normalizeBoardFlow } from "../runtime/board-flow.js?v=20260312-batch11";
+import { normalizeUiLanguage } from "../i18n/index.js?v=20260312-batch11";
 import { ensureMiroReady, getBoard } from "./sdk.js?v=20260307-batch75";
 import { compareItemIdsAsc, normalizePositiveInt, asTrimmedString } from "./helpers.js?v=20260305-batch05";
 
@@ -216,7 +216,7 @@ function normalizeBoardSystemTagIds(rawSystemTagIds) {
 
 export function normalizeBoardConfig(rawConfig, { defaultCanvasTypeId = null } = {}) {
   const src = (rawConfig && typeof rawConfig === "object") ? rawConfig : {};
-  const exercisePackId = asTrimmedString(src.exercisePackId);
+  const exercisePackId = asTrimmedString(src.activeExercisePackId) || asTrimmedString(src.exercisePackId);
   const normalizedDefaultCanvasTypeId = asTrimmedString(src.defaultCanvasTypeId) || asTrimmedString(defaultCanvasTypeId);
 
   let boardMode = normalizeBoardMode(src.boardMode);
@@ -231,6 +231,7 @@ export function normalizeBoardConfig(rawConfig, { defaultCanvasTypeId = null } =
   return {
     version: 4,
     boardMode,
+    activeExercisePackId: exercisePackId || null,
     exercisePackId: exercisePackId || null,
     defaultCanvasTypeId: normalizedDefaultCanvasTypeId || null,
     feedbackChannelDefault,
@@ -238,7 +239,8 @@ export function normalizeBoardConfig(rawConfig, { defaultCanvasTypeId = null } =
     userMayChangeStep: src.userMayChangeStep === true,
     appAdminPolicy,
     appAdminUserIds,
-    displayLanguage: normalizeUiLanguage(src.displayLanguage),
+    displayLanguage: normalizeUiLanguage(src.displayLanguage || src.lang),
+    lang: normalizeUiLanguage(src.lang || src.displayLanguage),
     systemTagIds: normalizeBoardSystemTagIds(src.systemTagIds),
     staticFlowControlLayout: src.staticFlowControlLayout !== false
   };
@@ -249,15 +251,17 @@ export function normalizeExerciseRuntime(rawRuntime) {
   return {
     version: 1,
     currentStepId: asTrimmedString(src.currentStepId),
-    adminOverrideText: asTrimmedString(src.adminOverrideText),
+    adminOverride: asTrimmedString(src.adminOverride) || asTrimmedString(src.adminOverrideText),
+    adminOverrideText: asTrimmedString(src.adminOverrideText) || asTrimmedString(src.adminOverride),
     lastTriggerKey: asTrimmedString(src.lastTriggerKey),
     lastTriggerSource: asTrimmedString(src.lastTriggerSource),
     lastTriggerAt: asTrimmedString(src.lastTriggerAt),
     lastFlowDirectiveUnlockEndpointIds: uniqueIds(Array.isArray(src.lastFlowDirectiveUnlockEndpointIds) ? src.lastFlowDirectiveUnlockEndpointIds : (Array.isArray(src.lastFlowDirectiveUnlockEndpointIds) ? src.lastFlowDirectiveUnlockEndpointIds : [])),
     lastFlowDirectiveCompleteEndpointIds: uniqueIds(Array.isArray(src.lastFlowDirectiveCompleteEndpointIds) ? src.lastFlowDirectiveCompleteEndpointIds : (Array.isArray(src.lastFlowDirectiveCompleteEndpointIds) ? src.lastFlowDirectiveCompleteEndpointIds : [])),
     lastFlowDirectiveAt: asTrimmedString(src.lastFlowDirectiveAt),
-    lastActiveAnchorInstanceId: asTrimmedString(src.lastActiveAnchorInstanceId),
-    lastActiveExercisePackId: asTrimmedString(src.lastActiveExercisePackId) || asTrimmedString(src.lastActiveExercisePackId),
+    lastActiveFlowAnchorInstanceId: asTrimmedString(src.lastActiveFlowAnchorInstanceId) || asTrimmedString(src.lastActiveAnchorInstanceId),
+    lastActiveAnchorInstanceId: asTrimmedString(src.lastActiveAnchorInstanceId) || asTrimmedString(src.lastActiveFlowAnchorInstanceId),
+    lastActiveExercisePackId: asTrimmedString(src.lastActiveExercisePackId),
     lastUpdatedAt: asTrimmedString(src.lastUpdatedAt)
   };
 }
@@ -808,12 +812,12 @@ export function normalizeProposalRecord(rawRecord) {
     anchorInstanceLabel: asTrimmedString(src.anchorInstanceLabel),
     targetInstanceLabels,
     canvasTypeId: asTrimmedString(src.canvasTypeId),
-    exercisePackId: asTrimmedString(src.exercisePackId) || asTrimmedString(src.packTemplateId),
+    exercisePackId: asTrimmedString(src.exercisePackId),
     stepId: asTrimmedString(src.stepId),
     stepLabel: asTrimmedString(src.stepLabel),
     triggerKey: asTrimmedString(src.triggerKey),
     triggerSource: asTrimmedString(src.triggerSource),
-    endpointId: asTrimmedString(src.endpointId) || asTrimmedString(src.runProfileId),
+    endpointId: asTrimmedString(src.endpointId),
     controlId: asTrimmedString(src.controlId),
     basedOnStateHash: asTrimmedString(src.basedOnStateHash),
     basedOnHeaderSummary: asTrimmedString(src.basedOnHeaderSummary),
@@ -823,7 +827,10 @@ export function normalizeProposalRecord(rawRecord) {
     feedback: (src.feedback && typeof src.feedback === "object") ? { ...src.feedback } : null,
     actions,
     memoryEntry: (src.memoryEntry && typeof src.memoryEntry === "object") ? { ...src.memoryEntry } : null,
-    flowControlDirectives: (src.flowControlDirectives && typeof src.flowControlDirectives === "object") ? { ...src.flowControlDirectives } : null,
+    flowControlDirectives: (src.flowControlDirectives && typeof src.flowControlDirectives === "object") ? {
+      unlockEndpointIds: uniqueIds(src.flowControlDirectives.unlockEndpointIds || []),
+      completeEndpointIds: uniqueIds(src.flowControlDirectives.completeEndpointIds || [])
+    } : null,
     evaluation: (src.evaluation && typeof src.evaluation === "object") ? { ...src.evaluation } : null
   };
 }
