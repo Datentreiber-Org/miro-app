@@ -12,21 +12,21 @@ import {
   DT_CHECK_TAG_COLOR,
   normalizeStickyColorToken,
   STICKY_LAYOUT
-} from "./config.js?v=20260312-batch11";
+} from "./config.js?v=20260312-patch11";
 
 import { createLogger, stripHtml, extractUnderlinedText, isFiniteNumber } from "./utils.js?v=20260301-step11-hotfix2";
-import { normalizeUiLanguage, t, getLocaleForLanguage } from "./i18n/index.js?v=20260312-batch11";
+import { normalizeUiLanguage, t, getLocaleForLanguage } from "./i18n/index.js?v=20260310-batch92";
 
-import * as Board from "./miro/board.js?v=20260312-batch11";
+import * as Board from "./miro/board.js?v=20260312-patch11";
 import * as Catalog from "./domain/catalog.js?v=20260311-batch83fix1";
-import * as OpenAI from "./ai/openai.js?v=20260312-batch11";
+import * as OpenAI from "./ai/openai.js?v=20260312-patch11";
 import * as Memory from "./runtime/memory.js?v=20260301-step11-hotfix2";
-import * as Exercises from "./exercises/registry.js?v=20260312-batch11";
-import * as ExerciseLibrary from "./exercises/library.js?v=20260312-batch11";
-import * as PromptComposer from "./prompt/composer.js?v=20260312-batch11";
-import * as ExerciseEngine from "./runtime/exercise-engine.js?v=20260312-batch11";
-import * as BoardFlow from "./runtime/board-flow.js?v=20260312-batch11";
-import * as PanelBridge from "./runtime/panel-bridge.js?v=20260312-batch11";
+import * as Exercises from "./exercises/registry.js?v=20260312-patch11";
+import * as ExerciseLibrary from "./exercises/library.js?v=20260312-patch11";
+import * as PromptComposer from "./prompt/composer.js?v=20260312-patch11";
+import * as ExerciseEngine from "./runtime/exercise-engine.js?v=20260312-patch11";
+import * as BoardFlow from "./runtime/board-flow.js?v=20260312-patch11";
+import * as PanelBridge from "./runtime/panel-bridge.js?v=20260312-patch11";
 import { buildPayloadMappingHint } from "./app/payload-hints.js?v=20260305-batch06";
 import { getInsertWidthPxForCanvasType, computeTemplateInsertPosition } from "./app/template-insertion.js?v=20260308-batch76";
 import {
@@ -127,9 +127,9 @@ const adminPanelEl = document.getElementById("admin-panel");
 const apiKeyEl = document.getElementById("api-key");
 const modelEl = document.getElementById("model");
 const adminOverrideTextEl = document.getElementById("admin-override-text");
-const flowPackTemplateEl = document.getElementById("flow-pack-template");
-const flowStepTemplateEl = document.getElementById("flow-step-template");
-const flowRunProfileEl = document.getElementById("flow-run-profile");
+const flowExercisePackEl = document.getElementById("flow-exercise-pack");
+const flowStepEl = document.getElementById("flow-step");
+const flowEndpointEl = document.getElementById("flow-endpoint");
 const flowScopeTypeEl = document.getElementById("flow-scope-type");
 const flowControlLabelEl = document.getElementById("flow-control-label");
 const flowStaticLayoutToggleEl = document.getElementById("flow-static-layout-toggle");
@@ -587,7 +587,7 @@ function setElementHidden(el, hidden) {
 }
 
 function getCurrentDisplayLanguage() {
-  return normalizeUiLanguage(state.boardConfig?.displayLanguage || boardLanguageEl?.value || "de");
+  return normalizeUiLanguage(state.boardConfig?.lang || boardLanguageEl?.value || "de");
 }
 
 function getCurrentLocale() {
@@ -660,7 +660,6 @@ async function syncBoardChromeLanguage(lang = getCurrentDisplayLanguage()) {
 
   for (const [flowId, rawFlow] of state.boardFlowsById.entries()) {
     const normalizedFlow = await ensureBoardFlowHealthy(rawFlow, { persist: true, pruneMissingControls: true });
-    state.boardFlowsById.set(flowId, normalizedFlow);
     const exercisePack = normalizedFlow.exercisePackId
       ? Exercises.getExercisePackById(normalizedFlow.exercisePackId, { lang })
       : null;
@@ -670,15 +669,14 @@ async function syncBoardChromeLanguage(lang = getCurrentDisplayLanguage()) {
     let nextFlow = {
       ...normalizedFlow,
       steps: (normalizedFlow.steps || []).map((step) => {
-        const packStep = exercisePack ? Exercises.getExerciseStep(exercisePack, step.id, { lang }) : null;
+        const canonicalStep = exercisePack ? Exercises.getExerciseStep(exercisePack, step.stepId || step.id, { lang }) : null;
         let nextStep = step;
-        if (step?.labelMode !== "custom" && packStep?.label && step.label !== packStep.label) {
-          nextStep = { ...nextStep, label: packStep.label };
+        if (step?.labelMode !== "custom" && canonicalStep?.label && step.label !== canonicalStep.label) {
+          nextStep = { ...nextStep, label: canonicalStep.label };
           changed = true;
         }
-        const nextInstruction = pickFirstNonEmptyString(packStep?.flowInstruction, packStep?.visibleInstruction);
-        if (!step?.instructionOverride && nextInstruction && step.instruction !== nextInstruction) {
-          nextStep = { ...nextStep, instruction: nextInstruction };
+        if (!step?.instructionOverride && canonicalStep?.flowInstruction && step.instruction !== canonicalStep.flowInstruction) {
+          nextStep = { ...nextStep, instruction: canonicalStep.flowInstruction };
           changed = true;
         }
         return nextStep;
@@ -707,17 +705,17 @@ async function syncBoardChromeLanguage(lang = getCurrentDisplayLanguage()) {
         ...nextFlow,
         updatedAt: new Date().toISOString()
       }, log);
-      state.boardFlowsById.set(flowId, nextFlow);
     }
 
+    state.boardFlowsById.set(flowId, nextFlow);
     await syncBoardFlowVisuals(nextFlow, { reflow: false });
   }
 }
 
 async function applyBoardLanguage(nextLang, { syncBoardChrome = false } = {}) {
   const normalizedLang = normalizeUiLanguage(nextLang);
-  if (state.boardConfig?.displayLanguage !== normalizedLang) {
-    await persistBoardConfig({ displayLanguage: normalizedLang });
+  if (state.boardConfig?.lang !== normalizedLang) {
+    await persistBoardConfig({ lang: normalizedLang });
   } else if (boardLanguageEl && boardLanguageEl.value !== normalizedLang) {
     boardLanguageEl.value = normalizedLang;
   }
@@ -891,7 +889,7 @@ function installPanelRuntimeBridgeLifecycle() {
 }
 
 function getSelectedExercisePackId() {
-  return Exercises.normalizeExercisePackId(state.boardConfig?.exercisePackId);
+  return Exercises.normalizeExercisePackId(state.boardConfig?.activeExercisePackId);
 }
 
 function getSelectedExercisePack(options = {}) {
@@ -900,11 +898,12 @@ function getSelectedExercisePack(options = {}) {
 }
 
 function getCurrentBoardMode() {
-  return state.boardConfig?.boardMode === "exercise" ? "exercise" : "generic";
+  return state.boardConfig?.mode === "exercise" ? "exercise" : "generic";
 }
 
 function getAllowedCanvasTypeIdsForCurrentPack() {
-  return Exercises.getAllowedCanvasTypesForPack(getSelectedExercisePack());
+  const pack = getSelectedExercisePack();
+  return Array.isArray(pack?.allowedCanvasTypeIds) ? pack.allowedCanvasTypeIds.slice() : [];
 }
 
 function getCurrentExerciseStepId(pack = getSelectedExercisePack()) {
@@ -1119,10 +1118,10 @@ function shouldPanelHandleFlowControls() {
 function buildBoardConfigPatchForPack(pack) {
   const defaults = Exercises.getPackDefaults(pack);
   return {
-    feedbackChannelDefault: defaults.feedbackChannel,
+    defaultFeedbackTarget: defaults.feedbackChannel,
     userMayChangePack: defaults.userMayChangePack,
     userMayChangeStep: defaults.userMayChangeStep,
-    appAdminPolicy: defaults.appAdminPolicy
+    adminPolicy: defaults.appAdminPolicy
   };
 }
 
@@ -1217,14 +1216,6 @@ async function ensureSystemCheckTagId() {
   return tagId;
 }
 
-async function syncDefaultCanvasTypeToBoardConfig(canvasTypeId) {
-  const normalizedCanvasTypeId = normalizeCanvasTypeId(canvasTypeId || getSelectedCanvasTypeId() || TEMPLATE_ID);
-  await persistBoardConfig({ defaultCanvasTypeId: normalizedCanvasTypeId });
-  renderCanvasTypePicker();
-  renderExerciseControls();
-  await refreshExerciseInteractionSurface();
-}
-
 async function persistExerciseRuntime(partialRuntime = {}) {
   const merged = Board.normalizeExerciseRuntime({
     ...(state.exerciseRuntime || {}),
@@ -1315,7 +1306,7 @@ function renderExerciseContextStatus() {
 
 function renderAdminOverrideEditor() {
   if (!adminOverrideTextEl) return;
-  const nextText = state.exerciseRuntime?.adminOverrideText || "";
+  const nextText = state.exerciseRuntime?.adminOverride || "";
   if (document.activeElement !== adminOverrideTextEl) {
     adminOverrideTextEl.value = nextText;
   }
@@ -1346,7 +1337,6 @@ function buildExerciseActionSurfaceModel() {
   const lang = getCurrentDisplayLanguage();
   const pack = getSelectedExercisePack({ lang });
   const currentStep = getCurrentExerciseStep(pack, { lang });
-  const exercisePackId = pickFirstNonEmptyString(pack?.id);
   const interactionState = (state.panelInteractionState && typeof state.panelInteractionState === "object") ? state.panelInteractionState : {};
   const selectedInstanceIds = Array.isArray(interactionState.selectedInstanceIds)
     ? interactionState.selectedInstanceIds.filter(Boolean)
@@ -1356,25 +1346,19 @@ function buildExerciseActionSurfaceModel() {
     : [];
   const hasPendingProposalForCurrentStep = interactionState.currentStepId === currentStep?.id && pendingProposalInstanceIds.length > 0;
   const nextTransition = getCurrentStepTransition(pack, currentStep);
-
-  const primaryEndpoints = exercisePackId && currentStep?.id
-    ? ExerciseLibrary.listStepEndpointsForSurface(exercisePackId, currentStep.id, { panelRole: "primary", lang })
+  const endpoints = pack && currentStep?.id
+    ? ExerciseLibrary.listStepEndpoints(pack, currentStep.id, { lang }).filter((endpoint) => !ExerciseLibrary.isSidecarOnlyEndpoint(endpoint))
     : [];
-  const secondaryEndpoints = exercisePackId && currentStep?.id
-    ? ExerciseLibrary.listStepEndpointsForSurface(exercisePackId, currentStep.id, { panelRole: "secondary", lang })
-    : [];
-  const proposalEndpoints = exercisePackId && currentStep?.id
-    ? ExerciseLibrary.listStepEndpointsForSurface(exercisePackId, currentStep.id, { panelRole: "proposal", lang }).map((endpoint) => ({
-        ...endpoint,
-        disabled: endpoint?.triggerKey === "selection.apply" ? !hasPendingProposalForCurrentStep : false
-      }))
-    : [];
-
+  const primaryEndpoints = endpoints.filter((endpoint) => endpoint.surface?.group === 'primary');
+  const secondaryEndpoints = endpoints.filter((endpoint) => endpoint.surface?.group === 'secondary');
+  const proposalEndpoints = endpoints.filter((endpoint) => endpoint.surface?.group === 'proposal').map((endpoint) => ({
+    ...endpoint,
+    disabled: endpoint?.triggerKey === 'selection.apply' ? !hasPendingProposalForCurrentStep : false
+  }));
   return {
     lang,
     pack,
     currentStep,
-    exercisePackId,
     selectedInstanceIds,
     pendingProposalInstanceIds,
     hasPendingProposalForCurrentStep,
@@ -1390,7 +1374,7 @@ function clearExerciseButtonGroup(el) {
   while (el.firstChild) el.removeChild(el.firstChild);
 }
 
-function renderRunProfileButtonGroup(containerEl, endpoints = []) {
+function renderEndpointButtonGroup(containerEl, endpoints = []) {
   clearExerciseButtonGroup(containerEl);
   if (!containerEl) return;
   for (const endpoint of Array.isArray(endpoints) ? endpoints : []) {
@@ -1398,13 +1382,13 @@ function renderRunProfileButtonGroup(containerEl, endpoints = []) {
     const button = document.createElement("button");
     button.type = "button";
     button.textContent = endpoint.label || endpoint.id;
-    button.title = [endpoint.summary, endpoint.uiHint].filter(Boolean).join("\n\n");
+    button.title = [endpoint.summary].filter(Boolean).join("
+
+");
     button.dataset.dtAgentRun = "1";
     button.dataset.endpointId = endpoint.id;
     button.disabled = state.agentRunLock || endpoint.disabled === true;
-    button.addEventListener("click", () => {
-      void runEndpointById(endpoint.id);
-    });
+    button.addEventListener("click", () => { void runEndpointById(endpoint.id); });
     containerEl.appendChild(button);
   }
 }
@@ -1436,10 +1420,9 @@ async function refreshPanelInteractionState() {
     pendingProposalInstanceIds: []
   };
 
-  const exercisePackId = pickFirstNonEmptyString(pack?.id);
-  const hasProposalApply = !!(exercisePackId && currentStep?.id && ExerciseLibrary
-    .listStepEndpointsForSurface(exercisePackId, currentStep.id, { panelRole: "proposal", lang })
-    .some((endpoint) => endpoint?.triggerKey === "selection.apply"));
+  const hasProposalApply = !!(pack && currentStep?.id && ExerciseLibrary
+    .listStepEndpoints(pack, currentStep.id, { lang })
+    .some((endpoint) => endpoint?.surface?.group === "proposal" && endpoint?.triggerKey === "selection.apply"));
 
   if (currentStep?.id && hasProposalApply && selectedInstanceIds.length) {
     const proposalState = await computePendingProposalAvailabilityForSelection(currentStep.id, selectedInstanceIds);
@@ -1474,18 +1457,21 @@ function renderRecommendationStatus() {
     ? state.exerciseRuntime.lastFlowDirectiveCompleteEndpointIds.filter(Boolean)
     : [];
   const lastDirectiveAt = state.exerciseRuntime?.lastFlowDirectiveAt || null;
-  const lastActiveAnchorInstanceId = state.exerciseRuntime?.lastActiveAnchorInstanceId || null;
-  const lastActiveExercisePackId = state.exerciseRuntime?.lastActiveExercisePackId || null;
-  const formatRunProfileLabels = (runProfiles) => (Array.isArray(runProfiles) ? runProfiles : [])
-    .map((profile) => profile?.label || profile?.id)
+  const lastActiveFlowAnchorInstanceId = state.exerciseRuntime?.lastActiveFlowAnchorInstanceId || null;
+  const formatEndpointLabels = (endpoints) => (Array.isArray(endpoints) ? endpoints : [])
+    .map((endpoint) => endpoint?.label || endpoint?.id)
     .filter(Boolean)
     .join(", ") || t("recommendation.lastUnlocked.none", lang);
 
-  lines.push(t("recommendation.primaryActions", lang, { value: formatRunProfileLabels(model.primaryEndpoints) }));
-  lines.push(t("recommendation.secondaryActions", lang, { value: formatRunProfileLabels(model.secondaryEndpoints) }));
-  if (model.proposalEndpoints.length) {
+  const primaryEndpoints = model.primaryEndpoints || [];
+  const secondaryEndpoints = model.secondaryEndpoints || [];
+  const proposalEndpoints = model.proposalEndpoints || [];
+
+  lines.push(t("recommendation.primaryActions", lang, { value: formatEndpointLabels(primaryEndpoints) }));
+  lines.push(t("recommendation.secondaryActions", lang, { value: formatEndpointLabels(secondaryEndpoints) }));
+  if (proposalEndpoints.length) {
     lines.push(t("recommendation.proposalActions", lang, {
-      value: formatRunProfileLabels(model.proposalEndpoints) + " · " + t(model.hasPendingProposalForCurrentStep ? "recommendation.proposalState.ready" : "recommendation.proposalState.missing", lang)
+      value: formatEndpointLabels(proposalEndpoints) + " · " + t(model.hasPendingProposalForCurrentStep ? "recommendation.proposalState.ready" : "recommendation.proposalState.missing", lang)
     }));
   }
   if (model.nextTransition) {
@@ -1502,11 +1488,11 @@ function renderRecommendationStatus() {
   lines.push(t("recommendation.lastUnlocked", lang, { value: lastUnlocked.join(", ") || t("recommendation.lastUnlocked.none", lang) }));
   lines.push(t("recommendation.lastCompleted", lang, { value: lastCompleted.join(", ") || t("recommendation.lastCompleted.none", lang) }));
   if (lastDirectiveAt) lines.push(t("recommendation.lastDirectiveAt", lang, { value: formatLocaleDateTime(lastDirectiveAt, lang) }));
-  if (lastActiveExercisePackId || lastActiveAnchorInstanceId) {
+  if (state.boardConfig?.activeExercisePackId || lastActiveFlowAnchorInstanceId) {
     lines.push(t("recommendation.lastFlowAnchor", lang, {
       value: [
-        Exercises.getExercisePackById(lastActiveExercisePackId, { lang })?.label || lastActiveExercisePackId || null,
-        getInstanceLabelByInternalId(lastActiveAnchorInstanceId) || lastActiveAnchorInstanceId || null
+        Exercises.getExercisePackById(state.boardConfig?.activeExercisePackId, { lang })?.label || state.boardConfig?.activeExercisePackId || null,
+        getInstanceLabelByInternalId(lastActiveFlowAnchorInstanceId) || lastActiveFlowAnchorInstanceId || null
       ].filter(Boolean).join(" · ")
     }));
   }
@@ -1518,9 +1504,9 @@ function renderExerciseActionSurface() {
   const model = buildExerciseActionSurfaceModel();
   const lang = model.lang;
 
-  renderRunProfileButtonGroup(exercisePrimaryActionsEl, model.primaryEndpoints);
-  renderRunProfileButtonGroup(exerciseSecondaryActionsEl, model.secondaryEndpoints);
-  renderRunProfileButtonGroup(exerciseProposalActionsEl, model.proposalEndpoints);
+  renderEndpointButtonGroup(exercisePrimaryActionsEl, model.primaryEndpoints);
+  renderEndpointButtonGroup(exerciseSecondaryActionsEl, model.secondaryEndpoints);
+  renderEndpointButtonGroup(exerciseProposalActionsEl, model.proposalEndpoints);
 
   setElementHidden(exercisePrimaryActionsTitleEl, model.primaryEndpoints.length === 0);
   setElementHidden(exerciseSecondaryActionsTitleEl, model.secondaryEndpoints.length === 0);
@@ -1546,7 +1532,7 @@ function renderExerciseActionSurface() {
       } else {
         lines.push(t("exercise.action.help.noTransition", lang));
       }
-      if (model.proposalEndpoints.some((endpoint) => endpoint?.triggerKey === "selection.apply") && !model.hasPendingProposalForCurrentStep) {
+      if (model.proposalProfiles.some((profile) => profile?.triggerKey === "selection.apply") && !model.hasPendingProposalForCurrentStep) {
         lines.push(t("exercise.action.applyUnavailable", lang));
       }
     }
@@ -1555,21 +1541,16 @@ function renderExerciseActionSurface() {
 
 }
 
+
 function renderAdminTriggerPicker() {
   const lang = getCurrentDisplayLanguage();
-  const pack = getSelectedExercisePack({ lang });
-  const currentStep = getCurrentExerciseStep(pack, { lang });
+  const exercisePack = getSelectedExercisePack({ lang });
+  const currentStep = getCurrentExerciseStep(exercisePack, { lang });
   const panel = document.getElementById("admin-trigger-panel");
-  if (panel) {
-    setElementHidden(panel, state.panelMode !== "admin");
-  }
+  if (panel) setElementHidden(panel, state.panelMode !== "admin");
   if (!exerciseAdminTriggerEl) return;
 
-  const triggerKeys = currentStep ? Exercises.listAllowedTriggerKeys(currentStep) : [];
-  const exercisePackId = pickFirstNonEmptyString(pack?.id);
-  const runProfiles = exercisePackId && currentStep?.id
-    ? ExerciseLibrary.listStepEndpoints(exercisePackId, currentStep.id, { lang })
-    : [];
+  const triggerKeys = currentStep ? ExerciseLibrary.listStepTriggerKeysFromEndpoints(exercisePack, currentStep.id, { lang }) : [];
   const currentValue = pickFirstNonEmptyString(exerciseAdminTriggerEl.value);
   exerciseAdminTriggerEl.innerHTML = "";
 
@@ -1581,9 +1562,7 @@ function renderAdminTriggerPicker() {
     exerciseAdminTriggerEl.disabled = true;
     if (btnExerciseAdminTriggerRunEl) btnExerciseAdminTriggerRunEl.disabled = true;
     if (exerciseAdminTriggerHelpEl) {
-      exerciseAdminTriggerHelpEl.textContent = currentStep
-        ? t("admin.stepTrigger.help", lang)
-        : t("exercise.action.help.noStep", lang);
+      exerciseAdminTriggerHelpEl.textContent = currentStep ? t("admin.stepTrigger.help", lang) : t("exercise.action.help.noStep", lang);
     }
     return;
   }
@@ -1591,13 +1570,12 @@ function renderAdminTriggerPicker() {
   for (const triggerKey of triggerKeys) {
     const option = document.createElement("option");
     option.value = triggerKey;
-    const matchingProfile = runProfiles.find((profile) => profile?.triggerKey === triggerKey);
-    option.textContent = matchingProfile?.label ? `${triggerKey} — ${matchingProfile.label}` : triggerKey;
+    const matchingEndpoint = ExerciseLibrary.findStepEndpointByTriggerKey(exercisePack, currentStep.id, triggerKey, { lang });
+    option.textContent = matchingEndpoint?.label ? `${triggerKey} — ${matchingEndpoint.label}` : triggerKey;
     exerciseAdminTriggerEl.appendChild(option);
   }
-  if (currentValue && triggerKeys.includes(currentValue)) {
-    exerciseAdminTriggerEl.value = currentValue;
-  }
+
+  if (currentValue && triggerKeys.includes(currentValue)) exerciseAdminTriggerEl.value = currentValue;
   exerciseAdminTriggerEl.disabled = false;
   if (btnExerciseAdminTriggerRunEl) btnExerciseAdminTriggerRunEl.disabled = state.agentRunLock || !triggerKeys.length;
   if (exerciseAdminTriggerHelpEl) exerciseAdminTriggerHelpEl.textContent = t("admin.stepTrigger.help", lang);
@@ -1616,76 +1594,76 @@ function renderExerciseControls() {
   void refreshExerciseInteractionSurface();
 }
 
-function getSelectedFlowPackTemplateId() {
-  return (flowPackTemplateEl?.value || "").trim() || null;
+function getSelectedFlowExercisePackId() {
+  return pickFirstNonEmptyString(flowExercisePackEl?.value, getSelectedExercisePackId());
 }
 
-function getSelectedFlowPackTemplate(options = {}) {
+function getSelectedFlowExercisePack(options = {}) {
   const lang = normalizeUiLanguage(options.lang || getCurrentDisplayLanguage());
-  return Exercises.getExercisePackById(getSelectedFlowPackTemplateId(), { lang });
+  return Exercises.getExercisePackById(getSelectedFlowExercisePackId(), { lang });
 }
 
-function getSelectedFlowStepTemplateId(packTemplate = getSelectedFlowPackTemplate()) {
-  if (!packTemplate) return null;
-  const requestedId = (flowStepTemplateEl?.value || "").trim() || null;
-  const exact = requestedId ? Exercises.getExerciseStep(packTemplate, requestedId) : null;
+function getSelectedFlowStepId(exercisePack = getSelectedFlowExercisePack()) {
+  if (!exercisePack) return null;
+  const requestedId = pickFirstNonEmptyString(flowStepEl?.value);
+  const exact = requestedId ? Exercises.getExerciseStep(exercisePack, requestedId) : null;
   if (exact) return exact.id;
-  return Exercises.listExerciseSteps(packTemplate)[0]?.id || null;
+  return Exercises.getDefaultStepId(exercisePack) || Exercises.listExerciseSteps(exercisePack)[0]?.id || null;
 }
 
-function getSelectedFlowStepTemplate(packTemplate = getSelectedFlowPackTemplate(), options = {}) {
+function getSelectedFlowStep(exercisePack = getSelectedFlowExercisePack(), options = {}) {
   const lang = normalizeUiLanguage(options.lang || getCurrentDisplayLanguage());
-  const stepId = getSelectedFlowStepTemplateId(packTemplate);
-  return stepId ? Exercises.getExerciseStep(packTemplate, stepId, { lang }) : null;
+  const stepId = getSelectedFlowStepId(exercisePack);
+  return stepId ? Exercises.getExerciseStep(exercisePack, stepId, { lang }) : null;
 }
 
-function getSelectedFlowRunProfileId(packTemplate = getSelectedFlowPackTemplate(), stepTemplate = getSelectedFlowStepTemplate(packTemplate)) {
-  if (!packTemplate) return null;
-  const requestedId = (flowRunProfileEl?.value || "").trim() || null;
+function getSelectedFlowEndpointId(exercisePack = getSelectedFlowExercisePack(), step = getSelectedFlowStep(exercisePack)) {
+  if (!exercisePack || !step) return null;
+  const requestedId = pickFirstNonEmptyString(flowEndpointEl?.value);
   const exact = requestedId ? ExerciseLibrary.getEndpointById(requestedId) : null;
-  if (exact && !isSidecarOnlyEndpoint(exact) && exact.exercisePackId === packTemplate.id && (!stepTemplate || exact.stepId === stepTemplate.id)) {
+  if (exact && exact.exercisePackId === exercisePack.id && exact.stepId === step.id && !ExerciseLibrary.isSidecarOnlyEndpoint(exact) && exact.surface?.group !== 'hidden') {
     return exact.id;
   }
-  return listAuthorableRunProfilesForPack(packTemplate, { stepTemplateId: stepTemplate?.id || null })[0]?.id || null;
+  return listAuthorableEndpointsForStep(exercisePack, step.id)[0]?.id || null;
 }
 
-function getSelectedFlowRunProfile(packTemplate = getSelectedFlowPackTemplate(), stepTemplate = getSelectedFlowStepTemplate(packTemplate), options = {}) {
+function getSelectedFlowEndpoint(exercisePack = getSelectedFlowExercisePack(), step = getSelectedFlowStep(exercisePack), options = {}) {
   const lang = normalizeUiLanguage(options.lang || getCurrentDisplayLanguage());
-  const profileId = getSelectedFlowRunProfileId(packTemplate, stepTemplate);
-  return profileId ? ExerciseLibrary.getEndpointById(profileId, { lang }) : null;
+  const endpointId = getSelectedFlowEndpointId(exercisePack, step);
+  return endpointId ? ExerciseLibrary.getEndpointById(endpointId, { lang }) : null;
 }
 
-function renderFlowPackTemplatePicker() {
-  if (!flowPackTemplateEl) return;
+function renderFlowExercisePackPicker() {
+  if (!flowExercisePackEl) return;
   const lang = getCurrentDisplayLanguage();
-  const selectedId = getSelectedFlowPackTemplateId();
-  const templates = Exercises.listExercisePacks({ lang });
+  const selectedId = getSelectedFlowExercisePackId();
+  const packs = Exercises.listExercisePacks({ lang });
 
-  flowPackTemplateEl.textContent = "";
-  for (const template of templates) {
+  flowExercisePackEl.textContent = "";
+  for (const pack of packs) {
     const option = document.createElement("option");
-    option.value = template.id;
-    option.textContent = template.label;
-    option.selected = template.id === selectedId || (!selectedId && templates[0]?.id === template.id);
-    flowPackTemplateEl.appendChild(option);
+    option.value = pack.id;
+    option.textContent = pack.label;
+    option.selected = pack.id === selectedId || (!selectedId && packs[0]?.id === pack.id);
+    flowExercisePackEl.appendChild(option);
   }
-  flowPackTemplateEl.disabled = state.panelMode !== "admin" || templates.length === 0;
+  flowExercisePackEl.disabled = state.panelMode !== "admin" || packs.length === 0;
 }
 
-function renderFlowStepTemplatePicker() {
-  if (!flowStepTemplateEl) return;
+function renderFlowStepPicker() {
+  if (!flowStepEl) return;
   const lang = getCurrentDisplayLanguage();
-  const packTemplate = getSelectedFlowPackTemplate({ lang });
-  const selectedStepId = getSelectedFlowStepTemplateId(packTemplate);
-  const steps = Exercises.listExerciseSteps(packTemplate, { lang });
+  const exercisePack = getSelectedFlowExercisePack({ lang });
+  const selectedStepId = getSelectedFlowStepId(exercisePack);
+  const steps = exercisePack ? Exercises.listExerciseSteps(exercisePack, { lang }) : [];
 
-  flowStepTemplateEl.textContent = "";
+  flowStepEl.textContent = "";
   if (!steps.length) {
     const option = document.createElement("option");
     option.value = "";
     option.textContent = t("flow.noSteps", lang);
-    flowStepTemplateEl.appendChild(option);
-    flowStepTemplateEl.disabled = true;
+    flowStepEl.appendChild(option);
+    flowStepEl.disabled = true;
     return;
   }
 
@@ -1694,52 +1672,58 @@ function renderFlowStepTemplatePicker() {
     option.value = step.id;
     option.textContent = step.label;
     option.selected = step.id === selectedStepId;
-    flowStepTemplateEl.appendChild(option);
+    flowStepEl.appendChild(option);
   }
-  flowStepTemplateEl.disabled = state.panelMode !== "admin";
+  flowStepEl.disabled = state.panelMode !== "admin";
 }
 
-function renderFlowRunProfilePicker() {
-  if (!flowRunProfileEl) return;
-  const lang = getCurrentDisplayLanguage();
-  const packTemplate = getSelectedFlowPackTemplate({ lang });
-  const stepTemplate = getSelectedFlowStepTemplate(packTemplate, { lang });
-  const selectedProfileId = getSelectedFlowRunProfileId(packTemplate, stepTemplate);
-  const profiles = listAuthorableRunProfilesForPack(packTemplate, { stepTemplateId: stepTemplate?.id || null, lang });
+function listAuthorableEndpointsForStep(exercisePack, stepId, { lang = getCurrentDisplayLanguage() } = {}) {
+  return ExerciseLibrary.listStepEndpoints(exercisePack, stepId, { lang })
+    .filter((endpoint) => !ExerciseLibrary.isSidecarOnlyEndpoint(endpoint))
+    .filter((endpoint) => endpoint.surface?.group !== 'hidden');
+}
 
-  flowRunProfileEl.textContent = "";
-  if (!profiles.length) {
+function renderFlowEndpointPicker() {
+  if (!flowEndpointEl) return;
+  const lang = getCurrentDisplayLanguage();
+  const exercisePack = getSelectedFlowExercisePack({ lang });
+  const step = getSelectedFlowStep(exercisePack, { lang });
+  const selectedEndpointId = getSelectedFlowEndpointId(exercisePack, step);
+  const endpoints = exercisePack && step ? listAuthorableEndpointsForStep(exercisePack, step.id, { lang }) : [];
+
+  flowEndpointEl.textContent = "";
+  if (!endpoints.length) {
     const option = document.createElement("option");
     option.value = "";
     option.textContent = t("flow.noEndpoints", lang);
-    flowRunProfileEl.appendChild(option);
-    flowRunProfileEl.disabled = true;
+    flowEndpointEl.appendChild(option);
+    flowEndpointEl.disabled = true;
     return;
   }
 
-  for (const profile of profiles) {
+  for (const endpoint of endpoints) {
     const option = document.createElement("option");
-    option.value = profile.id;
-    option.textContent = profile.label;
-    option.selected = profile.id === selectedProfileId;
-    flowRunProfileEl.appendChild(option);
+    option.value = endpoint.id;
+    option.textContent = endpoint.label;
+    option.selected = endpoint.id === selectedEndpointId;
+    flowEndpointEl.appendChild(option);
   }
-  flowRunProfileEl.disabled = state.panelMode !== "admin";
+  flowEndpointEl.disabled = state.panelMode !== "admin";
 }
 
 function buildFlowControlLabelSourceKey() {
-  const packId = getSelectedFlowPackTemplateId() || "";
-  const stepId = getSelectedFlowStepTemplateId() || "";
-  const endpointId = getSelectedFlowRunProfileId() || "";
+  const packId = getSelectedFlowExercisePackId() || "";
+  const stepId = getSelectedFlowStepId() || "";
+  const endpointId = getSelectedFlowEndpointId() || "";
   return [packId, stepId, endpointId].join("::");
 }
 
-function syncFlowControlLabelFromRunProfile({ force = false } = {}) {
+function syncFlowControlLabelFromEndpoint({ force = false } = {}) {
   const lang = getCurrentDisplayLanguage();
-  const runProfile = getSelectedFlowRunProfile(undefined, undefined, { lang });
-  if (!flowControlLabelEl || !runProfile) return;
+  const endpoint = getSelectedFlowEndpoint(undefined, undefined, { lang });
+  if (!flowControlLabelEl || !endpoint) return;
 
-  const nextLabel = (pickFirstNonEmptyString(runProfile.label, t("flow.defaultControlLabel", lang)) || "").trim();
+  const nextLabel = (pickFirstNonEmptyString(endpoint.label, t("flow.defaultControlLabel", lang)) || "").trim();
   const currentText = (flowControlLabelEl.value || "").trim();
   const autoText = (flowControlLabelEl.dataset.autoLabel || state.lastAutoFlowControlLabel || "").trim();
   const sourceKey = buildFlowControlLabelSourceKey();
@@ -1769,292 +1753,82 @@ function updateFlowControlLabelDirtyState() {
   state.flowControlLabelDirty = manual;
 }
 
-function renderFlowAuthoringStatus() {
-  if (!flowAuthoringStatusEl) return;
+function buildFlowControlCatalogForPack(exercisePack) {
+  if (!exercisePack?.id) return [];
   const lang = getCurrentDisplayLanguage();
-  const packTemplate = getSelectedFlowPackTemplate({ lang });
-  const stepTemplate = getSelectedFlowStepTemplate(packTemplate, { lang });
-  const runProfile = getSelectedFlowRunProfile(packTemplate, stepTemplate, { lang });
-  const selectedLabels = getInstanceLabelsFromIds(state.lastCanvasSelectionInstanceIds || []);
-  const scopeType = (flowScopeTypeEl?.value || runProfile?.defaultScopeType || "fixed_instances");
-  const scopeLabel = scopeType === "global" ? t("flow.scope.global", lang) : t("flow.scope.fixed", lang);
-  const lines = [
-    t("flow.status.boardFlows", lang, { count: state.boardFlowsById.size }),
-    t("flow.status.exercisePack", lang, { value: packTemplate?.label || t("flow.status.none", lang) }),
-    t("flow.status.step", lang, { value: stepTemplate?.label || t("flow.status.none", lang) }),
-    t("flow.status.endpoint", lang, { value: runProfile?.label || t("flow.status.none", lang) }),
-    t("flow.status.selectedCanvas", lang, { value: selectedLabels.join(", ") || t("flow.status.selectedCanvas.none", lang) }),
-    t("flow.status.scope", lang, { value: scopeLabel }),
-    t("flow.status.layoutMode", lang, { value: t(isStaticFlowControlLayoutEnabled() ? "flow.layoutMode.static" : "flow.layoutMode.dynamic", lang) })
-  ];
-  if (runProfile?.summary) lines.push(t("flow.status.profileEffect", lang, { value: runProfile.summary }));
-  if (runProfile?.uiHint) lines.push(t("flow.status.adminHint", lang, { value: runProfile.uiHint }));
-  flowAuthoringStatusEl.textContent = lines.join("\n");
-}
-
-function renderFlowAuthoringControls({ forceLabelSync = false } = {}) {
-  renderFlowPackTemplatePicker();
-  renderFlowStepTemplatePicker();
-  renderFlowRunProfilePicker();
-  if (flowStaticLayoutToggleEl) {
-    flowStaticLayoutToggleEl.checked = isStaticFlowControlLayoutEnabled();
-  }
-  syncFlowControlLabelFromRunProfile({ force: forceLabelSync });
-  renderFlowAuthoringStatus();
-}
-
-function mergeBoardFlowWithPackTemplate(flow, packTemplate, { lang = getCurrentDisplayLanguage() } = {}) {
-  const normalizedFlow = BoardFlow.normalizeBoardFlow(flow);
-  if (!normalizedFlow?.id || !packTemplate?.id) {
-    return { flow: normalizedFlow, changed: false };
-  }
-
-  const templateSteps = Exercises.listExerciseSteps(packTemplate, { lang })
-    .slice()
-    .sort((a, b) => Number(a?.order || 0) - Number(b?.order || 0));
-  if (!templateSteps.length) {
-    return { flow: normalizedFlow, changed: false };
-  }
-
-  const existingStepsById = new Map((normalizedFlow.steps || []).map((step) => [step.id, step]));
-  const templateStepIds = new Set(templateSteps.map((step) => step.id));
-  let changed = false;
-
-  const mergedTemplateSteps = templateSteps.map((templateStep) => {
-    const existing = existingStepsById.get(templateStep.id) || null;
-    const labelMode = existing?.labelMode === 'custom' ? 'custom' : 'auto';
-    const label = labelMode === 'custom'
-      ? pickFirstNonEmptyString(existing?.label, templateStep.label, templateStep.id)
-      : pickFirstNonEmptyString(templateStep.label, existing?.label, templateStep.id);
-    const instructionOverride = pickFirstNonEmptyString(existing?.instructionOverride);
-    const instruction = instructionOverride
-      ? pickFirstNonEmptyString(existing?.instruction, templateStep.instruction)
-      : pickFirstNonEmptyString(templateStep.instruction, existing?.instruction);
-    const controlIds = Array.from(new Set((Array.isArray(existing?.controlIds) ? existing.controlIds : []).filter(Boolean)));
-    const nextStep = {
-      id: templateStep.id,
-      label,
-      labelMode,
-      order: Number.isFinite(Number(templateStep.order)) ? Number(templateStep.order) : Number(existing?.order || 0),
-      instruction: instruction || null,
-      instructionOverride: instructionOverride || null,
-      controlIds
-    };
-    if (!existing) {
-      changed = true;
-    } else if (
-      existing.label !== nextStep.label ||
-      (existing.labelMode || 'auto') !== nextStep.labelMode ||
-      Number(existing.order || 0) !== nextStep.order ||
-      (existing.instruction || null) !== nextStep.instruction ||
-      (existing.instructionOverride || null) !== nextStep.instructionOverride ||
-      JSON.stringify(existing.controlIds || []) !== JSON.stringify(nextStep.controlIds)
-    ) {
-      changed = true;
-    }
-    return nextStep;
-  });
-
-  const extraSteps = (normalizedFlow.steps || []).filter((step) => step?.id && !templateStepIds.has(step.id));
-  const nextSteps = [...mergedTemplateSteps, ...extraSteps].sort((a, b) => Number(a?.order || 0) - Number(b?.order || 0));
-  const validStepIds = new Set(nextSteps.map((step) => step.id));
-
-  const nextControls = {};
-  for (const [controlId, control] of Object.entries(normalizedFlow.controls || {})) {
-    const endpoint = control?.endpointId ? ExerciseLibrary.getEndpointById(control.endpointId, { lang }) : null;
-    const desiredStepId = pickFirstNonEmptyString(control?.stepId, endpoint?.stepId);
-    const nextLabel = control?.labelMode === 'custom'
-      ? control.label
-      : pickFirstNonEmptyString(endpoint?.label, control?.label);
-    const nextControl = {
-      ...control,
-      stepId: desiredStepId || control?.stepId || null,
-      label: nextLabel || control?.label || null
-    };
-    if ((control?.stepId || null) !== (nextControl.stepId || null) || (control?.label || null) !== (nextControl.label || null)) {
-      changed = true;
-    }
-    nextControls[controlId] = nextControl;
-  }
-
-  let nextCurrentStepId = pickFirstNonEmptyString(normalizedFlow?.runtime?.currentStepId);
-  if (!nextCurrentStepId || !validStepIds.has(nextCurrentStepId)) {
-    const preferredStepId = pickFirstNonEmptyString(
-      (normalizedFlow?.exercisePackId || normalizedFlow?.exercisePackId) === getSelectedExercisePackId() ? state.exerciseRuntime?.currentStepId : null,
-      templateSteps[0]?.id,
-      nextSteps[0]?.id
-    );
-    nextCurrentStepId = preferredStepId || null;
-    changed = true;
-  }
-
-  const validControlIds = new Set(Object.keys(nextControls));
-  const finalSteps = nextSteps.map((step) => {
-    const filteredControlIds = Array.from(new Set((Array.isArray(step.controlIds) ? step.controlIds : []).filter((controlId) => validControlIds.has(controlId))));
-    if (JSON.stringify(step.controlIds || []) !== JSON.stringify(filteredControlIds)) {
-      changed = true;
-      return { ...step, controlIds: filteredControlIds };
-    }
-    return step;
-  });
-
-  const nextFlow = BoardFlow.normalizeBoardFlow({
-    ...normalizedFlow,
-    steps: finalSteps,
-    controls: nextControls,
-    runtime: {
-      ...(normalizedFlow.runtime || {}),
-      currentStepId: nextCurrentStepId
-    },
-    updatedAt: changed ? new Date().toISOString() : normalizedFlow.updatedAt
-  });
-
-  return { flow: nextFlow, changed };
-}
-
-async function pruneMissingBoardFlowControls(flow) {
-  const normalizedFlow = BoardFlow.normalizeBoardFlow(flow);
-  const controls = Object.entries(normalizedFlow.controls || {});
-  const itemIds = controls.map(([, control]) => String(control?.itemId || '')).filter(Boolean);
-  if (!itemIds.length) return { flow: normalizedFlow, changed: false, removedControlIds: [] };
-
-  let items = [];
-  try {
-    items = await Board.getItemsById(itemIds, log);
-  } catch (error) {
-    log('WARNUNG: Board-Flow-Controls konnten nicht geprüft werden: ' + formatRuntimeErrorMessage(error));
-    return { flow: normalizedFlow, changed: false, removedControlIds: [] };
-  }
-
-  const presentItemIds = new Set((Array.isArray(items) ? items : []).map((item) => String(item?.id || '')).filter(Boolean));
-  const removedControlIds = controls
-    .filter(([, control]) => control?.itemId && !presentItemIds.has(String(control.itemId)))
-    .map(([controlId]) => controlId);
-
-  if (!removedControlIds.length) {
-    return { flow: normalizedFlow, changed: false, removedControlIds: [] };
-  }
-
-  const removedSet = new Set(removedControlIds);
-  const nextControls = Object.fromEntries(controls.filter(([controlId]) => !removedSet.has(controlId)));
-  const nextSteps = (normalizedFlow.steps || []).map((step) => ({
-    ...step,
-    controlIds: (Array.isArray(step.controlIds) ? step.controlIds : []).filter((controlId) => !removedSet.has(controlId))
+  return Exercises.listExerciseSteps(exercisePack, { lang }).map((step) => ({
+    step,
+    endpoints: listAuthorableEndpointsForStep(exercisePack, step.id, { lang })
   }));
-
-  const nextFlow = BoardFlow.normalizeBoardFlow({
-    ...normalizedFlow,
-    controls: nextControls,
-    steps: nextSteps,
-    updatedAt: new Date().toISOString()
-  });
-  return { flow: nextFlow, changed: true, removedControlIds };
 }
 
-async function ensureBoardFlowHealthy(flow, {
-  persist = false,
-  pruneMissingControls = true,
-  preferredStepId = null,
-  forcePreferredWhenNoControls = false
-} = {}) {
-  let nextFlow = BoardFlow.normalizeBoardFlow(flow);
-  if (!nextFlow?.id) return nextFlow;
-
-  const lang = getCurrentDisplayLanguage();
-  const packTemplate = nextFlow.exercisePackId
-    ? Exercises.getExercisePackById(nextFlow.exercisePackId, { lang })
-    : null;
-  let changed = false;
-
-  if (packTemplate) {
-    const merged = mergeBoardFlowWithPackTemplate(nextFlow, packTemplate, { lang });
-    nextFlow = merged.flow;
-    changed = changed || merged.changed;
-  }
-
-  const effectivePreferredStepId = pickFirstNonEmptyString(preferredStepId);
-  const hasControls = Object.keys(nextFlow.controls || {}).length > 0;
-  const validStepIds = new Set((nextFlow.steps || []).map((step) => step.id));
-  if (effectivePreferredStepId && validStepIds.has(effectivePreferredStepId)) {
-    const currentStepId = pickFirstNonEmptyString(nextFlow?.runtime?.currentStepId);
-    if (!currentStepId || !validStepIds.has(currentStepId) || (forcePreferredWhenNoControls && !hasControls)) {
-      const updatedFlow = BoardFlow.setFlowCurrentStep(nextFlow, effectivePreferredStepId);
-      if (updatedFlow.runtime?.currentStepId !== nextFlow.runtime?.currentStepId) {
-        nextFlow = updatedFlow;
-        changed = true;
-      }
-    }
-  }
-
-  if (pruneMissingControls) {
-    const pruned = await pruneMissingBoardFlowControls(nextFlow);
-    nextFlow = pruned.flow;
-    changed = changed || pruned.changed;
-    if (pruned.removedControlIds?.length) {
-      log('WARNUNG: Verwaiste Board-Flow-Controls entfernt: ' + pruned.removedControlIds.join(', '));
-    }
-  }
-
-  if (changed && persist) {
-    nextFlow = await Board.saveBoardFlow({
-      ...nextFlow,
-      updatedAt: new Date().toISOString()
-    }, log);
-  }
-
-  return nextFlow;
-}
-
-async function loadBoardFlows() {
-  const flows = await Board.listBoardFlows(log);
-  const entries = [];
-  for (const flow of flows) {
-    const healthyFlow = await ensureBoardFlowHealthy(flow, { persist: true, pruneMissingControls: true });
-    if (healthyFlow?.id) entries.push([healthyFlow.id, healthyFlow]);
-  }
-  state.boardFlowsById = new Map(entries);
-  await syncAllBoardFlowVisuals({ reflow: !isStaticFlowControlLayoutEnabled() });
-  renderFlowAuthoringStatus();
-}
-
-function getRunProfileSurfaceMeta(endpointId) {
-  const endpoint = ExerciseLibrary.getEndpointById(endpointId, { lang: getCurrentDisplayLanguage() });
+function buildBoardFlowStateForPrompt(flow) {
+  if (!flow?.id) return null;
+  const currentStep = BoardFlow.getFlowStep(flow, flow.runtime?.currentStepId);
   return {
-    sortOrder: Number.isFinite(Number(endpoint?.sortOrder)) ? Number(endpoint.sortOrder) : Number.MAX_SAFE_INTEGER,
-    panelRole: endpoint?.surface?.panelRole || endpoint?.panelRole || null,
-    boardGroup: endpoint?.surface?.boardGroup || endpoint?.boardGroup || "core",
-    seedByDefault: endpoint?.surface?.seedByDefault === true || endpoint?.seedByDefault === true
+    flowId: flow.id,
+    anchorInstanceLabel: getInstanceLabelByInternalId(flow.anchorInstanceId) || null,
+    currentStepId: flow.runtime?.currentStepId || null,
+    currentStepLabel: currentStep?.label || null,
+    controls: sortFlowControlsForDisplay(flow, Object.values(flow.controls || {})).map((control) => ({
+      endpointId: control.endpointId || null,
+      label: control.label || null,
+      stepId: control.stepId || null,
+      state: control.state || "disabled"
+    }))
   };
 }
 
-function getRunProfileSortOrder(endpointId) {
-  return getRunProfileSurfaceMeta(endpointId).sortOrder;
+function resolveFlowPromptContext({ promptRuntimeOverride = null, targetInstanceIds = [] } = {}) {
+  const lang = getCurrentDisplayLanguage();
+  const runtime = (promptRuntimeOverride && typeof promptRuntimeOverride === "object") ? promptRuntimeOverride : null;
+  const exercisePack = runtime?.exercisePack || getSelectedFlowExercisePack({ lang });
+  const exercisePackId = exercisePack?.id || null;
+
+  let anchorInstanceId = pickFirstNonEmptyString(runtime?.controlContext?.anchorInstanceId, runtime?.anchorInstanceId);
+  if (anchorInstanceId && !state.instancesById.has(anchorInstanceId)) anchorInstanceId = null;
+  if (!anchorInstanceId && Array.isArray(targetInstanceIds) && targetInstanceIds.length === 1 && state.instancesById.has(targetInstanceIds[0])) {
+    anchorInstanceId = targetInstanceIds[0];
+  }
+  const flow = exercisePackId && anchorInstanceId ? getExistingBoardFlowForPack(exercisePackId, anchorInstanceId) : null;
+
+  return {
+    exercisePack,
+    exercisePackId,
+    anchorInstanceId,
+    flow,
+    flowControlCatalog: buildFlowControlCatalogForPack(exercisePack),
+    boardFlowState: flow ? buildBoardFlowStateForPrompt(flow) : null
+  };
 }
 
-function getRunProfilePanelRoleRank(endpointId) {
-  const panelRole = getRunProfileSurfaceMeta(endpointId).panelRole;
+function getEndpointSurfaceMeta(endpointId) {
+  const endpoint = ExerciseLibrary.getEndpointById(endpointId, { lang: getCurrentDisplayLanguage() });
+  return {
+    sortOrder: Number.isFinite(Number(endpoint?.order)) ? Number(endpoint.order) : Number.MAX_SAFE_INTEGER,
+    panelRole: endpoint?.surface?.group || null,
+    boardGroup: endpoint?.surface?.group === "proposal" ? "proposal" : "core",
+    seedByDefault: endpoint?.surface?.seedByDefault === true
+  };
+}
+
+function getEndpointSortOrder(endpointId) {
+  return getEndpointSurfaceMeta(endpointId).sortOrder;
+}
+
+function getEndpointPanelRoleRank(endpointId) {
+  const panelRole = getEndpointSurfaceMeta(endpointId).panelRole;
   if (panelRole === "primary") return 0;
-  if (panelRole === "secondary") return 1;
-  if (panelRole === "proposal") return 2;
+  if (panelRole === "proposal") return 1;
+  if (panelRole === "secondary") return 2;
   return 3;
-}
-
-function isSidecarOnlyEndpoint(endpoint) {
-  const triggerKey = ExerciseEngine.normalizeTriggerKey(endpoint?.triggerKey);
-  return triggerKey === "selection.apply" || triggerKey === "global.apply";
-}
-
-function listAuthorableRunProfilesForPack(packTemplate, { stepTemplateId = null, lang = getCurrentDisplayLanguage() } = {}) {
-  return ExerciseLibrary.listEndpointsForPack(packTemplate, { stepId: stepTemplateId, lang })
-    .filter((endpoint) => !isSidecarOnlyEndpoint(endpoint));
 }
 
 function getFlowControlDisplayBucket(flow, control) {
   const currentStepId = pickFirstNonEmptyString(flow?.runtime?.currentStepId);
-  const boardGroup = getRunProfileSurfaceMeta(control?.endpointId).boardGroup;
+  const boardGroup = getEndpointSurfaceMeta(control?.endpointId).boardGroup;
   const isCurrentStep = !!(control?.stepId && currentStepId && control.stepId === currentStepId);
   const isActiveLike = control?.state === "active";
-
   if (isCurrentStep) {
     if (boardGroup === "core") return 0;
     if (boardGroup === "proposal") return 1;
@@ -2077,15 +1851,14 @@ function sortFlowControlsForDisplay(flow, controls) {
     .slice()
     .sort((a, b) => (
       getFlowControlDisplayBucket(flow, a) - getFlowControlDisplayBucket(flow, b) ||
-      getRunProfilePanelRoleRank(a?.endpointId) - getRunProfilePanelRoleRank(b?.endpointId) ||
-      getRunProfileSortOrder(a?.endpointId) - getRunProfileSortOrder(b?.endpointId) ||
+      getEndpointPanelRoleRank(a?.endpointId) - getEndpointPanelRoleRank(b?.endpointId) ||
+      getEndpointSortOrder(a?.endpointId) - getEndpointSortOrder(b?.endpointId) ||
       String(a?.label || a?.id || "").localeCompare(String(b?.label || b?.id || ""), undefined, { sensitivity: "base" })
     ));
 }
 
 async function syncBoardFlowVisuals(flow, { reflow = false } = {}) {
   if (!flow?.id) return flow;
-
   const lang = getCurrentDisplayLanguage();
   const orderedControls = sortFlowControlsForDisplay(flow, Object.values(flow.controls || {}));
   const anchorInstance = flow.anchorInstanceId ? state.instancesById.get(flow.anchorInstanceId) : null;
@@ -2109,16 +1882,11 @@ async function syncBoardFlowVisuals(flow, { reflow = false } = {}) {
   for (const control of orderedControls) {
     if (!control?.itemId) continue;
     try {
-      await Board.syncFlowControlShapeAppearance(control.itemId, {
-        label: control.label,
-        state: control.state,
-        lang
-      }, log);
+      await Board.syncFlowControlShapeAppearance(control.itemId, { label: control.label, state: control.state, lang }, log);
     } catch (e) {
       log("WARNUNG: Flow-Control-Darstellung konnte nicht synchronisiert werden: " + e.message);
     }
   }
-
   return flow;
 }
 
@@ -2133,19 +1901,9 @@ function buildFlowId(exercisePackId, anchorInstanceId) {
   return [exercisePackId || "flow", anchorInstanceId || "anchor", Date.now().toString(36), Math.random().toString(36).slice(2, 7)].join(":");
 }
 
-function buildFlowControlId(stepId, endpointId) {
-  return [stepId || "step", endpointId || "endpoint", Date.now().toString(36), Math.random().toString(36).slice(2, 7)].join(":");
-}
-
-function getSelectedExercisePackTemplateId() {
-  return getSelectedExercisePackId();
-}
-
 function getExistingBoardFlowForPack(exercisePackId, anchorInstanceId) {
   for (const flow of state.boardFlowsById.values()) {
-    if ((flow?.exercisePackId || flow?.exercisePackId) === exercisePackId && flow?.anchorInstanceId === anchorInstanceId) {
-      return flow;
-    }
+    if (flow?.exercisePackId === exercisePackId && flow?.anchorInstanceId === anchorInstanceId) return flow;
   }
   return null;
 }
@@ -2161,71 +1919,59 @@ async function saveBoardFlowAndCache(flow, { reflow = false } = {}) {
 function resolveRelevantBoardFlowForCurrentStep(exercisePackId, preferredAnchorInstanceId = null) {
   const normalizedExercisePackId = pickFirstNonEmptyString(exercisePackId);
   if (!normalizedExercisePackId) return null;
-
   if (preferredAnchorInstanceId) {
     const preferred = getExistingBoardFlowForPack(normalizedExercisePackId, preferredAnchorInstanceId);
     if (preferred) return preferred;
   }
-
-  const lastActiveExercisePackId = pickFirstNonEmptyString(state.exerciseRuntime?.lastActiveExercisePackId, state.exerciseRuntime?.lastActiveExercisePackId);
-  const lastActiveAnchorInstanceId = pickFirstNonEmptyString(state.exerciseRuntime?.lastActiveAnchorInstanceId);
-  if (lastActiveExercisePackId === normalizedExercisePackId && lastActiveAnchorInstanceId) {
+  const lastActiveAnchorInstanceId = pickFirstNonEmptyString(state.exerciseRuntime?.lastActiveFlowAnchorInstanceId);
+  if (state.boardConfig?.activeExercisePackId === normalizedExercisePackId && lastActiveAnchorInstanceId) {
     const lastActive = getExistingBoardFlowForPack(normalizedExercisePackId, lastActiveAnchorInstanceId);
     if (lastActive) return lastActive;
   }
-
   const selectedInstanceIds = Array.isArray(state.lastCanvasSelectionInstanceIds) ? state.lastCanvasSelectionInstanceIds.filter(Boolean) : [];
   if (selectedInstanceIds.length === 1) {
     const selectedFlow = getExistingBoardFlowForPack(normalizedExercisePackId, selectedInstanceIds[0]);
     if (selectedFlow) return selectedFlow;
   }
+  const matchingFlows = Array.from(state.boardFlowsById.values()).filter((flow) => flow?.exercisePackId === normalizedExercisePackId);
+  if (matchingFlows.length === 1) return matchingFlows[0];
+  return null;
+}
 
-  const matchingFlows = Array.from(state.boardFlowsById.values()).filter((flow) => (flow?.exercisePackId || flow?.exercisePackId) === normalizedExercisePackId);
-  if (!matchingFlows.length) return null;
-
-  matchingFlows.sort((a, b) => String(a?.id || "").localeCompare(String(b?.id || ""), undefined, { sensitivity: "base" }));
-  return matchingFlows[0] || null;
+function buildAuthorableFlowPack(exercisePack, { lang = getCurrentDisplayLanguage() } = {}) {
+  if (!exercisePack?.id) return null;
+  const steps = Exercises.listExerciseSteps(exercisePack, { lang }).map((step) => ({
+    ...step,
+    endpointIds: listAuthorableEndpointsForStep(exercisePack, step.id, { lang }).map((endpoint) => endpoint.id)
+  }));
+  return { ...exercisePack, steps };
 }
 
 async function ensureDefaultBoardControlsForStep(flow, stepId) {
   const normalizedStepId = pickFirstNonEmptyString(stepId);
-  if (!flow?.id || !flow?.anchorInstanceId || !normalizedStepId) {
+  if (!flow?.id || !flow?.anchorInstanceId || !normalizedStepId || isStaticFlowControlLayoutEnabled()) {
     return { flow, createdEndpointIds: [], skippedEndpointIds: [] };
   }
-  if (isStaticFlowControlLayoutEnabled()) {
-    return { flow, createdEndpointIds: [], skippedEndpointIds: [] };
-  }
-
-  const endpointIds = ExerciseLibrary.listStepEndpointsForSurface(flow.exercisePackId || flow.exercisePackId, normalizedStepId, {
-    seedByDefaultOnly: true,
-    lang: getCurrentDisplayLanguage()
-  }).map((endpoint) => endpoint?.id).filter(Boolean);
-
-  if (!endpointIds.length) {
-    return { flow, createdEndpointIds: [], skippedEndpointIds: [] };
-  }
-
-  return await ensureFlowControlsForRunProfiles({
-    flow,
-    anchorInstanceId: flow.anchorInstanceId,
-    endpointIds: endpointIds
-  });
+  const exercisePack = Exercises.getExercisePackById(flow.exercisePackId, { lang: getCurrentDisplayLanguage() });
+  if (!exercisePack) return { flow, createdEndpointIds: [], skippedEndpointIds: [] };
+  const endpointIds = listAuthorableEndpointsForStep(exercisePack, normalizedStepId, { lang: getCurrentDisplayLanguage() })
+    .filter((endpoint) => endpoint.surface?.seedByDefault === true)
+    .map((endpoint) => endpoint.id);
+  if (!endpointIds.length) return { flow, createdEndpointIds: [], skippedEndpointIds: [] };
+  return await ensureFlowControlsForEndpoints({ flow, anchorInstanceId: flow.anchorInstanceId, endpointIds });
 }
 
 async function syncExerciseStepToBoardFlow(stepId, { exercisePackId = null, anchorInstanceId = null } = {}) {
   const normalizedStepId = pickFirstNonEmptyString(stepId);
-  const normalizedExercisePackId = pickFirstNonEmptyString(exercisePackId) || getSelectedExercisePackId();
+  const normalizedExercisePackId = pickFirstNonEmptyString(exercisePackId) || state.boardConfig?.activeExercisePackId;
   if (!normalizedStepId || !normalizedExercisePackId) return null;
-
   const relevantFlow = resolveRelevantBoardFlowForCurrentStep(normalizedExercisePackId, anchorInstanceId);
   if (!relevantFlow?.id) return null;
-
   let nextFlow = BoardFlow.setFlowCurrentStep(relevantFlow, normalizedStepId);
   const stepChanged = nextFlow.runtime?.currentStepId !== relevantFlow.runtime?.currentStepId;
   const ensured = await ensureDefaultBoardControlsForStep(nextFlow, normalizedStepId);
   nextFlow = ensured.flow;
-
-  if (stepChanged || ensured.createdEndpointIds?.length) {
+  if (stepChanged || ensured.createdEndpointIds.length) {
     nextFlow = await saveBoardFlowAndCache(nextFlow, { reflow: !isStaticFlowControlLayoutEnabled() });
   } else {
     state.boardFlowsById.set(nextFlow.id, nextFlow);
@@ -2238,138 +1984,181 @@ async function findOrCreateBoardFlowForPack(exercisePackId, anchorInstanceId, { 
   const normalizedAnchorInstanceId = pickFirstNonEmptyString(anchorInstanceId);
   const lang = getCurrentDisplayLanguage();
   const exercisePack = Exercises.getExercisePackById(normalizedExercisePackId, { lang });
-  if (!exercisePack) {
-    throw new Error("Exercise Pack konnte nicht gefunden werden: " + String(exercisePackId || "(leer)"));
-  }
-  if (!normalizedAnchorInstanceId || !state.instancesById.has(normalizedAnchorInstanceId)) {
-    throw new Error("Anchor-Instanz für Board Flow ist ungültig.");
-  }
+  if (!exercisePack) throw new Error("Exercise Pack konnte nicht gefunden werden: " + String(exercisePackId || "(leer)"));
+  const selectedStepId = pickFirstNonEmptyString(preferredStepId, getSelectedFlowStepId(exercisePack));
+  const shouldSeedDefaults = !!seedDefaults && !isStaticFlowControlLayoutEnabled();
+  const authorablePack = buildAuthorableFlowPack(exercisePack, { lang });
 
-  const existingFlow = getExistingBoardFlowForPack(normalizedExercisePackId, normalizedAnchorInstanceId);
-  if (existingFlow?.id) {
-    const healthyFlow = await ensureBoardFlowHealthy(existingFlow, {
+  const existing = normalizedAnchorInstanceId ? getExistingBoardFlowForPack(normalizedExercisePackId, normalizedAnchorInstanceId) : null;
+  if (existing) {
+    let healthyExisting = await ensureBoardFlowHealthy(existing, {
       persist: true,
       pruneMissingControls: true,
-      preferredStepId,
+      preferredStepId: selectedStepId,
       forcePreferredWhenNoControls: true
     });
-    state.boardFlowsById.set(healthyFlow.id, healthyFlow);
-    return healthyFlow;
+    if (shouldSeedDefaults) {
+      const ensured = await ensureDefaultBoardControlsForStep(healthyExisting, healthyExisting.runtime?.currentStepId || selectedStepId);
+      healthyExisting = ensured.flow;
+      if (ensured.createdEndpointIds.length) {
+        healthyExisting = await saveBoardFlowAndCache(healthyExisting, { reflow: !isStaticFlowControlLayoutEnabled() });
+      } else {
+        state.boardFlowsById.set(healthyExisting.id, healthyExisting);
+      }
+    } else {
+      state.boardFlowsById.set(healthyExisting.id, healthyExisting);
+    }
+    return healthyExisting;
   }
 
-  const selectedStepId = pickFirstNonEmptyString(preferredStepId, getSelectedFlowStepTemplateId(exercisePack), exercisePack?.defaultStepId);
-  const flow = BoardFlow.createBoardFlowFromPack(exercisePack, {
-    id: buildFlowId(normalizedExercisePackId, normalizedAnchorInstanceId),
-    exercisePackId: normalizedExercisePackId,
+  const anchorLabel = getInstanceLabelByInternalId(normalizedAnchorInstanceId) || normalizedAnchorInstanceId || "Board";
+  let flow = BoardFlow.createBoardFlowFromPack(authorablePack, normalizedAnchorInstanceId, { lang });
+  flow = BoardFlow.normalizeBoardFlow({
+    ...flow,
+    id: buildFlowId(exercisePack.id, normalizedAnchorInstanceId),
     anchorInstanceId: normalizedAnchorInstanceId,
-    currentStepId: selectedStepId || null,
+    runtime: { ...(flow.runtime || {}), currentStepId: selectedStepId || flow.runtime?.currentStepId || null },
+    label: exercisePack.label + " – " + anchorLabel,
     labelMode: "auto"
   });
 
-  let nextFlow = flow;
   let createdEndpointIds = [];
-  if (seedDefaults) {
+  if (shouldSeedDefaults) {
     const ensured = await ensureDefaultBoardControlsForStep(flow, flow.runtime?.currentStepId || selectedStepId);
-    nextFlow = ensured.flow;
-    createdEndpointIds = ensured.createdEndpointIds || [];
+    flow = ensured.flow;
+    createdEndpointIds = ensured.createdEndpointIds;
+  }
+  return await saveBoardFlowAndCache(flow, { reflow: createdEndpointIds.length > 0 && !isStaticFlowControlLayoutEnabled() });
+}
+
+function renderFlowAuthoringStatus() {
+  if (!flowAuthoringStatusEl) return;
+  const lang = getCurrentDisplayLanguage();
+  const exercisePack = getSelectedFlowExercisePack({ lang });
+  const step = getSelectedFlowStep(exercisePack, { lang });
+  const endpoint = getSelectedFlowEndpoint(exercisePack, step, { lang });
+  const selectedLabels = getInstanceLabelsFromIds(state.lastCanvasSelectionInstanceIds || []);
+  const scopeType = (flowScopeTypeEl?.value || endpoint?.scope?.mode || "current");
+  const scopeLabel = scopeType === "pack" || scopeType === "global" ? t("flow.scope.global", lang) : t("flow.scope.fixed", lang);
+  const lines = [
+    t("flow.status.boardFlows", lang, { count: state.boardFlowsById.size }),
+    t("flow.status.exercisePack", lang, { value: exercisePack?.label || t("flow.status.none", lang) }),
+    t("flow.status.step", lang, { value: step?.label || t("flow.status.none", lang) }),
+    t("flow.status.endpoint", lang, { value: endpoint?.label || t("flow.status.none", lang) }),
+    t("flow.status.selectedCanvas", lang, { value: selectedLabels.join(", ") || t("flow.status.selectedCanvas.none", lang) }),
+    t("flow.status.scope", lang, { value: scopeLabel }),
+    t("flow.status.layoutMode", lang, { value: t(isStaticFlowControlLayoutEnabled() ? "flow.layoutMode.static" : "flow.layoutMode.dynamic", lang) })
+  ];
+  if (endpoint?.summary) lines.push(t("flow.status.profileEffect", lang, { value: endpoint.summary }));
+  flowAuthoringStatusEl.textContent = lines.join("\n");
+}
+
+function renderFlowAuthoringControls({ forceLabelSync = false } = {}) {
+  renderFlowExercisePackPicker();
+  renderFlowStepPicker();
+  renderFlowEndpointPicker();
+  if (flowStaticLayoutToggleEl) flowStaticLayoutToggleEl.checked = isStaticFlowControlLayoutEnabled();
+  syncFlowControlLabelFromEndpoint({ force: forceLabelSync });
+  renderFlowAuthoringStatus();
+}
+
+async function pruneMissingBoardFlowControls(flow) {
+  const normalizedFlow = BoardFlow.normalizeBoardFlow(flow);
+  const controls = Object.entries(normalizedFlow.controls || {});
+  const itemIds = controls.map(([, control]) => String(control?.itemId || '')).filter(Boolean);
+  if (!itemIds.length) return { flow: normalizedFlow, changed: false, removedControlIds: [] };
+
+  let items = [];
+  try {
+    items = await Board.getItemsById(itemIds, log);
+  } catch (error) {
+    log('WARNUNG: Board-Flow-Controls konnten nicht geprüft werden: ' + formatRuntimeErrorMessage(error));
+    return { flow: normalizedFlow, changed: false, removedControlIds: [] };
   }
 
-  return await saveBoardFlowAndCache(nextFlow, { reflow: createdEndpointIds.length > 0 && !isStaticFlowControlLayoutEnabled() });
+  const presentItemIds = new Set((Array.isArray(items) ? items : []).map((item) => String(item?.id || '')).filter(Boolean));
+  const removedControlIds = controls.filter(([, control]) => control?.itemId && !presentItemIds.has(String(control.itemId))).map(([controlId]) => controlId);
+  if (!removedControlIds.length) return { flow: normalizedFlow, changed: false, removedControlIds: [] };
+  const removedSet = new Set(removedControlIds);
+  const nextControls = Object.fromEntries(controls.filter(([controlId]) => !removedSet.has(controlId)));
+  const nextSteps = (normalizedFlow.steps || []).map((step) => ({ ...step, controlIds: (Array.isArray(step.controlIds) ? step.controlIds : []).filter((controlId) => !removedSet.has(controlId)) }));
+  const nextFlow = BoardFlow.normalizeBoardFlow({ ...normalizedFlow, controls: nextControls, steps: nextSteps, updatedAt: new Date().toISOString() });
+  return { flow: nextFlow, changed: true, removedControlIds };
 }
 
-function buildFlowControlCatalogForPackTemplate(packTemplate) {
-  if (!packTemplate?.id) return [];
+async function ensureBoardFlowHealthy(flow, { persist = false, pruneMissingControls = true, preferredStepId = null, forcePreferredWhenNoControls = false } = {}) {
+  let nextFlow = BoardFlow.normalizeBoardFlow(flow);
+  if (!nextFlow?.id) return nextFlow;
   const lang = getCurrentDisplayLanguage();
-  return listAuthorableRunProfilesForPack(packTemplate.id, { lang })
-    .map((endpoint) => {
-      const step = Exercises.getExerciseStep(packTemplate.id, endpoint?.stepId, { lang });
-      return {
-        endpointId: endpoint?.id || null,
-        label: endpoint?.label || null,
-        stepId: endpoint?.stepId || null,
-        stepLabel: step?.label || endpoint?.stepId || null,
-        scopeType: endpoint?.scope?.type || endpoint?.defaultScopeType || null,
-        summary: endpoint?.summary || null
-      };
-    })
-    .filter((entry) => !!entry.endpointId);
-}
-
-function buildBoardFlowStateForPrompt(flow) {
-  if (!flow?.id) return null;
-  const currentStep = BoardFlow.getFlowStep(flow, flow.runtime?.currentStepId);
-  return {
-    flowId: flow.id,
-    anchorInstanceLabel: getInstanceLabelByInternalId(flow.anchorInstanceId) || null,
-    currentStepId: flow.runtime?.currentStepId || null,
-    currentStepLabel: currentStep?.label || null,
-    controls: sortFlowControlsForDisplay(flow, Object.values(flow.controls || {})).map((control) => ({
-      endpointId: control.endpointId || control.endpointId || null,
-      label: control.label || null,
-      stepId: control.stepId || null,
-      state: control.state || "disabled"
-    }))
-  };
-}
-
-function resolveFlowPromptContext({ promptRuntimeOverride = null, targetInstanceIds = [] } = {}) {
-  const lang = getCurrentDisplayLanguage();
-  const runtime = (promptRuntimeOverride && typeof promptRuntimeOverride === "object") ? promptRuntimeOverride : null;
-  const exercisePack = runtime?.exercisePack || Exercises.getExercisePackById(getSelectedExercisePackId(), { lang });
-  const exercisePackId = exercisePack?.id || null;
-
-  let anchorInstanceId = pickFirstNonEmptyString(runtime?.controlContext?.anchorInstanceId, runtime?.anchorInstanceId);
-  if (anchorInstanceId && !state.instancesById.has(anchorInstanceId)) anchorInstanceId = null;
-  if (!anchorInstanceId && Array.isArray(targetInstanceIds) && targetInstanceIds.length === 1 && state.instancesById.has(targetInstanceIds[0])) {
-    anchorInstanceId = targetInstanceIds[0];
+  const exercisePack = nextFlow.exercisePackId ? Exercises.getExercisePackById(nextFlow.exercisePackId, { lang }) : null;
+  let changed = false;
+  if (exercisePack) {
+    const mergedFlow = BoardFlow.mergeBoardFlowWithPack(nextFlow, buildAuthorableFlowPack(exercisePack, { lang }), { lang });
+    changed = changed || JSON.stringify(mergedFlow) !== JSON.stringify(nextFlow);
+    nextFlow = mergedFlow;
   }
-  const flow = exercisePackId && anchorInstanceId
-    ? getExistingBoardFlowForPack(exercisePackId, anchorInstanceId)
-    : null;
-
-  return {
-    exercisePack,
-    exercisePackId,
-    anchorInstanceId,
-    flow,
-    flowControlCatalog: buildFlowControlCatalogForPackTemplate(exercisePack),
-    boardFlowState: flow ? buildBoardFlowStateForPrompt(flow) : null
-  };
+  const effectivePreferredStepId = pickFirstNonEmptyString(preferredStepId);
+  const hasControls = Object.keys(nextFlow.controls || {}).length > 0;
+  const validStepIds = new Set((nextFlow.steps || []).map((step) => step.id));
+  if (effectivePreferredStepId && validStepIds.has(effectivePreferredStepId)) {
+    const currentStepId = pickFirstNonEmptyString(nextFlow?.runtime?.currentStepId);
+    if (!currentStepId || !validStepIds.has(currentStepId) || (forcePreferredWhenNoControls && !hasControls)) {
+      const updatedFlow = BoardFlow.setFlowCurrentStep(nextFlow, effectivePreferredStepId);
+      if (updatedFlow.runtime?.currentStepId !== nextFlow.runtime?.currentStepId) {
+        nextFlow = updatedFlow;
+        changed = true;
+      }
+    }
+  }
+  if (pruneMissingControls) {
+    const pruned = await pruneMissingBoardFlowControls(nextFlow);
+    nextFlow = pruned.flow;
+    changed = changed || pruned.changed;
+    if (pruned.removedControlIds?.length) log('WARNUNG: Verwaiste Board-Flow-Controls entfernt: ' + pruned.removedControlIds.join(', '));
+  }
+  if (changed && persist) {
+    nextFlow = await Board.saveBoardFlow({ ...nextFlow, updatedAt: new Date().toISOString() }, log);
+  }
+  return nextFlow;
 }
 
-function buildFlowScopeForRunProfile(runProfile, anchorInstanceId) {
-  return pickFirstNonEmptyString(runProfile?.scope?.type, runProfile?.defaultScopeType) === "global"
-    ? { type: "global" }
-    : { type: "fixed_instances", instanceIds: anchorInstanceId ? [anchorInstanceId] : [] };
+async function loadBoardFlows() {
+  const flows = await Board.listBoardFlows(log);
+  const entries = [];
+  for (const flow of flows) {
+    const healthyFlow = await ensureBoardFlowHealthy(flow, { persist: true, pruneMissingControls: true });
+    if (healthyFlow?.id) entries.push([healthyFlow.id, healthyFlow]);
+  }
+  state.boardFlowsById = new Map(entries);
+  await syncAllBoardFlowVisuals({ reflow: !isStaticFlowControlLayoutEnabled() });
+  renderFlowAuthoringStatus();
 }
 
-async function createBoardFlowControlForRunProfile({ flow, anchorInstanceId, runProfile, label = null, labelMode = "auto", scope = null } = {}) {
-  const endpoint = runProfile;
+function buildFlowScopeForEndpoint(endpoint, anchorInstanceId) {
+  return endpoint?.scope?.mode === "pack" || endpoint?.scope?.mode === "board"
+    ? { mode: endpoint.scope.mode, allowedCanvasTypeIds: endpoint.scope.allowedCanvasTypeIds || [] }
+    : { mode: "current", allowedCanvasTypeIds: endpoint?.scope?.allowedCanvasTypeIds || [], instanceIds: anchorInstanceId ? [anchorInstanceId] : [] };
+}
+
+async function createBoardFlowControlForEndpoint({ flow, anchorInstanceId, endpoint, label = null, labelMode = "auto", scope = null } = {}) {
   if (!flow?.id || !anchorInstanceId || !endpoint?.id || !endpoint?.stepId) {
     throw new Error("Flow-Control kann nicht erzeugt werden: Flow, Anchor oder Endpoint fehlen.");
-  }
-
-  const lang = getCurrentDisplayLanguage();
-  const exercisePack = Exercises.getExercisePackById(flow.exercisePackId || flow.exercisePackId, { lang });
-  const step = Exercises.getExerciseStep(exercisePack, endpoint.stepId, { lang });
-  if (!step?.id) {
-    throw new Error("Schritt für Endpoint nicht gefunden: " + endpoint.id);
   }
 
   let workingFlow = await ensureBoardFlowHealthy(flow, {
     persist: false,
     pruneMissingControls: true,
-    preferredStepId: step.id,
+    preferredStepId: endpoint.stepId,
     forcePreferredWhenNoControls: true
   });
 
   const orderedControls = sortFlowControlsForDisplay(workingFlow, Object.values(workingFlow.controls || {}));
-  const initialState = (!orderedControls.length || workingFlow.runtime?.currentStepId === step.id) ? "active" : "disabled";
+  const initialState = (!orderedControls.length || workingFlow.runtime?.currentStepId === endpoint.stepId) ? "active" : "disabled";
   const draftControl = {
     endpointId: endpoint.id,
-    stepId: step.id,
+    stepId: endpoint.stepId,
     state: initialState,
-    label: pickFirstNonEmptyString(label, endpoint.label, t("flow.defaultControlLabel", lang))
+    label: pickFirstNonEmptyString(label, endpoint.label, t("flow.defaultControlLabel", getCurrentDisplayLanguage()))
   };
   const orderedWithDraft = sortFlowControlsForDisplay(workingFlow, [...orderedControls, draftControl]);
   const draftIndex = orderedWithDraft.indexOf(draftControl);
@@ -2384,225 +2173,169 @@ async function createBoardFlowControlForRunProfile({ flow, anchorInstanceId, run
     width: position.width,
     height: position.height,
     state: initialState,
-    lang
+    lang: getCurrentDisplayLanguage()
   }, log);
 
-  const controlId = buildFlowControlId(step.id, endpoint.id);
+  const controlId = BoardFlow.createBoardFlowControlId(endpoint.stepId, endpoint.id);
   const control = BoardFlow.createFlowControlRecord({
     id: controlId,
     itemId: shape.id,
     label: nextLabel,
     labelMode,
     endpointId: endpoint.id,
-    stepId: step.id,
+    stepId: endpoint.stepId,
     anchorInstanceId,
-    scope: scope || buildFlowScopeForRunProfile(endpoint, anchorInstanceId),
+    scope: scope || buildFlowScopeForEndpoint(endpoint, anchorInstanceId),
     state: initialState
   });
 
   let nextFlow = BoardFlow.upsertFlowControl(workingFlow, control);
-  nextFlow = await saveBoardFlowAndCache(nextFlow, { reflow: true });
-
-  await Board.writeFlowControlMeta(shape.id, {
-    flowId: nextFlow.id,
-    controlId: control.id
-  }, log);
-
+  if (!orderedControls.length && nextFlow.runtime?.currentStepId !== endpoint.stepId) {
+    nextFlow = BoardFlow.setFlowCurrentStep(nextFlow, endpoint.stepId);
+  }
+  await Board.writeFlowControlMeta(shape, { flowId: nextFlow.id, controlId }, log);
   return nextFlow;
 }
 
-async function ensureFlowControlsForRunProfiles({ flow, anchorInstanceId, endpointIds = [] } = {}) {
+async function ensureFlowControlsForEndpoints({ flow, anchorInstanceId, endpointIds = [] } = {}) {
   let nextFlow = flow;
   const createdEndpointIds = [];
   const skippedEndpointIds = [];
-
   for (const endpointId of Array.from(new Set((endpointIds || []).filter(Boolean)))) {
     if (BoardFlow.findFlowControlsByEndpointId(nextFlow, endpointId).length) continue;
-
     const endpoint = ExerciseLibrary.getEndpointById(endpointId, { lang: getCurrentDisplayLanguage() });
-    if (!endpoint || endpoint.exercisePackId !== (nextFlow.exercisePackId || nextFlow.exercisePackId)) {
+    if (!endpoint || endpoint.exercisePackId !== nextFlow.exercisePackId || ExerciseLibrary.isSidecarOnlyEndpoint(endpoint) || endpoint.surface?.group === 'hidden') {
       skippedEndpointIds.push(endpointId);
       continue;
     }
-
     try {
-      nextFlow = await createBoardFlowControlForRunProfile({
-        flow: nextFlow,
-        anchorInstanceId,
-        runProfile: endpoint
-      });
+      nextFlow = await createBoardFlowControlForEndpoint({ flow: nextFlow, anchorInstanceId, endpoint });
       createdEndpointIds.push(endpointId);
     } catch (e) {
       skippedEndpointIds.push(endpointId);
       log("WARNUNG: Board Flow Control konnte nicht automatisch erzeugt werden: " + endpointId + " – " + e.message);
     }
   }
-
   return { flow: nextFlow, createdEndpointIds, skippedEndpointIds };
 }
 
-async function applyFlowControlDirectivesAfterAgentRun({
-  flowControlDirectives = null,
-  promptRuntimeOverride = null,
-  targetInstanceIds = [],
-  sourceLabel = "Agent"
-} = {}) {
+async function applyFlowControlDirectivesAfterAgentRun({ flowControlDirectives = null, promptRuntimeOverride = null, targetInstanceIds = [], sourceLabel = "Agent" } = {}) {
   const directives = ExerciseEngine.normalizeFlowControlDirectivesBlock(flowControlDirectives);
   const flowContext = resolveFlowPromptContext({ promptRuntimeOverride, targetInstanceIds });
   const result = {
     flowControlDirectives: directives ? { unlockEndpointIds: [], completeEndpointIds: [] } : null,
-    activeAnchorContext: flowContext.exercisePackId && flowContext.anchorInstanceId
-      ? { exercisePackId: flowContext.exercisePackId, anchorInstanceId: flowContext.anchorInstanceId }
-      : null,
-    skippedEndpointIds: [],
-    createdEndpointIds: []
+    activeAnchorContext: flowContext.exercisePackId && flowContext.anchorInstanceId ? { exercisePackId: flowContext.exercisePackId, anchorInstanceId: flowContext.anchorInstanceId } : null,
+    createdEndpointIds: [],
+    skippedEndpointIds: []
   };
-
-  if (!directives) {
-    return result;
-  }
-
+  if (!directives) return result;
   const exercisePackId = flowContext.exercisePackId;
   if (!exercisePackId) {
-    if ((directives.unlockEndpointIds || directives.completeEndpointIds || []).length) {
-      log(sourceLabel + ": Flow-Directives ignoriert, weil kein Exercise Pack im Flow-Kontext aufgelöst werden konnte.");
-    }
+    log("WARNUNG: Flow-Control-Directives konnten nicht angewendet werden – kein Exercise Pack aktiv.");
     return result;
   }
-
-  let flow = flowContext.flow;
   const validUnlockEndpointIds = [];
   const validCompleteEndpointIds = [];
-
   for (const endpointId of directives.unlockEndpointIds || []) {
     const endpoint = ExerciseLibrary.getEndpointById(endpointId);
-    if (!endpoint || endpoint.exercisePackId !== exercisePackId || isSidecarOnlyEndpoint(endpoint)) {
+    if (!endpoint || endpoint.exercisePackId !== exercisePackId || ExerciseLibrary.isSidecarOnlyEndpoint(endpoint) || endpoint.surface?.group === 'hidden') {
       result.skippedEndpointIds.push(endpointId);
-      if (endpoint && isSidecarOnlyEndpoint(endpoint)) {
-        log("INFO: Sidecar-Only-Endpoint wird nicht als Board-Button freigeschaltet: " + endpointId);
-      } else {
-        log("WARNUNG: Unbekannte oder unpassende unlockEndpointId übersprungen: " + endpointId);
-      }
       continue;
     }
     validUnlockEndpointIds.push(endpointId);
   }
-
   for (const endpointId of directives.completeEndpointIds || []) {
     const endpoint = ExerciseLibrary.getEndpointById(endpointId);
-    if (!endpoint || endpoint.exercisePackId !== exercisePackId || isSidecarOnlyEndpoint(endpoint)) {
+    if (!endpoint || endpoint.exercisePackId !== exercisePackId || ExerciseLibrary.isSidecarOnlyEndpoint(endpoint) || endpoint.surface?.group === 'hidden') {
       result.skippedEndpointIds.push(endpointId);
-      if (endpoint && isSidecarOnlyEndpoint(endpoint)) {
-        log("INFO: Sidecar-Only-Endpoint wird nicht als Board-Button erledigt markiert: " + endpointId);
-      } else {
-        log("WARNUNG: Unbekannte oder unpassende completeEndpointId übersprungen: " + endpointId);
-      }
       continue;
     }
     validCompleteEndpointIds.push(endpointId);
   }
-
-  if (!flow && flowContext.anchorInstanceId && (validUnlockEndpointIds.length || validCompleteEndpointIds.length)) {
+  result.flowControlDirectives = { unlockEndpointIds: validUnlockEndpointIds.slice(), completeEndpointIds: validCompleteEndpointIds.slice() };
+  let flow = flowContext.flow || null;
+  const needsControlCreation = validUnlockEndpointIds.some((endpointId) => !flow || !BoardFlow.findFlowControlsByEndpointId(flow, endpointId).length);
+  if ((!flow || needsControlCreation) && !flowContext.anchorInstanceId) {
+    log("WARNUNG: Flow-Control-Directives konnten ohne eindeutigen Anchor nicht vollständig umgesetzt werden.");
+    return result;
+  }
+  const staticLayout = isStaticFlowControlLayoutEnabled();
+  if (!flow && flowContext.anchorInstanceId && !staticLayout) {
     flow = await findOrCreateBoardFlowForPack(exercisePackId, flowContext.anchorInstanceId);
   }
   if (!flow) {
+    if (staticLayout && (validUnlockEndpointIds.length || validCompleteEndpointIds.length)) {
+      log("INFO: Statisches Button-Layout aktiv – ohne vorhandenen Flow werden Flow-Control-Directives nicht materialisiert.");
+    }
     return result;
   }
-
-  const needsControlCreation = validUnlockEndpointIds.some((endpointId) => !BoardFlow.findFlowControlsByEndpointId(flow, endpointId).length);
-  if (needsControlCreation && !isStaticFlowControlLayoutEnabled()) {
-    const ensured = await ensureFlowControlsForRunProfiles({
-      flow,
-      anchorInstanceId: flowContext.anchorInstanceId,
-      endpointIds: validUnlockEndpointIds
-    });
+  if (validUnlockEndpointIds.length && flowContext.anchorInstanceId && !staticLayout) {
+    const ensured = await ensureFlowControlsForEndpoints({ flow, anchorInstanceId: flowContext.anchorInstanceId, endpointIds: validUnlockEndpointIds });
     flow = ensured.flow;
-    result.createdEndpointIds = ensured.createdEndpointIds || [];
-  } else if (needsControlCreation) {
+    result.createdEndpointIds.push(...ensured.createdEndpointIds);
+    result.skippedEndpointIds.push(...ensured.skippedEndpointIds);
+  } else if (validUnlockEndpointIds.length && staticLayout) {
     const missingEndpointIds = validUnlockEndpointIds.filter((endpointId) => !BoardFlow.findFlowControlsByEndpointId(flow, endpointId).length);
-    result.skippedEndpointIds.push(...missingEndpointIds);
-    validUnlockEndpointIds.splice(0, validUnlockEndpointIds.length, ...validUnlockEndpointIds.filter((endpointId) => BoardFlow.findFlowControlsByEndpointId(flow, endpointId).length));
+    if (missingEndpointIds.length) {
+      result.skippedEndpointIds.push(...missingEndpointIds);
+      log("INFO: Statisches Button-Layout aktiv – fehlende Buttons werden nicht erzeugt: " + missingEndpointIds.join(", ") + ".");
+    }
   }
-
-  const nextFlow = BoardFlow.applyFlowControlDirectives(flow, {
+  flow = BoardFlow.applyFlowControlDirectives(flow, {
     unlockEndpointIds: validUnlockEndpointIds,
     completeEndpointIds: validCompleteEndpointIds
   });
-
-  result.flowControlDirectives.unlockEndpointIds = validUnlockEndpointIds.slice();
-  result.flowControlDirectives.completeEndpointIds = validCompleteEndpointIds.slice();
-  await saveBoardFlowAndCache(nextFlow, { reflow: !isStaticFlowControlLayoutEnabled() });
-
+  flow = await saveBoardFlowAndCache(flow, { reflow: result.createdEndpointIds.length > 0 && !isStaticFlowControlLayoutEnabled() });
   if (result.createdEndpointIds.length || validUnlockEndpointIds.length || validCompleteEndpointIds.length) {
-    log(
-      sourceLabel + ": Button-Zustände aktualisiert. Freigeschaltet=" + (validUnlockEndpointIds.join(", ") || "keine") +
-      ", erledigt=" + (validCompleteEndpointIds.join(", ") || "keine") +
-      (result.createdEndpointIds.length ? (", neu erzeugt=" + result.createdEndpointIds.join(", ")) : "") + "."
-    );
+    log(sourceLabel + ": Button-Zustände aktualisiert. Freigeschaltet=" + (validUnlockEndpointIds.join(", ") || "keine") + ", erledigt=" + (validCompleteEndpointIds.join(", ") || "keine") + (result.createdEndpointIds.length ? (", neu erzeugt=" + result.createdEndpointIds.join(", ")) : "") + ".");
   }
-
   return result;
 }
 
-async function resolveAuthoringScopeFromCurrentSelection(packTemplate, requestedScopeType) {
+async function resolveAuthoringScopeFromCurrentSelection(exercisePack, requestedScopeType) {
   const selectedInstanceIds = await refreshSelectionStatusFromBoard();
   const selected = Array.from(new Set((selectedInstanceIds || []).filter((id) => state.instancesById.has(id))));
-  if (!selected.length) {
-    throw new Error("Bitte mindestens eine Canvas-Instanz auf dem Board selektieren.");
-  }
-
-  const allowedCanvasTypeIds = new Set((packTemplate?.allowedCanvasTypeIds || []).filter(Boolean));
+  if (!selected.length) throw new Error("Bitte mindestens eine Canvas-Instanz auf dem Board selektieren.");
+  const allowedCanvasTypeIds = new Set((exercisePack?.allowedCanvasTypeIds || []).filter(Boolean));
   const allowedSelected = selected.filter((instanceId) => {
     const canvasTypeId = state.instancesById.get(instanceId)?.canvasTypeId || null;
     return !allowedCanvasTypeIds.size || (canvasTypeId && allowedCanvasTypeIds.has(canvasTypeId));
   });
-
-  if (!allowedSelected.length) {
-    throw new Error("Die aktuelle Selektion enthält keine zum Pack Template passende Canvas-Instanz.");
-  }
-
-  const scopeType = requestedScopeType === "global" ? "global" : "fixed_instances";
+  if (!allowedSelected.length) throw new Error("Die aktuelle Selektion enthält keine zum Exercise Pack passende Canvas-Instanz.");
+  const scopeMode = requestedScopeType === "pack" || requestedScopeType === "global" ? "pack" : "current";
   return {
     anchorInstanceId: allowedSelected[0],
-    scope: scopeType === "global"
-      ? { type: "global" }
-      : { type: "fixed_instances", instanceIds: allowedSelected }
+    scope: {
+      mode: scopeMode,
+      allowedCanvasTypeIds: Array.from(allowedCanvasTypeIds),
+      instanceIds: scopeMode === 'current' ? allowedSelected : []
+    }
   };
 }
 
 async function createFlowControlFromAdmin() {
   const lang = getCurrentDisplayLanguage();
-  const packTemplate = getSelectedFlowPackTemplate({ lang });
-  const stepTemplate = getSelectedFlowStepTemplate(packTemplate, { lang });
-  const runProfile = getSelectedFlowRunProfile(packTemplate, stepTemplate, { lang });
-
-  if (!packTemplate || !stepTemplate || !runProfile) {
-    log("Board Flow: Bitte Pack Template, Step Template und Run Profile wählen.");
+  const exercisePack = getSelectedFlowExercisePack({ lang });
+  const step = getSelectedFlowStep(exercisePack, { lang });
+  const endpoint = getSelectedFlowEndpoint(exercisePack, step, { lang });
+  if (!exercisePack || !step || !endpoint) {
+    log("Board Flow: Bitte Exercise Pack, Schritt und Endpoint wählen.");
     return;
   }
-
   try {
-    const { anchorInstanceId, scope } = await resolveAuthoringScopeFromCurrentSelection(packTemplate, flowScopeTypeEl?.value || runProfile.defaultScopeType);
-    let flow = await findOrCreateBoardFlowForPack(packTemplate.id, anchorInstanceId, { preferredStepId: stepTemplate.id, seedDefaults: false });
-    if (BoardFlow.findFlowControlsByRunProfileId(flow, runProfile.id).length) {
-      log("Board Flow: Für dieses Run Profile existiert bereits ein Button auf dieser Instanz. Kein Duplikat erzeugt.");
+    const { anchorInstanceId, scope } = await resolveAuthoringScopeFromCurrentSelection(exercisePack, flowScopeTypeEl?.value || endpoint.scope?.mode);
+    let flow = await findOrCreateBoardFlowForPack(exercisePack.id, anchorInstanceId, { preferredStepId: step.id, seedDefaults: false });
+    if (BoardFlow.findFlowControlsByEndpointId(flow, endpoint.id).length) {
+      log("Board Flow: Für diesen Endpoint existiert bereits ein Button auf dieser Instanz. Kein Duplikat erzeugt.");
       return;
     }
     const inputLabel = ((flowControlLabelEl?.value || "").trim());
-    const autoLabel = (flowControlLabelEl?.dataset.autoLabel || pickFirstNonEmptyString(runProfile.label, t("flow.defaultControlLabel", lang)) || "").trim();
+    const autoLabel = (flowControlLabelEl?.dataset.autoLabel || pickFirstNonEmptyString(endpoint.label, t("flow.defaultControlLabel", lang)) || "").trim();
     const nextLabel = inputLabel || autoLabel || t("flow.defaultControlLabel", lang);
     const labelMode = inputLabel && inputLabel !== autoLabel ? "custom" : "auto";
-    flow = await createBoardFlowControlForRunProfile({
-      flow,
-      anchorInstanceId,
-      runProfile,
-      label: nextLabel,
-      labelMode,
-      scope
-    });
+    flow = await createBoardFlowControlForEndpoint({ flow, anchorInstanceId, endpoint, label: nextLabel, labelMode, scope });
     flow = await saveBoardFlowAndCache(flow, { reflow: !isStaticFlowControlLayoutEnabled() });
-
-    log("Board Flow Control erzeugt: '" + nextLabel + "' für " + (getInstanceLabelByInternalId(anchorInstanceId) || anchorInstanceId) + " | Scope=" + scope.type + ".");
+    log("Board Flow Control erzeugt: '" + nextLabel + "' für " + (getInstanceLabelByInternalId(anchorInstanceId) || anchorInstanceId) + " | Scope=" + scope.mode + ".");
     renderFlowAuthoringControls();
   } catch (e) {
     log("Board Flow: Control konnte nicht erzeugt werden – " + e.message);
@@ -2611,21 +2344,20 @@ async function createFlowControlFromAdmin() {
 
 async function setCurrentFlowStepFromAdmin() {
   const lang = getCurrentDisplayLanguage();
-  const packTemplate = getSelectedFlowPackTemplate({ lang });
-  const stepTemplate = getSelectedFlowStepTemplate(packTemplate, { lang });
-  if (!packTemplate || !stepTemplate) {
-    log("Board Flow: Bitte Pack Template und Step Template wählen.");
+  const exercisePack = getSelectedFlowExercisePack({ lang });
+  const step = getSelectedFlowStep(exercisePack, { lang });
+  if (!exercisePack || !step) {
+    log("Board Flow: Bitte Exercise Pack und Schritt wählen.");
     return;
   }
-
   try {
-    const { anchorInstanceId } = await resolveAuthoringScopeFromCurrentSelection(packTemplate, "fixed_instances");
-    let flow = await findOrCreateBoardFlowForPack(packTemplate.id, anchorInstanceId, { preferredStepId: stepTemplate.id, seedDefaults: !isStaticFlowControlLayoutEnabled() });
-    flow = BoardFlow.setFlowCurrentStep(flow, stepTemplate.id);
-    const ensuredDefaults = await ensureDefaultBoardControlsForStep(flow, stepTemplate.id);
+    const { anchorInstanceId } = await resolveAuthoringScopeFromCurrentSelection(exercisePack, "current");
+    let flow = await findOrCreateBoardFlowForPack(exercisePack.id, anchorInstanceId, { preferredStepId: step.id, seedDefaults: !isStaticFlowControlLayoutEnabled() });
+    flow = BoardFlow.setFlowCurrentStep(flow, step.id);
+    const ensuredDefaults = await ensureDefaultBoardControlsForStep(flow, step.id);
     flow = ensuredDefaults.flow;
     flow = await saveBoardFlowAndCache(flow, { reflow: !isStaticFlowControlLayoutEnabled() });
-    log("Board Flow: Aktiver Schritt gesetzt auf '" + (stepTemplate.label || stepTemplate.id) + "' für " + (flow.label || flow.id) + ".");
+    log("Board Flow: Aktiver Schritt gesetzt auf '" + (step.label || step.id) + "' für " + (flow.label || flow.id) + ".");
     renderFlowAuthoringControls();
   } catch (e) {
     log("Board Flow: Schritt konnte nicht gesetzt werden – " + e.message);
@@ -2642,29 +2374,24 @@ async function activateSelectedFlowControlFromAdmin() {
     log("Board Flow: Diese Admin-Aktion ist nur im Admin-Modus verfügbar.");
     return;
   }
-
   const selection = await Board.getSelection(log).catch(() => []);
   const controlSelection = await resolveSelectedFlowControl(selection || []);
   if (!controlSelection) {
     log("Board Flow: Bitte genau einen platzierten Flow-Button selektieren.");
     return;
   }
-
   const control = controlSelection.control;
   if (!control?.endpointId) {
     log("Board Flow: Der selektierte Button hat keine endpointId und kann nicht fachlich freigeschaltet werden.");
     return;
   }
-
   if (control.state === "active") {
     log("Board Flow: Der selektierte Button ist bereits aktiv.");
     return;
   }
-
   let nextFlow = BoardFlow.forceFlowControlActive(controlSelection.flow, control.id);
   nextFlow = await saveBoardFlowAndCache(nextFlow);
   const nextControl = BoardFlow.findFlowControlByItemId(nextFlow, controlSelection.item.id) || nextFlow.controls?.[control.id] || control;
-
   log("Board Flow: Button freigeschaltet: '" + getSelectedFlowControlLabel({ control: nextControl }) + "' in " + (nextFlow.label || nextFlow.id) + ".");
   renderFlowAuthoringControls();
   await refreshSelectionStatusFromItems(selection || []);
@@ -2675,29 +2402,24 @@ async function markSelectedFlowControlDoneFromAdmin() {
     log("Board Flow: Diese Admin-Aktion ist nur im Admin-Modus verfügbar.");
     return;
   }
-
   const selection = await Board.getSelection(log).catch(() => []);
   const controlSelection = await resolveSelectedFlowControl(selection || []);
   if (!controlSelection) {
     log("Board Flow: Bitte genau einen platzierten Flow-Button selektieren.");
     return;
   }
-
   const control = controlSelection.control;
   if (!control?.endpointId) {
     log("Board Flow: Der selektierte Button hat keine endpointId und kann nicht als erledigt markiert werden.");
     return;
   }
-
   if (control.state === "done") {
     log("Board Flow: Der selektierte Button ist bereits als erledigt markiert.");
     return;
   }
-
   let nextFlow = BoardFlow.markFlowControlDone(controlSelection.flow, control.id);
   nextFlow = await saveBoardFlowAndCache(nextFlow);
   const nextControl = BoardFlow.findFlowControlByItemId(nextFlow, controlSelection.item.id) || nextFlow.controls?.[control.id] || control;
-
   log("Board Flow: Button als erledigt markiert: '" + getSelectedFlowControlLabel({ control: nextControl }) + "' in " + (nextFlow.label || nextFlow.id) + ".");
   renderFlowAuthoringControls();
   await refreshSelectionStatusFromItems(selection || []);
@@ -2708,110 +2430,72 @@ async function resetSelectedFlowControlFromAdmin() {
     log("Board Flow: Diese Admin-Aktion ist nur im Admin-Modus verfügbar.");
     return;
   }
-
   const selection = await Board.getSelection(log).catch(() => []);
   const controlSelection = await resolveSelectedFlowControl(selection || []);
   if (!controlSelection) {
     log("Board Flow: Bitte genau einen platzierten Flow-Button selektieren.");
     return;
   }
-
   const control = controlSelection.control;
   if (!control?.endpointId) {
     log("Board Flow: Der selektierte Button hat keine endpointId und kann nicht zurückgesetzt werden.");
     return;
   }
-
   let nextFlow = BoardFlow.resetFlowControlState(controlSelection.flow, control.id);
   nextFlow = await saveBoardFlowAndCache(nextFlow);
   const nextControl = BoardFlow.findFlowControlByItemId(nextFlow, controlSelection.item.id) || nextFlow.controls?.[control.id] || control;
-
-  log("Board Flow: Button zurückgesetzt: '" + getSelectedFlowControlLabel({ control: nextControl }) + "' in " + (nextFlow.label || nextFlow.id) + ". Neuer Status: " + (nextControl?.state || "disabled") + ".");
+  log("Board Flow: Button zurückgesetzt: '" + getSelectedFlowControlLabel({ control: nextControl }) + "' in " + (nextFlow.label || nextFlow.id) + ".");
   renderFlowAuthoringControls();
   await refreshSelectionStatusFromItems(selection || []);
 }
 
-async function clearMemoryFromAdmin() {
-  if (state.panelMode !== "admin") {
-    log("Memory-Reset: Diese Aktion ist nur im Admin-Modus verfügbar.");
-    return;
-  }
 
-  if (state.agentRunLock || state.flowControlRunLock) {
-    log("Memory-Reset: Während eines laufenden Agent- oder Flow-Runs gesperrt.");
-    return;
-  }
 
-  await Board.clearMemoryState(log);
-  const removedLogEntries = await Board.clearMemoryLog(log);
-  state.memoryState = Memory.createEmptyMemoryState();
-  state.memoryLog = [];
-  renderExerciseControls();
-
-  log("Memory gelöscht: kumulativer Memory-State geleert, entfernte Log-Einträge=" + removedLogEntries + ".");
-}
-
-async function resolveSelectedFlowControl(items) {
-  const list = Array.isArray(items) ? items : [];
-  if (list.length !== 1) return null;
-
-  const item = list[0];
-  const meta = await Board.readFlowControlMeta(item, log);
-  if (!meta) return null;
-
-  const persistedFlow = await Board.loadBoardFlow(meta.flowId, log).catch(() => null);
-  const rawFlow = persistedFlow || state.boardFlowsById.get(meta.flowId) || null;
-  if (!rawFlow) return null;
-  const flow = await ensureBoardFlowHealthy(rawFlow, { persist: true, pruneMissingControls: true });
-  state.boardFlowsById.set(flow.id, flow);
-  await syncBoardFlowVisuals(flow);
-
-  const control = BoardFlow.findFlowControlByItemId(flow, item.id) || flow.controls?.[meta.controlId] || null;
-  if (!control) return null;
-
-  return { item, meta, flow, control };
-}
-
-function resolveTargetInstanceIdsFromFlowScope(scope, packTemplate = null) {
+function resolveTargetInstanceIdsFromScope(scope, {
+  exercisePack,
+  anchorInstanceId = null,
+  selectedInstanceIds = []
+} = {}) {
   const normalizedScope = BoardFlow.normalizeFlowScope(scope);
-  if (normalizedScope.type === "fixed_instances") {
-    return normalizedScope.instanceIds.filter((instanceId) => state.instancesById.has(instanceId));
-  }
-
-  const allowedCanvasTypes = new Set((packTemplate?.allowedCanvasTypeIds || []).filter(Boolean));
-  return Array.from(state.instancesById.keys()).filter((instanceId) => {
-    if (!state.instancesById.has(instanceId)) return false;
-    if (!allowedCanvasTypes.size) return true;
-    const canvasTypeId = state.instancesById.get(instanceId)?.canvasTypeId || null;
-    return !!canvasTypeId && allowedCanvasTypes.has(canvasTypeId);
+  const mode = normalizedScope.mode || normalizedScope.type || 'selection';
+  const allowedCanvasTypeIds = new Set(normalizedScope.allowedCanvasTypeIds || exercisePack?.allowedCanvasTypeIds || []);
+  const filterAllowed = (instanceIds) => (Array.isArray(instanceIds) ? instanceIds : []).filter((instanceId) => {
+    const instance = state.instancesById.get(instanceId) || null;
+    if (!instance) return false;
+    if (!allowedCanvasTypeIds.size) return true;
+    return !!instance.canvasTypeId && allowedCanvasTypeIds.has(instance.canvasTypeId);
   });
+  if (mode === 'current') {
+    const instanceIds = normalizedScope.instanceIds?.length ? normalizedScope.instanceIds : selectedInstanceIds;
+    return filterAllowed(instanceIds);
+  }
+  if (mode === 'pack' || mode === 'board') {
+    return filterAllowed(Array.from(state.instancesById.keys()));
+  }
+  if (anchorInstanceId) {
+    return filterAllowed([anchorInstanceId]);
+  }
+  return filterAllowed(getSelectedInstanceIds());
 }
 
 function buildPromptRuntimeFromEndpoint({
-  flow = null,
-  control = null,
-  endpoint = null,
-  currentStep = null,
-  exercisePack = null,
-  targetInstanceIds = []
-} = {}) {
-  const promptModules = ExerciseLibrary.getPromptModulesByIds(endpoint?.prompt?.moduleIds || endpoint?.moduleIds || [], { lang: getCurrentDisplayLanguage() });
-  const targetInstanceLabels = getInstanceLabelsFromIds(targetInstanceIds);
-  const resolvedStep = currentStep || null;
+  exercisePack,
+  currentStep,
+  endpoint,
+  controlContext = null,
+  pendingProposal = null,
+  adminOverride = null
+}) {
+  const promptModules = ExerciseLibrary.getPromptModulesByIds(endpoint?.prompt?.moduleIds || [], { lang: getCurrentDisplayLanguage() });
   return {
-    exercisePack: exercisePack || null,
-    currentStep: resolvedStep,
-    endpoint: endpoint || null,
+    mode: 'endpoint',
+    exercisePack,
+    currentStep,
+    endpoint,
     promptModules,
-    controlContext: {
-      flowId: flow?.id || null,
-      controlId: control?.id || null,
-      controlLabel: control?.label || endpoint?.label || null,
-      endpointId: endpoint?.id || null,
-      anchorInstanceId: flow?.anchorInstanceId || control?.anchorInstanceId || null,
-      scopeType: control?.scope?.type || endpoint?.scope?.type || null,
-      targetInstanceLabels
-    }
+    controlContext,
+    pendingProposal,
+    adminOverride
   };
 }
 
@@ -2821,264 +2505,358 @@ async function runAgentFromFlowControl(flow, control, selectedItem) {
   state.boardFlowsById.set(healthyFlow.id, healthyFlow);
 
   const healthyControl = healthyFlow.controls?.[control?.id] || BoardFlow.findFlowControlByItemId(healthyFlow, selectedItem?.id) || control;
-  const endpointId = pickFirstNonEmptyString(healthyControl?.endpointId, healthyControl?.endpointId);
-  const endpoint = ExerciseLibrary.getEndpointById(endpointId, { lang });
-  const exercisePack = Exercises.getExercisePackById(endpoint?.exercisePackId || getSelectedExercisePackId(), { lang });
-  const resolvedStepId = pickFirstNonEmptyString(healthyControl?.stepId, endpoint?.stepId);
-  const currentStep = Exercises.getExerciseStep(exercisePack, resolvedStepId, { lang }) || getCurrentExerciseStep(exercisePack, { lang });
+  const endpoint = ExerciseLibrary.getEndpointById(healthyControl?.endpointId, { lang });
+  const exercisePack = Exercises.getExercisePackById(healthyFlow?.exercisePackId, { lang });
+  const currentStep = endpoint?.stepId ? Exercises.getExerciseStep(exercisePack, endpoint.stepId, { lang }) : null;
 
   if (!endpoint || !exercisePack || !currentStep) {
-    const missing = [
-      endpoint ? null : "endpoint",
-      exercisePack ? null : "exercisePack",
-      currentStep ? null : "step"
-    ].filter(Boolean).join(", ");
-    const msg = "Board Flow: Control ist unvollständig konfiguriert" + (missing ? " (" + missing + ")" : "") + ".";
+    const msg = "Board Flow: Control ist unvollständig konfiguriert (endpoint / step / exercisePack).";
     log(msg);
-    if (IS_HEADLESS) await notifyRuntime(msg, { level: "error" });
+    if (IS_HEADLESS) await notifyRuntime(msg, { level: 'error' });
     return;
   }
 
-  if (healthyControl.state !== "active") {
+  if (healthyControl.state !== 'active') {
     const msg = "Board Flow: Control '" + (healthyControl.label || healthyControl.id) + "' ist derzeit nicht aktiv.";
     log(msg);
-    if (IS_HEADLESS) await notifyRuntime(msg, { level: "warning" });
+    if (IS_HEADLESS) await notifyRuntime(msg, { level: 'warning' });
     return;
   }
 
-  const requiresApiKey = endpoint.triggerKey !== "selection.apply" && endpoint.triggerKey !== "global.apply";
+  const requiresApiKey = endpoint.triggerKey !== 'selection.apply' && endpoint.triggerKey !== 'global.apply';
   if (requiresApiKey && !getApiKey()) {
-    const msg = "Board Flow: Kein OpenAI API Key verfügbar.";
+    const msg = 'Board Flow: Kein OpenAI API Key verfügbar.';
     log(msg);
-    if (IS_HEADLESS) await notifyRuntime(msg, { level: "error" });
+    if (IS_HEADLESS) await notifyRuntime(msg, { level: 'error' });
     return;
   }
 
-  const targetInstanceIds = resolveTargetInstanceIdsFromFlowScope(healthyControl.scope, exercisePack);
+  const targetInstanceIds = resolveTargetInstanceIdsFromScope(healthyControl.scope || endpoint.scope, {
+    exercisePack,
+    anchorInstanceId: healthyFlow.anchorInstanceId,
+    selectedInstanceIds: healthyControl.scope?.instanceIds || [healthyFlow.anchorInstanceId]
+  });
   const targetInstanceLabels = getInstanceLabelsFromIds(targetInstanceIds);
-  const triggerContext = ExerciseEngine.resolveEndpointContext({
+  const endpointContext = ExerciseEngine.resolveEndpointContext({
+    exercisePack,
+    currentStep,
     endpoint,
-    pack: exercisePack,
-    step: currentStep,
-    source: "user",
+    source: 'user',
     selectionCount: targetInstanceIds.length,
+    targetInstanceIds,
     targetInstanceLabels,
     boardConfig: state.boardConfig
   });
-
-  if (!triggerContext.valid) {
-    const msg = "Board Flow: " + (triggerContext.reason || "Endpoint ist im aktuellen Kontext nicht ausführbar.");
-    log(msg);
-    if (IS_HEADLESS) await notifyRuntime(msg, { level: "warning" });
-    return;
-  }
-
   const promptRuntimeOverride = buildPromptRuntimeFromEndpoint({
-    flow: healthyFlow,
-    control: healthyControl,
-    endpoint,
-    currentStep,
     exercisePack,
-    targetInstanceIds
+    currentStep,
+    endpoint,
+    controlContext: {
+      flowId: healthyFlow.id,
+      controlId: healthyControl.id,
+      controlLabel: healthyControl.label || null,
+      endpointId: endpoint.id,
+      anchorInstanceId: healthyFlow.anchorInstanceId || healthyControl.anchorInstanceId || null,
+      scopeType: healthyControl.scope?.mode || healthyControl.scope?.type || null,
+      targetInstanceLabels
+    },
+    adminOverride: state.exerciseRuntime?.adminOverride || null
   });
-  const sourceLabel = healthyControl.label || endpoint.label || "Flow Control";
-  const runMode = buildRunModeFromTriggerKey(triggerContext.triggerKey);
+  const sourceLabel = healthyControl.label || endpoint.label || 'Flow Control';
 
   const nextFlow = {
     ...healthyFlow,
+    runtime: {
+      ...(healthyFlow.runtime || {}),
+      lastTriggeredControlId: healthyControl.id,
+      lastTriggeredAt: new Date().toISOString()
+    },
     controls: {
-      ...healthyFlow.controls,
+      ...(healthyFlow.controls || {}),
       [healthyControl.id]: {
         ...healthyControl,
-        state: healthyControl.state
+        lastTriggeredAt: new Date().toISOString()
       }
     }
   };
-  state.boardFlowsById.set(nextFlow.id, nextFlow);
+  await saveBoardFlowAndCache(nextFlow);
 
-  if (triggerContext.scope === "global") {
-    await runGlobalAgent(healthyFlow.anchorInstanceId || null, resolveBoardUserSeedText(healthyFlow.anchorInstanceId, getCurrentUserQuestion()), {
-      runMode,
-      triggerContext,
-      sourceLabel,
-      forcedInstanceIds: targetInstanceIds,
-      updateGlobalBaseline: false,
-      forceTargetSet: true,
-      promptRuntimeOverride
-    });
-  } else {
-    await runAgentForSelectedInstances(targetInstanceIds, {
-      runMode,
-      triggerContext,
-      sourceLabel,
-      userText: resolveBoardUserSeedText(healthyFlow.anchorInstanceId, getCurrentUserQuestion()),
-      promptRuntimeOverride
-    });
+  const resolvedUserText = await resolveBoardUserSeedText(healthyFlow.anchorInstanceId || healthyControl.anchorInstanceId || targetInstanceIds[0] || null, getCurrentUserQuestion());
+  log("Board Flow Trigger: '" + sourceLabel + "' → " + endpoint.triggerKey + ' | Ziele: ' + (targetInstanceLabels.join(', ') || '(keine)'));
+  try {
+    const runResult = endpoint.triggerKey.startsWith('global.')
+      ? await runGlobalAgent(null, resolvedUserText, {
+          triggerContext: endpointContext,
+          sourceLabel,
+          promptRuntimeOverride,
+          forcedInstanceIds: targetInstanceIds,
+          forceTargetSet: true,
+          runMode: buildRunModeFromTriggerKey(endpoint.triggerKey),
+          updateGlobalBaseline: false
+        })
+      : await runAgentForSelectedInstances(targetInstanceIds, {
+          triggerContext: endpointContext,
+          sourceLabel,
+          promptRuntimeOverride,
+          runMode: buildRunModeFromTriggerKey(endpoint.triggerKey),
+          userText: resolvedUserText
+        });
+    if (!runResult?.ok) {
+      const msg = "Board Flow: Trigger '" + sourceLabel + "' fehlgeschlagen – " + formatRunFailure(runResult);
+      logRuntimeNotice(['model_refusal', 'precondition', 'run_locked', 'stale_state_conflict'].includes(runResult?.errorType) ? runResult.errorType : 'fatal', msg);
+      return runResult;
+    }
+    return runResult;
+  } catch (error) {
+    const msg = "Board Flow: Trigger '" + sourceLabel + "' fehlgeschlagen – " + formatRuntimeErrorMessage(error);
+    logRuntimeNotice('fatal', msg, error?.stack || null);
+    if (IS_HEADLESS) await notifyRuntime(msg, { level: 'error' });
+    return buildRunFailureResult('fatal', msg, { error });
   }
 }
 
-async function runExerciseTriggerRequest(request) {
-  const pack = getSelectedExercisePack();
-  const currentStep = getCurrentExerciseStep(pack);
+async function syncDefaultCanvasTypeToBoardConfig(canvasTypeId) {
+  const normalizedCanvasTypeId = normalizeCanvasTypeId(canvasTypeId);
+  setSelectedCanvasTypeId(normalizedCanvasTypeId);
+  await persistBoardConfig({ defaultCanvasTypeId: normalizedCanvasTypeId });
+  renderCanvasTypePicker();
+  renderExerciseControls();
+}
 
+async function loadBoardExerciseState() {
+  const fallbackCanvasTypeId = normalizeCanvasTypeId(state.selectedCanvasTypeId || TEMPLATE_ID);
+  const loadedBoardConfig = await Board.loadBoardConfigFromAnchor({ defaultCanvasTypeId: fallbackCanvasTypeId, log });
+  let normalizedBoardConfig = Board.normalizeBoardConfig(loadedBoardConfig, { defaultCanvasTypeId: fallbackCanvasTypeId });
+  const normalizedPackId = Exercises.normalizeExercisePackId(normalizedBoardConfig.activeExercisePackId);
+  const pack = normalizedPackId ? Exercises.getExercisePackById(normalizedPackId, { lang: normalizedBoardConfig.lang }) : null;
+  const packDefaults = Exercises.getPackDefaults(pack);
+  normalizedBoardConfig = {
+    ...normalizedBoardConfig,
+    mode: normalizedPackId ? 'exercise' : 'generic',
+    activeExercisePackId: normalizedPackId || null,
+    defaultFeedbackTarget: normalizedBoardConfig.defaultFeedbackTarget || packDefaults.feedbackChannel,
+    userMayChangePack: normalizedBoardConfig.userMayChangePack === true ? true : packDefaults.userMayChangePack,
+    userMayChangeStep: normalizedBoardConfig.userMayChangeStep === true ? true : packDefaults.userMayChangeStep,
+    adminPolicy: normalizedBoardConfig.adminPolicy || packDefaults.appAdminPolicy
+  };
+  const allowedCanvasTypeIds = Exercises.getAllowedCanvasTypesForPack(pack);
+  let defaultCanvasTypeId = normalizeCanvasTypeId(normalizedBoardConfig.defaultCanvasTypeId || fallbackCanvasTypeId);
+  if (allowedCanvasTypeIds.length && !allowedCanvasTypeIds.includes(defaultCanvasTypeId)) {
+    defaultCanvasTypeId = normalizeCanvasTypeId(Exercises.getDefaultCanvasTypeIdForPack(pack) || allowedCanvasTypeIds[0]);
+  }
+  normalizedBoardConfig.defaultCanvasTypeId = defaultCanvasTypeId;
+  state.boardConfig = await Board.saveBoardConfigToAnchor(normalizedBoardConfig, { defaultCanvasTypeId, log });
+  setSelectedCanvasTypeId(defaultCanvasTypeId);
+  state.exerciseRuntime = Board.normalizeExerciseRuntime(await Board.loadExerciseRuntime(log));
+  const currentPack = getSelectedExercisePack({ lang: state.boardConfig.lang });
+  const nextStepId = currentPack ? getCurrentExerciseStepId(currentPack) : null;
+  if (state.exerciseRuntime.currentStepId !== nextStepId) {
+    state.exerciseRuntime = await Board.saveExerciseRuntime({ ...state.exerciseRuntime, currentStepId: nextStepId }, log);
+  }
+  applyStaticUiLanguage(state.boardConfig.lang);
+  renderCanvasTypePicker();
+  renderExerciseControls();
+  await syncAllChatApplyButtonsForCurrentStep();
+  await syncBoardChromeLanguage(state.boardConfig.lang);
+}
+
+async function onExercisePackChange() {
+  const lang = getCurrentDisplayLanguage();
+  const selectedPackId = Exercises.normalizeExercisePackId(exercisePackEl?.value);
+  const selectedPack = Exercises.getExercisePackById(selectedPackId, { lang });
+  const allowedCanvasTypeIds = Exercises.getAllowedCanvasTypesForPack(selectedPack);
+  let defaultCanvasTypeId = getSelectedCanvasTypeId();
+  if (selectedPack) {
+    defaultCanvasTypeId = normalizeCanvasTypeId(Exercises.getDefaultCanvasTypeIdForPack(selectedPack) || defaultCanvasTypeId);
+  }
+  if (allowedCanvasTypeIds.length && !allowedCanvasTypeIds.includes(defaultCanvasTypeId)) {
+    defaultCanvasTypeId = normalizeCanvasTypeId(allowedCanvasTypeIds[0]);
+  }
+  setSelectedCanvasTypeId(defaultCanvasTypeId);
+  await persistBoardConfig({ mode: selectedPack ? 'exercise' : 'generic', activeExercisePackId: selectedPack?.id || null, defaultCanvasTypeId, ...buildBoardConfigPatchForPack(selectedPack) });
+  const nextStepId = selectedPack ? (Exercises.getExerciseStep(selectedPack, state.exerciseRuntime?.currentStepId, { lang })?.id || Exercises.getDefaultStepId(selectedPack)) : null;
+  await persistExerciseRuntime({ currentStepId: nextStepId, lastTriggerKey: null, lastTriggerSource: null, lastTriggerAt: null, lastFlowDirectiveUnlockEndpointIds: [], lastFlowDirectiveCompleteEndpointIds: [], lastFlowDirectiveAt: null });
+  if (selectedPack?.id && nextStepId) {
+    await syncExerciseStepToBoardFlow(nextStepId, { exercisePackId: selectedPack.id });
+  }
+  renderCanvasTypePicker();
+  renderExerciseControls();
+  await syncAllChatApplyButtonsForCurrentStep();
+  log('Exercise Pack gesetzt: ' + (selectedPack ? packLabelWithStep(selectedPack, nextStepId) : t('exercise.context.pack.none', lang)));
+}
+
+async function onExerciseStepChange() {
+  const lang = getCurrentDisplayLanguage();
+  const pack = getSelectedExercisePack({ lang });
   if (!pack) {
-    log("Exercise-Modus: Kein Exercise Pack aktiv. Bitte im Admin-Modus zuerst ein Exercise Pack auswählen.");
-    return null;
+    await persistExerciseRuntime({ currentStepId: null });
+    renderExerciseControls();
+    return;
   }
-
-  if (!currentStep) {
-    log("Exercise-Modus: Kein aktiver Schritt vorhanden. Bitte im Admin-Modus einen gültigen Schritt setzen.");
-    return null;
+  const requestedStepId = exerciseStepEl?.value || null;
+  const validStepId = Exercises.getExerciseStep(pack, requestedStepId, { lang })?.id || Exercises.getDefaultStepId(pack);
+  await persistExerciseRuntime({ currentStepId: validStepId, lastFlowDirectiveUnlockEndpointIds: [], lastFlowDirectiveCompleteEndpointIds: [], lastFlowDirectiveAt: null });
+  if (pack?.id && validStepId) {
+    await syncExerciseStepToBoardFlow(validStepId, { exercisePackId: pack.id });
   }
+  renderExerciseControls();
+  await syncAllChatApplyButtonsForCurrentStep();
+  const step = Exercises.getExerciseStep(pack, validStepId, { lang });
+  log('Exercise-Schritt gesetzt: ' + (step?.label || validStepId || '(leer)'));
+}
 
-  const source = ExerciseEngine.normalizeTriggerSource(request?.source || getCurrentTriggerSource());
-  const triggerRequest = ExerciseEngine.buildTriggerRequest(request || {});
-  if (!triggerRequest.triggerKey) {
-    log("Exercise-Modus: Konnte keinen gültigen Trigger aus der Anfrage ableiten.");
-    return null;
-  }
+function buildRunModeFromTriggerKey(triggerKey) {
+  const key = ExerciseEngine.normalizeTriggerKey(triggerKey);
+  if (key === 'question') return 'question';
+  return 'endpoint';
+}
 
-  const endpoint = ExerciseLibrary.findStepEndpointByTriggerKey(pack, currentStep.id, triggerRequest.triggerKey, {
-    lang: getCurrentDisplayLanguage()
-  });
-  if (!endpoint) {
-    log("Exercise-Modus: Kein Endpoint für Trigger gefunden: " + String(triggerRequest.triggerKey));
-    return null;
-  }
+function buildTriggerSourceLabel(triggerContext) {
+  const triggerKey = typeof triggerContext === 'string' ? triggerContext : triggerContext?.triggerKey;
+  const lang = getCurrentDisplayLanguage();
+  const parsed = triggerKey ? ExerciseEngine.parseTriggerKey(triggerKey) : null;
+  if (!parsed) return t('sourceLabel.exerciseAgent', lang);
+  const scopeLabel = t('trigger.scope.' + (parsed.scope === 'global' ? 'global' : 'selection'), lang);
+  const intentLabel = t('trigger.intent.' + (parsed.intent || ''), lang);
+  return `Exercise-${scopeLabel}-${intentLabel}`;
+}
 
-  return await runEndpoint(endpoint, { source });
+async function onPanelModeChange() {
+  setPanelMode('admin');
+}
+
+async function saveAdminOverrideFromUi() {
+  const text = (adminOverrideTextEl?.value || '').trim() || null;
+  await persistExerciseRuntime({ adminOverride: text });
+  renderExerciseControls();
+  log('Admin-Override gespeichert: ' + (text ? ('' + text.length + ' Zeichen') : 'leer'));
+}
+
+async function clearAdminOverrideFromUi() {
+  if (adminOverrideTextEl) adminOverrideTextEl.value = '';
+  await persistExerciseRuntime({ adminOverride: null });
+  renderExerciseControls();
+  log('Admin-Override geleert.');
+}
+
+async function onStaticFlowLayoutToggleChange() {
+  const nextValue = flowStaticLayoutToggleEl?.checked !== false;
+  await persistBoardConfig({ flowControlsStaticLayout: nextValue });
+  await syncAllBoardFlowVisuals({ reflow: !nextValue });
+  renderExerciseControls();
+  log('Board Flow Layout-Modus gesetzt: ' + (nextValue ? 'statisch' : 'dynamisch') + '.');
 }
 
 async function runEndpoint(endpoint, options = {}) {
-  if (!endpoint?.id || !endpoint?.triggerKey) {
-    log("Exercise-Modus: Endpoint konnte nicht gestartet werden – Endpoint oder Trigger fehlt.");
+  if (!endpoint?.id) {
+    log('Endpoint konnte nicht gestartet werden – Endpoint fehlt.');
     return null;
   }
-
-  const lang = getCurrentDisplayLanguage();
-  const exercisePack = Exercises.getExercisePackById(endpoint.exercisePackId || getSelectedExercisePackId(), { lang }) || getSelectedExercisePack({ lang });
-  const currentStep = Exercises.getExerciseStep(exercisePack, endpoint.stepId, { lang }) || getCurrentExerciseStep(exercisePack, { lang });
-
+  const exercisePack = Exercises.getExercisePackById(endpoint.exercisePackId, { lang: getCurrentDisplayLanguage() });
+  const currentStep = Exercises.getExerciseStep(exercisePack, endpoint.stepId, { lang: getCurrentDisplayLanguage() });
   if (!exercisePack || !currentStep) {
-    log("Exercise-Modus: Endpoint konnte nicht gestartet werden – Pack oder Schritt fehlen.");
+    log('Endpoint konnte nicht gestartet werden – Pack oder Schritt fehlen.');
     return null;
   }
-
-  let targetInstanceIds = [];
-  const scopeType = pickFirstNonEmptyString(endpoint?.scope?.type, endpoint?.defaultScopeType, "fixed_instances");
-  if (scopeType === "global") {
-    const allowedCanvasTypes = new Set(Exercises.getAllowedCanvasTypesForPack(exercisePack));
-    targetInstanceIds = Array.from(state.instancesById.keys()).filter((instanceId) => {
-      const canvasTypeId = state.instancesById.get(instanceId)?.canvasTypeId || null;
-      return !allowedCanvasTypes.size || (canvasTypeId && allowedCanvasTypes.has(canvasTypeId));
-    });
-  } else {
-    const selectedInstanceIds = await refreshSelectionStatusFromBoard();
-    const allowedCanvasTypes = new Set(Exercises.getAllowedCanvasTypesForPack(exercisePack));
-    targetInstanceIds = selectedInstanceIds.filter((instanceId) => {
-      const canvasTypeId = state.instancesById.get(instanceId)?.canvasTypeId || null;
-      return !allowedCanvasTypes.size || (canvasTypeId && allowedCanvasTypes.has(canvasTypeId));
-    });
-  }
-
-  const targetInstanceLabels = targetInstanceIds.map((instanceId) => getInstanceLabelByInternalId(instanceId)).filter(Boolean);
+  const targetInstanceIds = resolveTargetInstanceIdsFromScope(endpoint.scope, {
+    exercisePack,
+    anchorInstanceId: options.anchorInstanceId || null,
+    selectedInstanceIds: options.selectedInstanceIds || state.lastCanvasSelectionInstanceIds || []
+  });
+  const targetInstanceLabels = getInstanceLabelsFromIds(targetInstanceIds);
   const triggerContext = ExerciseEngine.resolveEndpointContext({
+    exercisePack,
+    currentStep,
     endpoint,
-    pack: exercisePack,
-    step: currentStep,
-    source: ExerciseEngine.normalizeTriggerSource(options?.source || getCurrentTriggerSource()),
+    source: options.source || getCurrentTriggerSource(),
     selectionCount: targetInstanceIds.length,
+    targetInstanceIds,
     targetInstanceLabels,
     boardConfig: state.boardConfig
   });
-
-  if (!triggerContext.valid) {
-    log(buildTriggerSourceLabel(triggerContext) + ": " + (triggerContext.reason || "Endpoint ist im aktuellen Kontext nicht ausführbar."));
-    return null;
-  }
-
   const promptRuntimeOverride = buildPromptRuntimeFromEndpoint({
-    endpoint,
-    currentStep,
     exercisePack,
-    targetInstanceIds
+    currentStep,
+    endpoint,
+    controlContext: options.controlContext || null,
+    pendingProposal: options.pendingProposal || null,
+    adminOverride: state.exerciseRuntime?.adminOverride || null
   });
-
-  if (scopeType === "global") {
-    return await runGlobalAgent(null, getCurrentUserQuestion(), {
-      runMode: buildRunModeFromTriggerKey(triggerContext.triggerKey),
-      triggerContext,
-      sourceLabel: endpoint.label || buildTriggerSourceLabel(triggerContext),
-      forcedInstanceIds: targetInstanceIds,
-      updateGlobalBaseline: false,
-      forceTargetSet: true,
-      promptRuntimeOverride
-    });
+  const sourceLabel = pickFirstNonEmptyString(options.sourceLabel, options.controlContext?.controlLabel, endpoint.label, 'Endpoint');
+  const resolvedUserText = await resolveBoardUserSeedText(options.anchorInstanceId || targetInstanceIds[0] || null, getCurrentUserQuestion());
+  log("Endpoint Trigger: '" + sourceLabel + "' → " + endpoint.triggerKey + ' | Ziele: ' + (targetInstanceLabels.join(', ') || '(keine)'));
+  try {
+    const runResult = endpoint.triggerKey.startsWith('global.')
+      ? await runGlobalAgent(null, resolvedUserText, {
+          triggerContext,
+          sourceLabel,
+          promptRuntimeOverride,
+          forcedInstanceIds: targetInstanceIds,
+          forceTargetSet: true,
+          runMode: buildRunModeFromTriggerKey(endpoint.triggerKey),
+          updateGlobalBaseline: false
+        })
+      : await runAgentForSelectedInstances(targetInstanceIds, {
+          triggerContext,
+          sourceLabel,
+          promptRuntimeOverride,
+          runMode: buildRunModeFromTriggerKey(endpoint.triggerKey),
+          userText: resolvedUserText
+        });
+    if (!runResult?.ok) {
+      const msg = "Endpoint Trigger: '" + sourceLabel + "' fehlgeschlagen – " + formatRunFailure(runResult);
+      logRuntimeNotice(['model_refusal', 'precondition', 'run_locked', 'stale_state_conflict'].includes(runResult?.errorType) ? runResult.errorType : 'fatal', msg);
+      return runResult;
+    }
+    return runResult;
+  } catch (error) {
+    const msg = "Endpoint Trigger: '" + sourceLabel + "' fehlgeschlagen – " + formatRuntimeErrorMessage(error);
+    logRuntimeNotice('fatal', msg, error?.stack || null);
+    if (IS_HEADLESS) await notifyRuntime(msg, { level: 'error' });
+    return buildRunFailureResult('fatal', msg, { error });
   }
-
-  return await runAgentForSelectedInstances(targetInstanceIds, {
-    triggerContext,
-    runMode: buildRunModeFromTriggerKey(triggerContext.triggerKey),
-    sourceLabel: endpoint.label || buildTriggerSourceLabel(triggerContext),
-    userText: getCurrentUserQuestion(),
-    promptRuntimeOverride
-  });
 }
 
-async function runEndpointById(endpointId) {
+async function runEndpointById(endpointId, options = {}) {
   const lang = getCurrentDisplayLanguage();
   const endpoint = ExerciseLibrary.getEndpointById(endpointId, { lang });
   if (!endpoint?.id) {
-    log("Exercise-Modus: Endpoint nicht gefunden: " + String(endpointId || "(leer)"));
+    log('Endpoint nicht gefunden: ' + String(endpointId || '(leer)'));
     return null;
   }
-  return await runEndpoint(endpoint);
+  return await runEndpoint(endpoint, options);
 }
 
 async function runEndpointByTriggerKey(triggerKey, options = {}) {
   const lang = getCurrentDisplayLanguage();
-  const exercisePack = getSelectedExercisePack({ lang });
-  const currentStep = getCurrentExerciseStep(exercisePack, { lang });
-  if (!exercisePack || !currentStep) {
-    log("Exercise-Modus: Kein Pack oder Schritt aktiv für Trigger-Run.");
-    return null;
-  }
-  const endpoint = ExerciseLibrary.findStepEndpointByTriggerKey(exercisePack, currentStep.id, triggerKey, { lang });
+  const pack = getSelectedExercisePack({ lang });
+  const currentStep = getCurrentExerciseStep(pack, { lang });
+  if (!pack || !currentStep) return null;
+  const endpoint = ExerciseLibrary.findStepEndpointByTriggerKey(pack, currentStep.id, triggerKey, { lang });
   if (!endpoint?.id) {
-    log("Exercise-Modus: Endpoint für Trigger nicht gefunden: " + String(triggerKey || "(leer)"));
+    log('Kein Endpoint für Trigger gefunden: ' + String(triggerKey || '(leer)'));
     return null;
   }
-  return await runEndpoint(endpoint, { source: options?.source || getCurrentTriggerSource() });
-}
-
-async function runExerciseRunProfile(runProfile) {
-  return await runEndpoint(runProfile);
-}
-
-async function runExerciseRunProfileById(endpointId) {
-  return await runEndpointById(endpointId);
+  return await runEndpoint(endpoint, options);
 }
 
 async function runExerciseAdminTriggerSelection() {
   const triggerKey = pickFirstNonEmptyString(exerciseAdminTriggerEl?.value);
   if (!triggerKey) {
-    log("Exercise-Modus: Kein Admin-Trigger ausgewählt.");
+    log('Exercise-Modus: Kein Admin-Trigger ausgewählt.');
     return null;
   }
   return await runEndpointByTriggerKey(triggerKey, { source: getCurrentTriggerSource() });
 }
 
 async function runExerciseCheck() {
-  return await runEndpointByTriggerKey("selection.check", { source: getCurrentTriggerSource() });
+  return await runEndpointByTriggerKey('selection.check', { source: getCurrentTriggerSource() });
 }
 
 async function runExerciseHint() {
-  return await runEndpointByTriggerKey("selection.hint", { source: getCurrentTriggerSource() });
+  return await runEndpointByTriggerKey('selection.hint', { source: getCurrentTriggerSource() });
 }
 
-async function runExerciseAutocorrect() {
-  return await runEndpointByTriggerKey("selection.autocorrect", { source: getCurrentTriggerSource() });
-}
 
 async function advanceExerciseStep() {
   const pack = getSelectedExercisePack();
@@ -3217,9 +2995,9 @@ function initPanelButtons() {
   });
   exercisePackEl?.addEventListener("change", onExercisePackChange);
   exerciseStepEl?.addEventListener("change", onExerciseStepChange);
-  flowPackTemplateEl?.addEventListener("change", () => renderFlowAuthoringControls({ forceLabelSync: true }));
-  flowStepTemplateEl?.addEventListener("change", () => renderFlowAuthoringControls({ forceLabelSync: true }));
-  flowRunProfileEl?.addEventListener("change", () => {
+  flowExercisePackEl?.addEventListener("change", () => renderFlowAuthoringControls({ forceLabelSync: true }));
+  flowStepEl?.addEventListener("change", () => renderFlowAuthoringControls({ forceLabelSync: true }));
+  flowEndpointEl?.addEventListener("change", () => {
     syncFlowControlLabelFromRunProfile({ force: true });
     renderFlowAuthoringStatus();
   });
@@ -3254,9 +3032,9 @@ function initPanelButtons() {
   window.dtRunExerciseCheck = runExerciseCheck;
   window.dtRunExerciseHint = runExerciseHint;
   window.dtRunExerciseAutocorrect = runExerciseAutocorrect;
-  window.dtRunExerciseReview = () => runEndpointByTriggerKey("selection.review", { source: getCurrentTriggerSource() });
-  window.dtRunExerciseCoach = () => runEndpointByTriggerKey("selection.coach", { source: getCurrentTriggerSource() });
-  window.dtRunExerciseTrigger = runExerciseTriggerRequest;
+  window.dtRunExerciseReview = () => runEndpointByTriggerKey("selection.review", { source: "debug-window" });
+  window.dtRunExerciseCoach = () => runEndpointByTriggerKey("selection.coach", { source: "debug-window" });
+  window.dtRunExerciseTrigger = (triggerKey) => runEndpointByTriggerKey(triggerKey, { source: "debug-window" });
   window.dtAdvanceExerciseStep = advanceExerciseStep;
   window.dtCreateFlowControl = createFlowControlFromAdmin;
   window.dtSetFlowStep = setCurrentFlowStepFromAdmin;
@@ -3326,177 +3104,6 @@ async function afterMiroReady() {
 // --------------------------------------------------------------------
 // Scan throttling + Instance scan
 // --------------------------------------------------------------------
-async function loadBoardExerciseState() {
-  const fallbackCanvasTypeId = normalizeCanvasTypeId(state.selectedCanvasTypeId || TEMPLATE_ID);
-  let loadedBoardConfig = await Board.loadBoardConfigFromAnchor({
-    defaultCanvasTypeId: fallbackCanvasTypeId,
-    log
-  });
-
-  let normalizedBoardConfig = Board.normalizeBoardConfig(loadedBoardConfig, {
-    defaultCanvasTypeId: fallbackCanvasTypeId
-  });
-
-  const normalizedPackId = Exercises.normalizeExercisePackId(normalizedBoardConfig.activeExercisePackId || normalizedBoardConfig.exercisePackId);
-  const pack = normalizedPackId ? Exercises.getExercisePackById(normalizedPackId, { lang: normalizedBoardConfig.displayLanguage || normalizedBoardConfig.lang }) : null;
-  const packDefaults = Exercises.getPackDefaults(pack);
-
-  normalizedBoardConfig = {
-    ...normalizedBoardConfig,
-    boardMode: normalizedPackId ? "exercise" : "generic",
-    exercisePackId: normalizedPackId || null,
-    activeExercisePackId: normalizedPackId || null,
-    feedbackChannelDefault: normalizedBoardConfig.feedbackChannelDefault || packDefaults.feedbackChannel,
-    userMayChangePack: normalizedBoardConfig.userMayChangePack === true ? true : packDefaults.userMayChangePack,
-    userMayChangeStep: normalizedBoardConfig.userMayChangeStep === true ? true : packDefaults.userMayChangeStep,
-    appAdminPolicy: normalizedBoardConfig.appAdminPolicy || packDefaults.appAdminPolicy
-  };
-
-  const allowedCanvasTypeIds = Exercises.getAllowedCanvasTypesForPack(pack);
-  let defaultCanvasTypeId = normalizeCanvasTypeId(normalizedBoardConfig.defaultCanvasTypeId || fallbackCanvasTypeId);
-  if (allowedCanvasTypeIds.length && !allowedCanvasTypeIds.includes(defaultCanvasTypeId)) {
-    defaultCanvasTypeId = normalizeCanvasTypeId(
-      Exercises.getDefaultCanvasTypeIdForPack(pack) || allowedCanvasTypeIds[0]
-    );
-  }
-
-  normalizedBoardConfig.defaultCanvasTypeId = defaultCanvasTypeId;
-  state.boardConfig = await Board.saveBoardConfigToAnchor(normalizedBoardConfig, {
-    defaultCanvasTypeId,
-    log
-  });
-  setSelectedCanvasTypeId(defaultCanvasTypeId);
-
-  state.exerciseRuntime = Board.normalizeExerciseRuntime(await Board.loadExerciseRuntime(log));
-
-  const currentPack = getSelectedExercisePack({ lang: state.boardConfig.displayLanguage || state.boardConfig.lang });
-  const nextStepId = currentPack ? getCurrentExerciseStepId(currentPack) : null;
-  if (state.exerciseRuntime.currentStepId !== nextStepId) {
-    state.exerciseRuntime = await Board.saveExerciseRuntime({
-      ...state.exerciseRuntime,
-      currentStepId: nextStepId
-    }, log);
-  }
-
-  applyStaticUiLanguage(state.boardConfig.displayLanguage || state.boardConfig.lang);
-  renderCanvasTypePicker();
-  renderExerciseControls();
-  await syncAllChatApplyButtonsForCurrentStep();
-  await syncBoardChromeLanguage(state.boardConfig.displayLanguage || state.boardConfig.lang);
-}
-
-async function onExercisePackChange() {
-  const lang = getCurrentDisplayLanguage();
-  const selectedPackId = Exercises.normalizeExercisePackId(exercisePackEl?.value);
-  const selectedPack = Exercises.getExercisePackById(selectedPackId, { lang });
-  const allowedCanvasTypeIds = Exercises.getAllowedCanvasTypesForPack(selectedPack);
-
-  let defaultCanvasTypeId = getSelectedCanvasTypeId();
-  if (selectedPack) {
-    defaultCanvasTypeId = normalizeCanvasTypeId(
-      Exercises.getDefaultCanvasTypeIdForPack(selectedPack) || defaultCanvasTypeId
-    );
-  }
-  if (allowedCanvasTypeIds.length && !allowedCanvasTypeIds.includes(defaultCanvasTypeId)) {
-    defaultCanvasTypeId = normalizeCanvasTypeId(allowedCanvasTypeIds[0]);
-  }
-
-  setSelectedCanvasTypeId(defaultCanvasTypeId);
-
-  await persistBoardConfig({
-    boardMode: selectedPack ? "exercise" : "generic",
-    exercisePackId: selectedPack?.id || null,
-    activeExercisePackId: selectedPack?.id || null,
-    defaultCanvasTypeId,
-    ...buildBoardConfigPatchForPack(selectedPack)
-  });
-
-  const nextStepId = selectedPack
-    ? (Exercises.getExerciseStep(selectedPack, state.exerciseRuntime?.currentStepId, { lang })?.id || Exercises.getDefaultStepId(selectedPack))
-    : null;
-
-  await persistExerciseRuntime({
-    currentStepId: nextStepId,
-    lastTriggerKey: null,
-    lastTriggerSource: null,
-    lastTriggerAt: null,
-    lastFlowDirectiveUnlockEndpointIds: [],
-    lastFlowDirectiveCompleteEndpointIds: [],
-    lastFlowDirectiveAt: null
-  });
-
-  if (selectedPack?.id && nextStepId) {
-    await syncExerciseStepToBoardFlow(nextStepId, { exercisePackId: selectedPack.id });
-  }
-
-  renderCanvasTypePicker();
-  renderExerciseControls();
-  await syncAllChatApplyButtonsForCurrentStep();
-
-  log("Exercise Pack gesetzt: " + (selectedPack ? packLabelWithStep(selectedPack, nextStepId) : t("exercise.context.pack.none", lang)));
-}
-
-async function onExerciseStepChange() {
-  const lang = getCurrentDisplayLanguage();
-  const pack = getSelectedExercisePack({ lang });
-  if (!pack) {
-    await persistExerciseRuntime({ currentStepId: null });
-    renderExerciseControls();
-    return;
-  }
-
-  const requestedStepId = exerciseStepEl?.value || null;
-  const validStepId = Exercises.getExerciseStep(pack, requestedStepId, { lang })?.id || Exercises.getDefaultStepId(pack);
-  await persistExerciseRuntime({
-    currentStepId: validStepId,
-    lastFlowDirectiveUnlockEndpointIds: [],
-    lastFlowDirectiveCompleteEndpointIds: [],
-    lastFlowDirectiveAt: null
-  });
-  if (pack?.id && validStepId) {
-    await syncExerciseStepToBoardFlow(validStepId, { exercisePackId: pack.id });
-  }
-  renderExerciseControls();
-  await syncAllChatApplyButtonsForCurrentStep();
-
-  const step = Exercises.getExerciseStep(pack, validStepId, { lang });
-  log("Exercise-Schritt gesetzt: " + (step?.label || validStepId || "(leer)"));
-}
-
-function buildRunModeFromTriggerKey(triggerKey) {
-  const parsed = ExerciseEngine.parseTriggerKey(triggerKey);
-  if (!parsed) return "exercise";
-  return `exercise-${parsed.scope}-${parsed.intent}`;
-}
-
-function buildTriggerSourceLabel(triggerContext) {
-  const parsed = triggerContext ? ExerciseEngine.parseTriggerKey(triggerContext.triggerKey) : null;
-  const lang = getCurrentDisplayLanguage();
-  if (!parsed) return t("sourceLabel.exerciseAgent", lang);
-
-  const scopeLabel = t("trigger.scope." + (parsed.scope === "global" ? "global" : "selection"), lang);
-  const intentLabel = t("trigger.intent." + (parsed.intent || ""), lang);
-  return `Exercise-${scopeLabel}-${intentLabel}`;
-}
-
-async function saveAdminOverrideFromUi() {
-  const text = (adminOverrideTextEl?.value || "").trim() || null;
-  await persistExerciseRuntime({ adminOverrideText: text, adminOverride: text });
-  renderExerciseControls();
-  log("Admin-Override gespeichert: " + (text ? ("" + text.length + " Zeichen") : "leer"));
-}
-
-async function clearAdminOverrideFromUi() {
-  if (adminOverrideTextEl) adminOverrideTextEl.value = "";
-  await persistExerciseRuntime({ adminOverrideText: null, adminOverride: null });
-  renderExerciseControls();
-  log("Admin-Override geleert.");
-}
-
-async function onPanelModeChange() {
-  setPanelMode("admin");
-}
-
 function rebuildInstancesByLabelIndex() {
   state.instancesByLabel = new Map();
 
@@ -3562,18 +3169,18 @@ function buildProposalId() {
   return "p-" + Date.now().toString(36) + "-" + Math.random().toString(36).slice(2, 8);
 }
 
-function resolveRunStepId(promptRuntimeOverride = null) {
+function resolveRuntimeStepId(promptRuntimeOverride = null) {
   const runtime = (promptRuntimeOverride && typeof promptRuntimeOverride === "object") ? promptRuntimeOverride : null;
   return pickFirstNonEmptyString(runtime?.currentStep?.id, getCurrentExerciseStepId());
 }
 
-function resolveRunStepLabel(promptRuntimeOverride = null) {
+function resolveRuntimeStepLabel(promptRuntimeOverride = null) {
   const runtime = (promptRuntimeOverride && typeof promptRuntimeOverride === "object") ? promptRuntimeOverride : null;
   const lang = getCurrentDisplayLanguage();
   return pickFirstNonEmptyString(runtime?.currentStep?.label, getCurrentExerciseStep(undefined, { lang })?.label);
 }
 
-function resolveRunPackTemplateId(promptRuntimeOverride = null) {
+function resolveRuntimeExercisePackId(promptRuntimeOverride = null) {
   const runtime = (promptRuntimeOverride && typeof promptRuntimeOverride === "object") ? promptRuntimeOverride : null;
   return pickFirstNonEmptyString(runtime?.exercisePack?.id, getSelectedExercisePackId());
 }
@@ -3729,18 +3336,6 @@ async function buildPendingProposalPayloadForInstances(instanceIds, { stepId = n
   return payload;
 }
 
-function findRunProfileIdForStepTrigger(exercisePackId, stepId, triggerKey) {
-  const normalizedPackId = pickFirstNonEmptyString(exercisePackId);
-  const normalizedStepId = pickFirstNonEmptyString(stepId);
-  const normalizedTriggerKey = ExerciseEngine.normalizeTriggerKey(triggerKey);
-  if (!normalizedPackId || !normalizedStepId || !normalizedTriggerKey) return null;
-
-  const lang = getCurrentDisplayLanguage();
-  const endpoints = ExerciseLibrary.listStepEndpoints(normalizedPackId, normalizedStepId, { lang });
-  const match = endpoints.find((entry) => entry?.stepId === normalizedStepId && entry?.triggerKey === normalizedTriggerKey);
-  return match?.id || null;
-}
-
 function cloneJsonValue(value) {
   if (value == null) return value;
   try {
@@ -3762,21 +3357,24 @@ function buildStoredProposalRecord({
   stepId,
   stepLabel = null,
   exercisePackId = null,
+  endpointId = null,
   triggerContext = null,
   promptRuntimeOverride = null,
   userRequest = null,
   basedOnStateHash = null,
   agentObj = null,
   feedback = null,
-  flowControlDirectives = null,
+  flowDirectives = null,
   evaluation = null
 } = {}) {
   const instance = state.instancesById.get(instanceId) || null;
   const runtime = (promptRuntimeOverride && typeof promptRuntimeOverride === "object") ? promptRuntimeOverride : null;
   const controlContext = runtime?.controlContext || null;
+  const proposalId = buildProposalId();
   return {
     version: 1,
-    proposalId: buildProposalId(),
+    id: proposalId,
+    proposalId,
     status: "pending",
     createdAt: new Date().toISOString(),
     updatedAt: new Date().toISOString(),
@@ -3786,9 +3384,9 @@ function buildStoredProposalRecord({
     exercisePackId: pickFirstNonEmptyString(exercisePackId, runtime?.exercisePack?.id),
     stepId: pickFirstNonEmptyString(stepId),
     stepLabel: pickFirstNonEmptyString(stepLabel, runtime?.currentStep?.label),
+    endpointId: pickFirstNonEmptyString(endpointId, controlContext?.endpointId, runtime?.endpoint?.id),
     triggerKey: triggerContext?.triggerKey || null,
     triggerSource: triggerContext?.source || null,
-    endpointId: controlContext?.endpointId || runtime?.endpoint?.id || null,
     controlId: controlContext?.controlId || null,
     userRequest: pickFirstNonEmptyString(userRequest),
     basedOnStateHash: pickFirstNonEmptyString(basedOnStateHash),
@@ -3796,7 +3394,7 @@ function buildStoredProposalRecord({
     feedback: cloneJsonValue(feedback),
     actions: cloneJsonValue(agentObj?.actions || []),
     memoryEntry: cloneJsonValue(agentObj?.memoryEntry),
-    flowControlDirectives: cloneJsonValue(flowControlDirectives),
+    flowDirectives: cloneJsonValue(flowDirectives),
     evaluation: cloneJsonValue(evaluation)
   };
 }
@@ -3950,7 +3548,8 @@ function composePromptForRun({
     endpoint: runtime?.endpoint || null,
     promptModules: runtime?.promptModules || [],
     controlContext: runtime?.controlContext || null,
-    adminOverrideText: state.exerciseRuntime?.adminOverrideText || null
+    adminOverrideText: state.exerciseRuntime?.adminOverride || null,
+    questionMode: Boolean(runtime?.mode === "question")
   });
 }
 
@@ -4056,9 +3655,8 @@ async function persistExerciseRuntimeAfterAgentRun({
     lastFlowDirectiveAt: (flowControlDirectives?.unlockEndpointIds?.length || flowControlDirectives?.completeEndpointIds?.length) ? new Date().toISOString() : null
   };
 
-  if (activeAnchorContext?.exercisePackId && activeAnchorContext?.anchorInstanceId) {
-    runtimePatch.lastActiveExercisePackId = activeAnchorContext.exercisePackId;
-    runtimePatch.lastActiveAnchorInstanceId = activeAnchorContext.anchorInstanceId;
+  if (activeAnchorContext?.anchorInstanceId) {
+    runtimePatch.lastActiveFlowAnchorInstanceId = activeAnchorContext.anchorInstanceId;
   }
 
   await persistExerciseRuntime(runtimePatch);
@@ -5274,6 +4872,7 @@ function buildQuestionPromptRuntimeOverride(instanceId) {
   const instance = state.instancesById.get(instanceId) || null;
   if (!instance || getCurrentBoardMode() !== "exercise") {
     return {
+      mode: "question",
       exercisePack: null,
       currentStep: null,
       endpoint: null,
@@ -5282,16 +4881,12 @@ function buildQuestionPromptRuntimeOverride(instanceId) {
   }
 
   const exercisePack = getSelectedExercisePack({ lang }) || null;
-  const currentStepId = exercisePack ? getCurrentExerciseStepId(exercisePack) : null;
-  const currentStep = exercisePack && currentStepId
-    ? Exercises.getExerciseStep(exercisePack, currentStepId, { lang })
-    : null;
-  const questionModuleIds = Array.isArray(currentStep?.questionModuleIds)
-    ? currentStep.questionModuleIds
-    : [];
+  const currentStep = exercisePack ? getCurrentExerciseStep(exercisePack, { lang }) : null;
+  const questionModuleIds = Array.isArray(currentStep?.questionModuleIds) ? currentStep.questionModuleIds : [];
   const promptModules = ExerciseLibrary.getPromptModulesByIds(questionModuleIds, { lang });
 
   return {
+    mode: "question",
     exercisePack,
     currentStep,
     endpoint: null,
@@ -5311,14 +4906,14 @@ async function buildQuestionPromptBundleForInstance(instanceId, userQuestion) {
 
   const runtime = buildQuestionPromptRuntimeOverride(instanceId);
   const flowPromptContext = resolveFlowPromptContext({
-    promptRuntimeOverride: runtime?.exercisePack
-      ? {
-          exercisePack: runtime.exercisePack,
-          currentStep: runtime.currentStep,
-          promptModules: runtime.promptModules,
-          anchorInstanceId: instanceId
-        }
-      : null,
+    promptRuntimeOverride: runtime?.exercisePack ? {
+      exercisePack: runtime.exercisePack,
+      currentStep: runtime.currentStep,
+      endpoint: null,
+      promptModules: runtime.promptModules,
+      anchorInstanceId: instanceId,
+      mode: "question"
+    } : null,
     targetInstanceIds: [instanceId]
   });
   const memoryPayload = buildMemoryInjectionPayload();
@@ -5381,7 +4976,7 @@ async function buildQuestionPromptBundleForInstance(instanceId, userQuestion) {
     boardConfig: state.boardConfig,
     exercisePack: runtime?.exercisePack || null,
     currentStep: runtime?.currentStep || getCurrentExerciseStep(undefined, { lang }),
-    
+    endpoint: null,
     promptModules: runtime?.promptModules || [],
     questionMode: true
   });
@@ -5769,8 +5364,8 @@ async function runAgentForSelectedInstances(selectedInstanceIds, options = {}) {
     const activeAnchorContext = flowPromptContext.exercisePackId && flowPromptContext.anchorInstanceId
       ? { exercisePackId: flowPromptContext.exercisePackId, anchorInstanceId: flowPromptContext.anchorInstanceId }
       : null;
-    const currentStepId = resolveRunStepId(promptRuntimeOverride);
-    const currentStepLabel = resolveRunStepLabel(promptRuntimeOverride);
+    const currentStepId = resolveRuntimeStepId(promptRuntimeOverride);
+    const currentStepLabel = resolveRuntimeStepLabel(promptRuntimeOverride);
     const pendingProposals = await buildPendingProposalPayloadForInstances(resolvedActiveIds, { stepId: currentStepId });
 
     const baseUserPayload = {
@@ -5879,7 +5474,7 @@ async function runAgentForSelectedInstances(selectedInstanceIds, options = {}) {
         stepId: currentStepId
       }, log);
 
-      const storedFlowDirectives = ExerciseEngine.normalizeFlowControlDirectivesBlock(proposal.flowControlDirectives);
+      const storedFlowDirectives = ExerciseEngine.normalizeFlowControlDirectivesBlock(proposal.flowDirectives);
       const flowDirectiveResult = triggerContext
         ? await applyFlowControlDirectivesAfterAgentRun({
             flowControlDirectives: storedFlowDirectives,
@@ -6069,7 +5664,8 @@ async function runAgentForSelectedInstances(selectedInstanceIds, options = {}) {
           instanceId: singleInstanceId,
           stepId: currentStepId,
           stepLabel: currentStepLabel,
-          exercisePackId: resolveRunPackTemplateId(promptRuntimeOverride),
+          exercisePackId: resolveRuntimeExercisePackId(promptRuntimeOverride),
+          endpointId: promptRuntimeOverride?.endpoint?.id || null,
           triggerContext,
           promptRuntimeOverride,
           userRequest: userText,

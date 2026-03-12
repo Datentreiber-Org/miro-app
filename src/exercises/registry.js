@@ -1,5 +1,6 @@
 export {
   EXERCISE_PACKS,
+  ENDPOINTS,
   normalizeExercisePackId,
   listExercisePacks,
   getExercisePackById,
@@ -10,34 +11,14 @@ export {
   getExerciseStep,
   getDefaultStepId,
   getNextExerciseStep,
-  listAllowedTriggerKeys,
-  getStepTriggerConfig,
-  isTriggerAllowedForStep,
   getDefaultEnterTrigger,
   listStepTransitions,
-  resolveNamedTransition
-} from "./method-catalog.js?v=20260313-batch11";
-
-export {
-  PROMPT_MODULES,
-  ENDPOINTS,
-  getEndpointById,
+  resolveNamedTransition,
   listEndpointsForPack,
   listStepEndpoints,
   listStepEndpointsForSurface,
+  getEndpointById,
   findStepEndpointByTriggerKey,
   listStepTriggerKeysFromEndpoints,
-  isSidecarOnlyEndpoint,
-  getPromptModuleById,
-  getPromptModulesByIds,
-  PACK_TEMPLATES,
-  RUN_PROFILES,
-  listPackTemplates,
-  getPackTemplateById,
-  listStepTemplatesForPack,
-  getStepTemplateForPack,
-  listRunProfilesForPack,
-  listRunProfilesForStep,
-  listRunProfilesForStepSurface,
-  getRunProfileById
-} from "./library.js?v=20260313-batch11";
+  isSidecarOnlyEndpoint
+} from "./method-catalog.js?v=20260312-patch11";

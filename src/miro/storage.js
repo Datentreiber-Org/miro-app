@@ -16,10 +16,10 @@ import {
   DT_DEFAULT_FEEDBACK_CHANNEL,
   DT_DEFAULT_APP_ADMIN_POLICY,
   DT_MEMORY_RECENT_LOG_LIMIT
-} from "../config.js?v=20260312-batch11";
+} from "../config.js?v=20260310-batch10-1";
 
-import { normalizeBoardFlow } from "../runtime/board-flow.js?v=20260312-batch11";
-import { normalizeUiLanguage } from "../i18n/index.js?v=20260312-batch11";
+import { normalizeBoardFlow } from "../runtime/board-flow.js?v=20260312-patch11";
+import { normalizeUiLanguage } from "../i18n/index.js?v=20260310-batch92";
 import { ensureMiroReady, getBoard } from "./sdk.js?v=20260307-batch75";
 import { compareItemIdsAsc, normalizePositiveInt, asTrimmedString } from "./helpers.js?v=20260305-batch05";
 
@@ -216,52 +216,49 @@ function normalizeBoardSystemTagIds(rawSystemTagIds) {
 
 export function normalizeBoardConfig(rawConfig, { defaultCanvasTypeId = null } = {}) {
   const src = (rawConfig && typeof rawConfig === "object") ? rawConfig : {};
-  const exercisePackId = asTrimmedString(src.activeExercisePackId) || asTrimmedString(src.exercisePackId);
+  const activeExercisePackId = asTrimmedString(src.activeExercisePackId);
   const normalizedDefaultCanvasTypeId = asTrimmedString(src.defaultCanvasTypeId) || asTrimmedString(defaultCanvasTypeId);
-
-  let boardMode = normalizeBoardMode(src.boardMode);
-  if (exercisePackId) boardMode = "exercise";
-
-  const feedbackChannelDefault = asTrimmedString(src.feedbackChannelDefault) || DT_DEFAULT_FEEDBACK_CHANNEL;
-  const appAdminPolicy = asTrimmedString(src.appAdminPolicy) || DT_DEFAULT_APP_ADMIN_POLICY;
-  const appAdminUserIds = Array.from(new Set((Array.isArray(src.appAdminUserIds) ? src.appAdminUserIds : [])
-    .map((value) => asTrimmedString(value))
-    .filter(Boolean)));
-
+  const lang = normalizeUiLanguage(src.lang);
+  const defaultFeedbackTarget = asTrimmedString(src.defaultFeedbackTarget) || DT_DEFAULT_FEEDBACK_CHANNEL;
+  const adminPolicy = asTrimmedString(src.adminPolicy) || DT_DEFAULT_APP_ADMIN_POLICY;
+  const systemTags = Array.from(new Set((Array.isArray(src.systemTags) ? src.systemTags : []).map((value) => asTrimmedString(value)).filter(Boolean)));
+  const flowControlsStaticLayout = src.flowControlsStaticLayout !== false;
+  const mode = activeExercisePackId ? "exercise" : normalizeBoardMode(src.mode);
   return {
-    version: 4,
-    boardMode,
-    activeExercisePackId: exercisePackId || null,
-    exercisePackId: exercisePackId || null,
+    version: 5,
+    mode,
+    activeExercisePackId: activeExercisePackId || null,
     defaultCanvasTypeId: normalizedDefaultCanvasTypeId || null,
-    feedbackChannelDefault,
+    lang,
+    defaultFeedbackTarget,
+    adminPolicy,
+    systemTags,
+    systemTagIds: normalizeBoardSystemTagIds(src.systemTagIds),
+    flowControlsStaticLayout,
     userMayChangePack: src.userMayChangePack === true,
     userMayChangeStep: src.userMayChangeStep === true,
-    appAdminPolicy,
-    appAdminUserIds,
-    displayLanguage: normalizeUiLanguage(src.displayLanguage || src.lang),
-    lang: normalizeUiLanguage(src.lang || src.displayLanguage),
-    systemTagIds: normalizeBoardSystemTagIds(src.systemTagIds),
-    staticFlowControlLayout: src.staticFlowControlLayout !== false
+    appAdminUserIds: Array.from(new Set((Array.isArray(src.appAdminUserIds) ? src.appAdminUserIds : []).map((value) => asTrimmedString(value)).filter(Boolean)))
   };
 }
 
 export function normalizeExerciseRuntime(rawRuntime) {
   const src = (rawRuntime && typeof rawRuntime === "object") ? rawRuntime : {};
+  const adminOverride = asTrimmedString(src.adminOverride);
+  const lastUnlock = uniqueIds(Array.isArray(src.lastFlowDirectiveUnlockEndpointIds) ? src.lastFlowDirectiveUnlockEndpointIds : []);
+  const lastComplete = uniqueIds(Array.isArray(src.lastFlowDirectiveCompleteEndpointIds) ? src.lastFlowDirectiveCompleteEndpointIds : []);
+  const lastActiveFlowAnchorInstanceId = asTrimmedString(src.lastActiveFlowAnchorInstanceId);
   return {
-    version: 1,
+    version: 2,
     currentStepId: asTrimmedString(src.currentStepId),
-    adminOverride: asTrimmedString(src.adminOverride) || asTrimmedString(src.adminOverrideText),
-    adminOverrideText: asTrimmedString(src.adminOverrideText) || asTrimmedString(src.adminOverride),
+    adminOverride,
+    lastEndpointId: asTrimmedString(src.lastEndpointId),
     lastTriggerKey: asTrimmedString(src.lastTriggerKey),
     lastTriggerSource: asTrimmedString(src.lastTriggerSource),
     lastTriggerAt: asTrimmedString(src.lastTriggerAt),
-    lastFlowDirectiveUnlockEndpointIds: uniqueIds(Array.isArray(src.lastFlowDirectiveUnlockEndpointIds) ? src.lastFlowDirectiveUnlockEndpointIds : (Array.isArray(src.lastFlowDirectiveUnlockEndpointIds) ? src.lastFlowDirectiveUnlockEndpointIds : [])),
-    lastFlowDirectiveCompleteEndpointIds: uniqueIds(Array.isArray(src.lastFlowDirectiveCompleteEndpointIds) ? src.lastFlowDirectiveCompleteEndpointIds : (Array.isArray(src.lastFlowDirectiveCompleteEndpointIds) ? src.lastFlowDirectiveCompleteEndpointIds : [])),
+    lastFlowDirectiveUnlockEndpointIds: lastUnlock,
+    lastFlowDirectiveCompleteEndpointIds: lastComplete,
     lastFlowDirectiveAt: asTrimmedString(src.lastFlowDirectiveAt),
-    lastActiveFlowAnchorInstanceId: asTrimmedString(src.lastActiveFlowAnchorInstanceId) || asTrimmedString(src.lastActiveAnchorInstanceId),
-    lastActiveAnchorInstanceId: asTrimmedString(src.lastActiveAnchorInstanceId) || asTrimmedString(src.lastActiveFlowAnchorInstanceId),
-    lastActiveExercisePackId: asTrimmedString(src.lastActiveExercisePackId),
+    lastActiveFlowAnchorInstanceId,
     lastUpdatedAt: asTrimmedString(src.lastUpdatedAt)
   };
 }
@@ -802,9 +799,17 @@ export function normalizeProposalRecord(rawRecord) {
   const src = (rawRecord && typeof rawRecord === "object") ? rawRecord : {};
   const targetInstanceLabels = uniqueIds(Array.isArray(src.targetInstanceLabels) ? src.targetInstanceLabels.map((value) => asTrimmedString(value)).filter(Boolean) : []);
   const actions = Array.isArray(src.actions) ? src.actions.map((action) => ({ ...(action && typeof action === "object" ? action : {}) })) : [];
+  const endpointId = asTrimmedString(src.endpointId);
+  const exercisePackId = asTrimmedString(src.exercisePackId);
+  const id = asTrimmedString(src.id) || asTrimmedString(src.proposalId);
+  const flowDirectives = {
+    unlockEndpointIds: uniqueIds(Array.isArray(src.flowDirectives?.unlockEndpointIds) ? src.flowDirectives.unlockEndpointIds : []),
+    completeEndpointIds: uniqueIds(Array.isArray(src.flowDirectives?.completeEndpointIds) ? src.flowDirectives.completeEndpointIds : [])
+  };
   return {
-    version: 1,
-    proposalId: asTrimmedString(src.proposalId),
+    version: 2,
+    id,
+    proposalId: id,
     status: normalizeProposalStatus(src.status),
     createdAt: asTrimmedString(src.createdAt),
     updatedAt: asTrimmedString(src.updatedAt),
@@ -812,25 +817,22 @@ export function normalizeProposalRecord(rawRecord) {
     anchorInstanceLabel: asTrimmedString(src.anchorInstanceLabel),
     targetInstanceLabels,
     canvasTypeId: asTrimmedString(src.canvasTypeId),
-    exercisePackId: asTrimmedString(src.exercisePackId),
+    exercisePackId,
     stepId: asTrimmedString(src.stepId),
     stepLabel: asTrimmedString(src.stepLabel),
     triggerKey: asTrimmedString(src.triggerKey),
     triggerSource: asTrimmedString(src.triggerSource),
-    endpointId: asTrimmedString(src.endpointId),
+    endpointId,
     controlId: asTrimmedString(src.controlId),
     basedOnStateHash: asTrimmedString(src.basedOnStateHash),
     basedOnHeaderSummary: asTrimmedString(src.basedOnHeaderSummary),
     basedOnStickyCount: Number.isFinite(Number(src.basedOnStickyCount)) ? Number(src.basedOnStickyCount) : null,
     userRequest: asTrimmedString(src.userRequest),
-    analysis: asTrimmedString(src.analysis),
+    analysis: (src.analysis && typeof src.analysis === "object") ? { ...src.analysis } : asTrimmedString(src.analysis),
     feedback: (src.feedback && typeof src.feedback === "object") ? { ...src.feedback } : null,
     actions,
     memoryEntry: (src.memoryEntry && typeof src.memoryEntry === "object") ? { ...src.memoryEntry } : null,
-    flowControlDirectives: (src.flowControlDirectives && typeof src.flowControlDirectives === "object") ? {
-      unlockEndpointIds: uniqueIds(src.flowControlDirectives.unlockEndpointIds || []),
-      completeEndpointIds: uniqueIds(src.flowControlDirectives.completeEndpointIds || [])
-    } : null,
+    flowDirectives,
     evaluation: (src.evaluation && typeof src.evaluation === "object") ? { ...src.evaluation } : null
   };
 }

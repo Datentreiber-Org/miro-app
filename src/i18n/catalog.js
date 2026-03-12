@@ -82,10 +82,7 @@ export const UI_STRINGS = Object.freeze({
     de: "Selektiere eine oder mehrere Canvas-Instanzen auf dem Board. Die erste Instanz dient als visuelle Ankerposition für den Shape-Button; der Scope kann trotzdem mehrere Instanzen oder den globalen Board-Kontext abdecken.",
     en: "Select one or more canvas instances on the board. The first instance is used as the visual anchor for the shape button; the scope can still cover multiple instances or the global board context."
   },
-  "flow.packTemplate.label": { de: "Pack Template", en: "Pack template" },
-  "flow.stepTemplate.label": { de: "Step Template", en: "Step template" },
-  "flow.runProfile.label": { de: "Run Profile", en: "Run profile" },
-  "flow.exercisePack.label": { de: "Exercise Pack", en: "Exercise pack" },
+  "flow.exercisePack.label": { de: "Exercise Pack", en: "Exercise Pack" },
   "flow.step.label": { de: "Schritt", en: "Step" },
   "flow.endpoint.label": { de: "Endpoint", en: "Endpoint" },
   "flow.scope.label": { de: "Scope", en: "Scope" },
@@ -112,10 +109,10 @@ export const UI_STRINGS = Object.freeze({
     en: "Unlock only affects the selected flow button. Done marks it as done. Reset clears manual unlock or done markers and restores the model-driven state."
   },
   "flow.authoring.status.empty": { de: "Noch keine Flow-Information geladen.", en: "No flow information loaded yet." },
-  "flow.noStepTemplates": { de: "Keine Step Templates", en: "No step templates" },
-  "flow.noRunProfiles": { de: "Keine Run Profiles", en: "No run profiles" },
-  "flow.noSteps": { de: "Keine Schritte", en: "No steps" },
-  "flow.noEndpoints": { de: "Keine Endpoints", en: "No endpoints" },
+  "flow.noStepTemplates": { de: "Keine Schritte", en: "No steps" },
+  "flow.noSteps": { de: "Keine Schritte verfügbar.", en: "No steps available." },
+  "flow.noRunProfiles": { de: "Keine Endpoints", en: "No endpoints" },
+  "flow.noEndpoints": { de: "Keine Endpoints verfügbar.", en: "No endpoints available." },
   "flow.defaultControlLabel": { de: "Flow Control", en: "Flow control" },
 
   "button.insertTemplate": { de: "Canvas einfügen", en: "Insert canvas" },
@@ -189,13 +186,10 @@ export const UI_STRINGS = Object.freeze({
   },
 
   "flow.status.boardFlows": { de: "Board Flows: {count}", en: "Board flows: {count}" },
-  "flow.status.packTemplate": { de: "Pack Template: {value}", en: "Pack template: {value}" },
+  "flow.status.exercisePack": { de: "Exercise Pack: {value}", en: "Exercise Pack: {value}" },
   "flow.status.none": { de: "keins", en: "none" },
-  "flow.status.stepTemplate": { de: "Step Template: {value}", en: "Step template: {value}" },
-  "flow.status.exercisePack": { de: "Exercise Pack: {value}", en: "Exercise pack: {value}" },
   "flow.status.step": { de: "Schritt: {value}", en: "Step: {value}" },
   "flow.status.endpoint": { de: "Endpoint: {value}", en: "Endpoint: {value}" },
-  "flow.status.runProfile": { de: "Run Profile: {value}", en: "Run profile: {value}" },
   "flow.status.selectedCanvas": { de: "Selektierte Canvas: {value}", en: "Selected canvases: {value}" },
   "flow.status.selectedCanvas.none": { de: "keine", en: "none" },
   "flow.status.scope": { de: "Scope-Vorgabe: {value}", en: "Scope preset: {value}" },
@@ -289,61 +283,32 @@ export const METHOD_I18N_OVERRIDES = Object.freeze({
         label: { en: "Preparation & Focus" },
         visibleInstruction: { en: "Start with focus and scope: name the use case in the header, note critical assumptions or open questions in white, and consciously park side topics in Sorted out." },
         flowInstruction: { en: "Start with focus and scope: define the concrete use case in the header, collect critical assumptions or open questions as white stickies, and consciously park side topics instead of jumping straight into users or solutions." },
-        flowSummary: { en: "Preparation phase before the real analysis: set the focus in the header, sharpen the scope, make open assumptions visible, and consciously park side topics." }
+        summary: { en: "Preparation phase before the real analysis: set the focus in the header, sharpen the scope, make open assumptions visible, and consciously park side topics." }
       }),
       "step1_user_perspective": Object.freeze({
         label: { en: "User Needs Analysis" },
         visibleInstruction: { en: "Now build the user perspective: collect several plausible user roles, focus on one main user, make the situation concrete, structure Objectives & Results, structure Decisions & Actions, and attach Gains/Pains." },
         flowInstruction: { en: "Build the problem space now: diverge and focus user roles, sharpen the situation, structure Objectives & Results as a small driver tree, sketch Decisions & Actions as a small workflow, and attach and prioritise Gains/Pains from the user perspective." },
-        flowSummary: { en: "Step 1 is divergence and convergence in the problem space: do not solve too early, but make user work, goals, results, decisions, actions, and critical gains/pains robust first." }
+        summary: { en: "Step 1 is divergence and convergence in the problem space: do not solve too early, but make user work, goals, results, decisions, actions, and critical gains/pains robust first." }
       }),
       "step2_solution_perspective": Object.freeze({
         label: { en: "Solution Design" },
         visibleInstruction: { en: "Now derive the solution perspective: collect several solution variants, choose one main variant, park alternatives on the right, derive Information and Functions from it, and only then formulate Benefits." },
         flowInstruction: { en: "Develop the left-hand side from the problem space: collect and focus variants, derive Information and Functions from user work, and formulate concrete Benefits from them." },
-        flowSummary: { en: "Step 2 is divergence, selection, concretisation, and benefit derivation – not free technology choice and not full networking." }
+        summary: { en: "Step 2 is divergence, selection, concretisation, and benefit derivation – not free technology choice and not full networking." }
       }),
       "step3_fit_check_and_synthesis": Object.freeze({
         label: { en: "Fit Validation & Minimum Desired Product" },
         visibleInstruction: { en: "Validate the problem-solution fit now: test Benefits against the right-hand side, mark robust relations with checkmarks, thin out unvalidated content, and condense the core in the Check field." },
         flowInstruction: { en: "Check which Benefits really address Gains, Pains, Objectives, Results, Decisions, or Actions. Mark robust relations, reduce the board to a Minimum Desired Product, and only then condense the core in the Check field." },
-        flowSummary: { en: "Step 3 validates, marks, reduces, and condenses. The goal is a Minimum Desired Product rather than the sum of all earlier ideas." }
-      })
-    })
-  }),
-
-  packTemplates: Object.freeze({
-    "analytics-ai-usecase-fit-sprint-template-v1": Object.freeze({
-      description: { en: "Guided exercise for the Analytics & AI Use Case canvas with a four-phase didactic sequence from preparation through user needs analysis and solution design to fit validation and Minimum Desired Product." }
-    })
-  }),
-
-  stepTemplates: Object.freeze({
-    "analytics-ai-usecase-fit-sprint-template-v1": Object.freeze({
-      "step0_preparation_and_focus": Object.freeze({
-        label: { en: "Preparation & Focus" },
-        instruction: { en: "Start with focus and scope: define the concrete use case in the header, collect critical assumptions or open questions as white stickies, and consciously park side topics instead of jumping straight into users or solutions." },
-        summary: { en: "Preparation phase before the real analysis: set the focus in the header, sharpen the scope, make open assumptions visible, and consciously park side topics." }
-      }),
-      "step1_user_perspective": Object.freeze({
-        label: { en: "User Needs Analysis" },
-        instruction: { en: "Build the problem space now: diverge and focus user roles, sharpen the situation, structure Objectives & Results as a small driver tree, sketch Decisions & Actions as a small workflow, and attach and prioritise Gains/Pains from the user perspective." },
-        summary: { en: "Step 1 is divergence and convergence in the problem space: do not solve too early, but make user work, goals, results, decisions, actions, and critical gains/pains robust first." }
-      }),
-      "step2_solution_perspective": Object.freeze({
-        label: { en: "Solution Design" },
-        instruction: { en: "Develop the left-hand side from the problem space: collect and focus variants, derive Information and Functions from user work, and formulate concrete Benefits from them." },
-        summary: { en: "Step 2 is divergence, selection, concretisation, and benefit derivation – not free technology choice and not full networking." }
-      }),
-      "step3_fit_check_and_synthesis": Object.freeze({
-        label: { en: "Fit Validation & Minimum Desired Product" },
-        instruction: { en: "Check which Benefits really address Gains, Pains, Objectives, Results, Decisions, or Actions. Mark robust relations, reduce the board to a Minimum Desired Product, and only then condense the core in the Check field." },
         summary: { en: "Step 3 validates, marks, reduces, and condenses. The goal is a Minimum Desired Product rather than the sum of all earlier ideas." }
       })
     })
   }),
 
-  runProfiles: Object.freeze({
+
+
+  endpoints: Object.freeze({
     "analytics.fit.step0.check": Object.freeze({
       label: { en: "Check focus" },
       summary: { en: "Checks whether focus and scope are clear enough to start the user needs analysis." },

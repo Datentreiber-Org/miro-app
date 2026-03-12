@@ -3,10 +3,10 @@ import {
   DT_DEFAULT_FEEDBACK_CHANNEL,
   DT_TRIGGER_KEYS,
   DT_EXECUTION_MODES
-} from "../config.js?v=20260312-batch11";
+} from "../config.js?v=20260312-batch10prompt1";
 
-import { METHOD_I18N_OVERRIDES } from "../i18n/catalog.js?v=20260312-batch11";
-import { normalizeUiLanguage, pickLocalized } from "../i18n/index.js?v=20260312-batch11";
+import { METHOD_I18N_OVERRIDES } from "../i18n/catalog.js?v=20260309-batch9";
+import { normalizeUiLanguage, pickLocalized } from "../i18n/index.js?v=20260310-batch92";
 
 function asNonEmptyString(value) {
   if (typeof value !== "string") return null;
@@ -34,6 +34,12 @@ function normalizeAllowedExecutionModes(values, fallback = ["none"]) {
   return normalizedFallback.length ? normalizedFallback : ["none"];
 }
 
+function resolveDefaultStepId(rawPack, steps) {
+  const preferred = asNonEmptyString(rawPack?.defaultStepId);
+  if (preferred && Array.isArray(steps) && steps.some((step) => step?.id === preferred)) return preferred;
+  return Array.isArray(steps) && steps.length ? steps[0].id : null;
+}
+
 const EXTRA_STICKY_MUTATION_ACTIONS = Object.freeze(["set_sticky_color", "set_check_status"]);
 
 function augmentAllowedActions(values) {
@@ -47,6 +53,16 @@ function augmentAllowedActions(values) {
 function normalizeTriggerKey(value) {
   const key = asNonEmptyString(value);
   return key && DT_TRIGGER_KEYS.includes(key) ? key : null;
+}
+
+function normalizeFeedbackPolicy(value, fallback = "text") {
+  const normalized = asNonEmptyString(value);
+  return normalized || fallback;
+}
+
+function normalizeMutationPolicy(value, fallback = "none") {
+  const normalized = asNonEmptyString(value);
+  return normalized || fallback;
 }
 
 function deepFreeze(value) {
@@ -78,16 +94,8 @@ function getExerciseStepOverride(packId, stepId) {
   return METHOD_I18N_OVERRIDES.steps?.[packId]?.[stepId] || null;
 }
 
-function getPackTemplateOverride(packTemplateId) {
-  return METHOD_I18N_OVERRIDES.packTemplates?.[packTemplateId] || null;
-}
-
-function getStepTemplateOverride(packTemplateId, stepId) {
-  return METHOD_I18N_OVERRIDES.stepTemplates?.[packTemplateId]?.[stepId] || null;
-}
-
-function getRunProfileOverride(runProfileId) {
-  return METHOD_I18N_OVERRIDES.runProfiles?.[runProfileId] || null;
+function getEndpointOverride(endpointId) {
+  return METHOD_I18N_OVERRIDES.endpoints?.[endpointId] || null;
 }
 
 function getPromptModuleOverride(moduleId) {
@@ -108,9 +116,11 @@ function localizeExerciseStepProjection(step, packId, lang = "de") {
   return Object.freeze({
     ...step,
     label: applyLocalizedField(step.label, override.label, normalizedLang),
+    summary: applyLocalizedField(step.summary, override.summary, normalizedLang),
     visibleInstruction: applyLocalizedField(step.visibleInstruction, override.visibleInstruction, normalizedLang),
-    flowInstruction: applyLocalizedField(step.flowInstruction, override.flowInstruction, normalizedLang),
-    summary: applyLocalizedField(step.summary, override.summary, normalizedLang)
+    flowInstruction: applyLocalizedField(step.flowInstruction, override.flowInstruction || override.instruction, normalizedLang),
+    stateModelText: applyLocalizedField(step.stateModelText, override.stateModelText, normalizedLang),
+    exitCriteriaText: applyLocalizedField(step.exitCriteriaText, override.exitCriteriaText, normalizedLang)
   });
 }
 
@@ -122,74 +132,25 @@ function localizeExercisePackProjection(pack, lang = "de") {
   return Object.freeze({
     ...pack,
     label: applyLocalizedField(pack.label, override.label, normalizedLang),
-    description: applyLocalizedField(pack.description, override.description, normalizedLang)
-  });
-}
-
-function localizePackTemplateProjection(packTemplate, lang = "de") {
-  const normalizedLang = normalizeUiLanguage(lang);
-  if (!packTemplate || normalizedLang === "de") return packTemplate;
-  const override = getPackTemplateOverride(packTemplate.id);
-  if (!override) return packTemplate;
-  return Object.freeze({
-    ...packTemplate,
-    label: applyLocalizedField(packTemplate.label, override.label, normalizedLang),
-    description: applyLocalizedField(packTemplate.description, override.description, normalizedLang)
-  });
-}
-
-function localizeStepTemplateProjection(stepTemplate, packTemplateId, lang = "de") {
-  const normalizedLang = normalizeUiLanguage(lang);
-  if (!stepTemplate || normalizedLang === "de") return stepTemplate;
-  const override = getStepTemplateOverride(packTemplateId, stepTemplate.id);
-  if (!override) return stepTemplate;
-  return Object.freeze({
-    ...stepTemplate,
-    label: applyLocalizedField(stepTemplate.label, override.label, normalizedLang),
-    instruction: applyLocalizedField(stepTemplate.instruction, override.instruction, normalizedLang),
-    summary: applyLocalizedField(stepTemplate.summary, override.summary, normalizedLang)
-  });
-}
-
-function localizeRunProfileProjection(runProfile, lang = "de") {
-  const normalizedLang = normalizeUiLanguage(lang);
-  if (!runProfile || normalizedLang === "de") return runProfile;
-  const override = getRunProfileOverride(runProfile.id);
-  if (!override) return runProfile;
-  return Object.freeze({
-    ...runProfile,
-    label: applyLocalizedField(runProfile.label, override.label, normalizedLang),
-    summary: applyLocalizedField(runProfile.summary, override.summary, normalizedLang),
-    uiHint: applyLocalizedField(runProfile.uiHint, override.uiHint, normalizedLang)
+    description: applyLocalizedField(pack.description, override.description, normalizedLang),
+    globalPrompt: applyLocalizedField(pack.globalPrompt, override.globalPrompt, normalizedLang),
+    didacticGlobalPrompt: applyLocalizedField(pack.didacticGlobalPrompt, override.didacticGlobalPrompt, normalizedLang),
+    steps: Object.freeze((Array.isArray(pack.steps) ? pack.steps : []).map((step) => localizeExerciseStepProjection(step, pack.id, normalizedLang)))
   });
 }
 
 function localizeEndpointProjection(endpoint, lang = "de") {
   const normalizedLang = normalizeUiLanguage(lang);
   if (!endpoint || normalizedLang === "de") return endpoint;
-  const override = getRunProfileOverride(endpoint.id);
+  const override = getEndpointOverride(endpoint.id);
   if (!override) return endpoint;
   return Object.freeze({
     ...endpoint,
     label: applyLocalizedField(endpoint.label, override.label, normalizedLang),
     summary: applyLocalizedField(endpoint.summary, override.summary, normalizedLang),
-    uiHint: applyLocalizedField(endpoint.uiHint, override.uiHint, normalizedLang),
     prompt: Object.freeze({
-      ...(endpoint.prompt && typeof endpoint.prompt === "object" ? endpoint.prompt : {}),
-      text: endpoint?.prompt?.text || endpoint?.triggerPrompt || null,
-      moduleIds: Object.freeze(normalizeUniqueStrings(endpoint?.prompt?.moduleIds || endpoint?.moduleIds || []))
-    }),
-    run: Object.freeze({
-      ...(endpoint.run && typeof endpoint.run === "object" ? endpoint.run : {}),
-      allowedExecutionModes: Object.freeze(normalizeAllowedExecutionModes(endpoint?.run?.allowedExecutionModes || endpoint?.allowedExecutionModes || ["none"])),
-      allowedActions: Object.freeze(augmentAllowedActions(endpoint?.run?.allowedActions || endpoint?.allowedActions))
-    }),
-    surface: Object.freeze({
-      ...(endpoint.surface && typeof endpoint.surface === "object" ? endpoint.surface : {}),
-      panelRole: normalizeRunProfilePanelRole(endpoint?.surface?.panelRole || endpoint?.panelRole),
-      boardGroup: normalizeRunProfileBoardGroup(endpoint?.surface?.boardGroup || endpoint?.boardGroup),
-      seedByDefault: endpoint?.surface?.seedByDefault === true || endpoint?.seedByDefault === true,
-      sidecarOnly: endpoint?.surface?.sidecarOnly === true
+      ...endpoint.prompt,
+      text: applyLocalizedField(endpoint.prompt?.text, override.promptText || override.text, normalizedLang)
     })
   });
 }
@@ -215,47 +176,38 @@ function getRawExercisePack(packOrId) {
   return packOrId && typeof packOrId === "object" ? packOrId : null;
 }
 
-function getRawPackTemplate(packOrId) {
-  if (typeof packOrId === "string") {
-    const normalizedId = asNonEmptyString(packOrId);
-    return normalizedId && PACK_TEMPLATES[normalizedId] ? PACK_TEMPLATES[normalizedId] : null;
-  }
-  if (packOrId?.id && PACK_TEMPLATES[packOrId.id]) return PACK_TEMPLATES[packOrId.id];
-  return packOrId && typeof packOrId === "object" ? packOrId : null;
-}
-
-function getRawEndpoint(endpointOrId) {
-  if (typeof endpointOrId === "string") {
-    const normalizedId = asNonEmptyString(endpointOrId);
-    return normalizedId && ENDPOINTS[normalizedId] ? ENDPOINTS[normalizedId] : null;
-  }
-  if (endpointOrId?.id && ENDPOINTS[endpointOrId.id]) return ENDPOINTS[endpointOrId.id];
-  return endpointOrId && typeof endpointOrId === "object" ? endpointOrId : null;
-}
-
 function normalizeTransitions(transitions) {
   return (Array.isArray(transitions) ? transitions : [])
     .map((transition) => ({
       toStepId: asNonEmptyString(transition?.toStepId),
       policy: asNonEmptyString(transition?.policy) || "manual",
       allowedSources: normalizeUniqueStrings(transition?.allowedSources),
-      allowedAfterTriggers: normalizeUniqueStrings(transition?.allowedAfterTriggers),
+      allowedAfterTriggerKeys: normalizeAllowedAfterTriggerKeys(transition?.allowedAfterTriggerKeys),
       requiredStepStatuses: normalizeUniqueStrings(transition?.requiredStepStatuses)
     }))
     .filter((transition) => !!transition.toStepId);
 }
 
-function buildExerciseStep(stepDef, packDef = null) {
+function normalizeAllowedAfterTriggerKeys(values) {
+  return normalizeUniqueStrings(values).map((value) => normalizeTriggerKey(value) || value).filter(Boolean);
+}
+
+function buildExerciseStep(stepDef, rawPack = null) {
   const triggerProfiles = (stepDef?.triggerProfiles && typeof stepDef.triggerProfiles === "object") ? stepDef.triggerProfiles : {};
   const allowedTriggers = {};
   const endpointIds = [];
+
   for (const [triggerKey, profile] of Object.entries(triggerProfiles)) {
     const normalizedTriggerKey = normalizeTriggerKey(triggerKey) || normalizeTriggerKey(profile?.triggerKey);
     if (!normalizedTriggerKey) continue;
-    const endpointId = asNonEmptyString(profile?.flowControl?.id)
-      || [asNonEmptyString(packDef?.exercisePackId), asNonEmptyString(stepDef?.id), normalizedTriggerKey].filter(Boolean).join("::");
+    const endpointId = asNonEmptyString(profile?.flowControl?.id) || [
+      asNonEmptyString(rawPack?.exercisePackId) || asNonEmptyString(rawPack?.id) || "pack",
+      asNonEmptyString(stepDef?.id) || "step",
+      normalizedTriggerKey
+    ].join('.');
     allowedTriggers[normalizedTriggerKey] = Object.freeze({
       triggerKey: normalizedTriggerKey,
+      endpointId,
       scope: asNonEmptyString(profile?.scope),
       intent: asNonEmptyString(profile?.intent),
       requiresSelection: profile?.requiresSelection === true,
@@ -265,60 +217,106 @@ function buildExerciseStep(stepDef, packDef = null) {
       prompt: asNonEmptyString(profile?.prompt),
       moduleIds: Object.freeze(normalizeUniqueStrings(profile?.moduleIds))
     });
-    if (endpointId) endpointIds.push(endpointId);
+    endpointIds.push(endpointId);
   }
 
   return Object.freeze({
     id: asNonEmptyString(stepDef?.id),
-    exercisePackId: asNonEmptyString(packDef?.exercisePackId),
+    exercisePackId: asNonEmptyString(rawPack?.exercisePackId) || asNonEmptyString(rawPack?.id),
     order: Number.isFinite(Number(stepDef?.order)) ? Number(stepDef.order) : 0,
     label: asNonEmptyString(stepDef?.label) || asNonEmptyString(stepDef?.id),
+    summary: asNonEmptyString(stepDef?.summary),
     visibleInstruction: asNonEmptyString(stepDef?.visibleInstruction),
     flowInstruction: asNonEmptyString(stepDef?.flowInstruction),
-    summary: asNonEmptyString(stepDef?.flowSummary) || asNonEmptyString(stepDef?.summary),
     stateModelText: asNonEmptyString(stepDef?.stateModelText),
     exitCriteriaText: asNonEmptyString(stepDef?.exitCriteriaText),
     questionModuleIds: Object.freeze(normalizeUniqueStrings(stepDef?.questionModuleIds)),
+    endpointIds: Object.freeze(normalizeUniqueStrings(endpointIds)),
     allowedActions: augmentAllowedActions(stepDef?.allowedActions),
     defaultEnterTrigger: normalizeTriggerKey(stepDef?.defaultEnterTrigger),
-    allowedAfterTriggerKeys: Object.freeze(normalizeUniqueStrings(stepDef?.allowedAfterTriggerKeys || stepDef?.allowedAfterTriggers || (Array.isArray(stepDef?.transitions) ? stepDef.transitions.flatMap((transition) => transition?.allowedAfterTriggers || []) : []))),
-    endpointIds: Object.freeze(normalizeUniqueStrings(endpointIds)),
     allowedTriggers: Object.freeze(allowedTriggers),
+    allowedAfterTriggerKeys: Object.freeze(normalizeAllowedAfterTriggerKeys(stepDef?.allowedAfterTriggerKeys)),
     transitions: Object.freeze(normalizeTransitions(stepDef?.transitions))
   });
 }
 
-function buildExercisePackProjection(packDef) {
-  const steps = {};
+function buildEndpointProjection(rawEndpoint, rawStep, rawPack, { lang = "de" } = {}) {
+  const stepProjection = rawStep && rawStep.endpointIds ? rawStep : buildExerciseStep(rawStep, rawPack);
+  const triggerProfiles = (rawStep?.triggerProfiles && typeof rawStep.triggerProfiles === "object") ? rawStep.triggerProfiles : {};
+  const triggerProfile = rawEndpoint?.triggerProfile
+    || (rawEndpoint?.triggerKey ? triggerProfiles[rawEndpoint.triggerKey] : null)
+    || triggerProfiles[rawEndpoint?.id]
+    || null;
+  const normalizedTriggerKey = normalizeTriggerKey(rawEndpoint?.triggerKey) || normalizeTriggerKey(triggerProfile?.triggerKey);
+  const flowControl = (triggerProfile?.flowControl && typeof triggerProfile.flowControl === "object") ? triggerProfile.flowControl : {};
+  const promptText = asNonEmptyString(rawEndpoint?.prompt?.text) || asNonEmptyString(rawEndpoint?.promptText) || asNonEmptyString(triggerProfile?.prompt);
+  const moduleIds = normalizeUniqueStrings([
+    ...(Array.isArray(rawEndpoint?.prompt?.moduleIds) ? rawEndpoint.prompt.moduleIds : []),
+    ...(Array.isArray(rawEndpoint?.promptModuleIds) ? rawEndpoint.promptModuleIds : []),
+    ...(Array.isArray(triggerProfile?.moduleIds) ? triggerProfile.moduleIds : []),
+    ...(Array.isArray(flowControl?.moduleIds) ? flowControl.moduleIds : [])
+  ]);
+  const endpoint = Object.freeze({
+    id: asNonEmptyString(rawEndpoint?.id) || stepProjection.allowedTriggers?.[normalizedTriggerKey || ""]?.endpointId || null,
+    exercisePackId: asNonEmptyString(rawPack?.exercisePackId) || asNonEmptyString(rawPack?.id),
+    stepId: stepProjection.id,
+    label: asNonEmptyString(rawEndpoint?.label) || asNonEmptyString(flowControl?.label) || normalizedTriggerKey,
+    summary: asNonEmptyString(rawEndpoint?.summary) || asNonEmptyString(flowControl?.summary),
+    triggerKey: normalizedTriggerKey,
+    scope: Object.freeze({
+      mode: normalizeScopeMode(rawEndpoint?.scope?.mode || rawEndpoint?.scopeMode || flowControl?.defaultScopeType || triggerProfile?.scope),
+      allowedCanvasTypeIds: Object.freeze(normalizeUniqueStrings(rawEndpoint?.scope?.allowedCanvasTypeIds || rawEndpoint?.allowedCanvasTypeIds || rawPack?.allowedCanvasTypeIds))
+    }),
+    prompt: Object.freeze({
+      text: promptText || "",
+      moduleIds: Object.freeze(moduleIds)
+    }),
+    run: Object.freeze({
+      mutationPolicy: normalizeMutationPolicy(rawEndpoint?.run?.mutationPolicy || rawEndpoint?.mutationPolicy || flowControl?.mutationPolicy || triggerProfile?.mutationPolicy),
+      feedbackPolicy: normalizeFeedbackPolicy(rawEndpoint?.run?.feedbackPolicy || rawEndpoint?.feedbackPolicy || flowControl?.feedbackPolicy || triggerProfile?.feedbackPolicy),
+      allowedExecutionModes: Object.freeze(normalizeAllowedExecutionModes(rawEndpoint?.run?.allowedExecutionModes || rawEndpoint?.allowedExecutionModes || flowControl?.allowedExecutionModes || triggerProfile?.allowedExecutionModes || ["none"])),
+      allowedActions: Object.freeze(augmentAllowedActions(rawEndpoint?.run?.allowedActions || rawEndpoint?.allowedActions || flowControl?.allowedActions || stepProjection.allowedActions))
+    }),
+    surface: Object.freeze({
+      group: normalizeSurfaceGroup(rawEndpoint?.surface?.group || rawEndpoint?.surfaceGroup || flowControl?.panelRole),
+      sidecarOnly: Boolean(rawEndpoint?.surface?.sidecarOnly || rawEndpoint?.sidecarOnly || false),
+      seedByDefault: Boolean(rawEndpoint?.surface?.seedByDefault || rawEndpoint?.seedByDefault || flowControl?.seedByDefault)
+    }),
+    order: Number.isFinite(Number(rawEndpoint?.order)) ? Number(rawEndpoint.order) : (Number.isFinite(Number(flowControl?.sortOrder)) ? Number(flowControl.sortOrder) : Number.MAX_SAFE_INTEGER)
+  });
+  return localizeEndpointProjection(endpoint, lang);
+}
+
+function buildExercisePackProjection(packDef, { lang = "de" } = {}) {
+  const steps = [];
   for (const [stepId, stepDef] of Object.entries((packDef?.steps && typeof packDef.steps === "object") ? packDef.steps : {})) {
     const step = buildExerciseStep({ id: stepId, ...stepDef }, packDef);
     if (!step.id) continue;
-    steps[step.id] = step;
+    steps.push(step);
   }
+  steps.sort((a, b) => Number(a.order || 0) - Number(b.order || 0) || String(a.label || a.id).localeCompare(String(b.label || b.id), undefined, { sensitivity: "base" }));
 
-  const allowedCanvasTypeIds = normalizeUniqueStrings(packDef?.allowedCanvasTypeIds || packDef?.allowedCanvasTypes);
-
-  return Object.freeze({
-    id: asNonEmptyString(packDef?.exercisePackId),
+  const projection = Object.freeze({
+    id: asNonEmptyString(packDef?.exercisePackId) || asNonEmptyString(packDef?.id),
     label: asNonEmptyString(packDef?.label),
     version: Number.isFinite(Number(packDef?.version)) ? Number(packDef.version) : 1,
     description: asNonEmptyString(packDef?.description),
     boardMode: asNonEmptyString(packDef?.boardMode) || "exercise",
-    packTemplateId: asNonEmptyString(packDef?.packTemplateId),
-    allowedCanvasTypeIds: Object.freeze(allowedCanvasTypeIds),
-    allowedCanvasTypes: Object.freeze(allowedCanvasTypeIds),
+    allowedCanvasTypeIds: Object.freeze(normalizeUniqueStrings(packDef?.allowedCanvasTypeIds)),
     defaultCanvasTypeId: asNonEmptyString(packDef?.defaultCanvasTypeId),
-    defaultStepId: asNonEmptyString(packDef?.defaultStepId),
+    defaultStepId: resolveDefaultStepId(packDef, steps),
     defaults: Object.freeze({
       feedbackChannel: asNonEmptyString(packDef?.defaults?.feedbackChannel) || DT_DEFAULT_FEEDBACK_CHANNEL,
       userMayChangePack: packDef?.defaults?.userMayChangePack === true,
       userMayChangeStep: packDef?.defaults?.userMayChangeStep === true,
       appAdminPolicy: asNonEmptyString(packDef?.defaults?.appAdminPolicy) || DT_DEFAULT_APP_ADMIN_POLICY
     }),
-    globalPrompt: asNonEmptyString(packDef?.exerciseGlobalPrompt),
-    didacticGlobalPrompt: asNonEmptyString(packDef?.packTemplateGlobalPrompt),
+    globalPrompt: asNonEmptyString(packDef?.exerciseGlobalPrompt) || asNonEmptyString(packDef?.globalPrompt) || "",
+    didacticGlobalPrompt: asNonEmptyString(packDef?.didacticGlobalPrompt) || "",
     steps: Object.freeze(steps)
   });
+
+  return localizeExercisePackProjection(projection, lang);
 }
 
 function buildPromptModuleProjection(moduleDef) {
@@ -330,131 +328,15 @@ function buildPromptModuleProjection(moduleDef) {
   });
 }
 
-function buildFlowControlProjection(packDef, stepDef, triggerProfile) {
-  const flowControl = (triggerProfile?.flowControl && typeof triggerProfile.flowControl === "object") ? triggerProfile.flowControl : null;
-  if (!flowControl?.id) return null;
-
-  return Object.freeze({
-    id: asNonEmptyString(flowControl.id),
-    label: asNonEmptyString(flowControl.label) || asNonEmptyString(flowControl.id),
-    summary: asNonEmptyString(flowControl.summary),
-    packTemplateId: asNonEmptyString(packDef?.packTemplateId),
-    stepTemplateId: asNonEmptyString(stepDef?.id),
-    triggerKey: normalizeTriggerKey(triggerProfile?.triggerKey),
-    triggerPrompt: asNonEmptyString(triggerProfile?.prompt),
-    moduleIds: normalizeUniqueStrings([
-      ...(Array.isArray(triggerProfile?.moduleIds) ? triggerProfile.moduleIds : []),
-      ...(Array.isArray(flowControl?.moduleIds) ? flowControl.moduleIds : [])
-    ]),
-    mutationPolicy: asNonEmptyString(flowControl.mutationPolicy) || asNonEmptyString(triggerProfile?.mutationPolicy),
-    feedbackPolicy: asNonEmptyString(flowControl.feedbackPolicy) || asNonEmptyString(triggerProfile?.feedbackPolicy),
-    allowedExecutionModes: normalizeAllowedExecutionModes(flowControl.allowedExecutionModes, triggerProfile?.allowedExecutionModes || ["none"]),
-    defaultScopeType: asNonEmptyString(flowControl.defaultScopeType) || "fixed_instances",
-    allowedActions: augmentAllowedActions(flowControl.allowedActions),
-    uiHint: asNonEmptyString(flowControl.uiHint),
-    sortOrder: Number.isFinite(Number(flowControl.sortOrder)) ? Number(flowControl.sortOrder) : Number.MAX_SAFE_INTEGER,
-    panelRole: normalizeRunProfilePanelRole(flowControl.panelRole),
-    boardGroup: normalizeRunProfileBoardGroup(flowControl.boardGroup),
-    seedByDefault: flowControl.seedByDefault === true
-  });
-}
-
-function buildEndpointProjection(packDef, stepDef, triggerProfile) {
-  const flowControl = (triggerProfile?.flowControl && typeof triggerProfile.flowControl === "object") ? triggerProfile.flowControl : null;
-  const normalizedTriggerKey = normalizeTriggerKey(triggerProfile?.triggerKey);
-  if (!normalizedTriggerKey) return null;
-
-  const endpointId = asNonEmptyString(flowControl?.id)
-    || [asNonEmptyString(packDef?.exercisePackId), asNonEmptyString(stepDef?.id), normalizedTriggerKey].filter(Boolean).join("::");
-  const panelRole = normalizeRunProfilePanelRole(flowControl?.panelRole);
-  const scopeType = asNonEmptyString(flowControl?.defaultScopeType) || (normalizedTriggerKey.startsWith("global.") ? "global" : "fixed_instances");
-  const allowedExecutionModes = normalizeAllowedExecutionModes(flowControl?.allowedExecutionModes || triggerProfile?.allowedExecutionModes || ["none"]);
-  const allowedActions = augmentAllowedActions(flowControl?.allowedActions || stepDef?.allowedActions || []);
-  const moduleIds = normalizeUniqueStrings([
-    ...(Array.isArray(triggerProfile?.moduleIds) ? triggerProfile.moduleIds : []),
-    ...(Array.isArray(flowControl?.moduleIds) ? flowControl.moduleIds : [])
-  ]);
-
-  return Object.freeze({
-    id: endpointId,
-    exercisePackId: asNonEmptyString(packDef?.exercisePackId),
-    stepId: asNonEmptyString(stepDef?.id),
-    label: asNonEmptyString(flowControl?.label) || normalizedTriggerKey,
-    summary: asNonEmptyString(flowControl?.summary),
-    uiHint: asNonEmptyString(flowControl?.uiHint),
-    order: Number.isFinite(Number(flowControl?.sortOrder)) ? Number(flowControl.sortOrder) : Number.MAX_SAFE_INTEGER,
-    sortOrder: Number.isFinite(Number(flowControl?.sortOrder)) ? Number(flowControl.sortOrder) : Number.MAX_SAFE_INTEGER,
-    triggerKey: normalizedTriggerKey,
-    prompt: Object.freeze({
-      text: asNonEmptyString(triggerProfile?.prompt),
-      moduleIds: Object.freeze(moduleIds)
-    }),
-    scope: Object.freeze({
-      type: scopeType,
-      mode: scopeType === "global" ? "pack" : "selection",
-      requiresSelection: triggerProfile?.requiresSelection === true || normalizedTriggerKey.startsWith("selection."),
-      allowedCanvasTypeIds: Object.freeze(normalizeUniqueStrings(packDef?.allowedCanvasTypeIds || packDef?.allowedCanvasTypes))
-    }),
-    run: Object.freeze({
-      mutationPolicy: asNonEmptyString(flowControl?.mutationPolicy) || asNonEmptyString(triggerProfile?.mutationPolicy),
-      feedbackPolicy: asNonEmptyString(flowControl?.feedbackPolicy) || asNonEmptyString(triggerProfile?.feedbackPolicy),
-      allowedExecutionModes: Object.freeze(allowedExecutionModes),
-      allowedActions: Object.freeze(allowedActions)
-    }),
-    surface: Object.freeze({
-      group: panelRole || "hidden",
-      panelRole,
-      boardGroup: normalizeRunProfileBoardGroup(flowControl?.boardGroup),
-      seedByDefault: flowControl?.seedByDefault === true,
-      sidecarOnly: normalizedTriggerKey === "selection.apply" || normalizedTriggerKey === "global.apply"
-    }),
-    defaultScopeType: scopeType
-  });
-}
-
-function buildPackTemplateProjection(packDef, runProfilesForPack) {
-  if (!asNonEmptyString(packDef?.packTemplateId)) return null;
-
-  const stepTemplates = {};
-  for (const [stepId, rawStepDef] of Object.entries((packDef?.steps && typeof packDef.steps === "object") ? packDef.steps : {})) {
-    const stepDef = rawStepDef && typeof rawStepDef === "object" ? rawStepDef : {};
-    const id = asNonEmptyString(stepId) || asNonEmptyString(stepDef?.id);
-    if (!id) continue;
-    stepTemplates[id] = Object.freeze({
-      id,
-      order: Number.isFinite(Number(stepDef?.order)) ? Number(stepDef.order) : 0,
-      label: asNonEmptyString(stepDef?.label) || id,
-      instruction: asNonEmptyString(stepDef?.flowInstruction) || asNonEmptyString(stepDef?.visibleInstruction),
-      summary: asNonEmptyString(stepDef?.flowSummary),
-      questionModuleIds: Object.freeze(normalizeUniqueStrings(stepDef?.questionModuleIds))
-    });
-  }
-
-  const orderedRunProfiles = runProfilesForPack
-    .slice()
-    .sort((a, b) => Number(a?.sortOrder ?? Number.MAX_SAFE_INTEGER) - Number(b?.sortOrder ?? Number.MAX_SAFE_INTEGER) || String(a?.label || a?.id || "").localeCompare(String(b?.label || b?.id || ""), undefined, { sensitivity: "base" }));
-
-  return Object.freeze({
-    id: asNonEmptyString(packDef?.packTemplateId),
-    label: asNonEmptyString(packDef?.label),
-    description: asNonEmptyString(packDef?.packTemplateDescription) || asNonEmptyString(packDef?.description),
-    allowedCanvasTypeIds: normalizeUniqueStrings(packDef?.allowedCanvasTypeIds),
-    globalPrompt: asNonEmptyString(packDef?.packTemplateGlobalPrompt),
-    stepTemplates: Object.freeze(stepTemplates),
-    endpointIds: Object.freeze(orderedRunProfiles.map((profile) => profile.id))
-  });
-}
 
 const RAW_METHOD_CATALOG = deepFreeze({
   "version": 1,
   "packs": {
     "persona-basics-v1": {
       "exercisePackId": "persona-basics-v1",
-      "packTemplateId": null,
       "label": "Persona Basics",
       "version": 2,
       "description": "Geführte Persona-Übung auf dem Datentreiber-3-Boxes-Canvas.",
-      "packTemplateDescription": null,
       "boardMode": "exercise",
       "allowedCanvasTypeIds": [
         "datentreiber-3boxes"
@@ -468,7 +350,7 @@ const RAW_METHOD_CATALOG = deepFreeze({
         "appAdminPolicy": "ui_toggle"
       },
       "exerciseGlobalPrompt": "Auf diesem Board läuft die Übung \"Persona Basics\".\n\nÜbergeordnetes Ziel:\n- Arbeite persona-orientiert.\n- Jede Persona soll als zusammenhängende Einheit lesbar bleiben.\n- Das Board soll methodisch sauber bleiben: Inhalte präzisieren, unklare Einträge konkretisieren, Lücken sichtbar machen und offensichtliche Fehlzuordnungen korrigieren.\n- Nutze Connectoren, wenn Inhalte innerhalb einer Persona logisch zusammengehören. Vermeide Verbindungen zwischen verschiedenen Personas, außer die Aufgabe verlangt es ausdrücklich.\n\nLeitregel:\n- Behandle die sichtbaren Canvas als methodische Arbeitsflächen, nicht als freie Notizzettel.\n- Prüfe stets, ob die Inhalte dem aktuellen Schritt und der Übungslogik entsprechen.\n- Nutze den aktuellen Übungsschritt aus exerciseContext verbindlich.",
-      "packTemplateGlobalPrompt": null,
+      "didacticGlobalPrompt": null,
       "promptModules": {},
       "steps": {
         "collect_personas": {
@@ -477,7 +359,7 @@ const RAW_METHOD_CATALOG = deepFreeze({
           "label": "Personas anlegen",
           "visibleInstruction": "Lege pro Persona eine lesbare Kette aus Name (links), Tätigkeit (Mitte) und Erwartung (rechts) an.",
           "flowInstruction": null,
-          "flowSummary": null,
+          "summary": null,
           "allowedActions": [
             "create_sticky",
             "move_sticky",
@@ -494,7 +376,7 @@ const RAW_METHOD_CATALOG = deepFreeze({
                 "admin",
                 "agent_recommendation"
               ],
-              "allowedAfterTriggers": [],
+              "allowedAfterTriggerKeys": [],
               "requiredStepStatuses": []
             }
           ],
@@ -647,7 +529,7 @@ const RAW_METHOD_CATALOG = deepFreeze({
           "label": "Personas schärfen",
           "visibleInstruction": "Präzisiere Tätigkeiten und Erwartungshaltungen. Vage Formulierungen sollen konkreter werden.",
           "flowInstruction": null,
-          "flowSummary": null,
+          "summary": null,
           "allowedActions": [
             "create_sticky",
             "move_sticky",
@@ -803,11 +685,9 @@ const RAW_METHOD_CATALOG = deepFreeze({
     },
     "analytics-ai-usecase-fit-sprint-v1": {
       "exercisePackId": "analytics-ai-usecase-fit-sprint-v1",
-      "packTemplateId": "analytics-ai-usecase-fit-sprint-template-v1",
       "label": "Use Case Fit Sprint",
       "version": 1,
       "description": "Geführte Miniübung auf dem Analytics & AI Use Case Canvas, um Nutzerperspektive, Lösungsperspektive und Problem-Solution-Fit schrittweise auszuarbeiten.",
-      "packTemplateDescription": "Geführte Übung für das Analytics & AI Use Case Canvas mit didaktischer Sequenz von Nutzerperspektive über Lösungsperspektive bis zum Fit Check.",
       "boardMode": "exercise",
       "allowedCanvasTypeIds": [
         "datentreiber-analytics-ai-use-case"
@@ -821,7 +701,7 @@ const RAW_METHOD_CATALOG = deepFreeze({
         "appAdminPolicy": "ui_toggle"
       },
       "exerciseGlobalPrompt": "Auf diesem Board läuft die Übung \"Use Case Fit Sprint\" auf dem Canvas \"Analytics & AI Use Case\".\n\nÜbergeordnetes Ziel:\n- Entwickle einen Analytics- oder KI-Anwendungsfall konsequent aus der Nutzerperspektive.\n- Arbeite erst die rechte Seite des Canvas tragfähig aus und leite danach die linke Seite als Antwort darauf ab.\n- Verdichte anschließend den Problem-Solution-Fit im Feld Check.\n\nMethodische Leitregeln:\n- Die rechte Seite beschreibt die Nutzerperspektive: User & Situation, Objectives & Results, Decisions & Actions, User Gains, User Pains.\n- Die linke Seite beschreibt die Lösungsperspektive: Solutions, Information, Functions, Benefits.\n- Das Feld Check verdichtet den Problem-Solution-Fit.\n- Verwende die Kette Information → Decisions & Actions → Results → Objectives als fachliche Leitlinie.\n- Benefits sind nur dann tragfähig, wenn sie Pains reduzieren, Gains verstärken oder zu besseren Ergebnissen und Zielen beitragen.\n- Nutze Connectoren nur dort, wo Beziehungen methodisch klar und lesbar sind.\n- Erfinde keine unnötigen Systemarchitekturen oder technischen Details; bleibe auf Use-Case-Ebene.\n- Arbeite präzise, atomar und area-genau.",
-      "packTemplateGlobalPrompt": "Auf diesem Board läuft die Übung \"Use Case Fit Sprint\" auf dem Canvas \"Analytics & AI Use Case\".\n\nÜbergeordnetes Ziel:\n- Entwickle einen Analytics- oder KI-Anwendungsfall konsequent aus einer realen Nutzer- und Entscheidungssituation.\n- Arbeite zuerst die Nutzerperspektive tragfähig aus, leite daraus die Lösungsperspektive ab und verdichte den Problem-Solution-Fit erst am Ende im Feld Check.\n\nDidaktische Leitidee dieses Packs:\n- Step 1 baut den Problemraum und die Nutzerlogik auf.\n- Step 2 leitet daraus eine belastbare Lösungsperspektive ab.\n- Step 3 prüft und verdichtet den Problem-Solution-Fit.\n- Wenn ein Canvas oder Teilbereich noch leer ist, soll der Agent nicht nur Mängel melden, sondern didaktisch erklären, wie man fachlich sinnvoll startet.\n- In Hint-Modi soll der Agent konkrete nächste Schritte und Formulierungsanstöße geben.\n- In Coach-Modi soll der Agent mit Leitfragen arbeiten und einen Mikroschritt vorschlagen.\n- In Review-Modi soll der Agent Stärken, Risiken, fehlende Voraussetzungen und Konsistenzprobleme klar benennen.\n\nMethodische Regeln:\n- Die rechte Seite beschreibt die Nutzerperspektive: User & Situation, Objectives & Results, Decisions & Actions, User Gains, User Pains.\n- Die linke Seite beschreibt die Lösungsperspektive: Solutions, Information, Functions, Benefits.\n- Das Feld Check verdichtet den Problem-Solution-Fit.\n- Verwende die Kette Information → Decisions & Actions → Results → Objectives als fachliche Leitlinie.\n- Benefits sind nur dann tragfähig, wenn sie Pains reduzieren, Gains verstärken oder zu besseren Ergebnissen und Zielen beitragen.\n- Nutze Connectoren nur dort, wo Beziehungen methodisch klar, konkret und lesbar sind.\n- Vermeide reine Technologiebehauptungen ohne Bezug zur Nutzerarbeit.\n- Arbeite präzise, atomar, area-genau und immer passend zum Reifegrad des aktuellen Canvas.",
+      "didacticGlobalPrompt": "Auf diesem Board läuft die Übung \"Use Case Fit Sprint\" auf dem Canvas \"Analytics & AI Use Case\".\n\nÜbergeordnetes Ziel:\n- Entwickle einen Analytics- oder KI-Anwendungsfall konsequent aus einer realen Nutzer- und Entscheidungssituation.\n- Arbeite zuerst die Nutzerperspektive tragfähig aus, leite daraus die Lösungsperspektive ab und verdichte den Problem-Solution-Fit erst am Ende im Feld Check.\n\nDidaktische Leitidee dieses Packs:\n- Step 1 baut den Problemraum und die Nutzerlogik auf.\n- Step 2 leitet daraus eine belastbare Lösungsperspektive ab.\n- Step 3 prüft und verdichtet den Problem-Solution-Fit.\n- Wenn ein Canvas oder Teilbereich noch leer ist, soll der Agent nicht nur Mängel melden, sondern didaktisch erklären, wie man fachlich sinnvoll startet.\n- In Hint-Modi soll der Agent konkrete nächste Schritte und Formulierungsanstöße geben.\n- In Coach-Modi soll der Agent mit Leitfragen arbeiten und einen Mikroschritt vorschlagen.\n- In Review-Modi soll der Agent Stärken, Risiken, fehlende Voraussetzungen und Konsistenzprobleme klar benennen.\n\nMethodische Regeln:\n- Die rechte Seite beschreibt die Nutzerperspektive: User & Situation, Objectives & Results, Decisions & Actions, User Gains, User Pains.\n- Die linke Seite beschreibt die Lösungsperspektive: Solutions, Information, Functions, Benefits.\n- Das Feld Check verdichtet den Problem-Solution-Fit.\n- Verwende die Kette Information → Decisions & Actions → Results → Objectives als fachliche Leitlinie.\n- Benefits sind nur dann tragfähig, wenn sie Pains reduzieren, Gains verstärken oder zu besseren Ergebnissen und Zielen beitragen.\n- Nutze Connectoren nur dort, wo Beziehungen methodisch klar, konkret und lesbar sind.\n- Vermeide reine Technologiebehauptungen ohne Bezug zur Nutzerarbeit.\n- Arbeite präzise, atomar, area-genau und immer passend zum Reifegrad des aktuellen Canvas.",
       "promptModules": {
         "analytics.fit.shared.method_guardrails": {
           "id": "analytics.fit.shared.method_guardrails",
@@ -915,7 +795,7 @@ const RAW_METHOD_CATALOG = deepFreeze({
           "label": "User Perspective First",
           "visibleInstruction": "Fülle zuerst die Nutzerperspektive aus: User & Situation, Objectives & Results, Decisions & Actions, User Gains und User Pains.",
           "flowInstruction": "Arbeite zuerst die rechte Seite aus: Beginne mit User & Situation und Decisions & Actions, ergänze danach Objectives & Results sowie User Pains und User Gains.",
-          "flowSummary": "Zuerst einen belastbaren Problemraum und eine klare Nutzer- und Entscheidungssituation herstellen. Noch nicht in Lösungen springen.",
+          "summary": "Zuerst einen belastbaren Problemraum und eine klare Nutzer- und Entscheidungssituation herstellen. Noch nicht in Lösungen springen.",
           "allowedActions": [
             "create_sticky",
             "move_sticky",
@@ -932,7 +812,7 @@ const RAW_METHOD_CATALOG = deepFreeze({
                 "admin",
                 "agent_recommendation"
               ],
-              "allowedAfterTriggers": [
+              "allowedAfterTriggerKeys": [
                 "selection.check",
                 "selection.grade",
                 "global.review"
@@ -1140,7 +1020,7 @@ const RAW_METHOD_CATALOG = deepFreeze({
           "label": "Solution Perspective",
           "visibleInstruction": "Leite nun aus der Nutzerperspektive die Lösungsperspektive ab: Solutions, Information, Functions und Benefits.",
           "flowInstruction": "Leite nun aus der Nutzerperspektive die linke Seite ab: Welche Information würde Entscheidungen oder Handlungen verbessern, welche Functions und Solutions machen das möglich und welche Benefits entstehen daraus?",
-          "flowSummary": "Die Lösungsperspektive soll klar aus der Nutzerperspektive folgen und nicht generisch oder technologiegetrieben sein.",
+          "summary": "Die Lösungsperspektive soll klar aus der Nutzerperspektive folgen und nicht generisch oder technologiegetrieben sein.",
           "allowedActions": [
             "create_sticky",
             "move_sticky",
@@ -1157,7 +1037,7 @@ const RAW_METHOD_CATALOG = deepFreeze({
                 "admin",
                 "agent_recommendation"
               ],
-              "allowedAfterTriggers": [
+              "allowedAfterTriggerKeys": [
                 "selection.check",
                 "selection.grade",
                 "global.review"
@@ -1365,7 +1245,7 @@ const RAW_METHOD_CATALOG = deepFreeze({
           "label": "Fit Check & Synthesis",
           "visibleInstruction": "Verdichte den Problem-Solution-Fit im Feld Check und prüfe die Konsistenz zwischen Nutzer- und Lösungsperspektive.",
           "flowInstruction": "Prüfe jetzt, ob Nutzerperspektive und Lösungsperspektive konsistent zusammenpassen. Erst wenn genug Substanz vorhanden ist, verdichte den Problem-Solution-Fit im Feld Check.",
-          "flowSummary": "Konsistenz, Reifegrad und Problem-Solution-Fit prüfen und nur dann verdichten, wenn die Vorarbeit tragfähig genug ist.",
+          "summary": "Konsistenz, Reifegrad und Problem-Solution-Fit prüfen und nur dann verdichten, wenn die Vorarbeit tragfähig genug ist.",
           "allowedActions": [
             "create_sticky",
             "move_sticky",
@@ -1599,7 +1479,7 @@ function setStepFields(pack, stepId, patch = {}) {
   if (typeof patch.label === "string") stepDef.label = patch.label;
   if (typeof patch.visibleInstruction === "string") stepDef.visibleInstruction = patch.visibleInstruction;
   if (typeof patch.flowInstruction === "string") stepDef.flowInstruction = patch.flowInstruction;
-  if (typeof patch.flowSummary === "string") stepDef.flowSummary = patch.flowSummary;
+  if (typeof patch.summary === "string") stepDef.summary = patch.summary;
 }
 
 function setTriggerPrompt(pack, stepId, triggerKey, prompt) {
@@ -1645,8 +1525,8 @@ function patchFlowControl(pack, stepId, triggerKey, patch = {}) {
 function setFlowControlSurface(pack, stepId, triggerKey, surface = {}) {
   const flowControl = pack?.steps?.[stepId]?.triggerProfiles?.[triggerKey]?.flowControl;
   if (!flowControl || typeof flowControl !== "object") return;
-  flowControl.panelRole = normalizeRunProfilePanelRole(surface.panelRole);
-  flowControl.boardGroup = normalizeRunProfileBoardGroup(surface.boardGroup);
+  flowControl.panelRole = normalizeEndpointPanelGroup(surface.panelRole);
+  flowControl.boardGroup = normalizeEndpointBoardGroup(surface.boardGroup);
   flowControl.seedByDefault = surface.seedByDefault === true;
 }
 
@@ -1655,7 +1535,6 @@ function applyAnalyticsUseCaseBatch7Patch(catalog) {
   if (!pack || typeof pack !== "object") return catalog;
 
   pack.description = `Geführte Miniübung auf dem Analytics & AI Use Case Canvas, die erst Nutzerkontext sammelt und strukturiert, daraus selektiv eine Lösung ableitet und den Problem-Solution-Fit erst am Ende verdichtet.`;
-  pack.packTemplateDescription = `Geführte Übung für das Analytics & AI Use Case Canvas mit Sammel-, Struktur-, Ableitungs- und Fit-Logik statt pauschaler Vollvernetzung.`;
 
   pack.exerciseGlobalPrompt = `Auf diesem Board läuft die Übung "Use Case Fit Sprint" auf dem Canvas "Analytics & AI Use Case".
 
@@ -1682,7 +1561,7 @@ Qualitätskriterien:
 - Erfinde keine unnötigen Systemarchitekturen oder generischen KI-Floskeln.
 - Nicht jede Sticky Note braucht einen Connector; unverbundene Stickies sind in diesem Canvas oft korrekt.`;
 
-  pack.packTemplateGlobalPrompt = `Auf diesem Board läuft die Übung "Use Case Fit Sprint" auf dem Canvas "Analytics & AI Use Case".
+  pack.didacticGlobalPrompt = `Auf diesem Board läuft die Übung "Use Case Fit Sprint" auf dem Canvas "Analytics & AI Use Case".
 
 Übergeordnetes Ziel:
 - Entwickle einen Analytics- oder KI-Anwendungsfall konsequent aus einer realen Nutzer- und Entscheidungssituation.
@@ -1878,19 +1757,19 @@ Methodische Regeln:
   setStepFields(pack, "step1_user_perspective", {
     visibleInstruction: `Arbeite zuerst die Nutzerperspektive aus: User & Situation klären, Objectives & Results strukturieren, Decisions & Actions skizzieren und anschließend Gains & Pains sammeln.`,
     flowInstruction: `Arbeite zuerst die rechte Seite aus: Beginne mit User & Situation, strukturiere danach Objectives & Results, skizziere Decisions & Actions und ergänze anschließend Gains & Pains als Nutzersammlung.`,
-    flowSummary: `Zuerst den Problemraum sammeln und strukturieren: User & Situation klären, Objectives/Results als kleinen Driver Tree, Decisions/Actions als kleinen Workflow, Gains/Pains als Sammlung. Noch nicht in Lösungen springen.`
+    summary: `Zuerst den Problemraum sammeln und strukturieren: User & Situation klären, Objectives/Results als kleinen Driver Tree, Decisions/Actions als kleinen Workflow, Gains/Pains als Sammlung. Noch nicht in Lösungen springen.`
   });
 
   setStepFields(pack, "step2_solution_perspective", {
     visibleInstruction: `Leite nun aus der Nutzerperspektive die Lösungsperspektive ab: erst Lösungsideen sammeln, dann Information und Functions konkretisieren und daraus Benefits ableiten.`,
     flowInstruction: `Leite nun aus der Nutzerperspektive die linke Seite ab: Welche Solution-Varianten sind denkbar, welche Information würde Entscheidungen oder Handlungen verbessern, welche Functions machen das nutzbar und welche Benefits entstehen daraus?`,
-    flowSummary: `Die Lösungsperspektive soll selektiv aus dem Problemraum folgen: Varianten sammeln, Information/Functions ableiten, Benefits begründen und nur wenige explizite Relationen sichtbar machen.`
+    summary: `Die Lösungsperspektive soll selektiv aus dem Problemraum folgen: Varianten sammeln, Information/Functions ableiten, Benefits begründen und nur wenige explizite Relationen sichtbar machen.`
   });
 
   setStepFields(pack, "step3_fit_check_and_synthesis", {
     visibleInstruction: `Prüfe jetzt den Problem-Solution-Fit, verdichte ihn im Feld Check und ergänze nur wenige validierte Fit-Beziehungen.`,
     flowInstruction: `Prüfe jetzt, ob Nutzerperspektive und Lösungsperspektive konsistent zusammenpassen. Erst wenn genug Substanz vorhanden ist, verdichte den Problem-Solution-Fit im Feld Check und ergänze höchstens wenige validierte Fit-Kanten.`,
-    flowSummary: `Konsistenz, Reifegrad und Problem-Solution-Fit prüfen und nur dann verdichten, wenn die Vorarbeit tragfähig genug ist. Wenige belastbare Fit-Ketten sind wichtiger als Vollvernetzung.`
+    summary: `Konsistenz, Reifegrad und Problem-Solution-Fit prüfen und nur dann verdichten, wenn die Vorarbeit tragfähig genug ist. Wenige belastbare Fit-Ketten sind wichtiger als Vollvernetzung.`
   });
 
   setTriggerPrompt(pack, "step1_user_perspective", "selection.check", `Prüfmodus für den Schritt "User Perspective First":
@@ -2138,7 +2017,7 @@ Methodische Regeln:
 - Divergenz ist erlaubt, aber Alternativen sollen fokussiert oder bewusst in Sorted-out geparkt werden.
 - Diese Übung endet vor einem echten Cross-Canvas-Handoff.`;
 
-  pack.packTemplateGlobalPrompt = `Pack-Workflow "Use Case Fit Sprint":
+  pack.didacticGlobalPrompt = `Pack-Workflow "Use Case Fit Sprint":
 - Step 0 klärt Fokus, Scope und offene Annahmen.
 - Step 1 baut den Problemraum auf der rechten Seite tragfähig auf.
 - Step 2 leitet daraus die linke Lösungsperspektive ab.
@@ -2324,14 +2203,36 @@ function inferTriggerParts(triggerKey) {
   return { triggerKey: normalized, scope: scope || null, intent: intent || null };
 }
 
-function normalizeRunProfilePanelRole(value) {
+function normalizeEndpointPanelGroup(value) {
   const normalized = asNonEmptyString(value);
   return ["primary", "secondary", "proposal"].includes(normalized) ? normalized : null;
 }
 
-function normalizeRunProfileBoardGroup(value) {
+function normalizeEndpointBoardGroup(value) {
   const normalized = asNonEmptyString(value);
   return ["core", "proposal", "meta"].includes(normalized) ? normalized : "core";
+}
+
+
+function normalizeSurfaceGroup(value) {
+  const normalized = asNonEmptyString(value);
+  if (["primary", "secondary", "proposal", "hidden"].includes(normalized)) return normalized;
+  return "hidden";
+}
+
+function normalizeScopeMode(value) {
+  const normalized = asNonEmptyString(value);
+  if (["selection", "current", "pack", "board"].includes(normalized)) return normalized;
+  if (normalized === "fixed_instances") return "current";
+  if (normalized === "global") return "pack";
+  return "selection";
+}
+
+function compareEndpointOrder(a, b) {
+  const aOrder = Number.isFinite(Number(a?.order)) ? Number(a.order) : Number.MAX_SAFE_INTEGER;
+  const bOrder = Number.isFinite(Number(b?.order)) ? Number(b.order) : Number.MAX_SAFE_INTEGER;
+  if (aOrder !== bOrder) return aOrder - bOrder;
+  return String(a?.label || a?.id || "").localeCompare(String(b?.label || b?.id || ""), undefined, { sensitivity: "base" });
 }
 
 function makeFlowControlDef({
@@ -2362,8 +2263,8 @@ function makeFlowControlDef({
     allowedActions: normalizeUniqueStrings(allowedActions),
     uiHint: asNonEmptyString(uiHint),
     sortOrder: Number.isFinite(Number(sortOrder)) ? Number(sortOrder) : Number.MAX_SAFE_INTEGER,
-    panelRole: normalizeRunProfilePanelRole(panelRole),
-    boardGroup: normalizeRunProfileBoardGroup(boardGroup),
+    panelRole: normalizeEndpointPanelGroup(panelRole),
+    boardGroup: normalizeEndpointBoardGroup(boardGroup),
     seedByDefault: seedByDefault === true
   };
 }
@@ -2402,7 +2303,7 @@ function makeStepDef({
   label,
   visibleInstruction,
   flowInstruction,
-  flowSummary,
+  summary,
   allowedActions = [],
   defaultEnterTrigger = null,
   transitions = [],
@@ -2415,7 +2316,7 @@ function makeStepDef({
     label: asNonEmptyString(label),
     visibleInstruction: asNonEmptyString(visibleInstruction),
     flowInstruction: asNonEmptyString(flowInstruction),
-    flowSummary: asNonEmptyString(flowSummary),
+    summary: asNonEmptyString(summary),
     allowedActions: normalizeUniqueStrings(allowedActions),
     defaultEnterTrigger: normalizeTriggerKey(defaultEnterTrigger),
     transitions: Array.isArray(transitions) ? transitions : [],
@@ -2424,12 +2325,12 @@ function makeStepDef({
   };
 }
 
-function makeManualTransition(toStepId, { allowedAfterTriggers = [], requiredStepStatuses = [] } = {}) {
+function makeManualTransition(toStepId, { allowedAfterTriggerKeys = [], requiredStepStatuses = [] } = {}) {
   return {
     toStepId: asNonEmptyString(toStepId),
     policy: "manual",
     allowedSources: ["user", "admin", "agent_recommendation"],
-    allowedAfterTriggers: normalizeUniqueStrings(allowedAfterTriggers),
+    allowedAfterTriggerKeys: normalizeUniqueStrings(allowedAfterTriggerKeys),
     requiredStepStatuses: normalizeUniqueStrings(requiredStepStatuses)
   };
 }
@@ -2810,7 +2711,7 @@ function buildAnalyticsDidacticSteps(pack) {
       label: "Preparation & Focus",
       visibleInstruction: "Starte mit Fokus und Scope: Benenne den Use Case im Header, notiere kritische Annahmen oder offene Fragen in Weiß und parke Nebenthemen bewusst im Sorted-out-Bereich.",
       flowInstruction: "Starte mit Fokus und Scope: Lege im Header den konkreten Use Case fest, sammle kritische Annahmen oder offene Fragen als weiße Stickies und parke Nebenthemen bewusst, statt direkt in User oder Lösungen zu springen.",
-      flowSummary: "Vorbereitungsphase vor der eigentlichen Analyse: Fokus im Header setzen, Scope schärfen, offene Annahmen sichtbar machen, Nebenthemen bewusst parken.",
+      summary: "Vorbereitungsphase vor der eigentlichen Analyse: Fokus im Header setzen, Scope schärfen, offene Annahmen sichtbar machen, Nebenthemen bewusst parken.",
       allowedActions: stickyActions,
       defaultEnterTrigger: "selection.hint",
       questionModuleIds: [
@@ -2823,7 +2724,7 @@ function buildAnalyticsDidacticSteps(pack) {
       ],
       transitions: [
         makeManualTransition("step1_user_perspective", {
-          allowedAfterTriggers: ["selection.check", "selection.review"],
+          allowedAfterTriggerKeys: ["selection.check", "selection.review"],
           requiredStepStatuses: ["ready_for_review", "completed"]
         })
       ],
@@ -2954,7 +2855,7 @@ function buildAnalyticsDidacticSteps(pack) {
       label: "User Needs Analysis",
       visibleInstruction: "Arbeite jetzt die Nutzerperspektive aus: mehrere plausible Nutzerrollen sammeln, auf einen Hauptnutzer fokussieren, Situation konkretisieren, Objectives & Results strukturieren, Decisions & Actions strukturieren und Gains/Pains andocken.",
       flowInstruction: "Baue jetzt den Problemraum auf: Nutzerrollen sammeln und fokussieren, Situation präzisieren, Objectives & Results als kleinen Driver Tree strukturieren, Decisions & Actions als kleinen Workflow skizzieren und Gains/Pains aus Nutzersicht andocken und priorisieren.",
-      flowSummary: "Step 1 ist Divergenz und Konvergenz im Problemraum: nicht sofort lösen, sondern Nutzerarbeit, Ziele, Ergebnisse, Entscheidungen, Handlungen und kritische Gains/Pains tragfähig machen.",
+      summary: "Step 1 ist Divergenz und Konvergenz im Problemraum: nicht sofort lösen, sondern Nutzerarbeit, Ziele, Ergebnisse, Entscheidungen, Handlungen und kritische Gains/Pains tragfähig machen.",
       allowedActions: structuredActions,
       defaultEnterTrigger: "selection.hint",
       questionModuleIds: [
@@ -2971,7 +2872,7 @@ function buildAnalyticsDidacticSteps(pack) {
       ],
       transitions: [
         makeManualTransition("step2_solution_perspective", {
-          allowedAfterTriggers: ["selection.check", "selection.review"],
+          allowedAfterTriggerKeys: ["selection.check", "selection.review"],
           requiredStepStatuses: ["ready_for_review", "completed"]
         })
       ],
@@ -3140,7 +3041,7 @@ function buildAnalyticsDidacticSteps(pack) {
       label: "Solution Design",
       visibleInstruction: "Leite jetzt die Lösungsperspektive ab: mehrere Solution-Varianten sammeln, eine Hauptvariante wählen, Alternativen rechts parken, daraus Information und Functions ableiten und erst danach Benefits formulieren.",
       flowInstruction: "Entwickle jetzt die linke Seite aus dem Problemraum heraus: Varianten sammeln und fokussieren, Information und Functions aus Nutzerarbeit ableiten und daraus konkrete Benefits formulieren.",
-      flowSummary: "Step 2 ist Divergenz, Auswahl, Konkretisierung und Nutzenableitung – nicht freie Technologiewahl und nicht Vollvernetzung.",
+      summary: "Step 2 ist Divergenz, Auswahl, Konkretisierung und Nutzenableitung – nicht freie Technologiewahl und nicht Vollvernetzung.",
       allowedActions: structuredActions,
       defaultEnterTrigger: "selection.hint",
       questionModuleIds: [
@@ -3156,7 +3057,7 @@ function buildAnalyticsDidacticSteps(pack) {
       ],
       transitions: [
         makeManualTransition("step3_fit_check_and_synthesis", {
-          allowedAfterTriggers: ["selection.check", "selection.review"],
+          allowedAfterTriggerKeys: ["selection.check", "selection.review"],
           requiredStepStatuses: ["ready_for_review", "completed"]
         })
       ],
@@ -3318,7 +3219,7 @@ function buildAnalyticsDidacticSteps(pack) {
       label: "Fit Validation & Minimum Desired Product",
       visibleInstruction: "Validiere jetzt den Problem-Solution-Fit: prüfe Benefits gegen die rechte Seite, markiere belastbare Beziehungen mit Checkmarks, dünne unvalidierte Inhalte aus und verdichte den Kern im Feld Check.",
       flowInstruction: "Prüfe jetzt, welche Benefits wirklich Gains, Pains, Objectives, Results, Decisions oder Actions adressieren. Markiere belastbare Beziehungen, reduziere auf das Minimum Desired Product und verdichte erst dann den Kern im Feld Check.",
-      flowSummary: "Step 3 validiert, markiert, reduziert und verdichtet. Ziel ist ein Minimum Desired Product und nicht die Summe aller bisherigen Ideen.",
+      summary: "Step 3 validiert, markiert, reduziert und verdichtet. Ziel ist ein Minimum Desired Product und nicht die Summe aller bisherigen Ideen.",
       allowedActions: validationActions,
       defaultEnterTrigger: "selection.review",
       questionModuleIds: [
@@ -3623,7 +3524,7 @@ function applyAnalyticsProposalPromptPatch(pack) {
       prompt: proposalConfig.prompt,
       moduleIds: proposalConfig.moduleIds,
       flowControl: makeFlowControlDef({
-        id: proposalConfig.runProfileId,
+        id: proposalConfig.endpointId,
         label: proposalConfig.label,
         summary: proposalConfig.summary,
         moduleIds: proposalConfig.moduleIds,
@@ -3646,7 +3547,7 @@ function applyAnalyticsProposalPromptPatch(pack) {
       prompt: applyConfig.prompt,
       moduleIds: applyConfig.moduleIds,
       flowControl: makeFlowControlDef({
-        id: applyConfig.runProfileId,
+        id: applyConfig.endpointId,
         label: applyConfig.label,
         summary: applyConfig.summary,
         moduleIds: applyConfig.moduleIds,
@@ -3665,7 +3566,7 @@ function applyAnalyticsProposalPromptPatch(pack) {
   }
 
   addStepProposalTriggers("step0_preparation_and_focus", {
-    runProfileId: "analytics.fit.step0.propose",
+    endpointId: "analytics.fit.step0.propose",
     label: "Fokusvorschläge erzeugen",
     summary: "Erzeugt konkrete, aber noch nicht angewendete Vorschläge für Fokus, Scope und offene Annahmen.",
     moduleIds: [
@@ -3689,7 +3590,7 @@ function applyAnalyticsProposalPromptPatch(pack) {
 - Falls du in Step 0 konkrete Board-Vorschläge machst, beschränke dich auf den Header und höchstens sehr wenige weiße Fokus-/Scope-Stickies; entwickle noch keine Nutzeranalyse, keine Lösung und keinen Fit.
 - Nichts davon ist bereits angewendet. Beschreibe im feedback klar, was du vorschlagen würdest und warum.`
   }, {
-    runProfileId: "analytics.fit.step0.apply",
+    endpointId: "analytics.fit.step0.apply",
     label: "Vorschläge anwenden",
     summary: "Wendet den zuletzt erzeugten Fokus-/Scope-Vorschlag auf diese Canvas-Instanz an.",
     moduleIds: ["analytics.fit.shared.proposal_mode"],
@@ -3701,7 +3602,7 @@ function applyAnalyticsProposalPromptPatch(pack) {
   });
 
   addStepProposalTriggers("step1_user_perspective", {
-    runProfileId: "analytics.fit.step1.propose",
+    endpointId: "analytics.fit.step1.propose",
     label: "Nutzeranalyse-Vorschläge erzeugen",
     summary: "Erzeugt konkrete, aber noch nicht angewendete Vorschläge für Fokus, Strukturierung und Priorisierung der Nutzeranalyse.",
     moduleIds: [
@@ -3726,7 +3627,7 @@ function applyAnalyticsProposalPromptPatch(pack) {
 - Handle noch nichts als bereits umgesetzt. Beschreibe im feedback klar, was du vorschlagen würdest und was nach Bestätigung passieren würde.
 - Entwickle in diesem Vorschlagsmodus keine Lösung und keinen Fit.`
   }, {
-    runProfileId: "analytics.fit.step1.apply",
+    endpointId: "analytics.fit.step1.apply",
     label: "Vorschläge anwenden",
     summary: "Wendet den zuletzt erzeugten Vorschlag zur Nutzeranalyse auf diese Canvas-Instanz an.",
     moduleIds: ["analytics.fit.shared.proposal_mode"],
@@ -3738,7 +3639,7 @@ function applyAnalyticsProposalPromptPatch(pack) {
   });
 
   addStepProposalTriggers("step2_solution_perspective", {
-    runProfileId: "analytics.fit.step2.propose",
+    endpointId: "analytics.fit.step2.propose",
     label: "Lösungsvorschläge erzeugen",
     summary: "Erzeugt konkrete, aber noch nicht angewendete Vorschläge für Variantenwahl und Ableitung der linken Seite.",
     moduleIds: [
@@ -3763,7 +3664,7 @@ function applyAnalyticsProposalPromptPatch(pack) {
 - Beschreibe im feedback klar, was du vorschlagen würdest, ohne so zu tun, als sei es bereits umgesetzt.
 - Ziehe keine Fit-Validierung vor.`
   }, {
-    runProfileId: "analytics.fit.step2.apply",
+    endpointId: "analytics.fit.step2.apply",
     label: "Vorschläge anwenden",
     summary: "Wendet den zuletzt erzeugten Lösungsvorschlag auf diese Canvas-Instanz an.",
     moduleIds: ["analytics.fit.shared.proposal_mode"],
@@ -3775,7 +3676,7 @@ function applyAnalyticsProposalPromptPatch(pack) {
   });
 
   addStepProposalTriggers("step3_fit_check_and_synthesis", {
-    runProfileId: "analytics.fit.step3.propose",
+    endpointId: "analytics.fit.step3.propose",
     label: "Validierungs-/MDP-Vorschläge erzeugen",
     summary: "Erzeugt konkrete, aber noch nicht angewendete Vorschläge für Checkmarks, Pruning und Minimum Desired Product.",
     moduleIds: [
@@ -3799,7 +3700,7 @@ function applyAnalyticsProposalPromptPatch(pack) {
 - Gute Vorschläge benennen klar, welche Benefits und rechten Elemente Checkmarks bekommen sollten, welche Inhalte als Alternative in sorted_out_right bleiben und welche Inhalte nach Bestätigung reduziert oder entfernt würden.
 - Noch nichts davon ist angewendet. Beschreibe im feedback klar den Unterschied zwischen aktuellem Zustand und Vorschlag.`
   }, {
-    runProfileId: "analytics.fit.step3.apply",
+    endpointId: "analytics.fit.step3.apply",
     label: "Vorschläge anwenden",
     summary: "Wendet den zuletzt erzeugten Validierungs-/MDP-Vorschlag auf diese Canvas-Instanz an.",
     moduleIds: ["analytics.fit.shared.proposal_mode"],
@@ -3816,7 +3717,6 @@ function applyAnalyticsUseCaseDidacticPatch(catalog) {
   if (!pack || typeof pack !== "object") return catalog;
 
   pack.description = `Geführte Einzelcanvas-Übung auf dem Analytics & AI Use Case Canvas mit vier didaktischen Phasen: Preparation & Focus, User Needs Analysis, Solution Design sowie Fit Validation & Minimum Desired Product.`;
-  pack.packTemplateDescription = `Geführte Übung für das Analytics & AI Use Case Canvas mit klarer Trainingsdramaturgie: Fokus setzen, Nutzerarbeit aufbauen, Lösung ableiten, Fit validieren und auf einen tragfähigen Kern reduzieren.`;
   pack.defaultStepId = "step0_preparation_and_focus";
 
   pack.exerciseGlobalPrompt = `Auf diesem Board läuft die Übung "Use Case Fit Sprint" auf dem Canvas "Analytics & AI Use Case".
@@ -3837,7 +3737,7 @@ Schrittrahmen:
 - Farben und Checkmarks sind methodische Signale.
 - Sticky Notes stehen grundsätzlich zunächst für sich; Connectoren nur selektiv bei expliziter Relation.`;
 
-  pack.packTemplateGlobalPrompt = `Pack-Baseline für den "Use Case Fit Sprint":
+  pack.didacticGlobalPrompt = `Pack-Baseline für den "Use Case Fit Sprint":
 - Folge der Vier-Schritt-Dramaturgie dieses Canvas: Fokus → Problemraum → Lösung → Fit & Verdichtung.
 - Rechte Seite zuerst, linke Seite danach, Check zuletzt.
 - Kein echter Handoff auf andere Canvas in dieser Übung.
@@ -5053,8 +4953,6 @@ function createBatch8MethodCatalog(rawCatalog) {
 export const METHOD_CATALOG = createBatch8MethodCatalog(RAW_METHOD_CATALOG);
 
 const exercisePacks = {};
-const packTemplates = {};
-const runProfiles = {};
 const endpoints = {};
 const promptModules = {};
 
@@ -5064,7 +4962,6 @@ for (const [packId, packDef] of Object.entries(METHOD_CATALOG.packs || {})) {
     exercisePacks[exercisePack.id] = exercisePack;
   }
 
-  const packRunProfiles = [];
   for (const rawModule of Object.values((packDef?.promptModules && typeof packDef.promptModules === "object") ? packDef.promptModules : {})) {
     const moduleProjection = buildPromptModuleProjection(rawModule);
     if (moduleProjection?.id) {
@@ -5074,26 +4971,25 @@ for (const [packId, packDef] of Object.entries(METHOD_CATALOG.packs || {})) {
 
   for (const [stepId, rawStepDef] of Object.entries((packDef?.steps && typeof packDef.steps === "object") ? packDef.steps : {})) {
     const stepDef = rawStepDef && typeof rawStepDef === "object" ? rawStepDef : {};
-    for (const rawTriggerProfile of Object.values((stepDef?.triggerProfiles && typeof stepDef.triggerProfiles === "object") ? stepDef.triggerProfiles : {})) {
-      const endpoint = buildEndpointProjection(packDef, { id: stepId, ...stepDef }, rawTriggerProfile);
-      if (!endpoint?.id) continue;
-      endpoints[endpoint.id] = endpoint;
-      runProfiles[endpoint.id] = endpoint;
-      packRunProfiles.push(endpoint);
+    for (const [rawTriggerKey, rawTriggerProfile] of Object.entries((stepDef?.triggerProfiles && typeof stepDef.triggerProfiles === "object") ? stepDef.triggerProfiles : {})) {
+      const normalizedTriggerKey = normalizeTriggerKey(rawTriggerKey) || normalizeTriggerKey(rawTriggerProfile?.triggerKey);
+      if (!normalizedTriggerKey) continue;
+      const rawEndpoint = {
+        id: asNonEmptyString(rawTriggerProfile?.flowControl?.id) || [packId, stepId, normalizedTriggerKey].join('.'),
+        triggerKey: normalizedTriggerKey,
+        triggerProfile: rawTriggerProfile
+      };
+      const endpointProjection = buildEndpointProjection(rawEndpoint, { id: stepId, ...stepDef }, { exercisePackId: packId, ...packDef });
+      if (endpointProjection?.id) {
+        endpoints[endpointProjection.id] = endpointProjection;
+      }
     }
-  }
-
-  const packTemplate = buildPackTemplateProjection(packDef, packRunProfiles);
-  if (packTemplate?.id) {
-    packTemplates[packTemplate.id] = packTemplate;
   }
 }
 
 export const EXERCISE_PACKS = Object.freeze(exercisePacks);
-export const PROMPT_MODULES = Object.freeze(promptModules);
-export const PACK_TEMPLATES = Object.freeze(packTemplates);
 export const ENDPOINTS = Object.freeze(endpoints);
-export const RUN_PROFILES = ENDPOINTS;
+export const PROMPT_MODULES = Object.freeze(promptModules);
 
 export function normalizeExercisePackId(value) {
   const id = asNonEmptyString(value);
@@ -5114,7 +5010,6 @@ export function getExercisePackById(id, options = {}) {
 export function getPackDefaults(packOrId) {
   const pack = getRawExercisePack(packOrId);
   const defaults = (pack?.defaults && typeof pack.defaults === "object") ? pack.defaults : {};
-
   return {
     feedbackChannel: asNonEmptyString(defaults.feedbackChannel) || DT_DEFAULT_FEEDBACK_CHANNEL,
     userMayChangePack: defaults.userMayChangePack === true,
@@ -5125,8 +5020,8 @@ export function getPackDefaults(packOrId) {
 
 export function getAllowedCanvasTypesForPack(packOrId) {
   const pack = getRawExercisePack(packOrId);
-  if (!pack) return [];
-  return normalizeUniqueStrings(pack.allowedCanvasTypeIds || pack.allowedCanvasTypes || []);
+  if (!pack || !Array.isArray(pack.allowedCanvasTypeIds)) return [];
+  return normalizeUniqueStrings(pack.allowedCanvasTypeIds);
 }
 
 export function getDefaultCanvasTypeIdForPack(packOrId) {
@@ -5139,29 +5034,17 @@ export function getDefaultCanvasTypeIdForPack(packOrId) {
 
 export function listExerciseSteps(packOrId, options = {}) {
   const pack = getRawExercisePack(packOrId);
-  if (!pack?.steps || typeof pack.steps !== "object") return [];
+  if (!Array.isArray(pack?.steps)) return [];
   const lang = getMethodLanguage(options);
-
-  return Object.values(pack.steps)
-    .filter((step) => step && typeof step === "object" && asNonEmptyString(step.id))
-    .map((step) => localizeExerciseStepProjection(step, pack.id, lang))
-    .slice()
-    .sort((a, b) => {
-      const aOrder = Number.isFinite(Number(a?.order)) ? Number(a.order) : Number.MAX_SAFE_INTEGER;
-      const bOrder = Number.isFinite(Number(b?.order)) ? Number(b.order) : Number.MAX_SAFE_INTEGER;
-      if (aOrder !== bOrder) return aOrder - bOrder;
-      return String(a?.label || a?.id || "").localeCompare(String(b?.label || b?.id || ""), undefined, { sensitivity: "base" });
-    });
+  return pack.steps.map((step) => localizeExerciseStepProjection(step, pack.id, lang));
 }
 
 export function getExerciseStep(packOrId, stepId, options = {}) {
   const pack = getRawExercisePack(packOrId);
   const normalizedStepId = asNonEmptyString(stepId);
-  if (!pack || !normalizedStepId || !pack.steps || typeof pack.steps !== "object") return null;
-  const step = pack.steps[normalizedStepId];
-  return step && typeof step === "object"
-    ? localizeExerciseStepProjection(step, pack.id, getMethodLanguage(options))
-    : null;
+  if (!pack || !normalizedStepId || !Array.isArray(pack.steps)) return null;
+  const step = pack.steps.find((entry) => entry.id === normalizedStepId) || null;
+  return step ? localizeExerciseStepProjection(step, pack.id, getMethodLanguage(options)) : null;
 }
 
 export function getDefaultStepId(packOrId) {
@@ -5175,49 +5058,11 @@ export function getDefaultStepId(packOrId) {
 export function getNextExerciseStep(packOrId, currentStepId, options = {}) {
   const steps = listExerciseSteps(packOrId, options);
   if (!steps.length) return null;
-
   const normalizedCurrentStepId = asNonEmptyString(currentStepId);
   if (!normalizedCurrentStepId) return steps[0] || null;
-
   const currentIndex = steps.findIndex((step) => step?.id === normalizedCurrentStepId);
   if (currentIndex === -1) return steps[0] || null;
   return steps[currentIndex + 1] || null;
-}
-
-export function listAllowedTriggerKeys(stepOrPack, maybeStepId = null) {
-  const step = maybeStepId == null
-    ? stepOrPack
-    : getExerciseStep(stepOrPack, maybeStepId);
-
-  if (!step?.allowedTriggers || typeof step.allowedTriggers !== "object") return [];
-
-  return Object.keys(step.allowedTriggers)
-    .map((key) => normalizeTriggerKey(key))
-    .filter(Boolean)
-    .sort((a, b) => a.localeCompare(b, undefined, { sensitivity: "base" }));
-}
-
-export function getStepTriggerConfig(packOrStep, stepIdOrTriggerKey, maybeTriggerKey = null) {
-  let step = null;
-  let triggerKey = null;
-
-  if (maybeTriggerKey == null) {
-    step = packOrStep;
-    triggerKey = stepIdOrTriggerKey;
-  } else {
-    step = getExerciseStep(packOrStep, stepIdOrTriggerKey);
-    triggerKey = maybeTriggerKey;
-  }
-
-  const normalizedTriggerKey = normalizeTriggerKey(triggerKey);
-  if (!step || !normalizedTriggerKey || !step.allowedTriggers || typeof step.allowedTriggers !== "object") return null;
-
-  const config = step.allowedTriggers[normalizedTriggerKey];
-  return config && typeof config === "object" ? config : null;
-}
-
-export function isTriggerAllowedForStep(packOrStep, stepIdOrTriggerKey, maybeTriggerKey = null) {
-  return !!getStepTriggerConfig(packOrStep, stepIdOrTriggerKey, maybeTriggerKey);
 }
 
 export function getDefaultEnterTrigger(packOrStep, maybeStepId = null) {
@@ -5228,118 +5073,64 @@ export function getDefaultEnterTrigger(packOrStep, maybeStepId = null) {
 export function listStepTransitions(packOrStep, maybeStepId = null) {
   const step = maybeStepId == null ? packOrStep : getExerciseStep(packOrStep, maybeStepId);
   if (!Array.isArray(step?.transitions)) return [];
-
-  return step.transitions
-    .map((transition) => ({
-      toStepId: asNonEmptyString(transition?.toStepId),
-      policy: asNonEmptyString(transition?.policy) || "manual",
-      allowedSources: normalizeUniqueStrings(transition?.allowedSources),
-      allowedAfterTriggers: normalizeUniqueStrings(transition?.allowedAfterTriggers),
-      requiredStepStatuses: normalizeUniqueStrings(transition?.requiredStepStatuses)
-    }))
-    .filter((transition) => !!transition.toStepId);
+  return step.transitions.map((transition) => ({
+    toStepId: asNonEmptyString(transition?.toStepId),
+    policy: asNonEmptyString(transition?.policy) || "manual",
+    allowedSources: normalizeUniqueStrings(transition?.allowedSources),
+    allowedAfterTriggerKeys: normalizeAllowedAfterTriggerKeys(transition?.allowedAfterTriggerKeys),
+    requiredStepStatuses: normalizeUniqueStrings(transition?.requiredStepStatuses)
+  })).filter((transition) => !!transition.toStepId);
 }
 
 export function resolveNamedTransition(packOrStep, stepIdOrToStepId, maybeToStepId = null) {
-  const transitions = maybeToStepId == null
-    ? listStepTransitions(packOrStep)
-    : listStepTransitions(packOrStep, stepIdOrToStepId);
+  const transitions = maybeToStepId == null ? listStepTransitions(packOrStep) : listStepTransitions(packOrStep, stepIdOrToStepId);
   const wantedToStepId = asNonEmptyString(maybeToStepId == null ? stepIdOrToStepId : maybeToStepId);
   if (!wantedToStepId) return null;
   return transitions.find((transition) => transition.toStepId === wantedToStepId) || null;
 }
 
-export function listPackTemplates(options = {}) {
-  const lang = getMethodLanguage(options);
-  return sortByLabel(Object.values(PACK_TEMPLATES).map((pack) => localizePackTemplateProjection(pack, lang)));
-}
-
-export function getPackTemplateById(id, options = {}) {
-  const normalizedId = asNonEmptyString(id);
-  const packTemplate = normalizedId && PACK_TEMPLATES[normalizedId] ? PACK_TEMPLATES[normalizedId] : null;
-  return localizePackTemplateProjection(packTemplate, getMethodLanguage(options));
-}
-
-export function listStepTemplatesForPack(packOrId, options = {}) {
-  const pack = getRawPackTemplate(packOrId);
-  const steps = Object.values((pack?.stepTemplates && typeof pack.stepTemplates === "object") ? pack.stepTemplates : {});
-  const lang = getMethodLanguage(options);
-  return steps
-    .map((step) => localizeStepTemplateProjection(step, pack?.id || null, lang))
-    .slice()
-    .sort((a, b) => Number(a.order || 0) - Number(b.order || 0) || String(a.label || a.id).localeCompare(String(b.label || b.id), undefined, { sensitivity: "base" }));
-}
-
-export function getStepTemplateForPack(packOrId, stepId, options = {}) {
-  const pack = getRawPackTemplate(packOrId);
-  const normalizedStepId = asNonEmptyString(stepId);
-  if (!pack || !normalizedStepId) return null;
-  const stepTemplate = pack.stepTemplates?.[normalizedStepId] || null;
-  return localizeStepTemplateProjection(stepTemplate, pack.id, getMethodLanguage(options));
-}
-
-export function listRunProfilesForPack(packOrId, options = {}) {
-  const pack = getRawExercisePack(packOrId);
-  if (!pack?.id) return [];
-  const stepId = asNonEmptyString(options?.stepTemplateId) || asNonEmptyString(options?.stepId);
-  return listEndpointsForPack(pack, {
-    ...options,
-    stepId
-  });
-}
-
 export function listEndpointsForPack(packOrId, options = {}) {
   const pack = getRawExercisePack(packOrId);
-  if (!pack?.id) return [];
-  const stepId = asNonEmptyString(options?.stepId);
+  if (!pack) return [];
   const lang = getMethodLanguage(options);
-  return Object.values(ENDPOINTS)
-    .filter((endpoint) => endpoint?.exercisePackId === pack.id)
-    .filter((endpoint) => !stepId || endpoint?.stepId === stepId)
-    .map((endpoint) => localizeEndpointProjection(endpoint, lang))
-    .slice()
-    .sort((a, b) => Number(a?.sortOrder ?? Number.MAX_SAFE_INTEGER) - Number(b?.sortOrder ?? Number.MAX_SAFE_INTEGER) || String(a?.label || a?.id || "").localeCompare(String(b?.label || b?.id || ""), undefined, { sensitivity: "base" }));
+  return Object.values(ENDPOINTS).filter((endpoint) => endpoint.exercisePackId === pack.id).map((endpoint) => localizeEndpointProjection(endpoint, lang)).sort(compareEndpointOrder);
 }
 
 export function listStepEndpoints(packOrId, stepId, options = {}) {
+  const pack = getRawExercisePack(packOrId);
   const normalizedStepId = asNonEmptyString(stepId);
-  if (!normalizedStepId) return [];
-  return listEndpointsForPack(packOrId, {
-    ...options,
-    stepId: normalizedStepId
-  });
+  if (!pack || !normalizedStepId) return [];
+  const lang = getMethodLanguage(options);
+  return listEndpointsForPack(pack, options).filter((endpoint) => endpoint.stepId === normalizedStepId).map((endpoint) => localizeEndpointProjection(endpoint, lang)).sort(compareEndpointOrder);
 }
 
-export function listStepEndpointsForSurface(packOrId, stepId, options = {}) {
-  const panelRole = options && Object.prototype.hasOwnProperty.call(options, "panelRole")
-    ? normalizeRunProfilePanelRole(options.panelRole)
-    : null;
-  const boardGroup = options && Object.prototype.hasOwnProperty.call(options, "boardGroup")
-    ? normalizeRunProfileBoardGroup(options.boardGroup)
-    : null;
-  const seedByDefaultOnly = options?.seedByDefaultOnly === true;
-
-  return listStepEndpoints(packOrId, stepId, options)
-    .filter((endpoint) => !panelRole || endpoint?.surface?.panelRole === panelRole)
-    .filter((endpoint) => !boardGroup || endpoint?.surface?.boardGroup === boardGroup)
-    .filter((endpoint) => !seedByDefaultOnly || endpoint?.surface?.seedByDefault === true);
+export function listStepEndpointsForSurface(packOrId, stepId, surfaceGroup, options = {}) {
+  const group = normalizeSurfaceGroup(surfaceGroup);
+  return listStepEndpoints(packOrId, stepId, options).filter((endpoint) => endpoint.surface?.group === group);
 }
 
 export function getEndpointById(id, options = {}) {
-  const endpoint = getRawEndpoint(id);
+  const normalizedId = asNonEmptyString(id);
+  const endpoint = normalizedId && ENDPOINTS[normalizedId] ? ENDPOINTS[normalizedId] : null;
   return localizeEndpointProjection(endpoint, getMethodLanguage(options));
 }
 
-export function listRunProfilesForStep(packOrId, stepId, options = {}) {
-  return listStepEndpoints(packOrId, stepId, options);
+export function findStepEndpointByTriggerKey(packOrId, stepId, triggerKey, options = {}) {
+  const normalizedTriggerKey = normalizeTriggerKey(triggerKey);
+  if (!normalizedTriggerKey) return null;
+  const matches = listStepEndpoints(packOrId, stepId, options).filter((endpoint) => endpoint.triggerKey === normalizedTriggerKey).sort((a, b) => {
+    if (Boolean(a?.surface?.sidecarOnly) !== Boolean(b?.surface?.sidecarOnly)) return a?.surface?.sidecarOnly ? 1 : -1;
+    return compareEndpointOrder(a, b);
+  });
+  return matches[0] || null;
 }
 
-export function listRunProfilesForStepSurface(packOrId, stepId, options = {}) {
-  return listStepEndpointsForSurface(packOrId, stepId, options);
+export function listStepTriggerKeysFromEndpoints(packOrId, stepId, options = {}) {
+  return Array.from(new Set(listStepEndpoints(packOrId, stepId, options).map((endpoint) => normalizeTriggerKey(endpoint?.triggerKey)).filter(Boolean))).sort((a, b) => a.localeCompare(b, undefined, { sensitivity: "base" }));
 }
 
-export function getRunProfileById(id, options = {}) {
-  return getEndpointById(id, options);
+export function isSidecarOnlyEndpoint(endpoint) {
+  return endpoint?.surface?.sidecarOnly === true;
 }
 
 export function getPromptModuleById(id, options = {}) {
