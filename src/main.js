@@ -1530,7 +1530,7 @@ function renderExerciseActionSurface() {
       } else {
         lines.push(t("exercise.action.help.noTransition", lang));
       }
-      if (model.proposalProfiles.some((profile) => profile?.triggerKey === "selection.apply") && !model.hasPendingProposalForCurrentStep) {
+      if (model.proposalEndpoints.some((endpoint) => endpoint?.triggerKey === "selection.apply") && !model.hasPendingProposalForCurrentStep) {
         lines.push(t("exercise.action.applyUnavailable", lang));
       }
     }
