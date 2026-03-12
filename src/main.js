@@ -3017,7 +3017,7 @@ function initPanelButtons() {
   flowExercisePackEl?.addEventListener("change", () => renderFlowAuthoringControls({ forceLabelSync: true }));
   flowStepEl?.addEventListener("change", () => renderFlowAuthoringControls({ forceLabelSync: true }));
   flowEndpointEl?.addEventListener("change", () => {
-    syncFlowControlLabelFromRunProfile({ force: true });
+    syncFlowControlLabelFromEndpoint({ force: true });
     renderFlowAuthoringStatus();
   });
   flowScopeTypeEl?.addEventListener("change", renderFlowAuthoringStatus);
