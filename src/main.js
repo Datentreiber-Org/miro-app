@@ -1382,9 +1382,7 @@ function renderEndpointButtonGroup(containerEl, endpoints = []) {
     const button = document.createElement("button");
     button.type = "button";
     button.textContent = endpoint.label || endpoint.id;
-    button.title = [endpoint.summary].filter(Boolean).join("
-
-");
+    button.title = [endpoint.summary].filter(Boolean).join("\n\n");
     button.dataset.dtAgentRun = "1";
     button.dataset.endpointId = endpoint.id;
     button.disabled = state.agentRunLock || endpoint.disabled === true;
@@ -2855,6 +2853,27 @@ async function runExerciseCheck() {
 
 async function runExerciseHint() {
   return await runEndpointByTriggerKey('selection.hint', { source: getCurrentTriggerSource() });
+}
+
+async function runExerciseAutocorrect() {
+  return await runEndpointByTriggerKey('selection.autocorrect', { source: getCurrentTriggerSource() });
+}
+
+async function clearMemoryFromAdmin() {
+  const clearedState = await Board.clearMemoryState(log);
+  const clearedLogEntries = await Board.clearMemoryLog(log);
+
+  state.memoryState = Memory.createEmptyMemoryState();
+  state.memoryLog = [];
+  renderExerciseControls();
+
+  log(
+    'Memory gelöscht: State=' +
+    (clearedState ? 'ja' : 'nein') +
+    ', Log-Einträge=' +
+    String(clearedLogEntries || 0) +
+    '.'
+  );
 }
 
 
