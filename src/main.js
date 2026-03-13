@@ -2124,6 +2124,28 @@ function getSelectedFlowControlLabel(controlSelection) {
   return pickFirstNonEmptyString(control?.label, control?.id, "Flow Control");
 }
 
+async function resolveSelectedFlowControl(items) {
+  const list = Array.isArray(items) ? items : [];
+  if (list.length !== 1) return null;
+
+  const item = list[0];
+  const meta = await Board.readFlowControlMeta(item, log);
+  if (!meta) return null;
+
+  const persistedFlow = await Board.loadBoardFlow(meta.flowId, log).catch(() => null);
+  const rawFlow = persistedFlow || state.boardFlowsById.get(meta.flowId) || null;
+  if (!rawFlow) return null;
+
+  const flow = await ensureBoardFlowHealthy(rawFlow, { persist: true, pruneMissingControls: true });
+  state.boardFlowsById.set(flow.id, flow);
+  await syncBoardFlowVisuals(flow);
+
+  const control = BoardFlow.findFlowControlByBoardItemId(flow, item.id) || flow.controls?.[meta.controlId] || null;
+  if (!control) return null;
+
+  return { item, meta, flow, control };
+}
+
 async function activateSelectedFlowControlFromAdmin() {
   if (state.panelMode !== "admin") {
     log("Board Flow: Diese Admin-Aktion ist nur im Admin-Modus verfügbar.");
@@ -2759,7 +2781,7 @@ async function runStructuredEndpointExecution({
             executionMode
           },
           feedback,
-          flowDirectives,
+          flowControlDirectives,
           evaluation
         });
         await Board.saveActiveProposal(proposalRecord, log);
@@ -4877,9 +4899,18 @@ async function executeSelectedChatSubmit(chatSelection, items) {
   }
 
   const rawInputContent = await Board.readChatInputContent(chatSelection.instance.chatInterface, log);
+  const userText = normalizeChatQuestionText(rawInputContent);
+  if (!userText) {
+    log("Bitte eine Frage eingeben.");
+    await notifyRuntime("Bitte eine Frage eingeben.", { level: "warning" });
+    await restoreSelectionAfterBoardButtonRun(instanceId);
+    await refreshSelectionStatusFromBoard();
+    return;
+  }
+
   await runEndpoint(endpoint, {
     sourceLabel: endpoint.label || "Chat Submit",
-    userText: normalizeChatQuestionText(rawInputContent),
+    userText,
     selectedInstanceIds: [instanceId],
     anchorInstanceId: instanceId
   });
