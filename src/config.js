@@ -176,7 +176,7 @@ export function normalizeStickyColorToken(value) {
   return DT_STICKY_COLOR_ALIASES[normalized] || null;
 }
 
-export const DT_FLOW_SCOPE_TYPES = Object.freeze(["fixed_instances", "global"]);
+export const DT_FLOW_SCOPE_TYPES = Object.freeze(["current", "pack"]);
 export const DT_FLOW_CONTROL_STATES = Object.freeze(["active", "disabled", "done"]);
 export const DT_FLOW_CONTROL_LAYOUT = Object.freeze({
   widthPx: 300,

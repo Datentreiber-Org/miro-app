@@ -13,8 +13,6 @@ function uniqueStrings(values) {
 function normalizeScopeMode(value) {
   const normalized = asNonEmptyString(value);
   if (["selection", "current", "pack", "board"].includes(normalized)) return normalized;
-  if (normalized === "fixed_instances") return "current";
-  if (normalized === "global") return "pack";
   return "selection";
 }
 
@@ -43,7 +41,6 @@ export function createBoardFlowControlId(stepId, endpointId) {
 function resolveFlowControlBoardItemId(rawControl) {
   const src = (rawControl && typeof rawControl === "object") ? rawControl : {};
   if (src.boardItemId != null) return String(src.boardItemId);
-  if (src.itemId != null) return String(src.itemId);
   return null;
 }
 
@@ -72,7 +69,6 @@ export function normalizeFlowControl(rawControl, { throwOnInvalid = false } = {}
 
   return {
     id: asNonEmptyString(src.id),
-    itemId: boardItemId,
     boardItemId,
     label: asNonEmptyString(src.label),
     labelMode: normalizeFlowLabelMode(src.labelMode),
@@ -83,8 +79,7 @@ export function normalizeFlowControl(rawControl, { throwOnInvalid = false } = {}
     state: ["active", "disabled", "done"].includes(state) ? state : "disabled",
     order: Number.isFinite(Number(src.order)) ? Number(src.order) : Number.MAX_SAFE_INTEGER,
     optional: src.optional === true,
-    createdAt: asNonEmptyString(src.createdAt),
-    lastTriggeredAt: asNonEmptyString(src.lastTriggeredAt)
+    createdAt: asNonEmptyString(src.createdAt)
   };
 }
 
@@ -112,13 +107,9 @@ function normalizeFlowRuntime(rawRuntime, fallbackStepId = null) {
   const doneEndpointIds = uniqueStrings(src.doneEndpointIds || []);
   return {
     currentStepId: asNonEmptyString(src.currentStepId) || asNonEmptyString(fallbackStepId),
-    status: asNonEmptyString(src.status) || "active",
-    lastTriggeredControlId: asNonEmptyString(src.lastTriggeredControlId),
-    lastTriggeredAt: asNonEmptyString(src.lastTriggeredAt),
     unlockedEndpointIds,
     doneEndpointIds,
-    lastActiveEndpointId: asNonEmptyString(src.lastActiveEndpointId),
-    lastDirectiveAt: asNonEmptyString(src.lastDirectiveAt)
+    lastActiveEndpointId: asNonEmptyString(src.lastActiveEndpointId)
   };
 }
 
@@ -186,7 +177,7 @@ function normalizeBoardFlowBase(rawFlow) {
 
 function syncFlowControlStatesWithCurrentStepInternal(flow) {
   const normalized = normalizeBoardFlowBase(flow);
-  const currentStepId = asNonEmptyString(normalized?.runtime?.currentStepId);
+  const runtimeStepId = asNonEmptyString(normalized?.runtime?.currentStepId);
   const unlockedEndpointIds = new Set(uniqueStrings(normalized?.runtime?.unlockedEndpointIds));
   const doneEndpointIds = new Set(uniqueStrings(normalized?.runtime?.doneEndpointIds));
   const controls = {};
@@ -200,7 +191,7 @@ function syncFlowControlStatesWithCurrentStepInternal(flow) {
       nextState = "done";
     } else if (control.endpointId && unlockedEndpointIds.has(control.endpointId)) {
       nextState = "active";
-    } else if (control.stepId && currentStepId && control.stepId === currentStepId) {
+    } else if (control.stepId && runtimeStepId && control.stepId === runtimeStepId) {
       nextState = "active";
     }
 
@@ -210,7 +201,7 @@ function syncFlowControlStatesWithCurrentStepInternal(flow) {
   return {
     ...normalized,
     steps: syncStepControlIds(normalized.steps, controls),
-    runtime: normalizeFlowRuntime(normalized?.runtime, currentStepId),
+    runtime: normalizeFlowRuntime(normalized?.runtime, runtimeStepId),
     controls
   };
 }
@@ -247,13 +238,9 @@ export function createBoardFlowFromPack(exercisePack, anchorInstanceId, { lang =
     controls: [],
     runtime: {
       currentStepId: exercisePack?.defaultStepId || firstStepId,
-      status: "active",
-      lastTriggeredControlId: null,
-      lastTriggeredAt: null,
       unlockedEndpointIds: [],
       doneEndpointIds: [],
-      lastActiveEndpointId: null,
-      lastDirectiveAt: null
+      lastActiveEndpointId: null
     },
     createdAt: new Date().toISOString(),
     updatedAt: new Date().toISOString()
@@ -263,7 +250,6 @@ export function createBoardFlowFromPack(exercisePack, anchorInstanceId, { lang =
 export function createFlowControlRecord(payload = {}) {
   return normalizeFlowControl({
     id: payload.id,
-    itemId: payload.itemId,
     boardItemId: payload.boardItemId,
     label: payload.label,
     labelMode: payload.labelMode,
@@ -274,8 +260,7 @@ export function createFlowControlRecord(payload = {}) {
     state: payload.state || "disabled",
     order: payload.order,
     optional: payload.optional === true,
-    createdAt: payload.createdAt || new Date().toISOString(),
-    lastTriggeredAt: payload.lastTriggeredAt || null
+    createdAt: payload.createdAt || new Date().toISOString()
   }, { throwOnInvalid: true });
 }
 
@@ -302,11 +287,11 @@ export function findFlowControlsByEndpointId(flow, endpointId) {
   ));
 }
 
-export function findFlowControlByItemId(flow, itemId) {
+export function findFlowControlByBoardItemId(flow, boardItemId) {
   const normalized = normalizeBoardFlow(flow);
-  const wanted = itemId == null ? null : String(itemId);
+  const wanted = boardItemId == null ? null : String(boardItemId);
   if (!wanted) return null;
-  return Object.values(normalized.controls).find((control) => String(control.boardItemId || control.itemId || "") === wanted) || null;
+  return Object.values(normalized.controls).find((control) => String(control.boardItemId || "") === wanted) || null;
 }
 
 export function syncFlowControlStatesWithCurrentStep(flow) {
@@ -340,9 +325,7 @@ export function setFlowCurrentStep(flow, stepId) {
     ...normalized,
     runtime: {
       ...normalized.runtime,
-      currentStepId: nextStep.id,
-      lastTriggeredControlId: normalized.runtime?.lastTriggeredControlId || null,
-      lastTriggeredAt: normalized.runtime?.lastTriggeredAt || null
+      currentStepId: nextStep.id
     },
     updatedAt: new Date().toISOString()
   });
@@ -352,7 +335,7 @@ export function mergeBoardFlowWithPack(boardFlow, exercisePack, { lang = "de" } 
   const normalizedFlow = normalizeBoardFlowBase(boardFlow);
   const refreshedFlow = createBoardFlowFromPack(exercisePack, normalizedFlow.anchorInstanceId, { lang });
   const validStepIds = new Set((refreshedFlow.steps || []).map((step) => step.id));
-  const currentStepId = asNonEmptyString(normalizedFlow?.runtime?.currentStepId);
+  const runtimeStepId = asNonEmptyString(normalizedFlow?.runtime?.currentStepId);
   const controls = {};
 
   for (const rawControl of Object.values(normalizedFlow.controls || {})) {
@@ -366,8 +349,8 @@ export function mergeBoardFlowWithPack(boardFlow, exercisePack, { lang = "de" } 
     id: normalizedFlow.id,
     runtime: {
       ...normalizedFlow.runtime,
-      currentStepId: currentStepId && validStepIds.has(currentStepId)
-        ? currentStepId
+      currentStepId: runtimeStepId && validStepIds.has(runtimeStepId)
+        ? runtimeStepId
         : refreshedFlow.runtime?.currentStepId || null
     },
     controls,
@@ -398,8 +381,7 @@ export function applyFlowControlDirectives(flow, directives = {}) {
     runtime: {
       ...normalized.runtime,
       unlockedEndpointIds: Array.from(nextUnlocked),
-      doneEndpointIds: Array.from(nextDone),
-      lastDirectiveAt: new Date().toISOString()
+      doneEndpointIds: Array.from(nextDone)
     },
     updatedAt: new Date().toISOString()
   });
@@ -449,8 +431,7 @@ export function forceFlowControlActive(flow, endpointOrControlId) {
       ...normalized.runtime,
       unlockedEndpointIds: Array.from(unlockedEndpointIds),
       doneEndpointIds: Array.from(doneEndpointIds),
-      lastActiveEndpointId: control.endpointId,
-      lastDirectiveAt: new Date().toISOString()
+      lastActiveEndpointId: control.endpointId
     },
     updatedAt: new Date().toISOString()
   });
@@ -471,8 +452,7 @@ export function markFlowControlDone(flow, endpointOrControlId) {
       ...normalized.runtime,
       unlockedEndpointIds: Array.from(unlockedEndpointIds),
       doneEndpointIds: Array.from(doneEndpointIds),
-      lastActiveEndpointId: control.endpointId,
-      lastDirectiveAt: new Date().toISOString()
+      lastActiveEndpointId: control.endpointId
     },
     updatedAt: new Date().toISOString()
   });
@@ -493,8 +473,7 @@ export function resetFlowControlState(flow, endpointOrControlId) {
       ...normalized.runtime,
       unlockedEndpointIds: Array.from(unlockedEndpointIds),
       doneEndpointIds: Array.from(doneEndpointIds),
-      lastActiveEndpointId: normalized.runtime.lastActiveEndpointId === control.endpointId ? null : normalized.runtime.lastActiveEndpointId,
-      lastDirectiveAt: new Date().toISOString()
+      lastActiveEndpointId: normalized.runtime.lastActiveEndpointId === control.endpointId ? null : normalized.runtime.lastActiveEndpointId
     },
     updatedAt: new Date().toISOString()
   });

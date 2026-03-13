@@ -11,20 +11,20 @@ import {
   DT_CHECK_TAG_COLOR,
   normalizeStickyColorToken,
   STICKY_LAYOUT
-} from "./config.js?v=20260312-patch11";
+} from "./config.js?v=20260313-patch11v3-final";
 
 import { createLogger, stripHtml, extractUnderlinedText, isFiniteNumber } from "./utils.js?v=20260301-step11-hotfix2";
-import { normalizeUiLanguage, t, getLocaleForLanguage } from "./i18n/index.js?v=20260310-batch92";
+import { normalizeUiLanguage, t, getLocaleForLanguage } from "./i18n/index.js?v=20260313-patch11v3-final";
 
 import * as Board from "./miro/board.js?v=20260312-patch11";
 import * as Catalog from "./domain/catalog.js?v=20260311-batch83fix1";
-import * as OpenAI from "./ai/openai.js?v=20260312-patch11";
-import * as Memory from "./runtime/memory.js?v=20260301-step11-hotfix2";
-import * as Exercises from "./exercises/registry.js?v=20260312-patch11";
-import * as ExerciseLibrary from "./exercises/library.js?v=20260312-patch11";
-import * as PromptComposer from "./prompt/composer.js?v=20260312-patch11";
-import * as ExerciseEngine from "./runtime/exercise-engine.js?v=20260312-patch11";
-import * as BoardFlow from "./runtime/board-flow.js?v=20260312-patch11";
+import * as OpenAI from "./ai/openai.js?v=20260313-patch11v3-final";
+import * as Memory from "./runtime/memory.js?v=20260313-patch11v3-final";
+import * as Exercises from "./exercises/registry.js?v=20260313-patch11v3-final";
+import * as ExerciseLibrary from "./exercises/library.js?v=20260313-patch11v3-final";
+import * as PromptComposer from "./prompt/composer.js?v=20260313-patch11v3-final";
+import * as ExerciseEngine from "./runtime/exercise-engine.js?v=20260313-patch11v3-final";
+import * as BoardFlow from "./runtime/board-flow.js?v=20260313-patch11v3-final";
 import * as PanelBridge from "./runtime/panel-bridge.js?v=20260312-patch11";
 import { buildPayloadMappingHint } from "./app/payload-hints.js?v=20260305-batch06";
 import { getInsertWidthPxForCanvasType, computeTemplateInsertPosition } from "./app/template-insertion.js?v=20260308-batch76";
@@ -80,8 +80,8 @@ const state = {
   agentRunLock: false,
   activeAgentRunLabel: null,
   activeAgentRunStartedAt: 0,
-  lastTriggeredFlowControlItemId: null,
-  lastTriggeredFlowControlAt: 0,
+  lastActivatedFlowControlItemId: null,
+  lastActivatedFlowControlAt: 0,
   flowControlLabelDirty: false,
   lastAutoFlowControlLabel: "",
 
@@ -137,14 +137,6 @@ const btnFlowSetCurrentStepEl = document.getElementById("btn-flow-set-current-st
 const btnFlowActivateSelectedControlEl = document.getElementById("btn-flow-activate-selected-control");
 const btnFlowCompleteSelectedControlEl = document.getElementById("btn-flow-complete-selected-control");
 const btnFlowResetSelectedControlEl = document.getElementById("btn-flow-reset-selected-control");
-const exerciseActionHelpEl = document.getElementById("exercise-action-help");
-const exercisePrimaryActionsTitleEl = document.getElementById("exercise-primary-actions-title");
-const exercisePrimaryActionsEl = document.getElementById("exercise-primary-actions");
-const exerciseSecondaryActionsTitleEl = document.getElementById("exercise-secondary-actions-title");
-const exerciseSecondaryActionsEl = document.getElementById("exercise-secondary-actions");
-const exerciseProposalTitleEl = document.getElementById("exercise-proposal-title");
-const exerciseProposalActionsEl = document.getElementById("exercise-proposal-actions");
-const btnExerciseNextStepEl = document.getElementById("btn-exercise-next-step");
 const btnMemoryClearAdminEl = document.getElementById("btn-memory-clear-admin");
 const RUNTIME_CONTEXT = window.__DT_RUNTIME_CONTEXT === "headless" ? "headless" : "panel";
 const IS_HEADLESS = RUNTIME_CONTEXT === "headless";
@@ -285,7 +277,6 @@ function releaseAgentRunLock(lockToken) {
   state.activeAgentRunStartedAt = 0;
   setManagedAgentRunButtonsDisabled(false);
   renderRecommendationStatus();
-  renderExerciseActionSurface();
   void refreshExerciseInteractionSurface();
 }
 
@@ -1283,34 +1274,6 @@ function buildExerciseActionSurfaceModel() {
   };
 }
 
-function clearExerciseButtonGroup(el) {
-  if (!el) return;
-  while (el.firstChild) el.removeChild(el.firstChild);
-}
-
-function buildReadOnlyEndpointLabel(endpoint) {
-  if (!endpoint?.id) return "";
-  const flags = [];
-  if (endpoint.isDone) flags.push("done");
-  else if (endpoint.isUnlocked) flags.push("ready");
-  if (endpoint.isMaterialized) flags.push("button");
-  const suffix = flags.length ? ` [${flags.join(", ")}]` : "";
-  return (endpoint.label || endpoint.id) + suffix;
-}
-
-function renderEndpointButtonGroup(containerEl, endpoints = []) {
-  clearExerciseButtonGroup(containerEl);
-  if (!containerEl) return;
-  for (const endpoint of Array.isArray(endpoints) ? endpoints : []) {
-    if (!endpoint?.id) continue;
-    const button = document.createElement("button");
-    button.type = "button";
-    button.textContent = buildReadOnlyEndpointLabel(endpoint);
-    button.title = [endpoint.summary, endpoint.id].filter(Boolean).join("\n\n");
-    button.disabled = true;
-    containerEl.appendChild(button);
-  }
-}
 
 async function computePendingProposalAvailabilityForSelection(flow, currentStep, instanceIds) {
   const normalizedStepId = pickFirstNonEmptyString(currentStep?.id);
@@ -1362,7 +1325,6 @@ async function refreshPanelInteractionState() {
 
 async function refreshExerciseInteractionSurface() {
   await refreshPanelInteractionState();
-  renderExerciseActionSurface();
   renderRecommendationStatus();
 }
 
@@ -1401,7 +1363,7 @@ function renderRecommendationStatus() {
   } else {
     lines.push(t("recommendation.nextStep.blocked", lang));
   }
-  lines.push(`Last endpoint: ${lastEndpointId || t("recommendation.lastTrigger.none", lang)}`);
+  lines.push(`Last endpoint: ${lastEndpointId || t("recommendation.lastEndpoint.none", lang)}`);
   lines.push(t("recommendation.lastUnlocked", lang, { value: lastUnlocked.join(", ") || t("recommendation.lastUnlocked.none", lang) }));
   lines.push(t("recommendation.lastCompleted", lang, { value: lastCompleted.join(", ") || t("recommendation.lastCompleted.none", lang) }));
   if (lastActiveFlowAnchorInstanceId) {
@@ -1413,57 +1375,10 @@ function renderRecommendationStatus() {
   exerciseRecommendationStatusEl.textContent = lines.join("\n");
 }
 
-function renderExerciseActionSurface() {
-  const model = buildExerciseActionSurfaceModel();
-  const lang = model.lang;
-
-  renderEndpointButtonGroup(exercisePrimaryActionsEl, model.primaryEndpoints);
-  renderEndpointButtonGroup(exerciseSecondaryActionsEl, model.secondaryEndpoints);
-  renderEndpointButtonGroup(exerciseProposalActionsEl, model.proposalEndpoints);
-
-  setElementHidden(exercisePrimaryActionsTitleEl, model.primaryEndpoints.length === 0);
-  setElementHidden(exerciseSecondaryActionsTitleEl, model.secondaryEndpoints.length === 0);
-  setElementHidden(exerciseProposalTitleEl, model.proposalEndpoints.length === 0);
-  if (btnExerciseNextStepEl) setElementHidden(btnExerciseNextStepEl, true);
-  const adminTriggerPanel = document.getElementById("admin-trigger-panel");
-  if (adminTriggerPanel) setElementHidden(adminTriggerPanel, true);
-
-  if (exerciseActionHelpEl) {
-    const lines = [];
-    if (!model.flow) {
-      lines.push(lang === "en"
-        ? "No unique flow is currently selected."
-        : "Aktuell ist kein eindeutiger Flow selektiert.");
-    } else if (!model.currentStep) {
-      lines.push(t("exercise.action.help.noStep", lang));
-    } else {
-      if (!model.primaryEndpoints.length && !model.secondaryEndpoints.length && !model.proposalEndpoints.length) {
-        lines.push(t("exercise.action.noneAvailable", lang));
-      }
-      if (model.nextTransition) {
-        const nextStep = Exercises.getExerciseStep(model.exercisePack, model.nextTransition.toStepId, { lang });
-        lines.push(t("exercise.action.help.nextStep", lang, { step: nextStep?.label || model.nextTransition.toStepId }));
-      } else {
-        lines.push(t("exercise.action.help.noTransition", lang));
-      }
-      if (model.hasPendingProposalForFlowStep) {
-        lines.push(lang === "en"
-          ? "There is at least one pending proposal for the current flow step."
-          : "Für den aktuellen Flow-Schritt liegt mindestens ein offener Vorschlag vor.");
-      }
-      lines.push(lang === "en"
-        ? "Panel actions are read-only. Operative execution happens via endpoints and flow controls."
-        : "Die Panel-Aktionsfläche ist read-only. Operative Ausführung läuft nur über Endpoints und Flow-Controls.");
-    }
-    exerciseActionHelpEl.textContent = lines.filter(Boolean).join("\n");
-  }
-}
-
 function renderExerciseControls() {
   renderExerciseContextStatus();
   renderRecommendationStatus();
   renderAdminOverrideEditor();
-  renderExerciseActionSurface();
   renderFlowAuthoringControls();
   renderPanelMode();
   void refreshExerciseInteractionSurface();
@@ -1643,7 +1558,7 @@ function buildBoardFlowStateForPrompt(flow) {
   return {
     flowId: flow.id,
     anchorInstanceLabel: getInstanceLabelByInternalId(flow.anchorInstanceId) || null,
-    currentStepId: flow.runtime?.currentStepId || null,
+    activeStepId: flow.runtime?.currentStepId || null,
     currentStepLabel: currentStep?.label || null,
     controls: sortFlowControlsForDisplay(flow, Object.values(flow.controls || {})).map((control) => ({
       endpointId: control.endpointId || null,
@@ -1702,9 +1617,9 @@ function getEndpointPanelRoleRank(endpointId) {
 }
 
 function getFlowControlDisplayBucket(flow, control) {
-  const currentStepId = pickFirstNonEmptyString(flow?.runtime?.currentStepId);
+  const activeStepId = pickFirstNonEmptyString(flow?.runtime?.currentStepId);
   const boardGroup = getEndpointSurfaceMeta(control?.endpointId).boardGroup;
-  const isCurrentStep = !!(control?.stepId && currentStepId && control.stepId === currentStepId);
+  const isCurrentStep = !!(control?.stepId && activeStepId && control.stepId === activeStepId);
   const isActiveLike = control?.state === "active";
   if (isCurrentStep) {
     if (boardGroup === "core") return 0;
@@ -1743,13 +1658,13 @@ async function syncBoardFlowVisuals(flow, { reflow = false } = {}) {
   if (reflow && anchorInstance) {
     const laneOffsets = new Map();
     for (const control of orderedControls) {
-      if (!control?.itemId) continue;
+      if (!control?.boardItemId) continue;
       const laneIndex = getFlowControlDisplayLane(flow, control);
       const offsetIndex = laneOffsets.get(laneIndex) || 0;
       laneOffsets.set(laneIndex, offsetIndex + 1);
       try {
         const position = await Board.computeSuggestedFlowControlPosition(anchorInstance, { offsetIndex, laneIndex }, log);
-        await Board.moveItemByIdToBoardCoords(control.itemId, position.x, position.y, log);
+        await Board.moveItemByIdToBoardCoords(control.boardItemId, position.x, position.y, log);
       } catch (e) {
         log("WARNUNG: Flow-Control-Layout konnte nicht aktualisiert werden: " + e.message);
       }
@@ -1757,9 +1672,9 @@ async function syncBoardFlowVisuals(flow, { reflow = false } = {}) {
   }
 
   for (const control of orderedControls) {
-    if (!control?.itemId) continue;
+    if (!control?.boardItemId) continue;
     try {
-      await Board.syncFlowControlShapeAppearance(control.itemId, { label: control.label, state: control.state, lang }, log);
+      await Board.syncFlowControlShapeAppearance(control.boardItemId, { label: control.label, state: control.state, lang }, log);
     } catch (e) {
       log("WARNUNG: Flow-Control-Darstellung konnte nicht synchronisiert werden: " + e.message);
     }
@@ -1880,7 +1795,7 @@ function renderFlowAuthoringStatus() {
   const endpoint = getSelectedFlowEndpoint(exercisePack, step, { lang });
   const selectedLabels = getInstanceLabelsFromIds(state.lastCanvasSelectionInstanceIds || []);
   const scopeType = (flowScopeTypeEl?.value || endpoint?.scope?.mode || "current");
-  const scopeLabel = scopeType === "pack" || scopeType === "global" ? t("flow.scope.global", lang) : t("flow.scope.fixed", lang);
+  const scopeLabel = scopeType === "pack" ? t("flow.scope.pack", lang) : t("flow.scope.current", lang);
   const lines = [
     t("flow.status.boardFlows", lang, { count: state.boardFlowsById.size }),
     t("flow.status.exercisePack", lang, { value: exercisePack?.label || t("flow.status.none", lang) }),
@@ -1890,7 +1805,7 @@ function renderFlowAuthoringStatus() {
     t("flow.status.scope", lang, { value: scopeLabel }),
     t("flow.status.layoutMode", lang, { value: t(isStaticFlowControlLayoutEnabled() ? "flow.layoutMode.static" : "flow.layoutMode.dynamic", lang) })
   ];
-  if (endpoint?.summary) lines.push(t("flow.status.profileEffect", lang, { value: endpoint.summary }));
+  if (endpoint?.summary) lines.push(t("flow.status.endpointSummary", lang, { value: endpoint.summary }));
   flowAuthoringStatusEl.textContent = lines.join("\n");
 }
 
@@ -1906,7 +1821,7 @@ function renderFlowAuthoringControls({ forceLabelSync = false } = {}) {
 async function pruneMissingBoardFlowControls(flow) {
   const normalizedFlow = BoardFlow.normalizeBoardFlow(flow);
   const controls = Object.entries(normalizedFlow.controls || {});
-  const itemIds = controls.map(([, control]) => String(control?.itemId || '')).filter(Boolean);
+  const itemIds = controls.map(([, control]) => String(control?.boardItemId || '')).filter(Boolean);
   if (!itemIds.length) return { flow: normalizedFlow, changed: false, removedControlIds: [] };
 
   let items = [];
@@ -1918,7 +1833,7 @@ async function pruneMissingBoardFlowControls(flow) {
   }
 
   const presentItemIds = new Set((Array.isArray(items) ? items : []).map((item) => String(item?.id || '')).filter(Boolean));
-  const removedControlIds = controls.filter(([, control]) => control?.itemId && !presentItemIds.has(String(control.itemId))).map(([controlId]) => controlId);
+  const removedControlIds = controls.filter(([, control]) => control?.boardItemId && !presentItemIds.has(String(control.boardItemId))).map(([controlId]) => controlId);
   if (!removedControlIds.length) return { flow: normalizedFlow, changed: false, removedControlIds: [] };
   const removedSet = new Set(removedControlIds);
   const nextControls = Object.fromEntries(controls.filter(([controlId]) => !removedSet.has(controlId)));
@@ -1942,8 +1857,8 @@ async function ensureBoardFlowHealthy(flow, { persist = false, pruneMissingContr
   const hasControls = Object.keys(nextFlow.controls || {}).length > 0;
   const validStepIds = new Set((nextFlow.steps || []).map((step) => step.id));
   if (effectivePreferredStepId && validStepIds.has(effectivePreferredStepId)) {
-    const currentStepId = pickFirstNonEmptyString(nextFlow?.runtime?.currentStepId);
-    if (!currentStepId || !validStepIds.has(currentStepId) || (forcePreferredWhenNoControls && !hasControls)) {
+    const flowStepId = pickFirstNonEmptyString(nextFlow?.runtime?.currentStepId);
+    if (!flowStepId || !validStepIds.has(flowStepId) || (forcePreferredWhenNoControls && !hasControls)) {
       const updatedFlow = BoardFlow.setFlowCurrentStep(nextFlow, effectivePreferredStepId);
       if (updatedFlow.runtime?.currentStepId !== nextFlow.runtime?.currentStepId) {
         nextFlow = updatedFlow;
@@ -2020,7 +1935,7 @@ async function createBoardFlowControlForEndpoint({ flow, anchorInstanceId, endpo
   const controlId = BoardFlow.createBoardFlowControlId(endpoint.stepId, endpoint.id);
   const control = BoardFlow.createFlowControlRecord({
     id: controlId,
-    itemId: shape.id,
+    boardItemId: shape.id,
     label: nextLabel,
     labelMode,
     endpointId: endpoint.id,
@@ -2030,7 +1945,7 @@ async function createBoardFlowControlForEndpoint({ flow, anchorInstanceId, endpo
     state: initialState
   });
 
-  let nextFlow = BoardFlow.upsertFlowControl(workingFlow, control);
+  let nextFlow = BoardFlow.addMaterializedFlowControl(workingFlow, control);
   if (!orderedControls.length && nextFlow.runtime?.currentStepId !== endpoint.stepId) {
     nextFlow = BoardFlow.setFlowCurrentStep(nextFlow, endpoint.stepId);
   }
@@ -2143,7 +2058,7 @@ async function resolveAuthoringScopeFromCurrentSelection(exercisePack, requested
     return !allowedCanvasTypeIds.size || (canvasTypeId && allowedCanvasTypeIds.has(canvasTypeId));
   });
   if (!allowedSelected.length) throw new Error("Die aktuelle Selektion enthält keine zum Exercise Pack passende Canvas-Instanz.");
-  const scopeMode = requestedScopeType === "pack" || requestedScopeType === "global" ? "pack" : "current";
+  const scopeMode = requestedScopeType === "pack" ? "pack" : "current";
   return {
     anchorInstanceId: allowedSelected[0],
     scope: {
@@ -2231,7 +2146,7 @@ async function activateSelectedFlowControlFromAdmin() {
   }
   let nextFlow = BoardFlow.forceFlowControlActive(controlSelection.flow, control.id);
   nextFlow = await saveBoardFlowAndCache(nextFlow);
-  const nextControl = BoardFlow.findFlowControlByItemId(nextFlow, controlSelection.item.id) || nextFlow.controls?.[control.id] || control;
+  const nextControl = BoardFlow.findFlowControlByBoardItemId(nextFlow, controlSelection.item.id) || nextFlow.controls?.[control.id] || control;
   log("Board Flow: Button freigeschaltet: '" + getSelectedFlowControlLabel({ control: nextControl }) + "' in " + (nextFlow.label || nextFlow.id) + ".");
   renderFlowAuthoringControls();
   await refreshSelectionStatusFromItems(selection || []);
@@ -2259,7 +2174,7 @@ async function markSelectedFlowControlDoneFromAdmin() {
   }
   let nextFlow = BoardFlow.markFlowControlDone(controlSelection.flow, control.id);
   nextFlow = await saveBoardFlowAndCache(nextFlow);
-  const nextControl = BoardFlow.findFlowControlByItemId(nextFlow, controlSelection.item.id) || nextFlow.controls?.[control.id] || control;
+  const nextControl = BoardFlow.findFlowControlByBoardItemId(nextFlow, controlSelection.item.id) || nextFlow.controls?.[control.id] || control;
   log("Board Flow: Button als erledigt markiert: '" + getSelectedFlowControlLabel({ control: nextControl }) + "' in " + (nextFlow.label || nextFlow.id) + ".");
   renderFlowAuthoringControls();
   await refreshSelectionStatusFromItems(selection || []);
@@ -2283,7 +2198,7 @@ async function resetSelectedFlowControlFromAdmin() {
   }
   let nextFlow = BoardFlow.resetFlowControlState(controlSelection.flow, control.id);
   nextFlow = await saveBoardFlowAndCache(nextFlow);
-  const nextControl = BoardFlow.findFlowControlByItemId(nextFlow, controlSelection.item.id) || nextFlow.controls?.[control.id] || control;
+  const nextControl = BoardFlow.findFlowControlByBoardItemId(nextFlow, controlSelection.item.id) || nextFlow.controls?.[control.id] || control;
   log("Board Flow: Button zurückgesetzt: '" + getSelectedFlowControlLabel({ control: nextControl }) + "' in " + (nextFlow.label || nextFlow.id) + ".");
   renderFlowAuthoringControls();
   await refreshSelectionStatusFromItems(selection || []);
@@ -2344,7 +2259,7 @@ async function runAgentFromFlowControl(flow, control, selectedItem) {
   const healthyFlow = await ensureBoardFlowHealthy(flow, { persist: true, pruneMissingControls: true });
   state.boardFlowsById.set(healthyFlow.id, healthyFlow);
 
-  const healthyControl = healthyFlow.controls?.[control?.id] || BoardFlow.findFlowControlByItemId(healthyFlow, selectedItem?.id) || control;
+  const healthyControl = healthyFlow.controls?.[control?.id] || BoardFlow.findFlowControlByBoardItemId(healthyFlow, selectedItem?.id) || control;
   const endpoint = ExerciseLibrary.getEndpointById(healthyControl?.endpointId, { lang });
   const { exercisePack, currentStep } = resolveCurrentPackAndStepFromFlow(healthyFlow, { lang });
 
@@ -2374,16 +2289,7 @@ async function runAgentFromFlowControl(flow, control, selectedItem) {
     ...healthyFlow,
     runtime: {
       ...(healthyFlow.runtime || {}),
-      lastTriggeredControlId: healthyControl.id,
-      lastTriggeredAt: new Date().toISOString(),
       lastActiveEndpointId: endpoint.id || null
-    },
-    controls: {
-      ...(healthyFlow.controls || {}),
-      [healthyControl.id]: {
-        ...healthyControl,
-        lastTriggeredAt: new Date().toISOString()
-      }
     }
   };
   await saveBoardFlowAndCache(nextFlow);
@@ -2498,7 +2404,7 @@ async function runStructuredEndpointExecution({
     adminOverride: pickFirstNonEmptyString(adminOverride, state.exerciseRuntime?.adminOverride) || null
   });
   const resolvedSourceLabel = pickFirstNonEmptyString(sourceLabel, controlContext?.controlLabel, endpoint?.label, "Endpoint");
-  const currentStepId = pickFirstNonEmptyString(currentStep?.id);
+  const activeStepId = pickFirstNonEmptyString(currentStep?.id);
   const flowPromptContext = resolveFlowPromptContext({
     promptRuntimeOverride,
     targetInstanceIds: normalizedTargetIds
@@ -2520,7 +2426,7 @@ async function runStructuredEndpointExecution({
     const singleInstanceId = normalizedTargetIds[0];
     const proposal = await Board.loadActiveProposal({
       anchorInstanceId: singleInstanceId,
-      stepId: currentStepId
+      stepId: activeStepId
     }, log);
 
     if (!proposal) {
@@ -2532,7 +2438,7 @@ async function runStructuredEndpointExecution({
         evaluation: null,
         sourceLabel: resolvedSourceLabel
       });
-      await syncChatApplyButtonsForInstanceIds(normalizedTargetIds, { stepId: currentStepId });
+      await syncChatApplyButtonsForInstanceIds(normalizedTargetIds, { stepId: activeStepId });
       const msg = resolvedSourceLabel + ": Kein offener Vorschlag zum Anwenden vorhanden.";
       return buildRunFailureResult("precondition", msg);
     }
@@ -2543,7 +2449,7 @@ async function runStructuredEndpointExecution({
     if (proposal.basedOnStateHash && proposal.basedOnStateHash !== currentHash) {
       await Board.clearActiveProposal({
         anchorInstanceId: singleInstanceId,
-        stepId: currentStepId
+        stepId: activeStepId
       }, log);
       const feedback = buildStaleProposalFeedback(resolvedSourceLabel, getCurrentDisplayLanguage());
       await renderAgentResponseToInstanceOutput({
@@ -2553,7 +2459,7 @@ async function runStructuredEndpointExecution({
         evaluation: null,
         sourceLabel: resolvedSourceLabel
       });
-      await syncChatApplyButtonsForInstanceIds(normalizedTargetIds, { stepId: currentStepId });
+      await syncChatApplyButtonsForInstanceIds(normalizedTargetIds, { stepId: activeStepId });
       const msg = resolvedSourceLabel + ": Gespeicherter Vorschlag ist veraltet und wurde nicht angewendet.";
       return buildRunFailureResult("stale_state_conflict", msg);
     }
@@ -2562,7 +2468,7 @@ async function runStructuredEndpointExecution({
     const actionResult = proposalActions.length
       ? await applyResolvedAgentActions(proposalActions, {
           candidateInstanceIds: normalizedTargetIds,
-          triggerInstanceId: singleInstanceId,
+          anchorInstanceId: singleInstanceId,
           sourceLabel: resolvedSourceLabel
         })
       : {
@@ -2589,7 +2495,7 @@ async function runStructuredEndpointExecution({
 
     await Board.clearActiveProposal({
       anchorInstanceId: singleInstanceId,
-      stepId: currentStepId
+      stepId: activeStepId
     }, log);
 
     const storedFlowDirectives = ExerciseEngine.normalizeFlowControlDirectivesBlock(proposal.flowDirectives);
@@ -2613,7 +2519,7 @@ async function runStructuredEndpointExecution({
       flowControlDirectives: flowDirectiveResult?.flowControlDirectives || null,
       activeAnchorContext: flowDirectiveResult?.activeAnchorContext || activeAnchorContext
     });
-    await syncChatApplyButtonsForInstanceIds(normalizedTargetIds, { stepId: currentStepId });
+    await syncChatApplyButtonsForInstanceIds(normalizedTargetIds, { stepId: activeStepId });
 
     return buildRunSuccessResult({
       sourceLabel: resolvedSourceLabel,
@@ -2707,7 +2613,7 @@ async function runStructuredEndpointExecution({
     const boardCatalog = buildBoardCatalogForSelectedInstances(resolvedActiveIds);
     const memoryPayload = buildMemoryInjectionPayload({ proposalMode: endpointContext.allowedExecutionModes.includes("proposal_only") });
     const expectedSignatureSnapshot = buildSignatureSnapshot(stateById, resolvedActiveIds);
-    const pendingProposals = await buildPendingProposalPayloadForInstances(resolvedActiveIds, { stepId: currentStepId });
+    const pendingProposals = await buildPendingProposalPayloadForInstances(resolvedActiveIds, { stepId: activeStepId });
     const promptCfg = getPromptConfigForSelectedInstances(resolvedActiveIds);
     const promptText = PromptComposer.composePrompt(promptRuntimeOverride, {
       lang: getCurrentDisplayLanguage(),
@@ -2791,7 +2697,7 @@ async function runStructuredEndpointExecution({
         instanceId: resolveResponseTargetInstanceId({
           promptRuntimeOverride,
           targetInstanceIds: resolvedActiveIds,
-          triggerInstanceId: resolvedActiveIds.length === 1 ? resolvedActiveIds[0] : null
+          anchorInstanceId: resolvedActiveIds.length === 1 ? resolvedActiveIds[0] : null
         }),
         feedback,
         flowControlDirectives: appliedFlowControlDirectives,
@@ -2803,7 +2709,7 @@ async function runStructuredEndpointExecution({
         flowControlDirectives: appliedFlowControlDirectives,
         activeAnchorContext: flowDirectiveResult?.activeAnchorContext || activeAnchorContext
       });
-      await syncChatApplyButtonsForInstanceIds(resolvedActiveIds, { stepId: currentStepId });
+      await syncChatApplyButtonsForInstanceIds(resolvedActiveIds, { stepId: activeStepId });
       finalBoardRunStatus = "completed";
       finalBoardRunMessage = resolvedSourceLabel + ": abgeschlossen.";
       return buildRunSuccessResult({
@@ -2830,7 +2736,7 @@ async function runStructuredEndpointExecution({
       }
 
       const executableActions = sanitizeProposalActionsForCurrentStep(agentObj.actions, {
-        stepId: currentStepId,
+        stepId: activeStepId,
         activeCanvasPayload: singleLabel ? activeCanvasStates[singleLabel] : null,
         userText: pickFirstNonEmptyString(userText, getCurrentUserQuestion()),
         logFn: log
@@ -2840,7 +2746,7 @@ async function runStructuredEndpointExecution({
       if (executableActions.length) {
         proposalRecord = buildStoredProposalRecord({
           instanceId: singleInstanceId,
-          stepId: currentStepId,
+          stepId: activeStepId,
           stepLabel: currentStep?.label || null,
           exercisePackId: resolveRuntimeExercisePackId(promptRuntimeOverride),
           endpointId: promptRuntimeOverride?.endpoint?.id || null,
@@ -2860,7 +2766,7 @@ async function runStructuredEndpointExecution({
       } else {
         await Board.clearActiveProposal({
           anchorInstanceId: singleInstanceId,
-          stepId: currentStepId
+          stepId: activeStepId
         }, log);
       }
 
@@ -2882,7 +2788,7 @@ async function runStructuredEndpointExecution({
         flowControlDirectives: flowDirectiveResult?.flowControlDirectives || null,
         activeAnchorContext: flowDirectiveResult?.activeAnchorContext || activeAnchorContext
       });
-      await syncChatApplyButtonsForInstanceIds(resolvedActiveIds, { stepId: currentStepId });
+      await syncChatApplyButtonsForInstanceIds(resolvedActiveIds, { stepId: activeStepId });
       finalBoardRunStatus = "completed";
       finalBoardRunMessage = proposalRecord
         ? (resolvedSourceLabel + ": Vorschlag gespeichert.")
@@ -2916,7 +2822,7 @@ async function runStructuredEndpointExecution({
     const actionResult = Array.isArray(agentObj.actions) && agentObj.actions.length
       ? await applyResolvedAgentActions(agentObj.actions, {
           candidateInstanceIds: resolvedActiveIds,
-          triggerInstanceId: resolvedActiveIds.length === 1 ? resolvedActiveIds[0] : null,
+          anchorInstanceId: resolvedActiveIds.length === 1 ? resolvedActiveIds[0] : null,
           sourceLabel: resolvedSourceLabel
         })
       : {
@@ -2929,9 +2835,9 @@ async function runStructuredEndpointExecution({
 
     await refreshBoardState();
 
-    if (currentStepId) {
+    if (activeStepId) {
       for (const instanceId of resolvedActiveIds) {
-        await clearPendingProposalForInstanceStep(instanceId, currentStepId);
+        await clearPendingProposalForInstanceStep(instanceId, activeStepId);
       }
     }
 
@@ -2953,7 +2859,7 @@ async function runStructuredEndpointExecution({
       instanceId: resolveResponseTargetInstanceId({
         promptRuntimeOverride,
         targetInstanceIds: resolvedActiveIds,
-        triggerInstanceId: resolvedActiveIds.length === 1 ? resolvedActiveIds[0] : null
+        anchorInstanceId: resolvedActiveIds.length === 1 ? resolvedActiveIds[0] : null
       }),
       feedback,
       flowControlDirectives: appliedFlowControlDirectives,
@@ -2965,7 +2871,7 @@ async function runStructuredEndpointExecution({
       flowControlDirectives: appliedFlowControlDirectives,
       activeAnchorContext: flowDirectiveResult?.activeAnchorContext || activeAnchorContext
     });
-    await syncChatApplyButtonsForInstanceIds(resolvedActiveIds, { stepId: currentStepId });
+    await syncChatApplyButtonsForInstanceIds(resolvedActiveIds, { stepId: activeStepId });
 
     finalBoardRunStatus = "completed";
     finalBoardRunMessage = resolvedSourceLabel + ": abgeschlossen.";
@@ -3888,7 +3794,6 @@ async function refreshSelectionStatusFromItems(items) {
     instanceIds
   }));
   renderFlowAuthoringStatus();
-  renderExerciseActionSurface();
   renderRecommendationStatus();
   void refreshExerciseInteractionSurface();
 
@@ -3930,8 +3835,8 @@ async function executeSelectedFlowControl(controlSelection, items) {
   );
   const now = Date.now();
   if (
-    state.lastTriggeredFlowControlItemId === controlSelection.item.id &&
-    now - Number(state.lastTriggeredFlowControlAt || 0) < 1200
+    state.lastActivatedFlowControlItemId === controlSelection.item.id &&
+    now - Number(state.lastActivatedFlowControlAt || 0) < 1200
   ) {
     await restoreSelectionAfterBoardButtonRun(anchorInstanceId);
     await refreshSelectionStatusFromBoard();
@@ -3939,8 +3844,8 @@ async function executeSelectedFlowControl(controlSelection, items) {
   }
 
   state.flowControlRunLock = true;
-  state.lastTriggeredFlowControlItemId = controlSelection.item.id;
-  state.lastTriggeredFlowControlAt = now;
+  state.lastActivatedFlowControlItemId = controlSelection.item.id;
+  state.lastActivatedFlowControlAt = now;
   try {
     await runAgentFromFlowControl(controlSelection.flow, controlSelection.control, controlSelection.item);
   } finally {
@@ -4918,9 +4823,9 @@ async function resolveBoardUserSeedText(instanceId, fallbackText = "") {
   }
 }
 
-function resolveResponseTargetInstanceId({ promptRuntimeOverride = null, targetInstanceIds = [], triggerInstanceId = null } = {}) {
+function resolveResponseTargetInstanceId({ promptRuntimeOverride = null, targetInstanceIds = [], anchorInstanceId = null } = {}) {
   const runtime = (promptRuntimeOverride && typeof promptRuntimeOverride === "object") ? promptRuntimeOverride : null;
-  const explicitAnchor = pickFirstNonEmptyString(runtime?.controlContext?.anchorInstanceId, runtime?.anchorInstanceId, triggerInstanceId);
+  const explicitAnchor = pickFirstNonEmptyString(runtime?.controlContext?.anchorInstanceId, runtime?.anchorInstanceId, anchorInstanceId);
   if (explicitAnchor && state.instancesById.has(explicitAnchor)) return explicitAnchor;
 
   const normalizedTargets = normalizeTargetInstanceIds(targetInstanceIds);
@@ -5090,7 +4995,7 @@ function validateNormalizedAction(action) {
   return { ok: true, action };
 }
 
-function resolveActionInstanceId(action, { candidateInstanceIds = null, triggerInstanceId = null, sourceLabel = "Agent" } = {}) {
+function resolveActionInstanceId(action, { candidateInstanceIds = null, anchorInstanceId = null, sourceLabel = "Agent" } = {}) {
   const candidateIds = Array.from(new Set((candidateInstanceIds || []).filter((id) => state.instancesById.has(id))));
 
   const explicitInstanceIdByLabel = action?.instanceLabel
@@ -5140,11 +5045,11 @@ function resolveActionInstanceId(action, { candidateInstanceIds = null, triggerI
   }
 
   if (candidateIds.length === 1) return candidateIds[0];
-  if (triggerInstanceId && candidateIds.includes(triggerInstanceId)) return triggerInstanceId;
+  if (anchorInstanceId && candidateIds.includes(anchorInstanceId)) return anchorInstanceId;
   return null;
 }
 
-async function applyResolvedAgentActions(actions, { candidateInstanceIds, triggerInstanceId = null, sourceLabel = "Agent" }) {
+async function applyResolvedAgentActions(actions, { candidateInstanceIds, anchorInstanceId = null, sourceLabel = "Agent" }) {
   if (!Array.isArray(actions) || actions.length === 0) {
     log(sourceLabel + ": Keine Actions geliefert.");
     return {
@@ -5197,7 +5102,7 @@ async function applyResolvedAgentActions(actions, { candidateInstanceIds, trigge
 
     const targetInstanceId = resolveActionInstanceId(action, {
       candidateInstanceIds,
-      triggerInstanceId,
+      anchorInstanceId,
       sourceLabel
     });
 

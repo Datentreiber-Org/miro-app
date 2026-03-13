@@ -2,10 +2,10 @@ import {
   DT_DEFAULT_APP_ADMIN_POLICY,
   DT_DEFAULT_FEEDBACK_CHANNEL,
   DT_EXECUTION_MODES
-} from "../config.js?v=20260312-batch10prompt1";
+} from "../config.js?v=20260313-patch11v3-final";
 
-import { METHOD_I18N_OVERRIDES } from "../i18n/catalog.js?v=20260309-batch9";
-import { normalizeUiLanguage, pickLocalized } from "../i18n/index.js?v=20260310-batch92";
+import { METHOD_I18N_OVERRIDES } from "../i18n/catalog.js?v=20260313-patch11v3-final";
+import { normalizeUiLanguage, pickLocalized } from "../i18n/index.js?v=20260313-patch11v3-final";
 
 function asNonEmptyString(value) {
   if (typeof value !== "string") return null;
@@ -81,8 +81,6 @@ function normalizeSurfaceChannel(value) {
 function normalizeScopeMode(value) {
   const normalized = asNonEmptyString(value);
   if (["selection", "current", "pack", "board"].includes(normalized)) return normalized;
-  if (normalized === "fixed_instances") return "current";
-  if (normalized === "global") return "pack";
   return "selection";
 }
 
@@ -1532,7 +1530,7 @@ const RAW_METHOD_CATALOG = deepFreeze(JSON.parse(String.raw`{
         "de": "Auf diesem Board läuft die Übung \"Use Case Fit Sprint\" auf dem Canvas \"Analytics & AI Use Case\".\n\nZiel:\n- Leite einen Analytics- oder KI-Use-Case aus realer Nutzerarbeit, realen Zielen, Entscheidungen und Handlungen her.\n- Diese Übung bleibt auf einem Einzelcanvas; ein echter Cross-Canvas-Handoff wird hier noch nicht ausgeführt.\n\nSchrittrahmen:\n- Step 0: Fokus setzen, Scope schärfen, offene Annahmen sichtbar machen.\n- Step 1: Problemraum aufbauen: Hauptnutzer, Situation, Objectives & Results, Decisions & Actions, Gains/Pains.\n- Step 2: Lösung ableiten: Varianten, Fokusvariante, Information, Functions, Benefits.\n- Step 3: Fit validieren und auf einen tragfähigen Kern reduzieren.\n\nÜbergreifende Regeln:\n- Arbeite area-genau und passend zum aktiven Schritt.\n- Sorted-out dient zum bewussten Parken, nicht zum heimlichen Verwerfen.\n- Farben und Checkmarks sind methodische Signale.\n- Sticky Notes stehen grundsätzlich zunächst für sich; Connectoren nur selektiv bei expliziter Relation."
       },
       "didacticGlobalPrompt": {
-        "de": "Pack-Baseline für den \"Use Case Fit Sprint\":\n- Folge der Vier-Schritt-Dramaturgie dieses Canvas: Fokus → Problemraum → Lösung → Fit & Verdichtung.\n- Rechte Seite zuerst, linke Seite danach, Check zuletzt.\n- Kein echter Handoff auf andere Canvas in dieser Übung.\n- Detailregeln für Zustände, Trigger und Mutationen kommen in den schritt- und triggernahen Prompt-Modulen."
+        "de": "Pack-Baseline für den \"Use Case Fit Sprint\":\n- Folge der Vier-Schritt-Dramaturgie dieses Canvas: Fokus → Problemraum → Lösung → Fit & Verdichtung.\n- Rechte Seite zuerst, linke Seite danach, Check zuletzt.\n- Kein echter Handoff auf andere Canvas in dieser Übung.\n- Detailregeln für Zustände, Trigger und Mutationen kommen in den schritt- und endpointnahen Prompt-Modulen."
       },
       "promptModules": {
         "analytics.fit.shared.method_guardrails": {
@@ -1549,9 +1547,9 @@ const RAW_METHOD_CATALOG = deepFreeze(JSON.parse(String.raw`{
         },
         "analytics.fit.shared.question_style": {
           "id": "analytics.fit.shared.question_style",
-          "label": "Fragemodus",
+          "label": "Chat-Submit-Stil",
           "summary": "Macht Instanzfragen schrittbezogen, verständlich und trainingsorientiert.",
-          "prompt": "Fragemodus:\n- Beantworte Fragen direkt, verständlich und boardbezogen.\n- Wenn die Frage allgemein ist (z. B. \"Was mache ich hier?\"), erkläre kurz Zweck des Canvas, den aktuellen Schritt, was in diesem Schritt gute Inhalte sind und was der nächste konkrete Schritt ist.\n- Wenn die Frage einen früheren oder späteren Workshopteil berührt, erkläre das knapp, bleibe aber in der isolierten Übung dieses Einzelcanvas.\n- Wenn die Frage nach Beispielen verlangt, gib kurze, plausible Beispiel-Stickies oder Satzanfänge – keine komplette Wunschlösung, sofern nicht ausdrücklich verlangt.\n- Wenn eine Frage eigentlich einen anderen Schritt betrifft, sage das freundlich und nenne, was im aktuellen Schritt zuerst geklärt werden sollte.\n- Wenn ein pendingProposal im Kontext vorhanden ist, erkläre ihn als noch nicht angewendeten Vorschlag und nicht als bereits umgesetzten Boardzustand.\n- Verwende in sichtbaren Antworten niemals rohe Area-Keys, sondern die sichtbaren Bereichstitel."
+          "prompt": "Chat-Submit-Stil:\n- Beantworte Fragen direkt, verständlich und boardbezogen.\n- Wenn die Frage allgemein ist (z. B. \"Was mache ich hier?\"), erkläre kurz Zweck des Canvas, den aktuellen Schritt, was in diesem Schritt gute Inhalte sind und was der nächste konkrete Schritt ist.\n- Wenn die Frage einen früheren oder späteren Workshopteil berührt, erkläre das knapp, bleibe aber in der isolierten Übung dieses Einzelcanvas.\n- Wenn die Frage nach Beispielen verlangt, gib kurze, plausible Beispiel-Stickies oder Satzanfänge – keine komplette Wunschlösung, sofern nicht ausdrücklich verlangt.\n- Wenn eine Frage eigentlich einen anderen Schritt betrifft, sage das freundlich und nenne, was im aktuellen Schritt zuerst geklärt werden sollte.\n- Wenn ein pendingProposal im Kontext vorhanden ist, erkläre ihn als noch nicht angewendeten Vorschlag und nicht als bereits umgesetzten Boardzustand.\n- Verwende in sichtbaren Antworten niemals rohe Area-Keys, sondern die sichtbaren Bereichstitel."
         },
         "analytics.fit.shared.soft_reference_hints": {
           "id": "analytics.fit.shared.soft_reference_hints",
@@ -1727,11 +1725,11 @@ const RAW_METHOD_CATALOG = deepFreeze(JSON.parse(String.raw`{
           "summary": "Beschreibt die relevanten semantischen Arbeitszustände in Preparation & Focus.",
           "prompt": "Step 0 ist kein Einheitszustand. Lies den Boardzustand heuristisch und ordne ihn einer sinnvollen Arbeitslage zu:\n- S0-A Board komplett leer: Header leer, keine sinnvollen Body-Stickies, kein klarer Fokusanker. Bedeutung: Kick-off-Zustand. Reagiere mit Orientierung, Satzanfängen und 2 bis 4 guten Scope-/Annahmenfragen statt mit harter Bewertung.\n- S0-B mehrere konkurrierende Fokusideen: mehrere plausible Use-Case-Kandidaten oder alternative Fokus-Stickies gleichzeitig aktiv. Bedeutung: Divergenz ohne Konvergenz. Hilf, einen Fokus für dieses Board zu wählen und Alternativen in sorted_out_left zu parken.\n- S0-C Fokus vorhanden, aber diffus: ein Header oder Fokusanker ist da, bleibt aber generisch, buzzwordig oder ohne klare Rolle, Situation, Entscheidung oder Zielgröße. Bedeutung: Fokus existiert, ist aber noch nicht arbeitsfähig. Hilf beim Präzisieren des Headers.\n- S0-D Fokus klar, aber offene Annahmen fehlen: der Header ist brauchbar, doch Scope, Risiken oder offene Fragen sind noch unsichtbar. Bedeutung: Der Canvas wirkt fokussiert, blendet Unsicherheit aber aus. Mache 2 bis 4 kritische Annahmen oder Fragen sichtbar.\n- S0-E Nebenthemen ungeparkt / Fokus verwässert: frühe Lösungsideen, Scope-Reste oder alternative Themen liegen ungeordnet im Kernbereich. Bedeutung: Der Fokus zerfasert. Nutze sorted_out_left als bewussten Parkplatz.\n- S0-F Step 0 tragfähig: klarer Fokus im Header, sichtbare Scope-/Annahmenebene, Nebenthemen bewusst geparkt oder reduziert. Bedeutung: Step 1 kann sinnvoll beginnen.\n\nAllgemeine Leseregel:\n- Zustände sind heuristische Lesarten des Boardzustands, keine harte App-Zustandsmaschine.\n- Interpretiere Leere, Divergenz, Konvergenz, Überladung und Readiness aus Header, Area-Belegung, Farbe, Sorted-out-Nutzung und thematischer Klarheit."
         },
-        "analytics.fit.step0.trigger_behavior": {
-          "id": "analytics.fit.step0.trigger_behavior",
-          "label": "Step-0-Triggerverhalten",
+        "analytics.fit.step0.endpoint_behavior": {
+          "id": "analytics.fit.step0.endpoint_behavior",
+          "label": "Step-0-Endpointverhalten",
           "summary": "Übersetzt die Zustandswelt von Step 0 in passende Hilfeformen und hält Connectoren dort ausdrücklich klein.",
-          "prompt": "Übersetze den erkannten Step-0-Zustand in die passende Triggerrolle:\n- hint: Gib 1 bis 3 konkrete nächste Schritte oder Satzanfänge für genau den erkannten Zustand. Bei S0-A orientierst du, bei S0-B hilfst du bei der Fokuswahl, bei S0-C/D schärfst du Fokus oder Annahmen, bei S0-E empfiehlst du bewusstes Parken, bei S0-F routest du in Step 1.\n- coach: Arbeite sokratisch mit 3 bis 5 Leitfragen und genau einem Mikroschritt. Kein Rundumschlag, keine Vorwegnahme von Step 1, Step 2 oder Step 3.\n- check: Prüfe Fokus, Scope, offene Annahmen und Umgang mit Nebenthemen. Benenne klar, was für Readiness noch fehlt oder warum Step 0 tragfähig ist.\n- review: Gib eine qualitative Einordnung von Fokus, Schärfe, Überbreite und sichtbaren Risiken. Standardmäßig keine Board-Mutationen.\n- propose: Zusatzspur. Noch nichts anwenden. Im leeren oder sehr vagen Zustand bevorzuge textliche Vorschläge; Board-Vorschläge nur klein und anschlussfähig.\n- autocorrect: Nur klare Vorbereitungsprobleme korrigieren: Header präzisieren, wenige weiße Annahmen/Fragen ergänzen, Nebenthemen parken. Keine Nutzeranalyse, keine Lösung, kein Fit.\n- Connectoren spielen in Step 0 normalerweise keine Rolle; Fokusanker, offene Fragen und geparkte Alternativen bleiben standardmäßig unverbunden.\n\nÜbersetzungsregel in Actions:\n- Bevorzuge feedback, solange Orientierung oder Fokussierung didaktisch genügt.\n- Wenn du mutierst, dann klein, konkret und strikt innerhalb von Fokus, Scope, offenen Annahmen und Sorted-out."
+          "prompt": "Übersetze den erkannten Step-0-Zustand in die passende Endpointrolle:\n- hint: Gib 1 bis 3 konkrete nächste Schritte oder Satzanfänge für genau den erkannten Zustand. Bei S0-A orientierst du, bei S0-B hilfst du bei der Fokuswahl, bei S0-C/D schärfst du Fokus oder Annahmen, bei S0-E empfiehlst du bewusstes Parken, bei S0-F routest du in Step 1.\n- coach: Arbeite sokratisch mit 3 bis 5 Leitfragen und genau einem Mikroschritt. Kein Rundumschlag, keine Vorwegnahme von Step 1, Step 2 oder Step 3.\n- check: Prüfe Fokus, Scope, offene Annahmen und Umgang mit Nebenthemen. Benenne klar, was für Readiness noch fehlt oder warum Step 0 tragfähig ist.\n- review: Gib eine qualitative Einordnung von Fokus, Schärfe, Überbreite und sichtbaren Risiken. Standardmäßig keine Board-Mutationen.\n- propose: Zusatzspur. Noch nichts anwenden. Im leeren oder sehr vagen Zustand bevorzuge textliche Vorschläge; Board-Vorschläge nur klein und anschlussfähig.\n- autocorrect: Nur klare Vorbereitungsprobleme korrigieren: Header präzisieren, wenige weiße Annahmen/Fragen ergänzen, Nebenthemen parken. Keine Nutzeranalyse, keine Lösung, kein Fit.\n- Connectoren spielen in Step 0 normalerweise keine Rolle; Fokusanker, offene Fragen und geparkte Alternativen bleiben standardmäßig unverbunden.\n\nÜbersetzungsregel in Actions:\n- Bevorzuge feedback, solange Orientierung oder Fokussierung didaktisch genügt.\n- Wenn du mutierst, dann klein, konkret und strikt innerhalb von Fokus, Scope, offenen Annahmen und Sorted-out."
         },
         "analytics.fit.step0.exit_criteria": {
           "id": "analytics.fit.step0.exit_criteria",
@@ -1745,11 +1743,11 @@ const RAW_METHOD_CATALOG = deepFreeze(JSON.parse(String.raw`{
           "summary": "Beschreibt die relevanten semantischen Arbeitszustände in User Needs Analysis.",
           "prompt": "Step 1 ist eine Zustandswelt des Problemraums. Lies den Boardzustand heuristisch:\n- S1-A rechte Seite leer: User & Situation, Objectives & Results, Decisions & Actions und Gains/Pains sind weitgehend leer. Bedeutung: Kick-off-Zustand. Gib Startreihenfolge und kurze Satzanfänge statt harter Kritik.\n- S1-B mehrere Nutzerrollen, kein Hauptnutzer: mehrere plausible Rollen sind sichtbar, aber keine klare Fokussierung. Bedeutung: produktive Divergenz ohne Konvergenz. Hilf bei Auswahlkriterien und parke Nebenrollen bewusst.\n- S1-C Hauptnutzer da, Situation zu vage: Rolle benannt, aber Kontext, Trigger, Job-to-be-done oder konkrete Arbeitssituation bleiben unscharf. Bedeutung: formal fokussiert, inhaltlich noch nicht arbeitsfähig.\n- S1-D Objectives & Results fehlen oder sind unsauber: Nutzer und Situation existieren, aber Outcomes fehlen, sind zu generisch oder beschreiben Maßnahmen statt Zielzustände.\n- S1-E Decisions & Actions fehlen oder sind generisch: Objectives/Results stehen schon, doch reale Entscheidungen oder Handlungen fehlen oder kippen in Features/Systemfunktionen. Bedeutung: der methodische Drehpunkt fehlt.\n- S1-F Gains/Pains fehlen oder sind lose Liste: Gains/Pains sind leer, zu generisch oder nicht an relevante blaue Elemente angedockt.\n- S1-G Gains/Pains zu viele / überladen: viele rote und grüne Stickies ohne Priorisierung; alles wirkt gleich wichtig. Bedeutung: Sammlung ist erfolgt, Auswahl aber noch nicht.\n- S1-H Step 1 tragfähig: Hauptnutzer klar, Situation konkret, Objectives/Results und Decisions/Actions brauchbar, Gains/Pains sinnvoll angedockt und fokussiert. Bedeutung: Step 2 kann sinnvoll beginnen.\n\nAllgemeine Leseregel:\n- Zustände sind semantische Lesarten des Boardkatalogs, keine App-Flags.\n- Interpretiere Fokussierung, Unschärfe, Überladung und Readiness aus Area-Belegung, Formulierungsqualität, Sorted-out-Nutzung und klarer Trennung von Outcome, Verhalten und Nutzersicht."
         },
-        "analytics.fit.step1.trigger_behavior": {
-          "id": "analytics.fit.step1.trigger_behavior",
-          "label": "Step-1-Triggerverhalten",
-          "summary": "Übersetzt die Zustandswelt von Step 1 in passende Hilfeformen je Trigger.",
-          "prompt": "Übersetze den erkannten Step-1-Zustand in die passende Triggerrolle:\n- hint: Priorisiere genau einen nächsten Mikro-Arbeitsmodus: Nutzerrollen sammeln/fokussieren, Situation konkretisieren, Objectives/Results schärfen, Decisions/Actions präzisieren oder Gains/Pains andocken bzw. priorisieren. Gib 1 bis 3 konkrete Satzanfänge oder Fokushinweise.\n- coach: Arbeite mit 3 bis 5 Leitfragen und genau einem Mikroschritt. Lass den Nutzer denken; gib keine vorschnellen Lösungen.\n- check: Prüfe in dieser Reihenfolge Hauptnutzer & Situation, Objectives & Results, Decisions & Actions, Gains/Pains. Benenne klar, welche Reifestufe fehlt oder ob der Problemraum tragfähig genug für Step 2 ist.\n- review: Gib eine qualitative Einordnung von Reifegrad, Stärken, Widersprüchen, Überladung und fehlender Vorarbeit. Standardmäßig keine Mutationen.\n- synthesize: Keine Lösungs- oder Fit-Synthese. Verdichte nur den Stand der Nutzeranalyse; wenn sie unreif ist, sage explizit, was fehlt.\n- propose: Zusatzspur. Noch nichts anwenden. Vorschläge müssen aus dem aktuellen Step-1-Zustand abgeleitet sein, z. B. Hauptnutzer fokussieren, Situation schärfen, Outcomes und Verhalten trennen, Gains/Pains andocken oder parken.\n- autocorrect: Nur klare Probleme auf der rechten Seite korrigieren: Fehlplatzierungen, offensichtliche Verwechslungen, Überladung oder fehlende Andockung. Keine Lösung, kein Benefit, kein Fit.\n- Connectoren in Step 1 nur selten: User & Situation bleibt meist unverbunden, Gains/Pains werden standardmäßig nicht verkettet, sondern räumlich oder inhaltlich an relevante blaue Elemente gekoppelt.\n\nÜbersetzungsregel in Actions:\n- Bevorzuge feedback, solange der nächste didaktische Schritt vor allem Denken, Fokussieren oder Priorisieren ist.\n- Wenn du mutierst, dann klein, anschlussfähig und streng problemraumgebunden."
+        "analytics.fit.step1.endpoint_behavior": {
+          "id": "analytics.fit.step1.endpoint_behavior",
+          "label": "Step-1-Endpointverhalten",
+          "summary": "Übersetzt die Zustandswelt von Step 1 in passende Hilfeformen je Endpoint.",
+          "prompt": "Übersetze den erkannten Step-1-Zustand in die passende Endpointrolle:\n- hint: Priorisiere genau einen nächsten Mikro-Arbeitsmodus: Nutzerrollen sammeln/fokussieren, Situation konkretisieren, Objectives/Results schärfen, Decisions/Actions präzisieren oder Gains/Pains andocken bzw. priorisieren. Gib 1 bis 3 konkrete Satzanfänge oder Fokushinweise.\n- coach: Arbeite mit 3 bis 5 Leitfragen und genau einem Mikroschritt. Lass den Nutzer denken; gib keine vorschnellen Lösungen.\n- check: Prüfe in dieser Reihenfolge Hauptnutzer & Situation, Objectives & Results, Decisions & Actions, Gains/Pains. Benenne klar, welche Reifestufe fehlt oder ob der Problemraum tragfähig genug für Step 2 ist.\n- review: Gib eine qualitative Einordnung von Reifegrad, Stärken, Widersprüchen, Überladung und fehlender Vorarbeit. Standardmäßig keine Mutationen.\n- synthesize: Keine Lösungs- oder Fit-Synthese. Verdichte nur den Stand der Nutzeranalyse; wenn sie unreif ist, sage explizit, was fehlt.\n- propose: Zusatzspur. Noch nichts anwenden. Vorschläge müssen aus dem aktuellen Step-1-Zustand abgeleitet sein, z. B. Hauptnutzer fokussieren, Situation schärfen, Outcomes und Verhalten trennen, Gains/Pains andocken oder parken.\n- autocorrect: Nur klare Probleme auf der rechten Seite korrigieren: Fehlplatzierungen, offensichtliche Verwechslungen, Überladung oder fehlende Andockung. Keine Lösung, kein Benefit, kein Fit.\n- Connectoren in Step 1 nur selten: User & Situation bleibt meist unverbunden, Gains/Pains werden standardmäßig nicht verkettet, sondern räumlich oder inhaltlich an relevante blaue Elemente gekoppelt.\n\nÜbersetzungsregel in Actions:\n- Bevorzuge feedback, solange der nächste didaktische Schritt vor allem Denken, Fokussieren oder Priorisieren ist.\n- Wenn du mutierst, dann klein, anschlussfähig und streng problemraumgebunden."
         },
         "analytics.fit.step1.exit_criteria": {
           "id": "analytics.fit.step1.exit_criteria",
@@ -1763,11 +1761,11 @@ const RAW_METHOD_CATALOG = deepFreeze(JSON.parse(String.raw`{
           "summary": "Beschreibt die relevanten semantischen Arbeitszustände in Solution Design.",
           "prompt": "Step 2 ist Lösungableitung, nicht freie Technologiewahl. Lies den Boardzustand heuristisch:\n- S2-A rechte Seite noch nicht tragfähig genug: Hauptnutzer, Situation, Objectives/Results, Decisions/Actions oder Gains/Pains sind noch zu unreif. Bedeutung: Step 2 darf noch nicht sauber ableiten; route zurück nach Step 1 statt die linke Seite zu erfinden.\n- S2-B linke Seite leer, rechte Seite tragfähig: der Problemraum ist brauchbar, die linke Seite aber noch fast leer. Bedeutung: jetzt beginnt echte Ableitung; mehrere Varianten oder erste Lösungsideen sind sinnvoll.\n- S2-C mehrere Varianten, aber keine Fokusvariante: mehrere Solution-Stickies oder Lösungsrichtungen stehen nebeneinander, ohne Hauptvariante. Bedeutung: Divergenz ist da, Konvergenz fehlt. Eine Hauptvariante muss gewählt, Alternativen sollen in sorted_out_right geparkt werden.\n- S2-D Hauptvariante da, Information fehlt oder bleibt unscharf: eine fokussierte Lösungsidee ist sichtbar, aber welche Information Entscheidungen oder Handlungen verbessert, ist noch nicht klar.\n- S2-E Information und Functions sind vermischt oder unvollständig: Inhalte der linken Seite klingen auf mehreren Ebenen gleichzeitig oder lassen die Trennung Solution / Information / Function / Benefit nicht klar erkennen.\n- S2-F Benefits sind generisch oder nicht rückverfolgbar: Benefits bleiben marketinghaft, zu vage oder lassen keinen plausiblen Bezug zu Information, Functions oder zum Problemraum erkennen.\n- S2-G linke Seite ist überladen oder Alternativen sind ungeparkt: zu viele Varianten, Informationsreste, Funktionen oder Benefits konkurrieren gleichzeitig im Hauptpfad. Bedeutung: Rauschen verdeckt den Kern.\n- S2-H Step 2 ist tragfähig: eine Hauptvariante ist klar, Information und Functions sind nachvollziehbar abgeleitet, Benefits sind plausibel und Alternativen wurden reduziert oder geparkt.\n\nAllgemeine Leseregel:\n- Zustände sind semantische Lesarten des Boardkatalogs, keine App-Flags.\n- Interpretiere Reife, Fokussierung, Überladung und Readiness aus rechter Seite, linker Seite, Sorted-out-Nutzung und der Trennung von Solution, Information, Function und Benefit.\n- In Step 2 genügen wenige klare Unterstützungs- oder Ableitungsbeziehungen; Varianten bleiben standardmäßig unverbunden."
         },
-        "analytics.fit.step2.trigger_behavior": {
-          "id": "analytics.fit.step2.trigger_behavior",
-          "label": "Step-2-Triggerverhalten",
-          "summary": "Übersetzt die Zustandswelt von Step 2 in passende Hilfeformen je Trigger.",
-          "prompt": "Übersetze den erkannten Step-2-Zustand in die passende Triggerrolle:\n- hint: Priorisiere genau einen Mikro-Arbeitsmodus: zurück in Step 1 routen, Varianten anstoßen, eine Hauptvariante wählen, Information klären, Functions trennen, Benefits schärfen oder Rauschen parken. Gib 1 bis 3 konkrete Satzanfänge oder Fokushinweise.\n- coach: Arbeite mit 3 bis 5 Leitfragen und genau einem Mikroschritt. Coache Variantenwahl und Ableitung statt eine Komplettarchitektur zu liefern.\n- check: Prüfe zuerst, ob Step 1 tragfähig genug ist; prüfe dann Fokusvariante, Trennung der Ebenen und Nutzenlogik. Setze stepStatus gemäß Exit-Kriterien von Step 2.\n- review: Gib eine qualitative Einordnung von Variantendenken, Fokussierung, Ableitung, Nutzennähe und solutionistischen Sprüngen. Standardmäßig keine Mutationen.\n- synthesize: Keine Fit-Synthese. Verdichte nur, welche Hauptvariante, Information, Functions und Benefits aktuell schon plausibel sichtbar sind; wenn das noch fehlt, sage es explizit.\n- propose: Zusatzspur. Vorschläge müssen aus dem aktuellen Step-2-Zustand abgeleitet sein. Bei S2-A bevorzuge textliche Rückroute oder minimale Vorschläge; bei S2-B/C/D/E/F/G sind konkrete Vorschläge für Variantenwahl, Trennung, Schärfung oder Parken sinnvoll.\n- autocorrect: Nur klare Probleme der linken Seite korrigieren: Varianten entmischen, Hauptvariante fokussieren, Alternativen in sorted_out_right parken, Information/Functions/Benefits sauberer trennen und wenige Benefits schärfen. Keine Fit-Behauptung.\n\nÜbersetzungsregel in Actions:\n- Bevorzuge feedback, solange didaktisch vor allem Fokussierung oder Herleitung fehlt.\n- Wenn du mutierst, dann klein, zustandsbezogen und ohne Graph-Explosion.\n- Connectoren in Step 2 nur selektiv: wenige klare Unterstützungs- oder Ableitungsbeziehungen; keine Vollverdrahtung der linken Seite."
+        "analytics.fit.step2.endpoint_behavior": {
+          "id": "analytics.fit.step2.endpoint_behavior",
+          "label": "Step-2-Endpointverhalten",
+          "summary": "Übersetzt die Zustandswelt von Step 2 in passende Hilfeformen je Endpoint.",
+          "prompt": "Übersetze den erkannten Step-2-Zustand in die passende Endpointrolle:\n- hint: Priorisiere genau einen Mikro-Arbeitsmodus: zurück in Step 1 routen, Varianten anstoßen, eine Hauptvariante wählen, Information klären, Functions trennen, Benefits schärfen oder Rauschen parken. Gib 1 bis 3 konkrete Satzanfänge oder Fokushinweise.\n- coach: Arbeite mit 3 bis 5 Leitfragen und genau einem Mikroschritt. Coache Variantenwahl und Ableitung statt eine Komplettarchitektur zu liefern.\n- check: Prüfe zuerst, ob Step 1 tragfähig genug ist; prüfe dann Fokusvariante, Trennung der Ebenen und Nutzenlogik. Setze stepStatus gemäß Exit-Kriterien von Step 2.\n- review: Gib eine qualitative Einordnung von Variantendenken, Fokussierung, Ableitung, Nutzennähe und solutionistischen Sprüngen. Standardmäßig keine Mutationen.\n- synthesize: Keine Fit-Synthese. Verdichte nur, welche Hauptvariante, Information, Functions und Benefits aktuell schon plausibel sichtbar sind; wenn das noch fehlt, sage es explizit.\n- propose: Zusatzspur. Vorschläge müssen aus dem aktuellen Step-2-Zustand abgeleitet sein. Bei S2-A bevorzuge textliche Rückroute oder minimale Vorschläge; bei S2-B/C/D/E/F/G sind konkrete Vorschläge für Variantenwahl, Trennung, Schärfung oder Parken sinnvoll.\n- autocorrect: Nur klare Probleme der linken Seite korrigieren: Varianten entmischen, Hauptvariante fokussieren, Alternativen in sorted_out_right parken, Information/Functions/Benefits sauberer trennen und wenige Benefits schärfen. Keine Fit-Behauptung.\n\nÜbersetzungsregel in Actions:\n- Bevorzuge feedback, solange didaktisch vor allem Fokussierung oder Herleitung fehlt.\n- Wenn du mutierst, dann klein, zustandsbezogen und ohne Graph-Explosion.\n- Connectoren in Step 2 nur selektiv: wenige klare Unterstützungs- oder Ableitungsbeziehungen; keine Vollverdrahtung der linken Seite."
         },
         "analytics.fit.step2.exit_criteria": {
           "id": "analytics.fit.step2.exit_criteria",
@@ -1781,11 +1779,11 @@ const RAW_METHOD_CATALOG = deepFreeze(JSON.parse(String.raw`{
           "summary": "Beschreibt die relevanten semantischen Arbeitszustände in Fit Validation & Minimum Desired Product.",
           "prompt": "Step 3 ist Validierung, Reduktion und Verdichtung. Lies den Boardzustand heuristisch:\n- S3-A Vorbedingungen für Fit-Validierung fehlen: Problemraum oder Lösungsperspektive sind noch zu unreif, zu vage oder zu widersprüchlich. Bedeutung: Fit darf hier nicht behauptet werden; route sauber zurück nach Step 1 oder Step 2.\n- S3-B Benefits vorhanden, aber noch nicht validiert: Benefits stehen im Board, doch es ist noch unklar, welche Pains, Gains, Results, Objectives, Decisions oder Actions sie wirklich adressieren.\n- S3-C partielle Fit-Ketten sind sichtbar, aber noch nicht markiert: einige plausible Beziehungen sind erkennbar, doch Checkmarks oder klare Validierung fehlen noch.\n- S3-D Check-Feld ist zu früh, leer oder inhaltsfremd: 8_check ist noch leer, zu voll oder enthält lose Ideen statt knapper Fit-Aussagen.\n- S3-E zu viel unvalidiertes Rauschen: unvalidierte Benefits, Information, Functions oder Alternativen verdecken den Kern. Bedeutung: Minimum Desired Product ist noch nicht sichtbar.\n- S3-F Minimum Desired Product ist teilweise sichtbar, aber noch nicht sauber reduziert: ein valider Kern zeichnet sich ab, wird aber noch von Restbeständen überlagert.\n- S3-G validierter Kern ist sichtbar: mehrere belastbare Benefit-Beziehungen oder Fit-Ketten sind erkennbar, und unvalidierte Reste wurden reduziert oder geparkt.\n- S3-H Step 3 ist tragfähig bzw. handoff-ready im Rahmen dieser Übung: der validierte Kern ist sichtbar, wenige knappe Check-Aussagen verdichten ihn, ohne dass ein echter Cross-Canvas-Handoff ausgeführt wird.\n\nAllgemeine Leseregel:\n- Zustände sind semantische Lesarten des Boardkatalogs, keine App-Flags.\n- Interpretiere Validierung, Reduktion, Restrauschen und Readiness aus Benefits, Checkmarks, Check-Feld, Sorted-out-Nutzung und dem Anteil wirklich belastbarer Beziehungen.\n- In Step 3 sind wenige validierte Fit-Ketten oder knappe Check-Aussagen besser als dichte Graphen."
         },
-        "analytics.fit.step3.trigger_behavior": {
-          "id": "analytics.fit.step3.trigger_behavior",
-          "label": "Step-3-Triggerverhalten",
-          "summary": "Übersetzt die Zustandswelt von Step 3 in passende Hilfeformen je Trigger.",
-          "prompt": "Übersetze den erkannten Step-3-Zustand in die passende Triggerrolle:\n- hint: Priorisiere genau den nächsten Validierungs- oder Reduktionsschritt. Bei S3-A route zurück, bei S3-B/C fokussiere auf belastbare Beziehungen, bei S3-D/E/F auf Check-Feld, Ausdünnung und Kern, bei S3-G/H auf knappe Verdichtung.\n- coach: Arbeite mit 3 bis 5 Leitfragen und genau einem Mikroschritt. Frage explizit, welcher Benefit was auf der rechten Seite adressiert und was für einen validierten Kern wirklich nötig ist.\n- check: Prüfe Vorbedingungen, belastbare Fit-Ketten, sinnvolle Checkmarks, Restrauschen und Sichtbarkeit des Minimum Desired Product. Setze stepStatus gemäß Exit-Kriterien von Step 3.\n- review: Gib eine qualitative Einordnung des Fits, der Validierungstiefe, des Rauschens und der Handoff-Readiness innerhalb dieser Übung. Standardmäßig keine Mutationen.\n- synthesize: Verdichte nur validierten oder weitgehend tragfähigen Fit in 1 bis 3 knappe Check-Aussagen. Wenn die Vorbedingungen fehlen, verweigere die saubere Synthese nicht stillschweigend, sondern benenne, was zuerst validiert oder reduziert werden muss.\n- propose: Zusatzspur. Vorschläge müssen aus dem aktuellen Step-3-Zustand abgeleitet sein. Bei unreifen Vorbedingungen keine aggressive MDP-Reduktion oder Checkmarks vortäuschen; bei partiellem Fit gezielte Validierungs-, Pruning- und Check-Vorschläge machen.\n- autocorrect: Nutze Checkmarks, Parken, Ausdünnen und wenige belastbare Fit-Kanten vorsichtig und nur zustandsbezogen. Markiere nur validierte Beziehungen und mache den Kern sichtbar, ohne das Board neu zu erfinden.\n- grade: Werte die Tragfähigkeit des validierten Kerns, nicht die Menge der Inhalte.\n\nÜbersetzungsregel in Actions:\n- Bevorzuge wenige validierte Markierungen, wenige belastbare Fit-Kanten und knappe Check-Aussagen.\n- Keine Graph-Explosion und keine Schönfärbung unreifer Boards."
+        "analytics.fit.step3.endpoint_behavior": {
+          "id": "analytics.fit.step3.endpoint_behavior",
+          "label": "Step-3-Endpointverhalten",
+          "summary": "Übersetzt die Zustandswelt von Step 3 in passende Hilfeformen je Endpoint.",
+          "prompt": "Übersetze den erkannten Step-3-Zustand in die passende Endpointrolle:\n- hint: Priorisiere genau den nächsten Validierungs- oder Reduktionsschritt. Bei S3-A route zurück, bei S3-B/C fokussiere auf belastbare Beziehungen, bei S3-D/E/F auf Check-Feld, Ausdünnung und Kern, bei S3-G/H auf knappe Verdichtung.\n- coach: Arbeite mit 3 bis 5 Leitfragen und genau einem Mikroschritt. Frage explizit, welcher Benefit was auf der rechten Seite adressiert und was für einen validierten Kern wirklich nötig ist.\n- check: Prüfe Vorbedingungen, belastbare Fit-Ketten, sinnvolle Checkmarks, Restrauschen und Sichtbarkeit des Minimum Desired Product. Setze stepStatus gemäß Exit-Kriterien von Step 3.\n- review: Gib eine qualitative Einordnung des Fits, der Validierungstiefe, des Rauschens und der Handoff-Readiness innerhalb dieser Übung. Standardmäßig keine Mutationen.\n- synthesize: Verdichte nur validierten oder weitgehend tragfähigen Fit in 1 bis 3 knappe Check-Aussagen. Wenn die Vorbedingungen fehlen, verweigere die saubere Synthese nicht stillschweigend, sondern benenne, was zuerst validiert oder reduziert werden muss.\n- propose: Zusatzspur. Vorschläge müssen aus dem aktuellen Step-3-Zustand abgeleitet sein. Bei unreifen Vorbedingungen keine aggressive MDP-Reduktion oder Checkmarks vortäuschen; bei partiellem Fit gezielte Validierungs-, Pruning- und Check-Vorschläge machen.\n- autocorrect: Nutze Checkmarks, Parken, Ausdünnen und wenige belastbare Fit-Kanten vorsichtig und nur zustandsbezogen. Markiere nur validierte Beziehungen und mache den Kern sichtbar, ohne das Board neu zu erfinden.\n- grade: Werte die Tragfähigkeit des validierten Kerns, nicht die Menge der Inhalte.\n\nÜbersetzungsregel in Actions:\n- Bevorzuge wenige validierte Markierungen, wenige belastbare Fit-Kanten und knappe Check-Aussagen.\n- Keine Graph-Explosion und keine Schönfärbung unreifer Boards."
         },
         "analytics.fit.step3.exit_criteria": {
           "id": "analytics.fit.step3.exit_criteria",
@@ -1797,7 +1795,7 @@ const RAW_METHOD_CATALOG = deepFreeze(JSON.parse(String.raw`{
           "id": "analytics.fit.shared.proposal_mode",
           "label": "Vorschlagsmodus",
           "summary": "Beschreibt den Zwischenmodus: konkrete Vorschläge zuerst, Umsetzung erst nach Bestätigung.",
-          "prompt": "Vorschlagsmodus:\n- In diesem Trigger ist executionMode = proposal_only Pflicht.\n- actions beschreiben die vorgeschlagenen Änderungen, nicht bereits vollzogene Änderungen.\n- feedback muss für Menschen klar sagen: 1) was du auf dem Board siehst, 2) was du konkret vorschlägst, 3) warum das im aktuellen Schritt sinnvoll ist, 4) dass noch nichts angewendet wurde und was nach einer Bestätigung passieren würde.\n- Bleibe streng im Scope des aktuellen Schritts. Der Vorschlagsmodus ist nicht dazu da, den gesamten Workshop vorwegzunehmen.\n- Materialisiere keine Coaching-Satzanfänge, keine Tutorialformulierungen, keine Platzhalter in eckigen Klammern und keine Meta-Präfixe wie „(HEADER)“, „Offene Frage:“ oder „Geparkt:“ als Sticky-Text.\n- Nutze den Canvas-Chat-Input, falls vorhanden, als optionalen Seed für das Verständnis der Problemstellung oder des gewünschten Fokus.\n- Wenn der relevante Canvas-Bereich leer ist, darfst du einen kleinen, fachlich konkreten Starter-Vorschlag erzeugen – aber nur in dem Umfang, der für den aktuellen Schritt wirklich anschlussfähig ist."
+          "prompt": "Vorschlagsmodus:\n- In diesem Endpoint ist executionMode = proposal_only Pflicht.\n- actions beschreiben die vorgeschlagenen Änderungen, nicht bereits vollzogene Änderungen.\n- feedback muss für Menschen klar sagen: 1) was du auf dem Board siehst, 2) was du konkret vorschlägst, 3) warum das im aktuellen Schritt sinnvoll ist, 4) dass noch nichts angewendet wurde und was nach einer Bestätigung passieren würde.\n- Bleibe streng im Scope des aktuellen Schritts. Der Vorschlagsmodus ist nicht dazu da, den gesamten Workshop vorwegzunehmen.\n- Materialisiere keine Coaching-Satzanfänge, keine Tutorialformulierungen, keine Platzhalter in eckigen Klammern und keine Meta-Präfixe wie „(HEADER)“, „Offene Frage:“ oder „Geparkt:“ als Sticky-Text.\n- Nutze den Canvas-Chat-Input, falls vorhanden, als optionalen Seed für das Verständnis der Problemstellung oder des gewünschten Fokus.\n- Wenn der relevante Canvas-Bereich leer ist, darfst du einen kleinen, fachlich konkreten Starter-Vorschlag erzeugen – aber nur in dem Umfang, der für den aktuellen Schritt wirklich anschlussfähig ist."
         },
         "analytics.fit.step0.proposal_focus": {
           "id": "analytics.fit.step0.proposal_focus",
@@ -1868,7 +1866,7 @@ const RAW_METHOD_CATALOG = deepFreeze(JSON.parse(String.raw`{
                   "analytics.fit.shared.hint_style",
                   "analytics.fit.shared.validation_and_color_semantics",
                   "analytics.fit.shared.sorted_out_semantics",
-                  "analytics.fit.step0.trigger_behavior",
+                  "analytics.fit.step0.endpoint_behavior",
                   "analytics.fit.step0.bootstrap_blank_canvas"
                 ]
               },
@@ -1914,7 +1912,7 @@ const RAW_METHOD_CATALOG = deepFreeze(JSON.parse(String.raw`{
                   "analytics.fit.step0.focus_preparation",
                   "analytics.fit.step0.state_model",
                   "analytics.fit.shared.coach_style",
-                  "analytics.fit.step0.trigger_behavior",
+                  "analytics.fit.step0.endpoint_behavior",
                   "analytics.fit.step0.bootstrap_blank_canvas"
                 ]
               },
@@ -1998,7 +1996,7 @@ const RAW_METHOD_CATALOG = deepFreeze(JSON.parse(String.raw`{
               },
               "prompt": {
                 "text": {
-                  "de": "Vorschlagsmodus für den Schritt \"Preparation & Focus\":\n- Nutze executionMode = proposal_only.\n- Dieser Trigger ist der sichtbare Start von Step 0.\n- Nutze vorhandenen Board-Inhalt plus optionalen Chat-Seed, um einen kleinen, anschlussfähigen Startvorschlag für Fokus, Scope und offene Annahmen zu erzeugen.\n- Wenn das Board leer ist, darfst du einen kleinen, fachlich konkreten Starter-Satz vorschlagen: Header plus 1 bis 2 weiße Scope-/Annahmen-Stickies.\n- Erkläre im feedback sichtbar, warum genau diese Vorschläge jetzt sinnvoll sind und dass noch nichts angewendet wurde."
+                  "de": "Vorschlagsmodus für den Schritt \"Preparation & Focus\":\n- Nutze executionMode = proposal_only.\n- Dieser Endpoint ist der sichtbare Start von Step 0.\n- Nutze vorhandenen Board-Inhalt plus optionalen Chat-Seed, um einen kleinen, anschlussfähigen Startvorschlag für Fokus, Scope und offene Annahmen zu erzeugen.\n- Wenn das Board leer ist, darfst du einen kleinen, fachlich konkreten Starter-Satz vorschlagen: Header plus 1 bis 2 weiße Scope-/Annahmen-Stickies.\n- Erkläre im feedback sichtbar, warum genau diese Vorschläge jetzt sinnvoll sind und dass noch nichts angewendet wurde."
                 },
                 "moduleIds": [
                   "analytics.fit.shared.method_guardrails",
@@ -2009,7 +2007,7 @@ const RAW_METHOD_CATALOG = deepFreeze(JSON.parse(String.raw`{
                   "analytics.fit.shared.no_handoff_boundary",
                   "analytics.fit.step0.focus_preparation",
                   "analytics.fit.step0.state_model",
-                  "analytics.fit.step0.trigger_behavior",
+                  "analytics.fit.step0.endpoint_behavior",
                   "analytics.fit.step0.proposal_focus"
                 ]
               },
@@ -2052,7 +2050,7 @@ const RAW_METHOD_CATALOG = deepFreeze(JSON.parse(String.raw`{
               },
               "prompt": {
                 "text": {
-                  "de": "Bestätigungsmodus für den Schritt \"Preparation & Focus\":\n- Dieser Trigger wendet einen zuvor gespeicherten Vorschlag an.\n- Es sollen keine neuen Vorschläge erzeugt und keine neuen Board-Ideen erfunden werden."
+                  "de": "Bestätigungsmodus für den Schritt \"Preparation & Focus\":\n- Dieser Endpoint wendet einen zuvor gespeicherten Vorschlag an.\n- Es sollen keine neuen Vorschläge erzeugt und keine neuen Board-Ideen erfunden werden."
                 },
                 "moduleIds": [
                   "analytics.fit.shared.proposal_mode"
@@ -2099,8 +2097,8 @@ const RAW_METHOD_CATALOG = deepFreeze(JSON.parse(String.raw`{
               },
               "prompt": {
                 "text": {
-                  "de": "Fragemodus für den Schritt \"Preparation & Focus\":\n- Beantworte Fragen zum aktuellen Schritt direkt, knapp und boardbezogen.\n- Nutze den aktuellen Canvas-Zustand und die Prompt-Module dieses Schritts als Grundlage.\n- Führe keine Board-Mutationen aus.",
-                  "en": "Question mode for the step \"Preparation & Focus\":\n- Answer questions about the current step directly, concisely, and with reference to the board.\n- Use the current canvas state and the prompt modules of this step as your grounding.\n- Do not perform board mutations."
+                  "de": "Chat-Submit-Endpoint für den Schritt \"Preparation & Focus\":\n- Beantworte Fragen zum aktuellen Schritt direkt, knapp und boardbezogen.\n- Nutze den aktuellen Canvas-Zustand und die Prompt-Module dieses Schritts als Grundlage.\n- Führe keine Board-Mutationen aus.",
+                  "en": "Chat-submit endpoint for the step \"Preparation & Focus\":\n- Answer questions about the current step directly, concisely, and with reference to the board.\n- Use the current canvas state and the prompt modules of this step as your grounding.\n- Do not perform board mutations."
                 },
                 "moduleIds": [
                   "analytics.fit.shared.method_guardrails",
@@ -2154,7 +2152,7 @@ const RAW_METHOD_CATALOG = deepFreeze(JSON.parse(String.raw`{
                   "analytics.fit.shared.hint_style",
                   "analytics.fit.shared.validation_and_color_semantics",
                   "analytics.fit.shared.sorted_out_semantics",
-                  "analytics.fit.step0.trigger_behavior",
+                  "analytics.fit.step0.endpoint_behavior",
                   "analytics.fit.step0.bootstrap_blank_canvas",
                   "analytics.fit.step0.exit_criteria"
                 ]
@@ -2254,7 +2252,7 @@ const RAW_METHOD_CATALOG = deepFreeze(JSON.parse(String.raw`{
                   "analytics.fit.step0.state_model",
                   "analytics.fit.shared.sorted_out_semantics",
                   "analytics.fit.shared.validation_and_color_semantics",
-                  "analytics.fit.step0.trigger_behavior",
+                  "analytics.fit.step0.endpoint_behavior",
                   "analytics.fit.step0.exit_criteria"
                 ]
               },
@@ -2393,7 +2391,7 @@ const RAW_METHOD_CATALOG = deepFreeze(JSON.parse(String.raw`{
                   "analytics.fit.shared.soft_reference_hints",
                   "analytics.fit.shared.sorted_out_semantics",
                   "analytics.fit.shared.validation_and_color_semantics",
-                  "analytics.fit.step1.trigger_behavior",
+                  "analytics.fit.step1.endpoint_behavior",
                   "analytics.fit.step1.bootstrap_empty_user_perspective",
                   "analytics.fit.step1.diverge_and_focus_users",
                   "analytics.fit.step1.attach_and_prioritize_gains_pains"
@@ -2442,7 +2440,7 @@ const RAW_METHOD_CATALOG = deepFreeze(JSON.parse(String.raw`{
                   "analytics.fit.step1.state_model",
                   "analytics.fit.shared.coach_style",
                   "analytics.fit.shared.soft_reference_hints",
-                  "analytics.fit.step1.trigger_behavior",
+                  "analytics.fit.step1.endpoint_behavior",
                   "analytics.fit.step1.bootstrap_empty_user_perspective",
                   "analytics.fit.step1.diverge_and_focus_users",
                   "analytics.fit.step1.attach_and_prioritize_gains_pains"
@@ -2531,7 +2529,7 @@ const RAW_METHOD_CATALOG = deepFreeze(JSON.parse(String.raw`{
               },
               "prompt": {
                 "text": {
-                  "de": "Vorschlagsmodus für den Schritt \"User Needs Analysis\":\n- Nutze executionMode = proposal_only.\n- Dieser Trigger ist der sichtbare Start oder Delta-Modus von Step 1.\n- Nutze vorhandenen Board-Inhalt plus optionalen Chat-Seed, um einen kleinen, klaren Vorschlag für Hauptnutzer, Situation, Objectives/Results, Decisions/Actions und Gains/Pains zu erzeugen.\n- Wenn die rechte Seite noch leer ist, darfst du einen kleinen Starter-Satz vorschlagen. Wenn schon Material vorhanden ist, schlage eher Deltas als einen Komplettneuaufbau vor.\n- Erkläre im feedback sichtbar, warum genau diese Vorschläge jetzt sinnvoll sind und dass noch nichts angewendet wurde."
+                  "de": "Vorschlagsmodus für den Schritt \"User Needs Analysis\":\n- Nutze executionMode = proposal_only.\n- Dieser Endpoint ist der sichtbare Start oder Delta-Modus von Step 1.\n- Nutze vorhandenen Board-Inhalt plus optionalen Chat-Seed, um einen kleinen, klaren Vorschlag für Hauptnutzer, Situation, Objectives/Results, Decisions/Actions und Gains/Pains zu erzeugen.\n- Wenn die rechte Seite noch leer ist, darfst du einen kleinen Starter-Satz vorschlagen. Wenn schon Material vorhanden ist, schlage eher Deltas als einen Komplettneuaufbau vor.\n- Erkläre im feedback sichtbar, warum genau diese Vorschläge jetzt sinnvoll sind und dass noch nichts angewendet wurde."
                 },
                 "moduleIds": [
                   "analytics.fit.shared.method_guardrails",
@@ -2542,7 +2540,7 @@ const RAW_METHOD_CATALOG = deepFreeze(JSON.parse(String.raw`{
                   "analytics.fit.shared.no_handoff_boundary",
                   "analytics.fit.step1.focus_user_perspective",
                   "analytics.fit.step1.state_model",
-                  "analytics.fit.step1.trigger_behavior",
+                  "analytics.fit.step1.endpoint_behavior",
                   "analytics.fit.step1.diverge_and_focus_users",
                   "analytics.fit.step1.attach_and_prioritize_gains_pains",
                   "analytics.fit.step1.proposal_user_analysis"
@@ -2588,7 +2586,7 @@ const RAW_METHOD_CATALOG = deepFreeze(JSON.parse(String.raw`{
               },
               "prompt": {
                 "text": {
-                  "de": "Bestätigungsmodus für den Schritt \"User Needs Analysis\":\n- Dieser Trigger wendet einen zuvor gespeicherten Vorschlag an.\n- Erzeuge keine neuen Ideen und keine neue Analyse, sondern führe nur den bestätigten Vorschlag aus."
+                  "de": "Bestätigungsmodus für den Schritt \"User Needs Analysis\":\n- Dieser Endpoint wendet einen zuvor gespeicherten Vorschlag an.\n- Erzeuge keine neuen Ideen und keine neue Analyse, sondern führe nur den bestätigten Vorschlag aus."
                 },
                 "moduleIds": [
                   "analytics.fit.shared.proposal_mode"
@@ -2636,8 +2634,8 @@ const RAW_METHOD_CATALOG = deepFreeze(JSON.parse(String.raw`{
               },
               "prompt": {
                 "text": {
-                  "de": "Fragemodus für den Schritt \"User Needs Analysis\":\n- Beantworte Fragen zum aktuellen Schritt direkt, knapp und boardbezogen.\n- Nutze den aktuellen Canvas-Zustand und die Prompt-Module dieses Schritts als Grundlage.\n- Führe keine Board-Mutationen aus.",
-                  "en": "Question mode for the step \"User Needs Analysis\":\n- Answer questions about the current step directly, concisely, and with reference to the board.\n- Use the current canvas state and the prompt modules of this step as your grounding.\n- Do not perform board mutations."
+                  "de": "Chat-Submit-Endpoint für den Schritt \"User Needs Analysis\":\n- Beantworte Fragen zum aktuellen Schritt direkt, knapp und boardbezogen.\n- Nutze den aktuellen Canvas-Zustand und die Prompt-Module dieses Schritts als Grundlage.\n- Führe keine Board-Mutationen aus.",
+                  "en": "Chat-submit endpoint for the step \"User Needs Analysis\":\n- Answer questions about the current step directly, concisely, and with reference to the board.\n- Use the current canvas state and the prompt modules of this step as your grounding.\n- Do not perform board mutations."
                 },
                 "moduleIds": [
                   "analytics.fit.shared.method_guardrails",
@@ -2832,7 +2830,7 @@ const RAW_METHOD_CATALOG = deepFreeze(JSON.parse(String.raw`{
                   "analytics.fit.shared.soft_reference_hints",
                   "analytics.fit.shared.sorted_out_semantics",
                   "analytics.fit.shared.validation_and_color_semantics",
-                  "analytics.fit.step1.trigger_behavior",
+                  "analytics.fit.step1.endpoint_behavior",
                   "analytics.fit.step1.bootstrap_empty_user_perspective",
                   "analytics.fit.step1.diverge_and_focus_users",
                   "analytics.fit.step1.attach_and_prioritize_gains_pains",
@@ -2927,7 +2925,7 @@ const RAW_METHOD_CATALOG = deepFreeze(JSON.parse(String.raw`{
                   "analytics.fit.step1.state_model",
                   "analytics.fit.shared.sorted_out_semantics",
                   "analytics.fit.shared.validation_and_color_semantics",
-                  "analytics.fit.step1.trigger_behavior",
+                  "analytics.fit.step1.endpoint_behavior",
                   "analytics.fit.step1.diverge_and_focus_users",
                   "analytics.fit.step1.attach_and_prioritize_gains_pains",
                   "analytics.fit.step1.exit_criteria"
@@ -3030,7 +3028,7 @@ const RAW_METHOD_CATALOG = deepFreeze(JSON.parse(String.raw`{
                   "analytics.fit.step1.focus_user_perspective",
                   "analytics.fit.step1.state_model",
                   "analytics.fit.shared.synthesis_style",
-                  "analytics.fit.step1.trigger_behavior",
+                  "analytics.fit.step1.endpoint_behavior",
                   "analytics.fit.step1.exit_criteria"
                 ]
               },
@@ -3120,7 +3118,7 @@ const RAW_METHOD_CATALOG = deepFreeze(JSON.parse(String.raw`{
                   "analytics.fit.shared.hint_style",
                   "analytics.fit.shared.soft_reference_hints",
                   "analytics.fit.shared.sorted_out_semantics",
-                  "analytics.fit.step2.trigger_behavior",
+                  "analytics.fit.step2.endpoint_behavior",
                   "analytics.fit.step2.exit_criteria",
                   "analytics.fit.step2.bootstrap_empty_solution_perspective",
                   "analytics.fit.step2.choose_variant_and_park_alternatives"
@@ -3170,7 +3168,7 @@ const RAW_METHOD_CATALOG = deepFreeze(JSON.parse(String.raw`{
                   "analytics.fit.shared.coach_style",
                   "analytics.fit.shared.soft_reference_hints",
                   "analytics.fit.shared.sorted_out_semantics",
-                  "analytics.fit.step2.trigger_behavior",
+                  "analytics.fit.step2.endpoint_behavior",
                   "analytics.fit.step2.exit_criteria",
                   "analytics.fit.step2.bootstrap_empty_solution_perspective",
                   "analytics.fit.step2.choose_variant_and_park_alternatives"
@@ -3220,7 +3218,7 @@ const RAW_METHOD_CATALOG = deepFreeze(JSON.parse(String.raw`{
                   "analytics.fit.shared.check_style",
                   "analytics.fit.shared.step_status_rules",
                   "analytics.fit.shared.sorted_out_semantics",
-                  "analytics.fit.step2.trigger_behavior",
+                  "analytics.fit.step2.endpoint_behavior",
                   "analytics.fit.step2.exit_criteria",
                   "analytics.fit.step2.bootstrap_empty_solution_perspective",
                   "analytics.fit.step2.choose_variant_and_park_alternatives"
@@ -3259,7 +3257,7 @@ const RAW_METHOD_CATALOG = deepFreeze(JSON.parse(String.raw`{
               },
               "prompt": {
                 "text": {
-                  "de": "Vorschlagsmodus für den Schritt \"Solution Design\":\n- Nutze executionMode = proposal_only.\n- Dieser Trigger ist der sichtbare Start oder Delta-Modus von Step 2.\n- Lies zuerst, ob die rechte Seite schon tragfähig genug ist. Wenn nicht, benenne die Rückroute nach Step 1 und mache höchstens kleine Vorschläge.\n- Wenn die rechte Seite tragfähig ist, schlage einen kleinen, klaren Vorschlag für Variantenwahl und Ableitung der linken Seite vor.\n- Erkläre im feedback sichtbar, warum genau diese Vorschläge jetzt sinnvoll sind und dass noch nichts angewendet wurde."
+                  "de": "Vorschlagsmodus für den Schritt \"Solution Design\":\n- Nutze executionMode = proposal_only.\n- Dieser Endpoint ist der sichtbare Start oder Delta-Modus von Step 2.\n- Lies zuerst, ob die rechte Seite schon tragfähig genug ist. Wenn nicht, benenne die Rückroute nach Step 1 und mache höchstens kleine Vorschläge.\n- Wenn die rechte Seite tragfähig ist, schlage einen kleinen, klaren Vorschlag für Variantenwahl und Ableitung der linken Seite vor.\n- Erkläre im feedback sichtbar, warum genau diese Vorschläge jetzt sinnvoll sind und dass noch nichts angewendet wurde."
                 },
                 "moduleIds": [
                   "analytics.fit.shared.method_guardrails",
@@ -3270,7 +3268,7 @@ const RAW_METHOD_CATALOG = deepFreeze(JSON.parse(String.raw`{
                   "analytics.fit.shared.no_handoff_boundary",
                   "analytics.fit.step2.focus_solution_perspective",
                   "analytics.fit.step2.state_model",
-                  "analytics.fit.step2.trigger_behavior",
+                  "analytics.fit.step2.endpoint_behavior",
                   "analytics.fit.step2.exit_criteria",
                   "analytics.fit.step2.choose_variant_and_park_alternatives",
                   "analytics.fit.step2.proposal_solution_design"
@@ -3316,7 +3314,7 @@ const RAW_METHOD_CATALOG = deepFreeze(JSON.parse(String.raw`{
               },
               "prompt": {
                 "text": {
-                  "de": "Bestätigungsmodus für den Schritt \"Solution Design\":\n- Dieser Trigger wendet einen zuvor gespeicherten Vorschlag an.\n- Erzeuge keine neue Lösungsanalyse, sondern führe nur den bestätigten Vorschlag aus."
+                  "de": "Bestätigungsmodus für den Schritt \"Solution Design\":\n- Dieser Endpoint wendet einen zuvor gespeicherten Vorschlag an.\n- Erzeuge keine neue Lösungsanalyse, sondern führe nur den bestätigten Vorschlag aus."
                 },
                 "moduleIds": [
                   "analytics.fit.shared.proposal_mode"
@@ -3364,8 +3362,8 @@ const RAW_METHOD_CATALOG = deepFreeze(JSON.parse(String.raw`{
               },
               "prompt": {
                 "text": {
-                  "de": "Fragemodus für den Schritt \"Solution Design\":\n- Beantworte Fragen zum aktuellen Schritt direkt, knapp und boardbezogen.\n- Nutze den aktuellen Canvas-Zustand und die Prompt-Module dieses Schritts als Grundlage.\n- Führe keine Board-Mutationen aus.",
-                  "en": "Question mode for the step \"Solution Design\":\n- Answer questions about the current step directly, concisely, and with reference to the board.\n- Use the current canvas state and the prompt modules of this step as your grounding.\n- Do not perform board mutations."
+                  "de": "Chat-Submit-Endpoint für den Schritt \"Solution Design\":\n- Beantworte Fragen zum aktuellen Schritt direkt, knapp und boardbezogen.\n- Nutze den aktuellen Canvas-Zustand und die Prompt-Module dieses Schritts als Grundlage.\n- Führe keine Board-Mutationen aus.",
+                  "en": "Chat-submit endpoint for the step \"Solution Design\":\n- Answer questions about the current step directly, concisely, and with reference to the board.\n- Use the current canvas state and the prompt modules of this step as your grounding.\n- Do not perform board mutations."
                 },
                 "moduleIds": [
                   "analytics.fit.shared.method_guardrails",
@@ -3420,7 +3418,7 @@ const RAW_METHOD_CATALOG = deepFreeze(JSON.parse(String.raw`{
                   "analytics.fit.step2.focus_solution_perspective",
                   "analytics.fit.step2.state_model",
                   "analytics.fit.shared.sorted_out_semantics",
-                  "analytics.fit.step2.trigger_behavior",
+                  "analytics.fit.step2.endpoint_behavior",
                   "analytics.fit.step2.exit_criteria",
                   "analytics.fit.step2.choose_variant_and_park_alternatives"
                 ]
@@ -3473,7 +3471,7 @@ const RAW_METHOD_CATALOG = deepFreeze(JSON.parse(String.raw`{
                   "analytics.fit.shared.check_style",
                   "analytics.fit.shared.step_status_rules",
                   "analytics.fit.shared.sorted_out_semantics",
-                  "analytics.fit.step2.trigger_behavior",
+                  "analytics.fit.step2.endpoint_behavior",
                   "analytics.fit.step2.exit_criteria",
                   "analytics.fit.step2.bootstrap_empty_solution_perspective",
                   "analytics.fit.step2.choose_variant_and_park_alternatives"
@@ -3527,7 +3525,7 @@ const RAW_METHOD_CATALOG = deepFreeze(JSON.parse(String.raw`{
                   "analytics.fit.shared.coach_style",
                   "analytics.fit.shared.soft_reference_hints",
                   "analytics.fit.shared.sorted_out_semantics",
-                  "analytics.fit.step2.trigger_behavior",
+                  "analytics.fit.step2.endpoint_behavior",
                   "analytics.fit.step2.exit_criteria",
                   "analytics.fit.step2.bootstrap_empty_solution_perspective",
                   "analytics.fit.step2.choose_variant_and_park_alternatives"
@@ -3581,7 +3579,7 @@ const RAW_METHOD_CATALOG = deepFreeze(JSON.parse(String.raw`{
                   "analytics.fit.shared.hint_style",
                   "analytics.fit.shared.soft_reference_hints",
                   "analytics.fit.shared.sorted_out_semantics",
-                  "analytics.fit.step2.trigger_behavior",
+                  "analytics.fit.step2.endpoint_behavior",
                   "analytics.fit.step2.exit_criteria",
                   "analytics.fit.step2.bootstrap_empty_solution_perspective",
                   "analytics.fit.step2.choose_variant_and_park_alternatives"
@@ -3635,7 +3633,7 @@ const RAW_METHOD_CATALOG = deepFreeze(JSON.parse(String.raw`{
                   "analytics.fit.shared.review_style",
                   "analytics.fit.shared.step_status_rules",
                   "analytics.fit.shared.sorted_out_semantics",
-                  "analytics.fit.step2.trigger_behavior",
+                  "analytics.fit.step2.endpoint_behavior",
                   "analytics.fit.step2.exit_criteria",
                   "analytics.fit.step2.choose_variant_and_park_alternatives"
                 ]
@@ -3686,7 +3684,7 @@ const RAW_METHOD_CATALOG = deepFreeze(JSON.parse(String.raw`{
                   "analytics.fit.step2.focus_solution_perspective",
                   "analytics.fit.step2.state_model",
                   "analytics.fit.shared.sorted_out_semantics",
-                  "analytics.fit.step2.trigger_behavior",
+                  "analytics.fit.step2.endpoint_behavior",
                   "analytics.fit.step2.exit_criteria",
                   "analytics.fit.step2.choose_variant_and_park_alternatives"
                 ]
@@ -3739,7 +3737,7 @@ const RAW_METHOD_CATALOG = deepFreeze(JSON.parse(String.raw`{
                   "analytics.fit.shared.review_style",
                   "analytics.fit.shared.step_status_rules",
                   "analytics.fit.shared.sorted_out_semantics",
-                  "analytics.fit.step2.trigger_behavior",
+                  "analytics.fit.step2.endpoint_behavior",
                   "analytics.fit.step2.exit_criteria",
                   "analytics.fit.step2.choose_variant_and_park_alternatives"
                 ]
@@ -3790,7 +3788,7 @@ const RAW_METHOD_CATALOG = deepFreeze(JSON.parse(String.raw`{
                   "analytics.fit.step2.focus_solution_perspective",
                   "analytics.fit.step2.state_model",
                   "analytics.fit.shared.synthesis_style",
-                  "analytics.fit.step2.trigger_behavior",
+                  "analytics.fit.step2.endpoint_behavior",
                   "analytics.fit.step2.exit_criteria"
                 ]
               },
@@ -3880,7 +3878,7 @@ const RAW_METHOD_CATALOG = deepFreeze(JSON.parse(String.raw`{
                   "analytics.fit.shared.review_style",
                   "analytics.fit.shared.step_status_rules",
                   "analytics.fit.shared.validation_and_color_semantics",
-                  "analytics.fit.step3.trigger_behavior",
+                  "analytics.fit.step3.endpoint_behavior",
                   "analytics.fit.step3.bootstrap_incomplete_fit",
                   "analytics.fit.step3.exit_criteria"
                 ]
@@ -3929,7 +3927,7 @@ const RAW_METHOD_CATALOG = deepFreeze(JSON.parse(String.raw`{
                   "analytics.fit.shared.validation_and_color_semantics",
                   "analytics.fit.shared.sorted_out_semantics",
                   "analytics.fit.shared.step_status_rules",
-                  "analytics.fit.step3.trigger_behavior",
+                  "analytics.fit.step3.endpoint_behavior",
                   "analytics.fit.step3.prune_to_mdp",
                   "analytics.fit.step3.exit_criteria"
                 ]
@@ -3984,7 +3982,7 @@ const RAW_METHOD_CATALOG = deepFreeze(JSON.parse(String.raw`{
                   "analytics.fit.step3.focus_fit_review",
                   "analytics.fit.shared.coach_style",
                   "analytics.fit.shared.validation_and_color_semantics",
-                  "analytics.fit.step3.trigger_behavior",
+                  "analytics.fit.step3.endpoint_behavior",
                   "analytics.fit.step3.bootstrap_incomplete_fit",
                   "analytics.fit.step3.prune_to_mdp",
                   "analytics.fit.step3.exit_criteria"
@@ -4034,7 +4032,7 @@ const RAW_METHOD_CATALOG = deepFreeze(JSON.parse(String.raw`{
                   "analytics.fit.shared.synthesis_style",
                   "analytics.fit.shared.validation_and_color_semantics",
                   "analytics.fit.shared.sorted_out_semantics",
-                  "analytics.fit.step3.trigger_behavior",
+                  "analytics.fit.step3.endpoint_behavior",
                   "analytics.fit.step3.bootstrap_incomplete_fit",
                   "analytics.fit.step3.prune_to_mdp",
                   "analytics.fit.step3.exit_criteria"
@@ -4091,7 +4089,7 @@ const RAW_METHOD_CATALOG = deepFreeze(JSON.parse(String.raw`{
                   "analytics.fit.shared.no_handoff_boundary",
                   "analytics.fit.step3.focus_fit_review",
                   "analytics.fit.step3.state_model",
-                  "analytics.fit.step3.trigger_behavior",
+                  "analytics.fit.step3.endpoint_behavior",
                   "analytics.fit.step3.exit_criteria",
                   "analytics.fit.step3.prune_to_mdp",
                   "analytics.fit.step3.proposal_fit_validation"
@@ -4137,7 +4135,7 @@ const RAW_METHOD_CATALOG = deepFreeze(JSON.parse(String.raw`{
               },
               "prompt": {
                 "text": {
-                  "de": "Bestätigungsmodus für den Schritt \"Fit Validation & Minimum Desired Product\":\n- Dieser Trigger wendet einen zuvor gespeicherten Vorschlag an.\n- Erzeuge keine neue Validierungsanalyse, sondern führe nur den bestätigten Vorschlag aus."
+                  "de": "Bestätigungsmodus für den Schritt \"Fit Validation & Minimum Desired Product\":\n- Dieser Endpoint wendet einen zuvor gespeicherten Vorschlag an.\n- Erzeuge keine neue Validierungsanalyse, sondern führe nur den bestätigten Vorschlag aus."
                 },
                 "moduleIds": [
                   "analytics.fit.shared.proposal_mode"
@@ -4194,7 +4192,7 @@ const RAW_METHOD_CATALOG = deepFreeze(JSON.parse(String.raw`{
                   "analytics.fit.shared.review_style",
                   "analytics.fit.shared.step_status_rules",
                   "analytics.fit.shared.validation_and_color_semantics",
-                  "analytics.fit.step3.trigger_behavior",
+                  "analytics.fit.step3.endpoint_behavior",
                   "analytics.fit.step3.bootstrap_incomplete_fit",
                   "analytics.fit.step3.exit_criteria",
                   "analytics.fit.global.focus_cross_instance_review"
@@ -4235,8 +4233,8 @@ const RAW_METHOD_CATALOG = deepFreeze(JSON.parse(String.raw`{
               },
               "prompt": {
                 "text": {
-                  "de": "Fragemodus für den Schritt \"Fit Validation & Minimum Desired Product\":\n- Beantworte Fragen zum aktuellen Schritt direkt, knapp und boardbezogen.\n- Nutze den aktuellen Canvas-Zustand und die Prompt-Module dieses Schritts als Grundlage.\n- Führe keine Board-Mutationen aus.",
-                  "en": "Question mode for the step \"Fit Validation & Minimum Desired Product\":\n- Answer questions about the current step directly, concisely, and with reference to the board.\n- Use the current canvas state and the prompt modules of this step as your grounding.\n- Do not perform board mutations."
+                  "de": "Chat-Submit-Endpoint für den Schritt \"Fit Validation & Minimum Desired Product\":\n- Beantworte Fragen zum aktuellen Schritt direkt, knapp und boardbezogen.\n- Nutze den aktuellen Canvas-Zustand und die Prompt-Module dieses Schritts als Grundlage.\n- Führe keine Board-Mutationen aus.",
+                  "en": "Chat-submit endpoint for the step \"Fit Validation & Minimum Desired Product\":\n- Answer questions about the current step directly, concisely, and with reference to the board.\n- Use the current canvas state and the prompt modules of this step as your grounding.\n- Do not perform board mutations."
                 },
                 "moduleIds": [
                   "analytics.fit.shared.method_guardrails",
@@ -4292,7 +4290,7 @@ const RAW_METHOD_CATALOG = deepFreeze(JSON.parse(String.raw`{
                   "analytics.fit.step3.focus_fit_review",
                   "analytics.fit.shared.coach_style",
                   "analytics.fit.shared.validation_and_color_semantics",
-                  "analytics.fit.step3.trigger_behavior",
+                  "analytics.fit.step3.endpoint_behavior",
                   "analytics.fit.step3.bootstrap_incomplete_fit",
                   "analytics.fit.step3.prune_to_mdp",
                   "analytics.fit.step3.exit_criteria",
@@ -4346,7 +4344,7 @@ const RAW_METHOD_CATALOG = deepFreeze(JSON.parse(String.raw`{
                   "analytics.fit.step3.focus_fit_review",
                   "analytics.fit.shared.step_status_rules",
                   "analytics.fit.shared.validation_and_color_semantics",
-                  "analytics.fit.step3.trigger_behavior",
+                  "analytics.fit.step3.endpoint_behavior",
                   "analytics.fit.step3.bootstrap_incomplete_fit",
                   "analytics.fit.step3.prune_to_mdp",
                   "analytics.fit.step3.exit_criteria",
@@ -4401,7 +4399,7 @@ const RAW_METHOD_CATALOG = deepFreeze(JSON.parse(String.raw`{
                   "analytics.fit.shared.hint_style",
                   "analytics.fit.shared.validation_and_color_semantics",
                   "analytics.fit.shared.sorted_out_semantics",
-                  "analytics.fit.step3.trigger_behavior",
+                  "analytics.fit.step3.endpoint_behavior",
                   "analytics.fit.step3.bootstrap_incomplete_fit",
                   "analytics.fit.step3.prune_to_mdp",
                   "analytics.fit.step3.exit_criteria",
@@ -4457,7 +4455,7 @@ const RAW_METHOD_CATALOG = deepFreeze(JSON.parse(String.raw`{
                   "analytics.fit.shared.step_status_rules",
                   "analytics.fit.shared.validation_and_color_semantics",
                   "analytics.fit.shared.sorted_out_semantics",
-                  "analytics.fit.step3.trigger_behavior",
+                  "analytics.fit.step3.endpoint_behavior",
                   "analytics.fit.step3.bootstrap_incomplete_fit",
                   "analytics.fit.step3.prune_to_mdp",
                   "analytics.fit.step3.exit_criteria"
@@ -4510,7 +4508,7 @@ const RAW_METHOD_CATALOG = deepFreeze(JSON.parse(String.raw`{
                   "analytics.fit.step3.focus_fit_review",
                   "analytics.fit.shared.step_status_rules",
                   "analytics.fit.shared.validation_and_color_semantics",
-                  "analytics.fit.step3.trigger_behavior",
+                  "analytics.fit.step3.endpoint_behavior",
                   "analytics.fit.step3.bootstrap_incomplete_fit",
                   "analytics.fit.step3.prune_to_mdp",
                   "analytics.fit.step3.exit_criteria"
@@ -4564,7 +4562,7 @@ const RAW_METHOD_CATALOG = deepFreeze(JSON.parse(String.raw`{
                   "analytics.fit.shared.hint_style",
                   "analytics.fit.shared.validation_and_color_semantics",
                   "analytics.fit.shared.sorted_out_semantics",
-                  "analytics.fit.step3.trigger_behavior",
+                  "analytics.fit.step3.endpoint_behavior",
                   "analytics.fit.step3.bootstrap_incomplete_fit",
                   "analytics.fit.step3.prune_to_mdp",
                   "analytics.fit.step3.exit_criteria"
@@ -4699,19 +4697,16 @@ export function getDefaultStepId(packOrId) {
   return firstStep?.id || null;
 }
 
-export function getNextExerciseStep(packOrId, currentStepId, options = {}) {
+export function getNextExerciseStep(packOrId, afterStepId, options = {}) {
   const steps = listExerciseSteps(packOrId, options);
   if (!steps.length) return null;
-  const normalizedCurrentStepId = asNonEmptyString(currentStepId);
-  if (!normalizedCurrentStepId) return steps[0] || null;
-  const currentIndex = steps.findIndex((step) => step?.id === normalizedCurrentStepId);
+  const normalizedAfterStepId = asNonEmptyString(afterStepId);
+  if (!normalizedAfterStepId) return steps[0] || null;
+  const currentIndex = steps.findIndex((step) => step?.id === normalizedAfterStepId);
   if (currentIndex === -1) return steps[0] || null;
   return steps[currentIndex + 1] || null;
 }
 
-export function getDefaultEnterTrigger() {
-  return null;
-}
 
 export function listStepTransitions(packOrStep, maybeStepId = null) {
   const step = maybeStepId == null ? packOrStep : getExerciseStep(packOrStep, maybeStepId);
@@ -4756,28 +4751,7 @@ export function getEndpointById(id, options = {}) {
   return localizeEndpointProjection(endpoint, getMethodLanguage(options));
 }
 
-export function findStepEndpointByTriggerKey(packOrId, stepId, legacyKey, options = {}) {
-  const normalizedKey = asNonEmptyString(legacyKey);
-  if (!normalizedKey) return null;
-  const endpointsForStep = listStepEndpoints(packOrId, stepId, options);
-  if (normalizedKey === "selection.apply") {
-    return endpointsForStep.find((endpoint) => endpoint.surface?.channel === "chat_apply") || null;
-  }
-  const matches = endpointsForStep.filter((endpoint) => endpoint.familyKey === normalizedKey).sort((a, b) => {
-    if (Boolean(a?.surface?.sidecarOnly) !== Boolean(b?.surface?.sidecarOnly)) return a?.surface?.sidecarOnly ? 1 : -1;
-    return compareEndpointOrder(a, b);
-  });
-  return matches[0] || null;
-}
 
-export function listStepTriggerKeysFromEndpoints(packOrId, stepId, options = {}) {
-  const keys = [];
-  for (const endpoint of listStepEndpoints(packOrId, stepId, options)) {
-    if (asNonEmptyString(endpoint?.familyKey)) keys.push(endpoint.familyKey);
-    if (endpoint?.surface?.channel === "chat_apply") keys.push("selection.apply");
-  }
-  return Array.from(new Set(keys)).sort((a, b) => a.localeCompare(b, undefined, { sensitivity: "base" }));
-}
 
 export function isSidecarOnlyEndpoint(endpoint) {
   return endpoint?.surface?.sidecarOnly === true;

@@ -3,11 +3,11 @@ import {
   DT_FEEDBACK_CHANNELS,
   DT_MUTATION_POLICIES,
   DT_EXECUTION_MODES
-} from "../config.js?v=20260312-patch11";
+} from "../config.js?v=20260313-patch11v3-final";
 import {
   listStepTransitions,
   resolveNamedTransition
-} from "../exercises/registry.js?v=20260312-patch11";
+} from "../exercises/registry.js?v=20260313-patch11v3-final";
 
 function asNonEmptyString(value) {
   if (typeof value !== "string") return null;
@@ -49,8 +49,6 @@ function normalizeMutationPolicy(value, fallback = "none") {
 function normalizeScopeMode(value, fallback = "selection") {
   const normalized = asNonEmptyString(value);
   if (normalized && DT_ENDPOINT_SCOPE_TYPES.includes(normalized)) return normalized;
-  if (normalized === "fixed_instances") return "current";
-  if (normalized === "global") return "pack";
   return fallback;
 }
 
@@ -61,9 +59,6 @@ function normalizeEndpointScope(scope) {
   };
 }
 
-function normalizeLegacySource(value) {
-  return asNonEmptyString(value) || "system";
-}
 
 export function normalizeExecutionMode(value, fallback = "none") {
   const normalized = asNonEmptyString(value);
@@ -91,33 +86,6 @@ export function resolveEffectiveExecutionMode({
   return allowed[0] || "none";
 }
 
-// Temporary no-op compatibility exports until later blocks remove remaining call-sites.
-export function normalizeTriggerKey() {
-  return null;
-}
-
-export function parseTriggerKey() {
-  return null;
-}
-
-export function resolveTriggerContext({
-  source = "system",
-  targetInstanceLabels = [],
-  boardConfig = null
-} = {}) {
-  return {
-    valid: false,
-    reason: "Legacy-Laufkontext wurde entfernt. Verwende einen kanonischen Endpoint.",
-    source: normalizeLegacySource(source),
-    requiresSelection: false,
-    mutationPolicy: normalizeMutationPolicy(null, "none"),
-    feedbackPolicy: normalizeFeedbackPolicy(null, boardConfig?.defaultFeedbackTarget || "text"),
-    allowedExecutionModes: ["none"],
-    allowedActions: [],
-    prompt: null,
-    targetInstanceLabels: normalizeStringArray(targetInstanceLabels)
-  };
-}
 
 export function resolveEndpointContext({
   exercisePack,

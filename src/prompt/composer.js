@@ -1,9 +1,9 @@
 import {
   getAllowedCanvasTypesForPack,
   getDefaultCanvasTypeIdForPack
-} from "../exercises/registry.js?v=20260312-patch11";
-import { getPromptModulesByIds } from "../exercises/library.js?v=20260312-patch11";
-import { normalizeUiLanguage } from "../i18n/index.js?v=20260312-patch11";
+} from "../exercises/registry.js?v=20260313-patch11v3-final";
+import { getPromptModulesByIds } from "../exercises/library.js?v=20260313-patch11v3-final";
+import { normalizeUiLanguage } from "../i18n/index.js?v=20260313-patch11v3-final";
 
 function asNonEmptyString(value) {
   if (typeof value !== "string") return null;

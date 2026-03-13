@@ -20,7 +20,7 @@ import {
   isSidecarOnlyEndpoint,
   getPromptModuleById,
   getPromptModulesByIds
-} from "./method-catalog.js?v=20260312-patch11";
+} from "./method-catalog.js?v=20260313-patch11v3-final";
 
 function asNonEmptyString(value) {
   if (typeof value !== "string") return null;

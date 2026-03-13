@@ -34,20 +34,6 @@ const BASE_UI_STRINGS = Object.freeze({
   "section.exerciseActions": { de: "Empfohlene Aktionen", en: "Recommended actions" },
   "section.exerciseActionsPrimary": { de: "Primäre Aktionen", en: "Primary actions" },
   "section.exerciseActionsProposal": { de: "Vorschläge", en: "Proposals" },
-  "exercise.action.secondaryHeading": { de: "Weitere Aktionen", en: "Additional actions" },
-  "exercise.action.noneAvailable": { de: "Für diesen Schritt sind aktuell keine kuratierten Aktionen sichtbar.", en: "No curated actions are currently visible for this step." },
-  "exercise.action.proposalUnavailable": { de: "Noch kein passender Vorschlag für den aktuellen Schritt und die aktuelle Selektion gespeichert.", en: "No matching proposal is stored yet for the current step and current selection." },
-  "exercise.action.applyUnavailable": { de: "Vorschläge anwenden wird aktiv, sobald für die aktuelle Selektion ein passender Vorschlag vorliegt.", en: "Apply proposals becomes active once a matching proposal exists for the current selection." },
-  "exercise.action.check": { de: "Antworten prüfen", en: "Check answers" },
-  "exercise.action.hint": { de: "Hinweis geben", en: "Give hint" },
-  "exercise.action.autocorrect": { de: "Korrektur anwenden", en: "Apply correction" },
-  "exercise.action.review": { de: "Review", en: "Review" },
-  "exercise.action.coach": { de: "Coach", en: "Coach" },
-  "exercise.action.nextStep": { de: "Nächster Schritt", en: "Next step" },
-  "exercise.action.help.default": {
-    de: "Die Übungsaktionen arbeiten auf den aktuell selektierten Canvas-Instanzen. Ohne Selektion erscheint ein Warnhinweis im Log.",
-    en: "Exercise actions work on the currently selected canvas instances. Without a selection, a warning is shown in the log."
-  },
 
   "section.adminControl": { de: "Admin-Steuerung", en: "Admin controls" },
   "admin.apiKey.label": { de: "OpenAI API Key", en: "OpenAI API key" },
@@ -68,15 +54,15 @@ const BASE_UI_STRINGS = Object.freeze({
 
   "section.flowControls": { de: "Board Flow Controls", en: "Board flow controls" },
   "flow.authoring.help": {
-    de: "Selektiere eine oder mehrere Canvas-Instanzen auf dem Board. Die erste Instanz dient als visuelle Ankerposition für den Shape-Button; der Scope kann trotzdem mehrere Instanzen oder den globalen Board-Kontext abdecken.",
-    en: "Select one or more canvas instances on the board. The first instance is used as the visual anchor for the shape button; the scope can still cover multiple instances or the global board context."
+    de: "Selektiere eine oder mehrere Canvas-Instanzen auf dem Board. Die erste Instanz dient als visuelle Ankerposition für den Shape-Button; der Scope kann trotzdem die aktuelle Selektion oder das Pack aller passenden Instanzen abdecken.",
+    en: "Select one or more canvas instances on the board. The first instance is used as the visual anchor for the shape button; the scope can still cover the current selection or the pack of all matching instances."
   },
   "flow.exercisePack.label": { de: "Flow-Paket", en: "Flow pack" },
   "flow.step.label": { de: "Schritt", en: "Step" },
   "flow.endpoint.label": { de: "Endpoint", en: "Endpoint" },
   "flow.scope.label": { de: "Scope", en: "Scope" },
-  "flow.scope.fixed": { de: "Selektierte Instanzen", en: "Selected instances" },
-  "flow.scope.global": { de: "Global (alle passenden Instanzen)", en: "Global (all matching instances)" },
+  "flow.scope.current": { de: "Selektierte / aktuelle Instanzen", en: "Selected / current instances" },
+  "flow.scope.pack": { de: "Pack (alle passenden Instanzen)", en: "Pack (all matching instances)" },
   "flow.staticLayout.label": { de: "Statisches Button-Layout verwenden", en: "Use static button layout" },
   "flow.staticLayout.help": { de: "Wenn aktiv, darf der Agent vorhandene Buttons nur freischalten oder als erledigt markieren. Es werden keine fehlenden Buttons automatisch erzeugt und keine bestehenden Buttons automatisch neu positioniert.", en: "When enabled, the agent may only unlock existing buttons or mark them as done. Missing buttons will not be created automatically and existing buttons will not be repositioned automatically." },
   "flow.status.layoutMode": { de: "Button-Layout: {value}", en: "Button layout: {value}" },
@@ -150,25 +136,8 @@ const BASE_UI_STRINGS = Object.freeze({
   "recommendation.lastUnlocked.none": { de: "keine", en: "none" },
   "recommendation.lastCompleted": { de: "Zuletzt erledigte Buttons: {value}", en: "Most recently completed buttons: {value}" },
   "recommendation.lastCompleted.none": { de: "keine", en: "none" },
-  "recommendation.lastDirectiveAt": { de: "Letzte Button-Aktion: {value}", en: "Last button action: {value}" },
   "recommendation.lastFlowAnchor": { de: "Letzter Flow-Anchor: {value}", en: "Last flow anchor: {value}" },
 
-  "exercise.action.help.noPack": {
-    de: "Kein Exercise Pack aktiv. Bitte im Admin-Modus zuerst ein Exercise Pack auswählen.",
-    en: "No exercise pack is active. In admin mode, select an exercise pack first."
-  },
-  "exercise.action.help.noStep": {
-    de: "Kein aktiver Schritt gesetzt. Bitte im Admin-Modus einen gültigen Schritt auswählen.",
-    en: "No active step is set. In admin mode, select a valid step first."
-  },
-  "exercise.action.help.nextStep": {
-    de: "Die Übungsaktionen arbeiten auf den aktuell selektierten Canvas-Instanzen. Ohne Selektion erscheint ein Warnhinweis im Log. Der nächste gültige Schritt wäre: {step}.",
-    en: "Exercise actions work on the currently selected canvas instances. Without a selection, a warning is shown in the log. The next valid step would be: {step}."
-  },
-  "exercise.action.help.noTransition": {
-    de: "Die Übungsaktionen arbeiten auf den aktuell selektierten Canvas-Instanzen. Ohne Selektion erscheint ein Warnhinweis im Log. Für den aktuellen Schritt ist kein weiterer Transition-Pfad freigegeben.",
-    en: "Exercise actions work on the currently selected canvas instances. Without a selection, a warning is shown in the log. No further transition path is enabled for the current step."
-  },
 
   "flow.status.boardFlows": { de: "Board Flows: {count}", en: "Board flows: {count}" },
   "flow.status.exercisePack": { de: "Flow-Paket: {value}", en: "Flow pack: {value}" },
@@ -210,38 +179,10 @@ const BASE_UI_STRINGS = Object.freeze({
     en: "Please analyze the relevant canvas instances and carry out sensible next steps within the workshop workflow."
   },
 
-  "sourceLabel.exerciseAgent": { de: "Exercise-Agent", en: "Exercise agent" },
-  "sourceLabel.globalAgent": { de: "Global Agent", en: "Global agent" },
-  "sourceLabel.question": { de: "Frage", en: "Question" },
 
-  "question.source.canvas": { de: "Canvas-Frage", en: "Canvas question" },
-  "question.emptyInput": { de: "{sourceLabel}: Die Eingabebox ist leer.", en: "{sourceLabel}: The input box is empty." },
-  "question.instanceMissing": { de: "{sourceLabel}: Zielinstanz konnte nicht gefunden werden.", en: "{sourceLabel}: The target instance could not be found." },
-  "question.chatIncomplete": { de: "{sourceLabel}: Chat-Interface der Instanz ist unvollständig.", en: "{sourceLabel}: The instance chat interface is incomplete." },
-  "question.missingApiKey": { de: "{sourceLabel}: Kein OpenAI API Key vorhanden.", en: "{sourceLabel}: No OpenAI API key available." },
-  "question.agentRunLocked": { de: "{sourceLabel}: Ein Agent-Run läuft bereits.", en: "{sourceLabel}: An agent run is already in progress." },
-  "question.contextUnavailable": { de: "{sourceLabel}: Konnte keinen Instanzkontext für den Frage-Call aufbauen.", en: "{sourceLabel}: Could not build an instance context for the question call." },
-  "question.modelRefusal": { de: "{sourceLabel}: Modell verweigert die Antwort: {reason}", en: "{sourceLabel}: The model refused to answer: {reason}" },
-  "question.invalidJson": { de: "{sourceLabel}: Antwort ist kein valides strukturiertes JSON.", en: "{sourceLabel}: The answer is not valid structured JSON." },
-  "question.outputWritten": { de: "{sourceLabel}: Antwort in die Ausgabebox von {instanceLabel} geschrieben.", en: "{sourceLabel}: Wrote the answer into the output box of {instanceLabel}." },
-  "question.completed": { de: "{sourceLabel}: abgeschlossen.", en: "{sourceLabel}: completed." },
-  "question.failed": { de: "{sourceLabel}: fehlgeschlagen.", en: "{sourceLabel}: failed." },
-  "question.exception": { de: "Exception beim {sourceLabel}-Call: {message}", en: "Exception during the {sourceLabel} call: {message}" },
-  "question.outputBoxMissing": { de: "WARNUNG: Keine vollständige Ausgabebox für Instanz {instanceLabel}. {sourceLabel}-Antwort wird nicht auf dem Board gerendert.", en: "WARNING: No complete output box for instance {instanceLabel}. The {sourceLabel} response is not rendered on the board." },
 });
 
-const LEGACY_UI_STRING_ALIASES = Object.freeze({
-  ["flow.status." + String.fromCharCode(112,114,111,102,105,108,101,69,102,102,101,99,116)]: "flow.status.endpointSummary",
-  ["recommendation." + ["last", String.fromCharCode(84,114,105,103,103,101,114)].join("") + ".none"]: "recommendation.lastEndpoint.none"
-});
-
-export const UI_STRINGS = new Proxy(BASE_UI_STRINGS, {
-  get(target, prop, receiver) {
-    if (typeof prop !== "string") return Reflect.get(target, prop, receiver);
-    const resolvedKey = LEGACY_UI_STRING_ALIASES[prop] || prop;
-    return Reflect.get(target, resolvedKey, receiver);
-  }
-});
+export const UI_STRINGS = BASE_UI_STRINGS;
 
 export const METHOD_I18N_OVERRIDES = Object.freeze({
   exercisePacks: Object.freeze({
