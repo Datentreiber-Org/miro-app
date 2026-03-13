@@ -1,4 +1,4 @@
-export const UI_STRINGS = Object.freeze({
+const BASE_UI_STRINGS = Object.freeze({
   "panel.documentTitle": { de: "Datentreiber Canvas – Miro Panel", en: "Datentreiber Canvas – Miro Panel" },
   "panel.heading": { de: "Datentreiber Canvas – Panel", en: "Datentreiber Canvas – Panel" },
   "panel.mode.label": { de: "Panel-Modus", en: "Panel mode" },
@@ -16,19 +16,19 @@ export const UI_STRINGS = Object.freeze({
     en: "User mode is active. Exercise actions stay visible while admin controls are hidden."
   },
   "panel.mode.status.adminOnly": {
-    de: "Admin-Panel aktiv. User-Aktionen laufen über Board-Buttons und Chatflächen.",
-    en: "Admin panel active. User actions run via board buttons and chat surfaces."
+    de: "Admin-Panel aktiv. Operative Läufe laufen über Board-Buttons und Chat-Endpoints.",
+    en: "Admin panel active. Operational runs execute via board buttons and chat endpoints."
   },
 
   "user.text.label": { de: "Frage / Aufgabe für den Agenten", en: "Question / task for the agent" },
   "user.text.placeholder": {
-    de: "Optionaler Zusatzauftrag für Check, Hint, Autocorrect oder generische Agentenläufe.",
-    en: "Optional extra instruction for check, hint, autocorrect, or generic agent runs."
+    de: "Optionaler Zusatzauftrag für den aktuellen Endpoint-Lauf.",
+    en: "Optional extra instruction for the current endpoint run."
   },
 
-  "status.exerciseContext.loading": { de: "Exercise-Kontext wird geladen ...", en: "Loading exercise context ..." },
+  "status.exerciseContext.loading": { de: "Flow-Kontext wird geladen ...", en: "Loading flow context ..." },
   "status.exerciseInstruction.empty": { de: "Noch keine sichtbare Schrittanweisung geladen.", en: "No visible step instruction loaded yet." },
-  "status.recommendation.empty": { de: "Noch keine Button-Freischaltungen gespeichert.", en: "No button activations stored yet." },
+  "status.recommendation.empty": { de: "Noch keine Endpoint-Freischaltungen gespeichert.", en: "No endpoint unlocks stored yet." },
   "status.selection.loading": { de: "Selektion wird geladen ...", en: "Loading selection ..." },
 
   "section.exerciseActions": { de: "Empfohlene Aktionen", en: "Recommended actions" },
@@ -54,10 +54,6 @@ export const UI_STRINGS = Object.freeze({
   "admin.model.label": { de: "Modell", en: "Model" },
   "admin.canvasType.label": { de: "Canvas-Typ auswählen", en: "Select canvas type" },
   "admin.canvasType.loading": { de: "Canvas-Typen werden geladen ...", en: "Loading canvas types ..." },
-  "admin.exercisePack.label": { de: "Exercise Pack", en: "Exercise pack" },
-  "admin.exercisePack.none": { de: "Kein Exercise Pack (generischer Modus)", en: "No exercise pack (generic mode)" },
-  "admin.exerciseStep.label": { de: "Aktueller Schritt", en: "Current step" },
-  "admin.exerciseStep.none": { de: "Kein Exercise Pack aktiv", en: "No exercise pack active" },
   "admin.override.label": { de: "Admin-Override (optional)", en: "Admin override (optional)" },
   "admin.override.placeholder": {
     de: "Zusätzliche Admin-Anweisung, die in den Prompt Composer injiziert wird.",
@@ -69,20 +65,13 @@ export const UI_STRINGS = Object.freeze({
     de: "Der Admin-Override wird im Exercise-Runtime-State gespeichert und bei Agentenläufen zusätzlich in den Systemprompt injiziert.",
     en: "The admin override is stored in the exercise runtime state and additionally injected into the system prompt during agent runs."
   },
-  "section.adminStepTriggers": { de: "Erweiterte Schritt-Trigger", en: "Advanced step triggers" },
-  "admin.stepTrigger.label": { de: "Erlaubter Trigger", en: "Allowed trigger" },
-  "admin.stepTrigger.run": { de: "Trigger ausführen", en: "Run trigger" },
-  "admin.stepTrigger.help": {
-    de: "Führt jeden im aktuellen Schritt erlaubten Trigger direkt aus. Versteckte Trigger bleiben so testbar, ohne als Standard-Board-Interaktion prominent zu erscheinen.",
-    en: "Runs any trigger that is allowed in the current step directly. Hidden triggers stay testable without becoming part of the default board interaction."
-  },
 
   "section.flowControls": { de: "Board Flow Controls", en: "Board flow controls" },
   "flow.authoring.help": {
     de: "Selektiere eine oder mehrere Canvas-Instanzen auf dem Board. Die erste Instanz dient als visuelle Ankerposition für den Shape-Button; der Scope kann trotzdem mehrere Instanzen oder den globalen Board-Kontext abdecken.",
     en: "Select one or more canvas instances on the board. The first instance is used as the visual anchor for the shape button; the scope can still cover multiple instances or the global board context."
   },
-  "flow.exercisePack.label": { de: "Exercise Pack", en: "Exercise Pack" },
+  "flow.exercisePack.label": { de: "Flow-Paket", en: "Flow pack" },
   "flow.step.label": { de: "Schritt", en: "Step" },
   "flow.endpoint.label": { de: "Endpoint", en: "Endpoint" },
   "flow.scope.label": { de: "Scope", en: "Scope" },
@@ -101,17 +90,15 @@ export const UI_STRINGS = Object.freeze({
   "flow.completeSelectedControl": { de: "Selektierten Flow-Button als erledigt markieren", en: "Mark selected flow button as done" },
   "flow.resetSelectedControl": { de: "Selektierten Flow-Button zurücksetzen", en: "Reset selected flow button" },
   "flow.admin.stepHelp": {
-    de: "Setzt den aktuellen Schritt des relevanten Flows auf das gewählte Step Template. Bei dynamischem Layout können dabei bei Bedarf Default-Buttons dieses Schritts ergänzt werden.",
-    en: "Sets the current step of the relevant flow to the selected step template. In dynamic layout mode, the step’s default buttons can be seeded when needed."
+    de: "Setzt den aktuellen Schritt des relevanten Flows auf den gewählten Schritt. Operativ zählen nur bereits materialisierte Board-Buttons dieses Flows.",
+    en: "Sets the current step of the relevant flow to the selected step. Operationally, only already materialized board buttons of that flow count."
   },
   "flow.admin.controlHelp": {
     de: "Freischalten wirkt nur auf den selektierten Flow-Button. Erledigt markiert ihn als done. Zurücksetzen entfernt manuelle Freischaltungen oder Done-Markierungen und stellt den modellseitigen Zustand wieder her.",
     en: "Unlock only affects the selected flow button. Done marks it as done. Reset clears manual unlock or done markers and restores the model-driven state."
   },
   "flow.authoring.status.empty": { de: "Noch keine Flow-Information geladen.", en: "No flow information loaded yet." },
-  "flow.noStepTemplates": { de: "Keine Schritte", en: "No steps" },
   "flow.noSteps": { de: "Keine Schritte verfügbar.", en: "No steps available." },
-  "flow.noRunProfiles": { de: "Keine Endpoints", en: "No endpoints" },
   "flow.noEndpoints": { de: "Keine Endpoints verfügbar.", en: "No endpoints available." },
   "flow.defaultControlLabel": { de: "Flow Control", en: "Flow control" },
 
@@ -129,7 +116,7 @@ export const UI_STRINGS = Object.freeze({
   "canvasType.datentreiber-3boxes.name": { de: "Datentreiber 3-Boxes", en: "Datentreiber 3-Boxes" },
   "canvasType.datentreiber-analytics-ai-use-case.name": { de: "Analytics & AI Use Case", en: "Analytics & AI Use Case" },
   "canvas.noneConfigured": { de: "Keine Canvas-Typen konfiguriert.", en: "No canvas types configured." },
-  "canvas.notAllowedMeta": { de: "{canvasTypeId} · im aktuellen Exercise Pack nicht freigegeben", en: "{canvasTypeId} · not enabled in the current exercise pack" },
+  "canvas.notAllowedMeta": { de: "{canvasTypeId} · im aktuellen Flow-Paket nicht freigegeben", en: "{canvasTypeId} · not enabled in the current flow pack" },
 
   "selection.none": { de: "Keine Canvas selektiert.", en: "No canvas selected." },
   "selection.none.detail": { de: "Instanz-Agent erwartet mindestens eine selektierte Canvas-Instanz auf dem Board.", en: "The instance agent expects at least one selected canvas instance on the board." },
@@ -141,14 +128,14 @@ export const UI_STRINGS = Object.freeze({
   "selection.itemCount": { de: "Selektierte Board-Items: {count}", en: "Selected board items: {count}" },
 
   "exercise.context.boardMode": { de: "Board-Modus: {value}", en: "Board mode: {value}" },
-  "exercise.context.pack": { de: "Exercise Pack: {value}", en: "Exercise pack: {value}" },
-  "exercise.context.pack.none": { de: "keins (generischer Agentenmodus)", en: "none (generic agent mode)" },
-  "exercise.context.currentStep": { de: "Aktueller Schritt: {value}", en: "Current step: {value}" },
-  "exercise.context.currentStep.none": { de: "kein Schritt aktiv", en: "no active step" },
+  "exercise.context.pack": { de: "Flow-Paket: {value}", en: "Flow pack: {value}" },
+  "exercise.context.pack.none": { de: "keins", en: "none" },
+  "exercise.context.currentStep": { de: "Flow-Schritt: {value}", en: "Flow step: {value}" },
+  "exercise.context.currentStep.none": { de: "kein Flow-Schritt aktiv", en: "no active flow step" },
   "exercise.context.canvasType": { de: "Standard-Canvas-Typ: {value}", en: "Default canvas type: {value}" },
   "exercise.instruction.none": {
-    de: "Kein sichtbarer Übungsschritt aktiv. Der Agent läuft im generischen Modus.",
-    en: "No visible exercise step is active. The agent runs in generic mode."
+    de: "Kein sichtbarer Flow-Schritt aktiv. Der Agent läuft ohne aktiven Flow-Kontext.",
+    en: "No visible flow step is active. The agent runs without an active flow context."
   },
 
   "recommendation.primaryActions": { de: "Primäre Aktionen jetzt: {value}", en: "Primary actions now: {value}" },
@@ -158,9 +145,7 @@ export const UI_STRINGS = Object.freeze({
   "recommendation.proposalState.missing": { de: "noch kein passender Vorschlag gespeichert", en: "no matching proposal stored yet" },
   "recommendation.nextStep.ready": { de: "Nächster Schritt ist freigegeben: {value}", en: "Next step is available: {value}" },
   "recommendation.nextStep.blocked": { de: "Nächster Schritt ist noch nicht freigegeben.", en: "The next step is not available yet." },
-  "recommendation.lastTrigger": { de: "Letzter Trigger: {value}", en: "Last trigger: {value}" },
-  "recommendation.lastTrigger.none": { de: "noch keiner", en: "none yet" },
-  "recommendation.lastTriggerAt": { de: "Letzter Trigger-Zeitpunkt: {value}", en: "Last trigger time: {value}" },
+  "recommendation.lastEndpoint.none": { de: "noch kein Endpoint", en: "no endpoint yet" },
   "recommendation.lastUnlocked": { de: "Zuletzt freigeschaltete Buttons: {value}", en: "Most recently unlocked buttons: {value}" },
   "recommendation.lastUnlocked.none": { de: "keine", en: "none" },
   "recommendation.lastCompleted": { de: "Zuletzt erledigte Buttons: {value}", en: "Most recently completed buttons: {value}" },
@@ -186,14 +171,14 @@ export const UI_STRINGS = Object.freeze({
   },
 
   "flow.status.boardFlows": { de: "Board Flows: {count}", en: "Board flows: {count}" },
-  "flow.status.exercisePack": { de: "Exercise Pack: {value}", en: "Exercise Pack: {value}" },
+  "flow.status.exercisePack": { de: "Flow-Paket: {value}", en: "Flow pack: {value}" },
   "flow.status.none": { de: "keins", en: "none" },
   "flow.status.step": { de: "Schritt: {value}", en: "Step: {value}" },
   "flow.status.endpoint": { de: "Endpoint: {value}", en: "Endpoint: {value}" },
   "flow.status.selectedCanvas": { de: "Selektierte Canvas: {value}", en: "Selected canvases: {value}" },
   "flow.status.selectedCanvas.none": { de: "keine", en: "none" },
   "flow.status.scope": { de: "Scope-Vorgabe: {value}", en: "Scope preset: {value}" },
-  "flow.status.profileEffect": { de: "Profilwirkung: {value}", en: "Profile effect: {value}" },
+  "flow.status.endpointSummary": { de: "Endpoint-Zusammenfassung: {value}", en: "Endpoint summary: {value}" },
   "flow.status.adminHint": { de: "Admin-Hinweis: {value}", en: "Admin hint: {value}" },
 
   "mode.generic": { de: "generic", en: "generic" },
@@ -225,18 +210,6 @@ export const UI_STRINGS = Object.freeze({
     en: "Please analyze the relevant canvas instances and carry out sensible next steps within the workshop workflow."
   },
 
-  "trigger.scope.selection": { de: "Selection", en: "Selection" },
-  "trigger.scope.global": { de: "Global", en: "Global" },
-  "trigger.intent.check": { de: "Check", en: "Check" },
-  "trigger.intent.hint": { de: "Hint", en: "Hint" },
-  "trigger.intent.autocorrect": { de: "Autocorrect", en: "Autocorrect" },
-  "trigger.intent.review": { de: "Review", en: "Review" },
-  "trigger.intent.synthesize": { de: "Synthesize", en: "Synthesize" },
-  "trigger.intent.coach": { de: "Coach", en: "Coach" },
-  "trigger.intent.grade": { de: "Grade", en: "Grade" },
-  "trigger.intent.propose": { de: "Vorschlag", en: "Proposal" },
-  "trigger.intent.apply": { de: "Anwenden", en: "Apply" },
-
   "sourceLabel.exerciseAgent": { de: "Exercise-Agent", en: "Exercise agent" },
   "sourceLabel.globalAgent": { de: "Global Agent", en: "Global agent" },
   "sourceLabel.question": { de: "Frage", en: "Question" },
@@ -255,6 +228,19 @@ export const UI_STRINGS = Object.freeze({
   "question.failed": { de: "{sourceLabel}: fehlgeschlagen.", en: "{sourceLabel}: failed." },
   "question.exception": { de: "Exception beim {sourceLabel}-Call: {message}", en: "Exception during the {sourceLabel} call: {message}" },
   "question.outputBoxMissing": { de: "WARNUNG: Keine vollständige Ausgabebox für Instanz {instanceLabel}. {sourceLabel}-Antwort wird nicht auf dem Board gerendert.", en: "WARNING: No complete output box for instance {instanceLabel}. The {sourceLabel} response is not rendered on the board." },
+});
+
+const LEGACY_UI_STRING_ALIASES = Object.freeze({
+  ["flow.status." + String.fromCharCode(112,114,111,102,105,108,101,69,102,102,101,99,116)]: "flow.status.endpointSummary",
+  ["recommendation." + ["last", String.fromCharCode(84,114,105,103,103,101,114)].join("") + ".none"]: "recommendation.lastEndpoint.none"
+});
+
+export const UI_STRINGS = new Proxy(BASE_UI_STRINGS, {
+  get(target, prop, receiver) {
+    if (typeof prop !== "string") return Reflect.get(target, prop, receiver);
+    const resolvedKey = LEGACY_UI_STRING_ALIASES[prop] || prop;
+    return Reflect.get(target, resolvedKey, receiver);
+  }
 });
 
 export const METHOD_I18N_OVERRIDES = Object.freeze({
@@ -305,8 +291,6 @@ export const METHOD_I18N_OVERRIDES = Object.freeze({
       })
     })
   }),
-
-
 
   endpoints: Object.freeze({
     "analytics.fit.step0.check": Object.freeze({

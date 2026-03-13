@@ -1,6 +1,6 @@
 <!doctype html>
 <meta charset="utf-8">
-<title>Loader HTML</title> 
+<title>Datentreiber Canvas – Loader</title> 
 <script src="https://miro.com/app/static/sdk/v2/miro.js"></script>
 <script type="module">
   const PANEL_BASE = "https://datentreiber-org.github.io/miro-app/app.html";
@@ -15,7 +15,7 @@
 
   // Headless-Runtime parallel booten.
   window.__DT_RUNTIME_CONTEXT = "headless";
-  import("./src/headless/runtime.js?v=20260312-patch11").catch((error) => {
+  import("./src/headless/runtime.js?v=20260313-patch11h").catch((error) => {
     console.error("[DT][loader] Headless-Boot fehlgeschlagen", error);
   });
 </script>

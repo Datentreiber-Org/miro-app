@@ -21,7 +21,6 @@ export {
   loadMemoryLog,
   appendMemoryLogEntry,
   normalizeProposalRecord,
-  purgeLegacyProposalStorage,
   loadActiveProposal,
   saveActiveProposal,
   clearActiveProposal,
@@ -31,7 +30,7 @@ export {
   normalizeBoardRunState,
   loadBoardRunState,
   saveBoardRunState
-} from "./storage.js?v=20260312-patch11";
+} from "./storage.js?v=20260313-patch11e";
 
 export {
   buildAgentFeedbackContent,

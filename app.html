@@ -156,7 +156,7 @@
   <div id="app-root">
   <h1 data-i18n="panel.heading">Datentreiber Canvas – Panel</h1>
 
-  <div id="panel-mode-status" data-i18n="panel.mode.status.adminOnly">Admin-Panel aktiv. User-Aktionen laufen über Board-Buttons und Chatflächen.</div>
+  <div id="panel-mode-status" data-i18n="panel.mode.status.adminOnly">Admin-Panel aktiv. Operative Läufe laufen über Board-Buttons und Chat-Endpoints.</div>
 
   <div class="row">
     <label for="board-language" data-i18n="board.language.label">App- und Boardsprache</label>
@@ -168,12 +168,12 @@
 
   <div class="row">
     <label for="user-text" data-i18n="user.text.label">Frage / Aufgabe für den Agenten</label>
-    <textarea id="user-text" data-i18n-placeholder="user.text.placeholder" placeholder="Optionaler Zusatzauftrag für Check, Hint, Autocorrect oder generische Agentenläufe."></textarea>
+    <textarea id="user-text" data-i18n-placeholder="user.text.placeholder" placeholder="Optionaler Zusatzauftrag für den aktuellen Endpoint-Lauf."></textarea>
   </div>
 
-  <div id="exercise-context-status" data-i18n="status.exerciseContext.loading">Exercise-Kontext wird geladen ...</div>
+  <div id="exercise-context-status" data-i18n="status.exerciseContext.loading">Flow-Kontext wird geladen ...</div>
   <div id="exercise-step-instruction" data-i18n="status.exerciseInstruction.empty">Noch keine sichtbare Schrittanweisung geladen.</div>
-  <div id="exercise-recommendation-status" data-i18n="status.recommendation.empty">Noch keine Button-Freischaltungen gespeichert.</div>
+  <div id="exercise-recommendation-status" data-i18n="status.recommendation.empty">Noch keine Endpoint-Freischaltungen gespeichert.</div>
   <div id="selection-status" data-i18n="status.selection.loading">Selektion wird geladen ...</div>
 
   <div class="panel-section" id="admin-panel">
@@ -197,32 +197,6 @@
     </div>
 
     <div class="row">
-      <label for="exercise-pack" data-i18n="admin.exercisePack.label">Exercise Pack</label>
-      <select id="exercise-pack">
-        <option value="" data-i18n="admin.exercisePack.none">Kein Exercise Pack (generischer Modus)</option>
-      </select>
-    </div>
-
-    <div class="row">
-      <label for="exercise-step" data-i18n="admin.exerciseStep.label">Aktueller Schritt</label>
-      <select id="exercise-step" disabled>
-        <option value="" data-i18n="admin.exerciseStep.none">Kein Exercise Pack aktiv</option>
-      </select>
-    </div>
-
-    <div class="panel-section" id="admin-trigger-panel">
-      <div class="panel-section-title" data-i18n="section.adminStepTriggers">Erweiterte Schritt-Trigger</div>
-      <div class="row">
-        <label for="exercise-admin-trigger" data-i18n="admin.stepTrigger.label">Erlaubter Trigger</label>
-        <select id="exercise-admin-trigger"></select>
-      </div>
-      <div class="btn-row">
-        <button id="btn-exercise-admin-trigger-run" data-i18n="admin.stepTrigger.run">Trigger ausführen</button>
-      </div>
-      <div id="exercise-admin-trigger-help" class="helper-text" data-i18n="admin.stepTrigger.help">Führt jeden im aktuellen Schritt erlaubten Trigger direkt aus. Versteckte Trigger bleiben so testbar, ohne im User-Panel prominent zu erscheinen.</div>
-    </div>
-
-    <div class="row">
       <label for="admin-override-text" data-i18n="admin.override.label">Admin-Override (optional)</label>
       <textarea id="admin-override-text" data-i18n-placeholder="admin.override.placeholder" placeholder="Zusätzliche Admin-Anweisung, die in den Prompt Composer injiziert wird."></textarea>
       <div class="btn-row">
@@ -237,7 +211,7 @@
       <div class="helper-text" data-i18n="flow.authoring.help">Selektiere eine oder mehrere Canvas-Instanzen auf dem Board. Die erste Instanz dient als visuelle Ankerposition für den Shape-Button; der Scope kann trotzdem mehrere Instanzen oder den globalen Board-Kontext abdecken.</div>
 
       <div class="row">
-        <label for="flow-exercise-pack" data-i18n="flow.exercisePack.label">Exercise Pack</label>
+        <label for="flow-exercise-pack" data-i18n="flow.exercisePack.label">Flow-Paket</label>
         <select id="flow-exercise-pack"></select>
       </div>
 
@@ -276,7 +250,7 @@
         <button id="btn-flow-create-control" data-i18n="flow.createControl">Control erzeugen</button>
         <button id="btn-flow-set-current-step" data-i18n="flow.setCurrentStep">Aktiven Schritt des Flows setzen</button>
       </div>
-      <div class="helper-text" data-i18n="flow.admin.stepHelp">Setzt den aktuellen Schritt des relevanten Flows auf das gewählten Schritt und ergänzt bei Bedarf die Default-Buttons dieses Schritts.</div>
+      <div class="helper-text" data-i18n="flow.admin.stepHelp">Setzt den aktuellen Schritt des relevanten Flows auf den gewählten Schritt. Operativ zählen nur bereits materialisierte Board-Buttons dieses Flows.</div>
 
       <div class="btn-row">
         <button id="btn-flow-activate-selected-control" data-i18n="flow.activateSelectedControl">Selektierten Flow-Button freischalten</button>
@@ -300,6 +274,6 @@
   <pre id="log"></pre>
 
   </div>
-  <script type="module" src="./src/main.js?v=20260312-patch11"></script>
+  <script type="module" src="./src/main.js?v=20260313-patch11h"></script>
 </body>
 </html>

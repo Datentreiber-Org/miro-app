@@ -30,83 +30,87 @@ function strictObjectSchema(properties) {
   };
 }
 
-const AGENT_ACTION_SCHEMA = strictObjectSchema({
-    type: { type: "string" },
-    instanceLabel: nullableStringSchema("Menschenlesbares Canvas-Label der Zielinstanz."),
-    instanceId: nullableStringSchema("Optionale interne Zielinstanz-ID; wenn möglich instanceLabel bevorzugen."),
-    stickyId: nullableStringSchema("Alias-ID oder Sticky-Referenz einer bestehenden Sticky Note."),
-    refId: nullableStringSchema("Temporäre Ref-ID für neu erzeugte Stickies, damit spätere Actions darauf referenzieren können."),
-    fromStickyId: nullableStringSchema("Alias-ID oder Ref-ID der Start-Sticky für Connectoren."),
-    toStickyId: nullableStringSchema("Alias-ID oder Ref-ID der Ziel-Sticky für Connectoren."),
-    area: nullableStringSchema("Area/Region innerhalb der Zielinstanz. Die App platziert Stickies innerhalb der Region automatisch."),
-    targetArea: nullableStringSchema("Ziel-Region innerhalb der Zielinstanz. Die App platziert Stickies innerhalb der Region automatisch."),
-    text: nullableStringSchema("Textinhalt für create_sticky oder inform."),
-    message: nullableStringSchema("Informationsnachricht für inform."),
-    color: nullableStringSchema("Optionale Miro-Sticky-Farbe aus der unterstützten Palette, z. B. green, red, blue."),
-    checked: nullableBooleanSchema("Optionaler sichtbarer Prüfstatus für create_sticky oder set_check_status."),
-    directed: nullableBooleanSchema("Ob der Connector gerichtet sein soll."),
-    reverseDirection: nullableBooleanSchema("Ob die vom Modell gedachte Richtung invertiert werden soll.")
+const ENDPOINT_ACTION_SCHEMA = strictObjectSchema({
+  type: { type: "string" },
+  instanceLabel: nullableStringSchema("Menschenlesbares Canvas-Label der Zielinstanz."),
+  instanceId: nullableStringSchema("Optionale interne Zielinstanz-ID; wenn möglich instanceLabel bevorzugen."),
+  stickyId: nullableStringSchema("Alias-ID oder Sticky-Referenz einer bestehenden Sticky Note."),
+  refId: nullableStringSchema("Temporäre Ref-ID für neu erzeugte Stickies, damit spätere Actions darauf referenzieren können."),
+  fromStickyId: nullableStringSchema("Alias-ID oder Ref-ID der Start-Sticky für Connectoren."),
+  toStickyId: nullableStringSchema("Alias-ID oder Ref-ID der Ziel-Sticky für Connectoren."),
+  area: nullableStringSchema("Area/Region innerhalb der Zielinstanz. Die App platziert Stickies innerhalb der Region automatisch."),
+  targetArea: nullableStringSchema("Ziel-Region innerhalb der Zielinstanz. Die App platziert Stickies innerhalb der Region automatisch."),
+  text: nullableStringSchema("Textinhalt für create_sticky oder inform."),
+  message: nullableStringSchema("Informationsnachricht für inform."),
+  color: nullableStringSchema("Optionale Miro-Sticky-Farbe aus der unterstützten Palette, z. B. green, red, blue."),
+  checked: nullableBooleanSchema("Optionaler sichtbarer Prüfstatus für create_sticky oder set_check_status."),
+  directed: nullableBooleanSchema("Ob der Connector gerichtet sein soll."),
+  reverseDirection: nullableBooleanSchema("Ob die vom Modell gedachte Richtung invertiert werden soll.")
 });
 
-const AGENT_RESPONSE_JSON_SCHEMA = strictObjectSchema({
-    analysis: { type: "string", description: "Kurze Analyse des aktuellen Board-Zustands." },
-    executionMode: {
-      type: "string",
-      enum: ["none", "direct_apply", "proposal_only"],
-      description: "Bestimmt, ob keine Actions, direkte Anwendung oder nur ein Vorschlag zurückgegeben wird."
-    },
-    actions: {
+const ENDPOINT_RESPONSE_JSON_SCHEMA = strictObjectSchema({
+  analysis: { type: "string", description: "Kurze Analyse des aktuellen Board-Zustands." },
+  executionMode: {
+    type: "string",
+    enum: ["none", "direct_apply", "proposal_only"],
+    description: "Bestimmt, ob keine Actions, direkte Anwendung oder nur ein Vorschlag zurückgegeben wird."
+  },
+  actions: {
+    type: "array",
+    items: ENDPOINT_ACTION_SCHEMA
+  },
+  memoryEntry: strictObjectSchema({
+    summary: { type: "string" },
+    workSteps: {
       type: "array",
-      items: AGENT_ACTION_SCHEMA
+      items: strictObjectSchema({
+        instanceLabel: nullableStringSchema("Menschenlesbares Canvas-Label oder null."),
+        text: { type: "string" }
+      })
     },
-    memoryEntry: strictObjectSchema({
-      summary: { type: "string" },
-      workSteps: {
-        type: "array",
-        items: strictObjectSchema({
-          instanceLabel: nullableStringSchema("Menschenlesbares Canvas-Label oder null."),
-          text: { type: "string" }
-        })
-      },
-      decisionsAdded: { type: "array", items: { type: "string" } },
-      decisionsRemoved: { type: "array", items: { type: "string" } },
-      openIssuesAdded: { type: "array", items: { type: "string" } },
-      openIssuesResolved: { type: "array", items: { type: "string" } },
-      nextFocus: nullableStringSchema("Sinnvoller nächster Fokus."),
-      stepStatus: nullableStringSchema("z. B. not_started, in_progress, ready_for_review.")
-    }),
-    feedback: strictObjectSchema({
-      title: { type: "string" },
-      summary: { type: "string" },
-      sections: {
-        type: "array",
-        items: strictObjectSchema({
-          heading: nullableStringSchema("Überschrift des Feedback-Abschnitts."),
-          bullets: { type: "array", items: { type: "string" } }
-        })
-      }
-    }),
-    flowControlDirectives: strictObjectSchema({
-      unlockEndpointIds: { type: "array", items: { type: "string" }, description: "Endpoint-IDs von Buttons, die freigeschaltet werden sollen." },
-      completeEndpointIds: { type: "array", items: { type: "string" }, description: "Endpoint-IDs von Buttons, die als erledigt markiert werden sollen." }
-    }),
-    evaluation: strictObjectSchema({
-      score: nullableNumberSchema("Optionaler numerischer Score."),
-      scale: nullableStringSchema("Skalenbeschreibung, z. B. 0-100."),
-      verdict: nullableStringSchema("Kurzurteil."),
-      rubric: {
-        type: "array",
-        items: strictObjectSchema({
-          criterion: nullableStringSchema("Bewertungskriterium."),
-          status: nullableStringSchema("z. B. met, partly_met, missing."),
-          comment: nullableStringSchema("Kurzer Kommentar zum Kriterium.")
-        })
-      }
-    })
-});
-
-const QUESTION_RESPONSE_JSON_SCHEMA = strictObjectSchema({
-  answer: { type: "string", description: "Direkte Antwort auf die Nutzerfrage zum Canvas." }
+    decisionsAdded: { type: "array", items: { type: "string" } },
+    decisionsRemoved: { type: "array", items: { type: "string" } },
+    openIssuesAdded: { type: "array", items: { type: "string" } },
+    openIssuesResolved: { type: "array", items: { type: "string" } },
+    nextFocus: nullableStringSchema("Sinnvoller nächster Fokus."),
+    stepStatus: nullableStringSchema("z. B. not_started, in_progress, ready_for_review.")
+  }),
+  feedback: strictObjectSchema({
+    title: { type: "string" },
+    summary: { type: "string" },
+    sections: {
+      type: "array",
+      items: strictObjectSchema({
+        heading: nullableStringSchema("Überschrift des Feedback-Abschnitts."),
+        bullets: { type: "array", items: { type: "string" } }
+      })
+    }
+  }),
+  flowControlDirectives: strictObjectSchema({
+    unlockEndpointIds: {
+      type: "array",
+      items: { type: "string" },
+      description: "Endpoint-IDs von Controls, die freigeschaltet werden sollen."
+    },
+    completeEndpointIds: {
+      type: "array",
+      items: { type: "string" },
+      description: "Endpoint-IDs von Controls, die als erledigt markiert werden sollen."
+    }
+  }),
+  evaluation: strictObjectSchema({
+    score: nullableNumberSchema("Optionaler numerischer Score."),
+    scale: nullableStringSchema("Skalenbeschreibung, z. B. 0-100."),
+    verdict: nullableStringSchema("Kurzurteil."),
+    rubric: {
+      type: "array",
+      items: strictObjectSchema({
+        criterion: nullableStringSchema("Bewertungskriterium."),
+        status: nullableStringSchema("z. B. met, partly_met, missing."),
+        comment: nullableStringSchema("Kurzer Kommentar zum Kriterium.")
+      })
+    }
+  })
 });
 
 function buildMessageInput(systemPrompt, userText) {
@@ -183,11 +187,6 @@ async function performResponsesRequest({ apiKey, body, endpoint = OPENAI_ENDPOIN
   return JSON.parse(raw);
 }
 
-// ------------------------------------------------------------
-// Robust JSON aus Modell-Output parsen
-// - entfernt ```json ... ``` Code-Fences
-// - extrahiert bei Bedarf das erste vollständige {...}-Objekt
-// ------------------------------------------------------------
 export function parseJsonFromModelOutput(rawText) {
   if (typeof rawText !== "string") return null;
 
@@ -243,9 +242,6 @@ export function parseJsonFromModelOutput(rawText) {
   return null;
 }
 
-// --------------------------------------------------------------------
-// OpenAI Responses API Call: return aggregated output_text (string)
-// --------------------------------------------------------------------
 export async function callOpenAIResponses({
   apiKey,
   model,
@@ -265,11 +261,11 @@ export async function callOpenAIResponses({
   return extractOutputTextFromResponse(data);
 }
 
-export function getAgentResponseJsonSchema() {
-  return AGENT_RESPONSE_JSON_SCHEMA;
+export function getEndpointResponseJsonSchema() {
+  return ENDPOINT_RESPONSE_JSON_SCHEMA;
 }
 
-export async function callOpenAIAgentStructured({
+export async function callOpenAIEndpointStructured({
   apiKey,
   model,
   systemPrompt,
@@ -283,10 +279,10 @@ export async function callOpenAIAgentStructured({
     verbosity,
     format: {
       type: "json_schema",
-      name: "dt_agent_response",
-      description: "Strukturierter Agenten-Output für die Datentreiber Miro-App.",
+      name: "dt_endpoint_response",
+      description: "Strukturierter Endpoint-Output für die Datentreiber Miro-App.",
       strict: true,
-      schema: AGENT_RESPONSE_JSON_SCHEMA
+      schema: ENDPOINT_RESPONSE_JSON_SCHEMA
     }
   };
 
@@ -303,47 +299,6 @@ export async function callOpenAIAgentStructured({
   };
 }
 
-export function getQuestionResponseJsonSchema() {
-  return QUESTION_RESPONSE_JSON_SCHEMA;
-}
-
-export async function callOpenAIQuestionStructured({
-  apiKey,
-  model,
-  systemPrompt,
-  userText,
-  endpoint = OPENAI_ENDPOINT,
-  reasoningEffort = "none",
-  verbosity = "medium"
-}) {
-  const body = buildBaseRequestBody({ model, systemPrompt, userText, reasoningEffort });
-  body.text = {
-    verbosity,
-    format: {
-      type: "json_schema",
-      name: "dt_question_response",
-      description: "Direkte Antwort auf eine Nutzerfrage zu einer Canvas-Instanz.",
-      strict: true,
-      schema: QUESTION_RESPONSE_JSON_SCHEMA
-    }
-  };
-
-  const data = await performResponsesRequest({ apiKey, body, endpoint });
-  const refusal = extractRefusalFromResponse(data);
-  const outputText = extractOutputTextFromResponse(data);
-  const parsed = outputText ? (parseJsonFromModelOutput(outputText) || null) : null;
-
-  return {
-    rawResponse: data,
-    refusal,
-    outputText,
-    parsed
-  };
-}
-
-// --------------------------------------------------------------------
-// Action Dispatcher (generic)
-// --------------------------------------------------------------------
 export async function dispatchActions(actions, handlers, log) {
   if (!Array.isArray(actions) || actions.length === 0) {
     if (typeof log === "function") log("Keine Actions (actions-Array ist leer).");

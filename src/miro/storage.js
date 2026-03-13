@@ -13,8 +13,6 @@ import {
   DT_STORAGE_KEY_ACTIVE_PROPOSAL_PREFIX,
   DT_STORAGE_KEY_PROPOSAL_INDEX,
   DT_STORAGE_KEY_PROPOSAL_PREFIX,
-  DT_DEFAULT_FEEDBACK_CHANNEL,
-  DT_DEFAULT_APP_ADMIN_POLICY,
   DT_MEMORY_RECENT_LOG_LIMIT
 } from "../config.js?v=20260310-batch10-1";
 
@@ -44,6 +42,9 @@ function uniqueIds(ids) {
   return Array.from(new Set((ids || []).filter(Boolean)));
 }
 
+function normalizeStringArray(values) {
+  return uniqueIds((Array.isArray(values) ? values : []).map((value) => asTrimmedString(value)).filter(Boolean));
+}
 
 function boardFlowKey(flowId) {
   return DT_STORAGE_KEY_BOARD_FLOW_PREFIX + String(flowId);
@@ -203,63 +204,27 @@ export async function listBoardFlows(log) {
   return result;
 }
 
-function normalizeBoardMode(value) {
-  return value === "exercise" ? "exercise" : "generic";
-}
-
-function normalizeBoardSystemTagIds(rawSystemTagIds) {
-  const src = (rawSystemTagIds && typeof rawSystemTagIds === "object") ? rawSystemTagIds : {};
-  return {
-    check: asTrimmedString(src.check)
-  };
-}
-
-export function normalizeBoardConfig(rawConfig, { defaultCanvasTypeId = null } = {}) {
+export function normalizeBoardConfig(rawConfig = {}) {
   const src = (rawConfig && typeof rawConfig === "object") ? rawConfig : {};
-  const activeExercisePackId = asTrimmedString(src.activeExercisePackId);
-  const normalizedDefaultCanvasTypeId = asTrimmedString(src.defaultCanvasTypeId) || asTrimmedString(defaultCanvasTypeId);
-  const lang = normalizeUiLanguage(src.lang);
-  const defaultFeedbackTarget = asTrimmedString(src.defaultFeedbackTarget) || DT_DEFAULT_FEEDBACK_CHANNEL;
-  const adminPolicy = asTrimmedString(src.adminPolicy) || DT_DEFAULT_APP_ADMIN_POLICY;
-  const systemTags = Array.from(new Set((Array.isArray(src.systemTags) ? src.systemTags : []).map((value) => asTrimmedString(value)).filter(Boolean)));
-  const flowControlsStaticLayout = src.flowControlsStaticLayout !== false;
-  const mode = activeExercisePackId ? "exercise" : normalizeBoardMode(src.mode);
   return {
-    version: 5,
-    mode,
-    activeExercisePackId: activeExercisePackId || null,
-    defaultCanvasTypeId: normalizedDefaultCanvasTypeId || null,
-    lang,
-    defaultFeedbackTarget,
-    adminPolicy,
-    systemTags,
-    systemTagIds: normalizeBoardSystemTagIds(src.systemTagIds),
-    flowControlsStaticLayout,
-    userMayChangePack: src.userMayChangePack === true,
-    userMayChangeStep: src.userMayChangeStep === true,
-    appAdminUserIds: Array.from(new Set((Array.isArray(src.appAdminUserIds) ? src.appAdminUserIds : []).map((value) => asTrimmedString(value)).filter(Boolean)))
+    mode: asTrimmedString(src.mode) || null,
+    defaultCanvasTypeId: asTrimmedString(src.defaultCanvasTypeId) || null,
+    lang: normalizeUiLanguage(src.lang),
+    defaultFeedbackTarget: asTrimmedString(src.defaultFeedbackTarget) || null,
+    adminPolicy: asTrimmedString(src.adminPolicy) || null,
+    systemTags: normalizeStringArray(src.systemTags),
+    flowControlsStaticLayout: Boolean(src.flowControlsStaticLayout)
   };
 }
 
-export function normalizeExerciseRuntime(rawRuntime) {
+export function normalizeExerciseRuntime(rawRuntime = {}) {
   const src = (rawRuntime && typeof rawRuntime === "object") ? rawRuntime : {};
-  const adminOverride = asTrimmedString(src.adminOverride);
-  const lastUnlock = uniqueIds(Array.isArray(src.lastFlowDirectiveUnlockEndpointIds) ? src.lastFlowDirectiveUnlockEndpointIds : []);
-  const lastComplete = uniqueIds(Array.isArray(src.lastFlowDirectiveCompleteEndpointIds) ? src.lastFlowDirectiveCompleteEndpointIds : []);
-  const lastActiveFlowAnchorInstanceId = asTrimmedString(src.lastActiveFlowAnchorInstanceId);
   return {
-    version: 2,
-    currentStepId: asTrimmedString(src.currentStepId),
-    adminOverride,
-    lastEndpointId: asTrimmedString(src.lastEndpointId),
-    lastTriggerKey: asTrimmedString(src.lastTriggerKey),
-    lastTriggerSource: asTrimmedString(src.lastTriggerSource),
-    lastTriggerAt: asTrimmedString(src.lastTriggerAt),
-    lastFlowDirectiveUnlockEndpointIds: lastUnlock,
-    lastFlowDirectiveCompleteEndpointIds: lastComplete,
-    lastFlowDirectiveAt: asTrimmedString(src.lastFlowDirectiveAt),
-    lastActiveFlowAnchorInstanceId,
-    lastUpdatedAt: asTrimmedString(src.lastUpdatedAt)
+    adminOverride: asTrimmedString(src.adminOverride) || null,
+    lastEndpointId: asTrimmedString(src.lastEndpointId) || null,
+    lastFlowDirectiveUnlockEndpointIds: normalizeStringArray(src.lastFlowDirectiveUnlockEndpointIds),
+    lastFlowDirectiveCompleteEndpointIds: normalizeStringArray(src.lastFlowDirectiveCompleteEndpointIds),
+    lastActiveFlowAnchorInstanceId: asTrimmedString(src.lastActiveFlowAnchorInstanceId) || null
   };
 }
 
@@ -270,14 +235,8 @@ const BOARD_ANCHOR_LAYOUT = {
   height: 8
 };
 
-const SUPPORTED_BOARD_ANCHOR_VERSIONS = Object.freeze([1, 2, 3, 4]);
-
-function isSupportedBoardAnchorVersion(version) {
-  return SUPPORTED_BOARD_ANCHOR_VERSIONS.includes(Number(version));
-}
-
 function isBoardAnchorMeta(meta) {
-  return !!(meta && typeof meta === "object" && isSupportedBoardAnchorVersion(meta.version));
+  return !!(meta && typeof meta === "object" && !Array.isArray(meta));
 }
 
 function pickCanonicalBoardAnchor(anchors) {
@@ -404,7 +363,7 @@ export async function ensureBoardAnchor({ defaultCanvasTypeId = null, log } = {}
 
   if (!anchors.length) {
     createdAnchor = await createBoardAnchorItem(log);
-    const initialConfig = normalizeBoardConfig(null, { defaultCanvasTypeId });
+    const initialConfig = normalizeBoardConfig({ defaultCanvasTypeId });
 
     try {
       if (createdAnchor?.setMetadata) {
@@ -434,7 +393,7 @@ export async function ensureBoardAnchor({ defaultCanvasTypeId = null, log } = {}
     if (typeof log === "function") log("Fehler beim Lesen der Board-Konfiguration aus dem Anchor: " + e.message);
   }
 
-  const normalized = normalizeBoardConfig(rawMeta, { defaultCanvasTypeId });
+  const normalized = normalizeBoardConfig(rawMeta);
   try {
     if (canonical?.setMetadata && JSON.stringify(rawMeta || null) !== JSON.stringify(normalized)) {
       await canonical.setMetadata(DT_ANCHOR_META_KEY_BOARD, normalized);
@@ -458,7 +417,7 @@ export async function loadBoardConfigFromAnchor({ defaultCanvasTypeId = null, lo
     if (typeof log === "function") log("Fehler beim Laden der Board-Konfiguration aus dem Anchor: " + e.message);
   }
 
-  const normalized = normalizeBoardConfig(rawMeta, { defaultCanvasTypeId });
+  const normalized = normalizeBoardConfig(rawMeta);
 
   try {
     if (anchor?.setMetadata && JSON.stringify(rawMeta || null) !== JSON.stringify(normalized)) {
@@ -475,7 +434,7 @@ export async function saveBoardConfigToAnchor(config, { defaultCanvasTypeId = nu
   await ensureMiroReady(log);
 
   const anchor = await ensureBoardAnchor({ defaultCanvasTypeId, log });
-  const normalized = normalizeBoardConfig(config, { defaultCanvasTypeId });
+  const normalized = normalizeBoardConfig(config);
 
   try {
     if (anchor?.setMetadata) {
@@ -755,10 +714,7 @@ export async function saveExerciseRuntime(runtime, log) {
   await ensureMiroReady(log);
 
   const col = getStorageCollection();
-  const normalized = normalizeExerciseRuntime({
-    ...(runtime && typeof runtime === "object" ? runtime : {}),
-    lastUpdatedAt: new Date().toISOString()
-  });
+  const normalized = normalizeExerciseRuntime(runtime);
 
   if (!col) return normalized;
 
@@ -820,8 +776,6 @@ export function normalizeProposalRecord(rawRecord) {
     exercisePackId,
     stepId: asTrimmedString(src.stepId),
     stepLabel: asTrimmedString(src.stepLabel),
-    triggerKey: asTrimmedString(src.triggerKey),
-    triggerSource: asTrimmedString(src.triggerSource),
     endpointId,
     controlId: asTrimmedString(src.controlId),
     basedOnStateHash: asTrimmedString(src.basedOnStateHash),

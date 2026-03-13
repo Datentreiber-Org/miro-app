@@ -1,13 +1,10 @@
 import {
-  DT_TRIGGER_KEYS,
-  DT_TRIGGER_DEFAULTS,
-  DT_TRIGGER_SOURCES,
+  DT_ENDPOINT_SCOPE_TYPES,
   DT_FEEDBACK_CHANNELS,
   DT_MUTATION_POLICIES,
   DT_EXECUTION_MODES
 } from "../config.js?v=20260312-patch11";
 import {
-  getPackDefaults,
   listStepTransitions,
   resolveNamedTransition
 } from "../exercises/registry.js?v=20260312-patch11";
@@ -16,6 +13,14 @@ function asNonEmptyString(value) {
   if (typeof value !== "string") return null;
   const trimmed = value.trim();
   return trimmed || null;
+}
+
+function pickFirstNonEmptyString(...values) {
+  for (const value of values) {
+    const normalized = asNonEmptyString(value);
+    if (normalized) return normalized;
+  }
+  return null;
 }
 
 export function normalizeStringArray(values) {
@@ -41,31 +46,23 @@ function normalizeMutationPolicy(value, fallback = "none") {
   return normalized && DT_MUTATION_POLICIES.includes(normalized) ? normalized : fallback;
 }
 
-export function normalizeTriggerKey(value) {
-  const raw = asNonEmptyString(value);
-  if (!raw) return null;
-  const normalized = raw
-    .replace(/([a-z0-9])([A-Z])/g, "$1.$2")
-    .replace(/[\s_-]+/g, ".")
-    .replace(/\.{2,}/g, ".")
-    .toLowerCase();
-  return DT_TRIGGER_KEYS.includes(normalized) ? normalized : null;
+function normalizeScopeMode(value, fallback = "selection") {
+  const normalized = asNonEmptyString(value);
+  if (normalized && DT_ENDPOINT_SCOPE_TYPES.includes(normalized)) return normalized;
+  if (normalized === "fixed_instances") return "current";
+  if (normalized === "global") return "pack";
+  return fallback;
 }
 
-export function parseTriggerKey(triggerKey) {
-  const normalized = normalizeTriggerKey(triggerKey);
-  if (!normalized) return null;
-  const [scope, intent] = normalized.split(".");
+function normalizeEndpointScope(scope) {
   return {
-    triggerKey: normalized,
-    scope: scope || null,
-    intent: intent || null
+    mode: normalizeScopeMode(scope?.mode),
+    allowedCanvasTypeIds: normalizeStringArray(scope?.allowedCanvasTypeIds)
   };
 }
 
-export function normalizeTriggerSource(value) {
-  const normalized = asNonEmptyString(value);
-  return normalized && DT_TRIGGER_SOURCES.includes(normalized) ? normalized : "system";
+function normalizeLegacySource(value) {
+  return asNonEmptyString(value) || "system";
 }
 
 export function normalizeExecutionMode(value, fallback = "none") {
@@ -94,72 +91,38 @@ export function resolveEffectiveExecutionMode({
   return allowed[0] || "none";
 }
 
-export function getTriggerDefault(triggerKey) {
-  const normalizedTriggerKey = normalizeTriggerKey(triggerKey);
-  if (!normalizedTriggerKey) return null;
-  const defaults = DT_TRIGGER_DEFAULTS[normalizedTriggerKey] || null;
-  return defaults ? { triggerKey: normalizedTriggerKey, ...defaults } : null;
+// Temporary no-op compatibility exports until later blocks remove remaining call-sites.
+export function normalizeTriggerKey() {
+  return null;
 }
 
-export function buildTriggerRequest({ scope = null, intent = null, source = "system", triggerKey = null } = {}) {
-  const normalizedSource = normalizeTriggerSource(source);
-  const explicitKey = normalizeTriggerKey(triggerKey);
-  if (explicitKey) {
-    return {
-      triggerKey: explicitKey,
-      source: normalizedSource
-    };
-  }
-  const scopeText = asNonEmptyString(scope);
-  const intentText = asNonEmptyString(intent);
-  const candidate = scopeText && intentText ? `${scopeText}.${intentText}` : null;
-  const normalizedTriggerKey = normalizeTriggerKey(candidate);
+export function parseTriggerKey() {
+  return null;
+}
+
+export function resolveTriggerContext({
+  source = "system",
+  targetInstanceLabels = [],
+  boardConfig = null
+} = {}) {
   return {
-    triggerKey: normalizedTriggerKey,
-    source: normalizedSource
+    valid: false,
+    reason: "Legacy-Laufkontext wurde entfernt. Verwende einen kanonischen Endpoint.",
+    source: normalizeLegacySource(source),
+    requiresSelection: false,
+    mutationPolicy: normalizeMutationPolicy(null, "none"),
+    feedbackPolicy: normalizeFeedbackPolicy(null, boardConfig?.defaultFeedbackTarget || "text"),
+    allowedExecutionModes: ["none"],
+    allowedActions: [],
+    prompt: null,
+    targetInstanceLabels: normalizeStringArray(targetInstanceLabels)
   };
-}
-
-export function buildRunModeFromTriggerKey(triggerKey) {
-  const key = normalizeTriggerKey(triggerKey);
-  if (key === "question") return "question";
-  return "endpoint";
-}
-
-export function buildTriggerSourceLabel(triggerKey, { lang = "de" } = {}) {
-  const key = normalizeTriggerKey(triggerKey);
-  if (!key) return lang === "de" ? "Unbekannt" : "Unknown";
-  const labels = {
-    de: {
-      "selection.hint": "Hinweis",
-      "selection.check": "Check",
-      "selection.propose": "Vorschlag",
-      "selection.apply": "Anwenden",
-      "selection.autocorrect": "Autokorrektur",
-      "global.apply": "Global anwenden"
-    },
-    en: {
-      "selection.hint": "Hint",
-      "selection.check": "Check",
-      "selection.propose": "Proposal",
-      "selection.apply": "Apply",
-      "selection.autocorrect": "Autocorrect",
-      "global.apply": "Apply globally"
-    }
-  };
-  return labels[lang]?.[key] || labels.de[key] || key;
-}
-
-function deriveTriggerIntent(triggerKey) {
-  return parseTriggerKey(triggerKey)?.intent || null;
 }
 
 export function resolveEndpointContext({
   exercisePack,
   currentStep,
   endpoint,
-  source = "system",
-  selectionCount = 0,
   targetInstanceIds = [],
   targetInstanceLabels = [],
   boardConfig = null
@@ -168,102 +131,19 @@ export function resolveEndpointContext({
   if (!currentStep) throw new Error("resolveEndpointContext: missing currentStep");
   if (!endpoint) throw new Error("resolveEndpointContext: missing endpoint");
 
-  const normalizedTriggerKey = normalizeTriggerKey(endpoint.triggerKey);
-  const normalizedSource = normalizeTriggerSource(source);
-  const requiresSelection = endpoint.scope?.mode === "selection";
-  const normalizedTargetIds = normalizeStringArray(targetInstanceIds);
-  const normalizedTargets = normalizeStringArray(targetInstanceLabels);
-  const packDefaults = getPackDefaults(exercisePack);
-
+  const scope = normalizeEndpointScope(endpoint.scope);
   return {
-    exercisePackId: exercisePack.id,
-    stepId: currentStep.id,
-    endpointId: endpoint.id,
-    triggerKey: normalizedTriggerKey,
-    triggerSource: normalizedSource,
-    triggerIntent: deriveTriggerIntent(normalizedTriggerKey),
-    scope: endpoint.scope,
-    requiresSelection,
-    targetInstanceIds: normalizedTargetIds,
-    targetInstanceLabels: normalizedTargets,
-    mutationPolicy: normalizeMutationPolicy(endpoint.run?.mutationPolicy, "proposal_only"),
-    feedbackPolicy: normalizeFeedbackPolicy(endpoint.run?.feedbackPolicy, packDefaults.feedbackChannel || boardConfig?.defaultFeedbackTarget || "text"),
+    exercisePackId: asNonEmptyString(exercisePack.id),
+    stepId: asNonEmptyString(currentStep.id),
+    endpointId: asNonEmptyString(endpoint.id),
+    scope,
+    requiresSelection: scope.mode === "selection",
+    targetInstanceIds: normalizeStringArray(targetInstanceIds),
+    targetInstanceLabels: normalizeStringArray(targetInstanceLabels),
+    mutationPolicy: normalizeMutationPolicy(endpoint.run?.mutationPolicy, "none"),
+    feedbackPolicy: normalizeFeedbackPolicy(endpoint.run?.feedbackPolicy, boardConfig?.defaultFeedbackTarget || "text"),
     allowedExecutionModes: normalizeAllowedExecutionModes(endpoint.run?.allowedExecutionModes, ["none"]),
     allowedActions: normalizeStringArray(endpoint.run?.allowedActions)
-  };
-}
-
-export function isTriggerAllowed({ triggerKey = null, source = "system", hasSelection = false } = {}) {
-  const parsed = parseTriggerKey(triggerKey);
-  if (!parsed) return false;
-  const defaults = getTriggerDefault(parsed.triggerKey);
-  if (!defaults) return false;
-  if (defaults.requiresSelection === true && !hasSelection) return false;
-  return normalizeTriggerSource(source) != null;
-}
-
-export function resolveTriggerContext({
-  triggerKey,
-  source = "system",
-  selectionCount = 0,
-  targetInstanceLabels = [],
-  boardConfig = null
-} = {}) {
-  const parsed = parseTriggerKey(triggerKey);
-  if (!parsed) {
-    return {
-      valid: false,
-      reason: "Ungültiger oder unbekannter Trigger-Key.",
-      triggerKey: null,
-      scope: null,
-      intent: null,
-      source: normalizeTriggerSource(source),
-      targetInstanceLabels: []
-    };
-  }
-  const defaults = getTriggerDefault(parsed.triggerKey);
-  if (!defaults) {
-    return {
-      valid: false,
-      reason: `Für Trigger ${parsed.triggerKey} existiert keine ausführbare Konfiguration.`,
-      triggerKey: parsed.triggerKey,
-      scope: parsed.scope,
-      intent: parsed.intent,
-      source: normalizeTriggerSource(source),
-      targetInstanceLabels: normalizeStringArray(targetInstanceLabels)
-    };
-  }
-  const normalizedTargets = normalizeStringArray(targetInstanceLabels);
-  const hasSelection = Number(selectionCount) > 0 && normalizedTargets.length > 0;
-  if (defaults.requiresSelection === true && !hasSelection) {
-    return {
-      valid: false,
-      reason: `Trigger ${parsed.triggerKey} erwartet mindestens eine Ziel-Instanz.`,
-      triggerKey: parsed.triggerKey,
-      scope: parsed.scope,
-      intent: parsed.intent,
-      source: normalizeTriggerSource(source),
-      requiresSelection: true,
-      mutationPolicy: normalizeMutationPolicy(defaults.mutationPolicy, "none"),
-      feedbackPolicy: normalizeFeedbackPolicy(defaults.feedbackPolicy, boardConfig?.defaultFeedbackTarget || "text"),
-      allowedExecutionModes: normalizeAllowedExecutionModes(defaults.allowedExecutionModes, ["none"]),
-      allowedActions: [],
-      targetInstanceLabels: normalizedTargets
-    };
-  }
-  return {
-    valid: true,
-    triggerKey: parsed.triggerKey,
-    scope: parsed.scope,
-    intent: parsed.intent,
-    source: normalizeTriggerSource(source),
-    requiresSelection: defaults.requiresSelection === true,
-    mutationPolicy: normalizeMutationPolicy(defaults.mutationPolicy, "none"),
-    feedbackPolicy: normalizeFeedbackPolicy(defaults.feedbackPolicy, boardConfig?.defaultFeedbackTarget || "text"),
-    allowedExecutionModes: normalizeAllowedExecutionModes(defaults.allowedExecutionModes, ["none"]),
-    allowedActions: [],
-    prompt: null,
-    targetInstanceLabels: normalizedTargets
   };
 }
 
@@ -318,28 +198,47 @@ export function normalizeEvaluationBlock(rawEvaluation) {
   return { score, scale: scale || null, verdict: verdict || null, rubric };
 }
 
-export function isTransitionAllowed({ transition = null, source = "user", lastTriggerKey = null, memoryStepStatus = null } = {}) {
+function normalizeMemoryStepStatus(memoryState) {
+  if (typeof memoryState === "string") return asNonEmptyString(memoryState);
+  return pickFirstNonEmptyString(memoryState?.stepStatus, memoryState?.status);
+}
+
+export function isStepTransitionSatisfied(transition, flowRuntime, memoryState) {
   if (!transition || typeof transition !== "object") return false;
-  const normalizedSource = normalizeTriggerSource(source);
-  const allowedSources = normalizeStringArray(transition.allowedSources || []);
-  if (allowedSources.length && !allowedSources.includes(normalizedSource)) return false;
-  const allowedAfterTriggerKeys = normalizeStringArray(transition.allowedAfterTriggerKeys || []);
-  const normalizedLastTriggerKey = normalizeTriggerKey(lastTriggerKey);
-  if (allowedAfterTriggerKeys.length && (!normalizedLastTriggerKey || !allowedAfterTriggerKeys.includes(normalizedLastTriggerKey))) return false;
-  const requiredStatuses = normalizeStringArray(transition.requiredStepStatuses || []);
-  const normalizedMemoryStepStatus = asNonEmptyString(memoryStepStatus);
-  if (requiredStatuses.length && (!normalizedMemoryStepStatus || !requiredStatuses.includes(normalizedMemoryStepStatus))) return false;
+  const doneEndpointIds = new Set(normalizeStringArray(flowRuntime?.doneEndpointIds));
+  const requiredDoneEndpointIds = normalizeStringArray(transition?.requiredDoneEndpointIds);
+  if (requiredDoneEndpointIds.some((endpointId) => !doneEndpointIds.has(endpointId))) return false;
+
+  const requiredMemoryStepStatus = asNonEmptyString(transition?.requiredMemoryStepStatus);
+  if (requiredMemoryStepStatus) {
+    const memoryStepStatus = normalizeMemoryStepStatus(memoryState);
+    if (memoryStepStatus !== requiredMemoryStepStatus) return false;
+  }
+
   return true;
 }
 
-export function resolveNextTransition({ pack = null, step = null, source = "user", lastTriggerKey = null, memoryStepStatus = null } = {}) {
-  const transitions = listStepTransitions(step || pack);
-  if (!transitions.length) return null;
+export function resolveNextStepTransition(step, flowRuntime, memoryState) {
+  const transitions = listStepTransitions(step);
   for (const transition of transitions) {
-    if ((transition.policy || "manual") !== "manual") continue;
-    if (isTransitionAllowed({ transition, source, lastTriggerKey, memoryStepStatus })) return transition;
+    if (isStepTransitionSatisfied(transition, flowRuntime, memoryState)) {
+      return transition;
+    }
   }
   return null;
+}
+
+export function resolveNextTransition({
+  step = null,
+  flowRuntime = null,
+  memoryState = null,
+  memoryStepStatus = null
+} = {}) {
+  return resolveNextStepTransition(
+    step,
+    flowRuntime,
+    memoryState ?? { stepStatus: memoryStepStatus }
+  );
 }
 
 export { resolveNamedTransition };

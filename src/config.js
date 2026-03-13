@@ -302,37 +302,11 @@ export const DT_RUN_STATUS_LAYOUT = Object.freeze({
   offsetFromCanvasTopPx: 54
 });
 
-// Trigger / Feedback Engine Defaults
-export const DT_TRIGGER_SCOPES = Object.freeze(["selection", "global"]);
-export const DT_TRIGGER_INTENTS = Object.freeze(["check", "hint", "autocorrect", "review", "synthesize", "coach", "grade", "propose", "apply"]);
-export const DT_TRIGGER_SOURCES = Object.freeze(["user", "admin", "system", "agent_recommendation"]);
+// Endpoint / Feedback Engine Defaults
+export const DT_ENDPOINT_SCOPE_TYPES = Object.freeze(["selection", "current", "pack", "board"]);
 export const DT_FEEDBACK_CHANNELS = Object.freeze(["panel", "text", "both"]);
 export const DT_MUTATION_POLICIES = Object.freeze(["none", "minimal", "limited", "full"]);
 export const DT_EXECUTION_MODES = Object.freeze(["none", "direct_apply", "proposal_only"]);
-export const DT_TRIGGER_KEYS = Object.freeze(
-  DT_TRIGGER_SCOPES.flatMap((scope) => DT_TRIGGER_INTENTS.map((intent) => `${scope}.${intent}`))
-);
-
-export const DT_TRIGGER_DEFAULTS = Object.freeze({
-  "selection.check":        { scope: "selection", intent: "check",        requiresSelection: true,  mutationPolicy: "limited", feedbackPolicy: "text", allowedExecutionModes: ["none", "direct_apply", "proposal_only"] },
-  "selection.hint":         { scope: "selection", intent: "hint",         requiresSelection: true,  mutationPolicy: "none",    feedbackPolicy: "text", allowedExecutionModes: ["none"] },
-  "selection.autocorrect":  { scope: "selection", intent: "autocorrect",  requiresSelection: true,  mutationPolicy: "full",    feedbackPolicy: "both", allowedExecutionModes: ["direct_apply", "proposal_only"] },
-  "selection.review":       { scope: "selection", intent: "review",       requiresSelection: true,  mutationPolicy: "none",    feedbackPolicy: "text", allowedExecutionModes: ["none", "direct_apply", "proposal_only"] },
-  "selection.synthesize":   { scope: "selection", intent: "synthesize",   requiresSelection: true,  mutationPolicy: "limited", feedbackPolicy: "text", allowedExecutionModes: ["none", "direct_apply", "proposal_only"] },
-  "selection.coach":        { scope: "selection", intent: "coach",        requiresSelection: true,  mutationPolicy: "none",    feedbackPolicy: "text", allowedExecutionModes: ["none", "direct_apply", "proposal_only"] },
-  "selection.grade":        { scope: "selection", intent: "grade",        requiresSelection: true,  mutationPolicy: "none",    feedbackPolicy: "text", allowedExecutionModes: ["none"] },
-  "selection.propose":      { scope: "selection", intent: "propose",      requiresSelection: true,  mutationPolicy: "full",    feedbackPolicy: "text", allowedExecutionModes: ["proposal_only"] },
-  "selection.apply":        { scope: "selection", intent: "apply",        requiresSelection: true,  mutationPolicy: "full",    feedbackPolicy: "text", allowedExecutionModes: ["direct_apply"] },
-  "global.check":           { scope: "global",    intent: "check",        requiresSelection: false, mutationPolicy: "limited", feedbackPolicy: "text", allowedExecutionModes: ["none", "direct_apply", "proposal_only"] },
-  "global.hint":            { scope: "global",    intent: "hint",         requiresSelection: false, mutationPolicy: "none",    feedbackPolicy: "text", allowedExecutionModes: ["none"] },
-  "global.autocorrect":     { scope: "global",    intent: "autocorrect",  requiresSelection: false, mutationPolicy: "full",    feedbackPolicy: "both", allowedExecutionModes: ["direct_apply", "proposal_only"] },
-  "global.review":          { scope: "global",    intent: "review",       requiresSelection: false, mutationPolicy: "none",    feedbackPolicy: "text", allowedExecutionModes: ["none", "direct_apply", "proposal_only"] },
-  "global.synthesize":      { scope: "global",    intent: "synthesize",   requiresSelection: false, mutationPolicy: "limited", feedbackPolicy: "text", allowedExecutionModes: ["none", "direct_apply", "proposal_only"] },
-  "global.coach":           { scope: "global",    intent: "coach",        requiresSelection: false, mutationPolicy: "none",    feedbackPolicy: "text", allowedExecutionModes: ["none", "direct_apply", "proposal_only"] },
-  "global.grade":           { scope: "global",    intent: "grade",        requiresSelection: false, mutationPolicy: "none",    feedbackPolicy: "text", allowedExecutionModes: ["none"] },
-  "global.propose":         { scope: "global",    intent: "propose",      requiresSelection: false, mutationPolicy: "full",    feedbackPolicy: "text", allowedExecutionModes: ["proposal_only"] },
-  "global.apply":           { scope: "global",    intent: "apply",        requiresSelection: false, mutationPolicy: "full",    feedbackPolicy: "text", allowedExecutionModes: ["direct_apply"] }
-});
 
 export const DT_DEFAULT_FEEDBACK_CHANNEL = "text";
 export const DT_DEFAULT_APP_ADMIN_POLICY = "ui_toggle";
@@ -506,10 +480,10 @@ export const DT_CANVAS_DEFS = {
 
 function buildExerciseContextBindingBlock() {
   return `Wenn exerciseContext vorhanden ist, ist er verbindlich:
-- exerciseContext.triggerKey und exerciseContext.triggerIntent beschreiben den Modus dieses Laufs.
+- exerciseContext.endpointId und exerciseContext.scopeType beschreiben diesen Lauf.
 - exerciseContext.allowedActions und exerciseContext.allowedExecutionModes sind harte Grenzen.
 - Wähle executionMode immer explizit und nur innerhalb von exerciseContext.allowedExecutionModes.
-- Für Exercise-Läufe ist feedback Pflicht.
+- Für Exercise-Läufe ist Feedback Pflicht.
 - flowControlDirectives dürfen nur vorhandene Buttons freischalten oder als erledigt markieren.`.trim();
 }
 

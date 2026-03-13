@@ -1,5 +1,6 @@
+export { EXERCISE_PACKS } from "./method-catalog.js?v=20260312-patch11";
+
 export {
-  EXERCISE_PACKS,
   ENDPOINTS,
   normalizeExercisePackId,
   listExercisePacks,
@@ -11,14 +12,14 @@ export {
   getExerciseStep,
   getDefaultStepId,
   getNextExerciseStep,
-  getDefaultEnterTrigger,
   listStepTransitions,
   resolveNamedTransition,
   listEndpointsForPack,
   listStepEndpoints,
   listStepEndpointsForSurface,
   getEndpointById,
-  findStepEndpointByTriggerKey,
-  listStepTriggerKeysFromEndpoints,
+  findStepEndpointsByChannel,
+  findFirstEndpointByChannel,
+  listBoardButtonEndpointsForStep,
   isSidecarOnlyEndpoint
-} from "./method-catalog.js?v=20260312-patch11";
+} from "./library.js?v=20260312-patch11";
