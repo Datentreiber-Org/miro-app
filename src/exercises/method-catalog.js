@@ -2,10 +2,10 @@ import {
   DT_DEFAULT_APP_ADMIN_POLICY,
   DT_DEFAULT_FEEDBACK_CHANNEL,
   DT_EXECUTION_MODES
-} from "../config.js?v=20260314-patch12-cleanup6";
+} from "../config.js?v=20260314-patch12-cleanup7";
 
-import { METHOD_I18N_OVERRIDES } from "../i18n/catalog.js?v=20260314-patch12-cleanup6";
-import { normalizeUiLanguage, pickLocalized } from "../i18n/index.js?v=20260314-patch12-cleanup6";
+import { METHOD_I18N_OVERRIDES } from "../i18n/catalog.js?v=20260314-patch12-cleanup7";
+import { normalizeUiLanguage, pickLocalized } from "../i18n/index.js?v=20260314-patch12-cleanup7";
 
 function asNonEmptyString(value) {
   if (typeof value !== "string") return null;

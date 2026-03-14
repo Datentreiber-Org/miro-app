@@ -1,14 +1,14 @@
-import { DT_IMAGE_META_KEY_INSTANCE, DT_CANVAS_DEFS, DT_SORTED_OUT_REGION_WIDTH_PX, DT_SORTED_OUT_BUFFER_WIDTH_PX } from "../config.js?v=20260314-patch12-cleanup6";
-import { isFiniteNumber } from "../utils.js?v=20260314-patch12-cleanup6";
-import { ensureMiroReady, getBoard } from "./sdk.js?v=20260314-patch12-cleanup6";
+import { DT_IMAGE_META_KEY_INSTANCE, DT_CANVAS_DEFS, DT_SORTED_OUT_REGION_WIDTH_PX, DT_SORTED_OUT_BUFFER_WIDTH_PX } from "../config.js?v=20260314-patch12-cleanup7";
+import { isFiniteNumber } from "../utils.js?v=20260314-patch12-cleanup7";
+import { ensureMiroReady, getBoard } from "./sdk.js?v=20260314-patch12-cleanup7";
 import {
   compareItemIdsAsc,
   normalizePositiveInt,
   getCanvasTypeDisplayName,
   formatInstanceLabel,
   buildInternalInstanceIdFromImageId
-} from "./helpers.js?v=20260314-patch12-cleanup6";
-import { getItemById, resolveBoardCoords } from "./items.js?v=20260314-patch12-cleanup6";
+} from "./helpers.js?v=20260314-patch12-cleanup7";
+import { getItemById, resolveBoardCoords } from "./items.js?v=20260314-patch12-cleanup7";
 import {
   normalizeChatInterfaceShapeIds,
   hasCompleteChatInterfaceShapeIds,
@@ -18,11 +18,11 @@ import {
   ensureChatProposeShapeForInstance,
   hasApplyChatInterfaceShapeId,
   ensureChatApplyShapeForInstance
-} from "./chat-interface.js?v=20260314-patch12-cleanup6";
+} from "./chat-interface.js?v=20260314-patch12-cleanup7";
 import {
   loadBaselineSignatureForImageId,
   removeBaselineSignatureForImageId
-} from "./storage.js?v=20260314-patch12-cleanup6";
+} from "./storage.js?v=20260314-patch12-cleanup7";
 
 // --------------------------------------------------------------------
 // Template instance registration, geometry and scan/rebind logic

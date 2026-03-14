@@ -9,14 +9,14 @@ import {
   DT_CHECK_TAG_TITLE,
   normalizeStickyColorToken,
   STICKY_LAYOUT
-} from "../config.js?v=20260314-patch12-cleanup6";
+} from "../config.js?v=20260314-patch12-cleanup7";
 import {
   stripHtml,
   isFiniteNumber,
   buildInstanceSignatureFromClassification,
   computeInstanceDiffFromSignatures,
   diffHasChanges
-} from "../utils.js?v=20260314-patch12-cleanup6";
+} from "../utils.js?v=20260314-patch12-cleanup7";
 import {
   computeTemplateGeometry,
   buildInstanceGeometryIndex,
@@ -24,7 +24,7 @@ import {
   resolveBoardRect,
   findInstanceByPoint,
   findInstanceByRect
-} from "../miro/board.js?v=20260314-patch12-cleanup6";
+} from "../miro/board.js?v=20260314-patch12-cleanup7";
 
 // --------------------------------------------------------------------
 // Canvas Definitions / Region Mapping

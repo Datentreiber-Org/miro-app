@@ -1,5 +1,5 @@
-import { isFiniteNumber } from "../utils.js?v=20260314-patch12-cleanup6";
-import { ensureMiroReady, getBoard } from "./sdk.js?v=20260314-patch12-cleanup6";
+import { isFiniteNumber } from "../utils.js?v=20260314-patch12-cleanup7";
+import { ensureMiroReady, getBoard } from "./sdk.js?v=20260314-patch12-cleanup7";
 
 const STICKY_RECT_FALLBACK = Object.freeze({ width: 350, height: 228 });
 

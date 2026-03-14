@@ -11,29 +11,29 @@ import {
   DT_CHECK_TAG_COLOR,
   normalizeStickyColorToken,
   STICKY_LAYOUT
-} from "./config.js?v=20260314-patch12-cleanup6";
+} from "./config.js?v=20260314-patch12-cleanup7";
 
-import { createLogger, stripHtml, extractUnderlinedText, isFiniteNumber } from "./utils.js?v=20260314-patch12-cleanup6";
-import { normalizeUiLanguage, t, getLocaleForLanguage } from "./i18n/index.js?v=20260314-patch12-cleanup6";
+import { createLogger, stripHtml, extractUnderlinedText, isFiniteNumber } from "./utils.js?v=20260314-patch12-cleanup7";
+import { normalizeUiLanguage, t, getLocaleForLanguage } from "./i18n/index.js?v=20260314-patch12-cleanup7";
 
-import * as Board from "./miro/board.js?v=20260314-patch12-cleanup6";
-import * as Catalog from "./domain/catalog.js?v=20260314-patch12-cleanup6";
-import * as OpenAI from "./ai/openai.js?v=20260314-patch12-cleanup6";
-import * as Memory from "./runtime/memory.js?v=20260314-patch12-cleanup6";
-import * as Exercises from "./exercises/registry.js?v=20260314-patch12-cleanup6";
-import * as ExerciseLibrary from "./exercises/library.js?v=20260314-patch12-cleanup6";
-import * as PromptComposer from "./prompt/composer.js?v=20260314-patch12-cleanup6";
-import * as ExerciseEngine from "./runtime/exercise-engine.js?v=20260314-patch12-cleanup6";
-import * as BoardFlow from "./runtime/board-flow.js?v=20260314-patch12-cleanup6";
-import * as PanelBridge from "./runtime/panel-bridge.js?v=20260314-patch12-cleanup6";
-import { getInsertWidthPxForCanvasType, computeTemplateInsertPosition } from "./app/template-insertion.js?v=20260314-patch12-cleanup6";
+import * as Board from "./miro/board.js?v=20260314-patch12-cleanup7";
+import * as Catalog from "./domain/catalog.js?v=20260314-patch12-cleanup7";
+import * as OpenAI from "./ai/openai.js?v=20260314-patch12-cleanup7";
+import * as Memory from "./runtime/memory.js?v=20260314-patch12-cleanup7";
+import * as Exercises from "./exercises/registry.js?v=20260314-patch12-cleanup7";
+import * as ExerciseLibrary from "./exercises/library.js?v=20260314-patch12-cleanup7";
+import * as PromptComposer from "./prompt/composer.js?v=20260314-patch12-cleanup7";
+import * as ExerciseEngine from "./runtime/exercise-engine.js?v=20260314-patch12-cleanup7";
+import * as BoardFlow from "./runtime/board-flow.js?v=20260314-patch12-cleanup7";
+import * as PanelBridge from "./runtime/panel-bridge.js?v=20260314-patch12-cleanup7";
+import { getInsertWidthPxForCanvasType, computeTemplateInsertPosition } from "./app/template-insertion.js?v=20260314-patch12-cleanup7";
 import {
   pickFirstNonEmptyString,
   makeDirectedConnectorKey,
   makeUndirectedConnectorKey,
   normalizeAgentAction
-} from "./agent/action-normalization.js?v=20260314-patch12-cleanup6";
-import { createEmptyActionExecutionStats, mergeActionExecutionStats, summarizeAppliedActions } from "./agent/action-stats.js?v=20260314-patch12-cleanup6";
+} from "./agent/action-normalization.js?v=20260314-patch12-cleanup7";
+import { createEmptyActionExecutionStats, mergeActionExecutionStats, summarizeAppliedActions } from "./agent/action-stats.js?v=20260314-patch12-cleanup7";
 
 // --------------------------------------------------------------------
 // State (Controller-Level)
@@ -3359,6 +3359,69 @@ function buildMemoryTimelineForPrompt(memoryLog) {
   };
 }
 
+function buildProposalId() {
+  return "p-" + Date.now().toString(36) + "-" + Math.random().toString(36).slice(2, 8);
+}
+
+function buildAreaTitleFromAreaKey(areaKey, canvasTypeId = null) {
+  const normalizedAreaKey = pickFirstNonEmptyString(areaKey);
+  if (!normalizedAreaKey) return null;
+  const region = Catalog.areaNameToRegion(normalizedAreaKey, canvasTypeId) || Catalog.areaNameToRegion(normalizedAreaKey, null);
+  return region?.title || normalizedAreaKey;
+}
+
+function truncateProposalText(value, maxLength = 72) {
+  const text = pickFirstNonEmptyString(value);
+  if (!text) return null;
+  return text.length > maxLength ? (text.slice(0, maxLength - 1).trimEnd() + "…") : text;
+}
+
+function summarizeProposalActionsForPrompt(actions, canvasTypeId = null) {
+  const bullets = [];
+  for (const rawAction of Array.isArray(actions) ? actions : []) {
+    const action = normalizeAgentAction(rawAction);
+    if (!action || action.type === "inform") continue;
+
+    if (action.type === "create_sticky") {
+      const areaTitle = buildAreaTitleFromAreaKey(action.area, canvasTypeId) || "dem Canvas";
+      const textPreview = truncateProposalText(action.text, 56);
+      bullets.push(textPreview
+        ? (`würde eine Sticky in ${areaTitle} anlegen: „${textPreview}“`)
+        : (`würde eine Sticky in ${areaTitle} anlegen`));
+      continue;
+    }
+
+    if (action.type === "move_sticky") {
+      const areaTitle = buildAreaTitleFromAreaKey(action.targetArea || action.area, canvasTypeId) || "einen anderen Bereich";
+      bullets.push(`würde eine Sticky nach ${areaTitle} verschieben`);
+      continue;
+    }
+
+    if (action.type === "delete_sticky") {
+      bullets.push("würde eine Sticky entfernen");
+      continue;
+    }
+
+    if (action.type === "create_connector") {
+      bullets.push("würde eine explizite Beziehung als Connector ergänzen");
+      continue;
+    }
+
+    if (action.type === "set_sticky_color") {
+      bullets.push(`würde eine Sticky farblich auf ${action.color || "eine Miro-Farbe"} setzen`);
+      continue;
+    }
+
+    if (action.type === "set_check_status") {
+      bullets.push(action.checked === false
+        ? "würde einen Check-Status entfernen"
+        : "würde einen Check-Status setzen");
+      continue;
+    }
+  }
+  return Array.from(new Set(bullets)).slice(0, 8);
+}
+
 function buildProposalActionPreview(actions, canvasTypeId = null) {
   return summarizeProposalActionsForPrompt(actions, canvasTypeId).slice(0, 5);
 }
@@ -3428,7 +3491,7 @@ function recordConversationTurn(instanceId, turn = null) {
   const record = getConversationRecord(instanceId);
   if (!record || !turn || typeof turn !== "object") return;
   const role = pickFirstNonEmptyString(turn.role);
-  const textSummary = pickFirstNonEmptyString(turn.textSummary);
+  const textSummary = pickFirstNonEmptyString(turn.textSummary, turn.text);
   if (!role || !textSummary) return;
   const nextTurn = {
     role,
@@ -3458,6 +3521,27 @@ function buildConversationContextForPrompt(instanceId) {
     lastFeedback: cloneJsonValue(record.lastFeedback || null),
     recentTurns
   };
+}
+
+function updateConversationStateAfterAssistantResponse(instanceId, { feedback = null, stepLabel = null, endpointLabel = null, channel = null, executionMode = null } = {}) {
+  const record = getConversationRecord(instanceId);
+  if (!record) return;
+  record.lastStepLabel = pickFirstNonEmptyString(stepLabel) || record.lastStepLabel || null;
+  record.lastEndpointLabel = pickFirstNonEmptyString(endpointLabel) || record.lastEndpointLabel || null;
+  record.lastChannel = pickFirstNonEmptyString(channel) || record.lastChannel || null;
+  record.lastExecutionMode = pickFirstNonEmptyString(executionMode) || record.lastExecutionMode || null;
+  record.lastFeedback = summarizeFeedbackForConversation(feedback);
+  const assistantSummary = pickFirstNonEmptyString(record.lastFeedback?.summary, record.lastFeedback?.title, Array.isArray(record.lastFeedback?.bullets) ? record.lastFeedback.bullets.join(" • ") : null);
+  if (assistantSummary) {
+    recordConversationTurn(instanceId, {
+      role: "assistant",
+      channel: record.lastChannel,
+      textSummary: assistantSummary,
+      stepLabel: record.lastStepLabel,
+      endpointLabel: record.lastEndpointLabel,
+      executionMode: record.lastExecutionMode
+    });
+  }
 }
 
 async function loadPendingProposalForInstance(instanceId, { stepId = null } = {}) {
@@ -3741,7 +3825,7 @@ async function renderAgentResponseToInstanceOutput({
   });
   await Board.writeChatOutputContent(instance.chatInterface, html, log);
   if (conversationMeta) {
-    updateConversationStateAfterAssistantResponse_TEMP(instanceId, {
+    updateConversationStateAfterAssistantResponse(instanceId, {
       ...conversationMeta,
       feedback
     });
