@@ -1,8 +1,8 @@
 import {
   getAllowedCanvasTypesForPack,
   getDefaultCanvasTypeIdForPack
-} from "../exercises/registry.js?v=20260314-patch12-pb2";
-import { normalizeUiLanguage } from "../i18n/index.js?v=20260313-patch11-chatpatch1";
+} from "../exercises/registry.js?v=20260314-patch12-cleanup2";
+import { normalizeUiLanguage } from "../i18n/index.js?v=20260314-patch12-cleanup2";
 
 function asNonEmptyString(value) {
   if (typeof value !== "string") return null;
@@ -172,12 +172,6 @@ function buildControlContextBlock(controlContext) {
     lines.push(`Flow-Anchor: ${controlContext.anchorInstanceId}`);
   }
   return lines.length ? lines.join("\n") : null;
-}
-
-function buildEndpointSpecificationBlock({ endpoint }) {
-  const promptText = asNonEmptyString(endpoint?.prompt?.text);
-  if (!promptText) return null;
-  return renderPromptSection("ENDPOINT SPECIFICATION", promptText);
 }
 
 export function buildEndpointSpecificationBlock({ endpoint }) {

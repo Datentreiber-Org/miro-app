@@ -11,19 +11,19 @@ import {
   DT_CHECK_TAG_COLOR,
   normalizeStickyColorToken,
   STICKY_LAYOUT
-} from "./config.js?v=20260314-patch12-pb2";
+} from "./config.js?v=20260314-patch12-cleanup2";
 
 import { createLogger, stripHtml, extractUnderlinedText, isFiniteNumber } from "./utils.js?v=20260301-step11-hotfix2";
-import { normalizeUiLanguage, t, getLocaleForLanguage } from "./i18n/index.js?v=20260313-patch11-chatpatch1";
+import { normalizeUiLanguage, t, getLocaleForLanguage } from "./i18n/index.js?v=20260314-patch12-cleanup2";
 
-import * as Board from "./miro/board.js?v=20260313-patch11-chatpatch1";
+import * as Board from "./miro/board.js?v=20260314-patch12-cleanup2";
 import * as Catalog from "./domain/catalog.js?v=20260311-batch83fix1";
 import * as OpenAI from "./ai/openai.js?v=20260313-patch11v3-final";
 import * as Memory from "./runtime/memory.js?v=20260313-patch11v3-final";
-import * as Exercises from "./exercises/registry.js?v=20260314-patch12-pb2";
-import * as ExerciseLibrary from "./exercises/library.js?v=20260314-patch12-pb2";
-import * as PromptComposer from "./prompt/composer.js?v=20260314-patch12-pb2";
-import * as ExerciseEngine from "./runtime/exercise-engine.js?v=20260314-patch12-pb2";
+import * as Exercises from "./exercises/registry.js?v=20260314-patch12-cleanup2";
+import * as ExerciseLibrary from "./exercises/library.js?v=20260314-patch12-cleanup2";
+import * as PromptComposer from "./prompt/composer.js?v=20260314-patch12-cleanup2";
+import * as ExerciseEngine from "./runtime/exercise-engine.js?v=20260314-patch12-cleanup2";
 import * as BoardFlow from "./runtime/board-flow.js?v=20260313-patch11v3-final";
 import * as PanelBridge from "./runtime/panel-bridge.js?v=20260312-patch11";
 import { getInsertWidthPxForCanvasType, computeTemplateInsertPosition } from "./app/template-insertion.js?v=20260308-batch76";

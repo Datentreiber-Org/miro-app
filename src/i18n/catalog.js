@@ -138,7 +138,6 @@ const BASE_UI_STRINGS = Object.freeze({
   "recommendation.lastCompleted.none": { de: "keine", en: "none" },
   "recommendation.lastFlowAnchor": { de: "Letzter Flow-Anchor: {value}", en: "Last flow anchor: {value}" },
 
-
   "flow.status.boardFlows": { de: "Board Flows: {count}", en: "Board flows: {count}" },
   "flow.status.exercisePack": { de: "Flow-Paket: {value}", en: "Flow pack: {value}" },
   "flow.status.none": { de: "keins", en: "none" },
@@ -182,32 +181,18 @@ const BASE_UI_STRINGS = Object.freeze({
     en: "Please analyze the relevant canvas instances and carry out sensible next steps within the workshop workflow."
   },
 
-
 });
 
 export const UI_STRINGS = BASE_UI_STRINGS;
 
 export const METHOD_I18N_OVERRIDES = Object.freeze({
   exercisePacks: Object.freeze({
-    "persona-basics-v1": Object.freeze({
-      description: { en: "Guided persona exercise on the Datentreiber 3-Boxes canvas." }
-    }),
     "analytics-ai-usecase-fit-sprint-v1": Object.freeze({
       description: { en: "Guided single-canvas exercise on the Analytics & AI Use Case canvas with four didactic phases: Preparation & Focus, User Needs Analysis, Solution Design, and Fit Validation & Minimum Desired Product." }
     })
   }),
 
   steps: Object.freeze({
-    "persona-basics-v1": Object.freeze({
-      "collect_personas": Object.freeze({
-        label: { en: "Create personas" },
-        visibleInstruction: { en: "Create one readable chain per persona: name (left), activity (middle), and expectation (right)." }
-      }),
-      "refine_personas": Object.freeze({
-        label: { en: "Refine personas" },
-        visibleInstruction: { en: "Sharpen activities and expectations. Vague wording should become more concrete." }
-      })
-    }),
     "analytics-ai-usecase-fit-sprint-v1": Object.freeze({
       "step0_preparation_and_focus": Object.freeze({
         label: { en: "Preparation & Focus" },
@@ -348,67 +333,5 @@ export const METHOD_I18N_OVERRIDES = Object.freeze({
       uiHint: { en: "Useful for a meta-review across multiple canvas instances or teams." }
     })
   }),
-
-  promptModules: Object.freeze({
-    "analytics.fit.shared.method_guardrails": Object.freeze({
-      label: { en: "Method guardrails" },
-      summary: { en: "Keeps the agent aligned with use-case logic, canvas logic, and workshop logic." }
-    }),
-    "analytics.fit.shared.check_style": Object.freeze({
-      label: { en: "Check style" },
-      summary: { en: "Structured check mode with clear strengths, gaps, and next steps." }
-    }),
-    "analytics.fit.shared.hint_style": Object.freeze({
-      label: { en: "Hint style" },
-      summary: { en: "Short, helpful, and actionable hint style with concrete next steps." }
-    }),
-    "analytics.fit.shared.coach_style": Object.freeze({
-      label: { en: "Coach style" },
-      summary: { en: "Socratic, motivating coaching style with guiding questions and one micro-step." }
-    }),
-    "analytics.fit.shared.proposal_mode": Object.freeze({
-      label: { en: "Proposal mode" },
-      summary: { en: "Describes the intermediate mode: concrete suggestions first, application only after confirmation." }
-    }),
-    "analytics.fit.shared.review_style": Object.freeze({
-      label: { en: "Review style" },
-      summary: { en: "Qualitative review focused on consistency, maturity, and risk instead of mutation." }
-    }),
-    "analytics.fit.shared.synthesis_style": Object.freeze({
-      label: { en: "Synthesis style" },
-      summary: { en: "Condenses only when enough substance is already present; otherwise it names the missing prerequisites." }
-    }),
-    "analytics.fit.step1.focus_user_perspective": Object.freeze({
-      label: { en: "Focus: user perspective first" },
-      summary: { en: "Keeps the agent focused on the right-hand side and its internal logic." }
-    }),
-    "analytics.fit.step1.bootstrap_empty_user_perspective": Object.freeze({
-      label: { en: "Bootstrap: empty user perspective" },
-      summary: { en: "Helps with step 1 when it is empty or almost empty by suggesting a starting order and wording prompts." }
-    }),
-    "analytics.fit.step2.focus_solution_perspective": Object.freeze({
-      label: { en: "Focus: solution perspective" },
-      summary: { en: "Directs the agent to the left-hand side and its derivation from the user perspective." }
-    }),
-    "analytics.fit.step2.bootstrap_empty_solution_perspective": Object.freeze({
-      label: { en: "Bootstrap: empty solution perspective" },
-      summary: { en: "Helps with an empty left-hand side or an immature right-hand side by providing the right derivation guidance." }
-    }),
-    "analytics.fit.step3.focus_fit_review": Object.freeze({
-      label: { en: "Focus: fit check review" },
-      summary: { en: "Assesses problem-solution fit, consistency, and the robustness of the chain." }
-    }),
-    "analytics.fit.step3.bootstrap_incomplete_fit": Object.freeze({
-      label: { en: "Precondition: immature fit check" },
-      summary: { en: "Prevents premature fit assessments on incomplete canvases." }
-    }),
-    "analytics.fit.step3.focus_fit_synthesis": Object.freeze({
-      label: { en: "Focus: fit check synthesis" },
-      summary: { en: "Condenses fit into short statements for the Check field." }
-    }),
-    "analytics.fit.global.focus_cross_instance_review": Object.freeze({
-      label: { en: "Focus: cross-instance review" },
-      summary: { en: "Compares multiple instances for maturity, patterns, strengths, and recurring weaknesses." }
-    })
   })
 });

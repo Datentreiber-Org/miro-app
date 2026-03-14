@@ -1,6 +1,5 @@
 import {
   ENDPOINTS,
-  PROMPT_MODULES,
   normalizeExercisePackId,
   listExercisePacks,
   getExercisePackById,
@@ -18,9 +17,7 @@ import {
   listStepEndpointsForSurface,
   getEndpointById,
   isSidecarOnlyEndpoint,
-  getPromptModuleById,
-  getPromptModulesByIds
-} from "./method-catalog.js?v=20260314-patch12-pb2";
+} from "./method-catalog.js?v=20260314-patch12-cleanup2";
 
 function asNonEmptyString(value) {
   if (typeof value !== "string") return null;
@@ -47,7 +44,6 @@ export function listBoardButtonEndpointsForStep(exercisePack, stepId, { lang = "
 
 export {
   ENDPOINTS,
-  PROMPT_MODULES,
   normalizeExercisePackId,
   listExercisePacks,
   getExercisePackById,
@@ -65,6 +61,4 @@ export {
   listStepEndpointsForSurface,
   getEndpointById,
   isSidecarOnlyEndpoint,
-  getPromptModuleById,
-  getPromptModulesByIds
 };
