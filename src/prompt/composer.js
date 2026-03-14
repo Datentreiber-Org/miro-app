@@ -1,8 +1,8 @@
 import {
   getAllowedCanvasTypesForPack,
   getDefaultCanvasTypeIdForPack
-} from "../exercises/registry.js?v=20260314-patch12-cleanup2";
-import { normalizeUiLanguage } from "../i18n/index.js?v=20260314-patch12-cleanup2";
+} from "../exercises/registry.js?v=20260314-patch12-cleanup4";
+import { normalizeUiLanguage } from "../i18n/index.js?v=20260314-patch12-cleanup4";
 
 function asNonEmptyString(value) {
   if (typeof value !== "string") return null;
@@ -178,13 +178,11 @@ export function buildEndpointSpecificationBlock({ endpoint }) {
   const label = asNonEmptyString(endpoint?.label);
   const summary = asNonEmptyString(endpoint?.summary);
   const taskText = asNonEmptyString(endpoint?.prompt?.text);
-  const body = [label, summary, taskText].filter(Boolean).join("
-
-");
+  const body = [label, summary, taskText].filter(Boolean).join("\n\n");
   return renderPromptSection("ENDPOINT SPECIFICATION", body);
 }
 
-function composePrompt(runtime, options = {}) {
+export function composePrompt(runtime, options = {}) {
   if (!runtime?.endpoint) {
     throw new Error("composePrompt requires a canonical endpoint");
   }

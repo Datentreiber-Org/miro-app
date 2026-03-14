@@ -332,6 +332,5 @@ export const METHOD_I18N_OVERRIDES = Object.freeze({
       summary: { en: "Compares multiple boards for fit maturity, Minimum Desired Product focus, and recurring quality patterns." },
       uiHint: { en: "Useful for a meta-review across multiple canvas instances or teams." }
     })
-  }),
   })
 });
