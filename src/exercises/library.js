@@ -17,7 +17,7 @@ import {
   listStepEndpointsForSurface,
   getEndpointById,
   isSidecarOnlyEndpoint,
-} from "./method-catalog.js?v=20260314-patch12-cleanup8";
+} from "./method-catalog.js?v=20260315-patch13-submit-proposals";
 
 function asNonEmptyString(value) {
   if (typeof value !== "string") return null;

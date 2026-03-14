@@ -1,4 +1,4 @@
-import { UI_STRINGS } from "./catalog.js?v=20260314-patch12-cleanup8";
+import { UI_STRINGS } from "./catalog.js?v=20260315-patch13-submit-proposals";
 
 export const SUPPORTED_UI_LANGUAGES = Object.freeze(["de", "en"]);
 export const DEFAULT_UI_LANGUAGE = "de";

@@ -3,11 +3,11 @@ import {
   DT_FEEDBACK_CHANNELS,
   DT_MUTATION_POLICIES,
   DT_EXECUTION_MODES
-} from "../config.js?v=20260314-patch12-cleanup8";
+} from "../config.js?v=20260315-patch13-submit-proposals";
 import {
   listStepTransitions,
   resolveNamedTransition
-} from "../exercises/registry.js?v=20260314-patch12-cleanup8";
+} from "../exercises/registry.js?v=20260315-patch13-submit-proposals";
 
 function asNonEmptyString(value) {
   if (typeof value !== "string") return null;
@@ -111,7 +111,8 @@ export function resolveEndpointContext({
     mutationPolicy: normalizeMutationPolicy(endpoint.run?.mutationPolicy, "none"),
     feedbackPolicy: normalizeFeedbackPolicy(endpoint.run?.feedbackPolicy, boardConfig?.defaultFeedbackTarget || "text"),
     allowedExecutionModes: normalizeAllowedExecutionModes(endpoint.run?.allowedExecutionModes, ["none"]),
-    allowedActions: normalizeStringArray(endpoint.run?.allowedActions)
+    allowedActions: normalizeStringArray(endpoint.run?.allowedActions),
+    allowedActionAreas: normalizeStringArray(endpoint.run?.allowedActionAreas)
   };
 }
 

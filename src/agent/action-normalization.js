@@ -1,4 +1,4 @@
-import { normalizeStickyColorToken } from "../config.js?v=20260314-patch12-cleanup8";
+import { normalizeStickyColorToken } from "../config.js?v=20260315-patch13-submit-proposals";
 
 export function pickFirstNonEmptyString(...values) {
   for (const value of values) {

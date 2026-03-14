@@ -1,8 +1,8 @@
 import {
   getAllowedCanvasTypesForPack,
   getDefaultCanvasTypeIdForPack
-} from "../exercises/registry.js?v=20260314-patch12-cleanup8";
-import { normalizeUiLanguage } from "../i18n/index.js?v=20260314-patch12-cleanup8";
+} from "../exercises/registry.js?v=20260315-patch13-submit-proposals";
+import { normalizeUiLanguage } from "../i18n/index.js?v=20260315-patch13-submit-proposals";
 
 function asNonEmptyString(value) {
   if (typeof value !== "string") return null;
@@ -122,6 +122,9 @@ function buildBoardMechanicsBlock(runtime, options = {}) {
   const allowedExecutionModes = normalizeAllowedExecutionModes(
     endpointContext?.allowedExecutionModes || runtime?.endpoint?.run?.allowedExecutionModes || ["none"]
   );
+  const allowedActionAreas = normalizeUniqueStrings(
+    endpointContext?.allowedActionAreas || runtime?.endpoint?.run?.allowedActionAreas || []
+  );
   const mutationPolicy = asNonEmptyString(
     endpointContext?.mutationPolicy || runtime?.endpoint?.run?.mutationPolicy
   );
@@ -147,6 +150,7 @@ function buildBoardMechanicsBlock(runtime, options = {}) {
 
   if (scopeType) lines.splice(1, 0, `- Scope dieses Endpoints: ${scopeType}.`);
   if (allowedActions.length) lines.splice(1, 0, `- In diesem Run freigegebene Action-Typen: ${allowedActions.join(", ")}.`);
+  if (allowedActionAreas.length) lines.splice(1, 0, `- In diesem Run erlaubte Zielbereiche für create_sticky/move_sticky: ${allowedActionAreas.join(", ")}.`);
   if (mutationPolicy) lines.splice(1, 0, `- mutationPolicy: ${mutationPolicy}.`);
   if (feedbackPolicy) lines.splice(1, 0, `- feedbackPolicy: ${feedbackPolicy}.`);
 

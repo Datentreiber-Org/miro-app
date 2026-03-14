@@ -2,10 +2,10 @@ import {
   DT_DEFAULT_APP_ADMIN_POLICY,
   DT_DEFAULT_FEEDBACK_CHANNEL,
   DT_EXECUTION_MODES
-} from "../config.js?v=20260314-patch12-cleanup8";
+} from "../config.js?v=20260315-patch13-submit-proposals";
 
-import { METHOD_I18N_OVERRIDES } from "../i18n/catalog.js?v=20260314-patch12-cleanup8";
-import { normalizeUiLanguage, pickLocalized } from "../i18n/index.js?v=20260314-patch12-cleanup8";
+import { METHOD_I18N_OVERRIDES } from "../i18n/catalog.js?v=20260315-patch13-submit-proposals";
+import { normalizeUiLanguage, pickLocalized } from "../i18n/index.js?v=20260315-patch13-submit-proposals";
 
 function asNonEmptyString(value) {
   if (typeof value !== "string") return null;
@@ -223,7 +223,8 @@ function buildEndpointProjection(rawEndpoint, rawStep, rawPack, { lang = "de" } 
       mutationPolicy: normalizeMutationPolicy(rawEndpoint?.run?.mutationPolicy),
       feedbackPolicy: normalizeFeedbackPolicy(rawEndpoint?.run?.feedbackPolicy),
       allowedExecutionModes: Object.freeze(normalizeAllowedExecutionModes(rawEndpoint?.run?.allowedExecutionModes)),
-      allowedActions: Object.freeze(augmentAllowedActions(rawEndpoint?.run?.allowedActions))
+      allowedActions: Object.freeze(augmentAllowedActions(rawEndpoint?.run?.allowedActions)),
+      allowedActionAreas: Object.freeze(normalizeStringArray(rawEndpoint?.run?.allowedActionAreas))
     }),
     surface: Object.freeze({
       channel: normalizeSurfaceChannel(rawEndpoint?.surface?.channel),
@@ -434,8 +435,8 @@ const RAW_METHOD_CATALOG = deepFreeze(JSON.parse(String.raw`{
               },
               "prompt": {
                 "text": {
-                  "de": "Du arbeitest im Use Case Fit Sprint auf dem Canvas Analytics & AI Use Case. Diese Übung bleibt auf einem Einzelcanvas ohne Cross-Canvas-Handoff.\n\nSchrittkontext: Preparation & Focus. Vorbereitungsphase vor der eigentlichen Analyse: Fokus im Header setzen, Scope schärfen, offene Annahmen sichtbar machen, Nebenthemen bewusst parken.\n\nErzeuge einen kleinen, anschlussfähigen Vorschlag für genau diesen Schritt. Der Vorschlag bleibt unange­wendet und dient nur als Proposal.\n\nAktuelle Arbeitsanweisung: Starte mit Fokus und Scope: Benenne den Use Case im Header, notiere kritische Annahmen oder offene Fragen in Weiß und parke Nebenthemen bewusst im Sorted-out-Bereich.\n\nDu arbeitest in Step „Preparation & Focus“.\nZiel ist, den Use Case im Header zu fokussieren, Scope und offene Annahmen sichtbar zu machen und Nebenthemen bewusst zu parken.\nSpringe noch nicht in Nutzeranalyse, Lösung oder Fit.\nArbeite zuerst mit Header, Scope-Fragen, Annahmen und bewusstem Parken in Sorted-out.\nNutze executionMode = proposal_only.\nErzeuge einen kleinen, anschlussfähigen Vorschlag für genau diesen Schritt und bleibe eng am vorhandenen Boardzustand.\nWenn das Canvas in diesem Schritt noch sehr leer ist, mache nur einen kleinen Start und keinen Komplettneuaufbau.\nEs wird nichts angewendet; das Feedback muss den Mehrwert des Vorschlags erklären.",
-                  "en": "You are working inside the Use Case Fit Sprint on the Analytics & AI Use Case canvas. This exercise stays on a single canvas and does not use cross-canvas handoffs.\n\nStep context: Preparation & Focus. Vorbereitungsphase vor der eigentlichen Analyse: Fokus im Header setzen, Scope schärfen, offene Annahmen sichtbar machen, Nebenthemen bewusst parken.\n\nCreate a small, connected proposal for this exact step. The result remains unapplied and only exists as a proposal.\n\nCurrent visible instruction: Starte mit Fokus und Scope: Benenne den Use Case im Header, notiere kritische Annahmen oder offene Fragen in Weiß und parke Nebenthemen bewusst im Sorted-out-Bereich.\n\nDu arbeitest in Step „Preparation & Focus“.\nZiel ist, den Use Case im Header zu fokussieren, Scope und offene Annahmen sichtbar zu machen und Nebenthemen bewusst zu parken.\nSpringe noch nicht in Nutzeranalyse, Lösung oder Fit.\nArbeite zuerst mit Header, Scope-Fragen, Annahmen und bewusstem Parken in Sorted-out.\nNutze executionMode = proposal_only.\nErzeuge einen kleinen, anschlussfähigen Vorschlag für genau diesen Schritt und bleibe eng am vorhandenen Boardzustand.\nWenn das Canvas in diesem Schritt noch sehr leer ist, mache nur einen kleinen Start und keinen Komplettneuaufbau.\nEs wird nichts angewendet; das Feedback muss den Mehrwert des Vorschlags erklären."
+                  "de": "Du arbeitest im Use Case Fit Sprint auf dem Canvas Analytics & AI Use Case. Diese Übung bleibt auf einem Einzelcanvas ohne Cross-Canvas-Handoff.\n\nSchrittkontext: Preparation & Focus. Fokus im Header klären, Scope schärfen, offene Annahmen sichtbar machen und Nebenthemen bewusst parken.\n\nDies ist der spezialisierte Vorschlagslauf dieses Schritts. Übersetze die Lage direkt in konkrete Board-Actions. Fokussiere deine Actions auf diese Bereiche: header, 2_user_and_situation und sorted_out_right. Bleibe eng am vorhandenen Boardzustand. Wenn der Schritt noch sehr leer ist, erzeuge nur einen kleinen anschlussfähigen Start und keinen Komplettneuaufbau. Nutze executionMode = proposal_only. Es wird nichts direkt angewendet; das Feedback erklärt den Mehrwert des Vorschlags.",
+                  "en": "You are working inside the Use Case Fit Sprint on the Analytics & AI Use Case canvas. This exercise stays on a single canvas and does not use cross-canvas handoffs.\n\nStep context: Preparation & Focus. Fokus im Header klären, Scope schärfen, offene Annahmen sichtbar machen und Nebenthemen bewusst parken.\n\nThis is the specialized proposal run for this step. Translate the situation directly into concrete board actions. Focus your actions on these areas: header, 2_user_and_situation und sorted_out_right. Stay close to the current board state. If the step is still very empty, create only a small connected start and not a full rebuild. Use executionMode = proposal_only. Nothing is applied directly; the feedback must explain the value of the proposal."
                 }
               },
               "run": {
@@ -450,6 +451,11 @@ const RAW_METHOD_CATALOG = deepFreeze(JSON.parse(String.raw`{
                   "delete_sticky",
                   "set_sticky_color",
                   "set_check_status"
+                ],
+                "allowedActionAreas": [
+                  "header",
+                  "2_user_and_situation",
+                  "sorted_out_right"
                 ]
               },
               "surface": {
@@ -493,6 +499,11 @@ const RAW_METHOD_CATALOG = deepFreeze(JSON.parse(String.raw`{
                   "delete_sticky",
                   "set_sticky_color",
                   "set_check_status"
+                ],
+                "allowedActionAreas": [
+                  "header",
+                  "2_user_and_situation",
+                  "sorted_out_right"
                 ]
               },
               "surface": {
@@ -522,17 +533,29 @@ const RAW_METHOD_CATALOG = deepFreeze(JSON.parse(String.raw`{
               },
               "prompt": {
                 "text": {
-                  "de": "Du arbeitest im Use Case Fit Sprint auf dem Canvas Analytics & AI Use Case. Diese Übung bleibt auf einem Einzelcanvas ohne Cross-Canvas-Handoff.\n\nSchrittkontext: Preparation & Focus. Vorbereitungsphase vor der eigentlichen Analyse: Fokus im Header setzen, Scope schärfen, offene Annahmen sichtbar machen, Nebenthemen bewusst parken.\n\nAntworte instanzbezogen und hilfreich auf Fragen zum aktuellen Canvas. Nutze den aktuellen Schritt als Primäranker, erlaube knappe Vor- und Rückgriffe, führe aber keine Board-Mutationen aus und erzeuge keinen Proposal-Record.\n\nAktuelle Arbeitsanweisung: Starte mit Fokus und Scope: Benenne den Use Case im Header, notiere kritische Annahmen oder offene Fragen in Weiß und parke Nebenthemen bewusst im Sorted-out-Bereich.\n\nDu arbeitest in Step „Preparation & Focus“.\nZiel ist, den Use Case im Header zu fokussieren, Scope und offene Annahmen sichtbar zu machen und Nebenthemen bewusst zu parken.\nSpringe noch nicht in Nutzeranalyse, Lösung oder Fit.\nArbeite zuerst mit Header, Scope-Fragen, Annahmen und bewusstem Parken in Sorted-out.\nAntworte instanzbezogen, verständlich und hilfreich auf Fragen zu diesem Canvas.\nNutze Step „Preparation & Focus“ als Primäranker; knappe Vor- oder Rückgriffe auf andere Schritte sind erlaubt, wenn sie der Orientierung dienen.\nWenn Kontext zu letzter Antwort oder offenem Vorschlag sichtbar ist, beantworte die Rückfrage darauf bezogen.\nTextliche Alternativen, Formulierungen und nächste Schritte sind erlaubt.\nFühre keine Board-Mutationen aus und erzeuge keinen Proposal-Run.",
-                  "en": "You are working inside the Use Case Fit Sprint on the Analytics & AI Use Case canvas. This exercise stays on a single canvas and does not use cross-canvas handoffs.\n\nStep context: Preparation & Focus. Vorbereitungsphase vor der eigentlichen Analyse: Fokus im Header setzen, Scope schärfen, offene Annahmen sichtbar machen, Nebenthemen bewusst parken.\n\nAnswer helpfully for this specific canvas instance. Use the current step as the primary anchor, allow brief forward/backward references, but do not perform board mutations and do not create a proposal record.\n\nCurrent visible instruction: Starte mit Fokus und Scope: Benenne den Use Case im Header, notiere kritische Annahmen oder offene Fragen in Weiß und parke Nebenthemen bewusst im Sorted-out-Bereich.\n\nDu arbeitest in Step „Preparation & Focus“.\nZiel ist, den Use Case im Header zu fokussieren, Scope und offene Annahmen sichtbar zu machen und Nebenthemen bewusst zu parken.\nSpringe noch nicht in Nutzeranalyse, Lösung oder Fit.\nArbeite zuerst mit Header, Scope-Fragen, Annahmen und bewusstem Parken in Sorted-out.\nAntworte instanzbezogen, verständlich und hilfreich auf Fragen zu diesem Canvas.\nNutze Step „Preparation & Focus“ als Primäranker; knappe Vor- oder Rückgriffe auf andere Schritte sind erlaubt, wenn sie der Orientierung dienen.\nWenn Kontext zu letzter Antwort oder offenem Vorschlag sichtbar ist, beantworte die Rückfrage darauf bezogen.\nTextliche Alternativen, Formulierungen und nächste Schritte sind erlaubt.\nFühre keine Board-Mutationen aus und erzeuge keinen Proposal-Run."
+                  "de": "Du arbeitest im Use Case Fit Sprint auf dem Canvas Analytics & AI Use Case. Diese Übung bleibt auf einem Einzelcanvas ohne Cross-Canvas-Handoff.\n\nSchrittkontext: Preparation & Focus. Fokus im Header klären, Scope schärfen, offene Annahmen sichtbar machen und Nebenthemen bewusst parken.\n\nAntworte instanzbezogen, verständlich und hilfreich auf Fragen zu diesem Canvas. Nutze Step „Preparation & Focus“ als Primäranker; knappe Vor- oder Rückgriffe auf andere Schritte sind erlaubt, wenn sie der Orientierung dienen. Wenn conversationContext sichtbar ist, beantworte Rückfragen in Bezug auf den letzten Vorschlag oder die letzte Antwort. Textliche Alternativen, Formulierungen und nächste Schritte sind erlaubt. Wähle executionMode = none als Standard. Wähle proposal_only nur, wenn die Anfrage klar nach einer konkreten Board-Ausarbeitung, konkreten Stickies oder einem konkreten Vorschlag verlangt. Wenn du proposal_only wählst, formuliere Änderungen als actions und bleibe innerhalb dieser Bereiche: header, 2_user_and_situation, sorted_out_right. Erzeuge niemals direct_apply und wende nichts direkt an.",
+                  "en": "You are working inside the Use Case Fit Sprint on the Analytics & AI Use Case canvas. This exercise stays on a single canvas and does not use cross-canvas handoffs.\n\nStep context: Preparation & Focus. Fokus im Header klären, Scope schärfen, offene Annahmen sichtbar machen und Nebenthemen bewusst parken.\n\nAnswer in an instance-specific, helpful and clear way about the current canvas. Use step “Preparation & Focus” as the primary anchor; short backward or forward references to other steps are allowed when they help orientation. If conversationContext is visible, answer follow-up questions in relation to the last proposal or visible response. Textual alternatives, wording options and next steps are allowed. Use executionMode = none as the default. Choose proposal_only only when the request clearly asks for a concrete board elaboration, concrete stickies, or a concrete proposal. If you choose proposal_only, express board changes as actions and stay within these areas: header, 2_user_and_situation, sorted_out_right. Never use direct_apply and never apply changes directly."
                 }
               },
               "run": {
-                "mutationPolicy": "none",
+                "mutationPolicy": "full",
                 "feedbackPolicy": "text",
                 "allowedExecutionModes": [
-                  "none"
+                  "none",
+                  "proposal_only"
                 ],
-                "allowedActions": []
+                "allowedActions": [
+                  "create_sticky",
+                  "move_sticky",
+                  "delete_sticky",
+                  "set_sticky_color",
+                  "set_check_status"
+                ],
+                "allowedActionAreas": [
+                  "header",
+                  "2_user_and_situation",
+                  "sorted_out_right"
+                ]
               },
               "surface": {
                 "channel": "chat_submit",
@@ -572,6 +595,11 @@ const RAW_METHOD_CATALOG = deepFreeze(JSON.parse(String.raw`{
                   "delete_sticky",
                   "set_sticky_color",
                   "set_check_status"
+                ],
+                "allowedActionAreas": [
+                  "header",
+                  "2_user_and_situation",
+                  "sorted_out_right"
                 ]
               },
               "surface": {
@@ -612,6 +640,11 @@ const RAW_METHOD_CATALOG = deepFreeze(JSON.parse(String.raw`{
                   "delete_sticky",
                   "set_sticky_color",
                   "set_check_status"
+                ],
+                "allowedActionAreas": [
+                  "header",
+                  "2_user_and_situation",
+                  "sorted_out_right"
                 ]
               },
               "surface": {
@@ -652,6 +685,11 @@ const RAW_METHOD_CATALOG = deepFreeze(JSON.parse(String.raw`{
                   "delete_sticky",
                   "set_sticky_color",
                   "set_check_status"
+                ],
+                "allowedActionAreas": [
+                  "header",
+                  "2_user_and_situation",
+                  "sorted_out_right"
                 ]
               },
               "surface": {
@@ -692,6 +730,11 @@ const RAW_METHOD_CATALOG = deepFreeze(JSON.parse(String.raw`{
                   "delete_sticky",
                   "set_sticky_color",
                   "set_check_status"
+                ],
+                "allowedActionAreas": [
+                  "header",
+                  "2_user_and_situation",
+                  "sorted_out_right"
                 ]
               },
               "surface": {
@@ -865,8 +908,8 @@ const RAW_METHOD_CATALOG = deepFreeze(JSON.parse(String.raw`{
               },
               "prompt": {
                 "text": {
-                  "de": "Du arbeitest im Use Case Fit Sprint auf dem Canvas Analytics & AI Use Case. Diese Übung bleibt auf einem Einzelcanvas ohne Cross-Canvas-Handoff.\n\nSchrittkontext: User Needs Analysis. Step 1 ist Divergenz und Konvergenz im Problemraum: nicht sofort lösen, sondern Nutzerarbeit, Ziele, Ergebnisse, Entscheidungen, Handlungen und kritische Gains/Pains tragfähig machen.\n\nErzeuge einen kleinen, anschlussfähigen Vorschlag für genau diesen Schritt. Der Vorschlag bleibt unange­wendet und dient nur als Proposal.\n\nAktuelle Arbeitsanweisung: Arbeite jetzt die Nutzerperspektive aus: mehrere plausible Nutzerrollen sammeln, auf einen Hauptnutzer fokussieren, Situation konkretisieren, Objectives & Results strukturieren, Decisions & Actions strukturieren und Gains/Pains andocken.\n\nDu arbeitest in Step „User Needs Analysis“.\nZiel ist, Hauptnutzer, Situation, Objectives & Results, Decisions & Actions sowie Gains/Pains tragfähig zu machen.\nZiehe die Lösungsperspektive noch nicht vor.\nHalte den Problemraum sauber und leite nichts technisch vorweg.\nNutze executionMode = proposal_only.\nErzeuge einen kleinen, anschlussfähigen Vorschlag für genau diesen Schritt und bleibe eng am vorhandenen Boardzustand.\nWenn das Canvas in diesem Schritt noch sehr leer ist, mache nur einen kleinen Start und keinen Komplettneuaufbau.\nEs wird nichts angewendet; das Feedback muss den Mehrwert des Vorschlags erklären.",
-                  "en": "You are working inside the Use Case Fit Sprint on the Analytics & AI Use Case canvas. This exercise stays on a single canvas and does not use cross-canvas handoffs.\n\nStep context: User Needs Analysis. Step 1 ist Divergenz und Konvergenz im Problemraum: nicht sofort lösen, sondern Nutzerarbeit, Ziele, Ergebnisse, Entscheidungen, Handlungen und kritische Gains/Pains tragfähig machen.\n\nCreate a small, connected proposal for this exact step. The result remains unapplied and only exists as a proposal.\n\nCurrent visible instruction: Arbeite jetzt die Nutzerperspektive aus: mehrere plausible Nutzerrollen sammeln, auf einen Hauptnutzer fokussieren, Situation konkretisieren, Objectives & Results strukturieren, Decisions & Actions strukturieren und Gains/Pains andocken.\n\nDu arbeitest in Step „User Needs Analysis“.\nZiel ist, Hauptnutzer, Situation, Objectives & Results, Decisions & Actions sowie Gains/Pains tragfähig zu machen.\nZiehe die Lösungsperspektive noch nicht vor.\nHalte den Problemraum sauber und leite nichts technisch vorweg.\nNutze executionMode = proposal_only.\nErzeuge einen kleinen, anschlussfähigen Vorschlag für genau diesen Schritt und bleibe eng am vorhandenen Boardzustand.\nWenn das Canvas in diesem Schritt noch sehr leer ist, mache nur einen kleinen Start und keinen Komplettneuaufbau.\nEs wird nichts angewendet; das Feedback muss den Mehrwert des Vorschlags erklären."
+                  "de": "Du arbeitest im Use Case Fit Sprint auf dem Canvas Analytics & AI Use Case. Diese Übung bleibt auf einem Einzelcanvas ohne Cross-Canvas-Handoff.\n\nSchrittkontext: User Needs Analysis. Hauptnutzer, Situation, Objectives & Results, Decisions & Actions sowie Gains/Pains tragfähig machen.\n\nDies ist der spezialisierte Vorschlagslauf dieses Schritts. Übersetze die Lage direkt in konkrete Board-Actions. Fokussiere deine Actions auf diese Bereiche: 2_user_and_situation, 3_objectives_and_results, 4_decisions_and_actions, 5a_user_gains, 5b_user_pains und sorted_out_right. Bleibe eng am vorhandenen Boardzustand. Wenn der Schritt noch sehr leer ist, erzeuge nur einen kleinen anschlussfähigen Start und keinen Komplettneuaufbau. Nutze executionMode = proposal_only. Es wird nichts direkt angewendet; das Feedback erklärt den Mehrwert des Vorschlags.",
+                  "en": "You are working inside the Use Case Fit Sprint on the Analytics & AI Use Case canvas. This exercise stays on a single canvas and does not use cross-canvas handoffs.\n\nStep context: User Needs Analysis. Hauptnutzer, Situation, Objectives & Results, Decisions & Actions sowie Gains/Pains tragfähig machen.\n\nThis is the specialized proposal run for this step. Translate the situation directly into concrete board actions. Focus your actions on these areas: 2_user_and_situation, 3_objectives_and_results, 4_decisions_and_actions, 5a_user_gains, 5b_user_pains und sorted_out_right. Stay close to the current board state. If the step is still very empty, create only a small connected start and not a full rebuild. Use executionMode = proposal_only. Nothing is applied directly; the feedback must explain the value of the proposal."
                 }
               },
               "run": {
@@ -882,6 +925,14 @@ const RAW_METHOD_CATALOG = deepFreeze(JSON.parse(String.raw`{
                   "create_connector",
                   "set_sticky_color",
                   "set_check_status"
+                ],
+                "allowedActionAreas": [
+                  "2_user_and_situation",
+                  "3_objectives_and_results",
+                  "4_decisions_and_actions",
+                  "5a_user_gains",
+                  "5b_user_pains",
+                  "sorted_out_right"
                 ]
               },
               "surface": {
@@ -926,6 +977,14 @@ const RAW_METHOD_CATALOG = deepFreeze(JSON.parse(String.raw`{
                   "create_connector",
                   "set_sticky_color",
                   "set_check_status"
+                ],
+                "allowedActionAreas": [
+                  "2_user_and_situation",
+                  "3_objectives_and_results",
+                  "4_decisions_and_actions",
+                  "5a_user_gains",
+                  "5b_user_pains",
+                  "sorted_out_right"
                 ]
               },
               "surface": {
@@ -955,17 +1014,33 @@ const RAW_METHOD_CATALOG = deepFreeze(JSON.parse(String.raw`{
               },
               "prompt": {
                 "text": {
-                  "de": "Du arbeitest im Use Case Fit Sprint auf dem Canvas Analytics & AI Use Case. Diese Übung bleibt auf einem Einzelcanvas ohne Cross-Canvas-Handoff.\n\nSchrittkontext: User Needs Analysis. Step 1 ist Divergenz und Konvergenz im Problemraum: nicht sofort lösen, sondern Nutzerarbeit, Ziele, Ergebnisse, Entscheidungen, Handlungen und kritische Gains/Pains tragfähig machen.\n\nAntworte instanzbezogen und hilfreich auf Fragen zum aktuellen Canvas. Nutze den aktuellen Schritt als Primäranker, erlaube knappe Vor- und Rückgriffe, führe aber keine Board-Mutationen aus und erzeuge keinen Proposal-Record.\n\nAktuelle Arbeitsanweisung: Arbeite jetzt die Nutzerperspektive aus: mehrere plausible Nutzerrollen sammeln, auf einen Hauptnutzer fokussieren, Situation konkretisieren, Objectives & Results strukturieren, Decisions & Actions strukturieren und Gains/Pains andocken.\n\nDu arbeitest in Step „User Needs Analysis“.\nZiel ist, Hauptnutzer, Situation, Objectives & Results, Decisions & Actions sowie Gains/Pains tragfähig zu machen.\nZiehe die Lösungsperspektive noch nicht vor.\nHalte den Problemraum sauber und leite nichts technisch vorweg.\nAntworte instanzbezogen, verständlich und hilfreich auf Fragen zu diesem Canvas.\nNutze Step „User Needs Analysis“ als Primäranker; knappe Vor- oder Rückgriffe auf andere Schritte sind erlaubt, wenn sie der Orientierung dienen.\nWenn Kontext zu letzter Antwort oder offenem Vorschlag sichtbar ist, beantworte die Rückfrage darauf bezogen.\nTextliche Alternativen, Formulierungen und nächste Schritte sind erlaubt.\nFühre keine Board-Mutationen aus und erzeuge keinen Proposal-Run.",
-                  "en": "You are working inside the Use Case Fit Sprint on the Analytics & AI Use Case canvas. This exercise stays on a single canvas and does not use cross-canvas handoffs.\n\nStep context: User Needs Analysis. Step 1 ist Divergenz und Konvergenz im Problemraum: nicht sofort lösen, sondern Nutzerarbeit, Ziele, Ergebnisse, Entscheidungen, Handlungen und kritische Gains/Pains tragfähig machen.\n\nAnswer helpfully for this specific canvas instance. Use the current step as the primary anchor, allow brief forward/backward references, but do not perform board mutations and do not create a proposal record.\n\nCurrent visible instruction: Arbeite jetzt die Nutzerperspektive aus: mehrere plausible Nutzerrollen sammeln, auf einen Hauptnutzer fokussieren, Situation konkretisieren, Objectives & Results strukturieren, Decisions & Actions strukturieren und Gains/Pains andocken.\n\nDu arbeitest in Step „User Needs Analysis“.\nZiel ist, Hauptnutzer, Situation, Objectives & Results, Decisions & Actions sowie Gains/Pains tragfähig zu machen.\nZiehe die Lösungsperspektive noch nicht vor.\nHalte den Problemraum sauber und leite nichts technisch vorweg.\nAntworte instanzbezogen, verständlich und hilfreich auf Fragen zu diesem Canvas.\nNutze Step „User Needs Analysis“ als Primäranker; knappe Vor- oder Rückgriffe auf andere Schritte sind erlaubt, wenn sie der Orientierung dienen.\nWenn Kontext zu letzter Antwort oder offenem Vorschlag sichtbar ist, beantworte die Rückfrage darauf bezogen.\nTextliche Alternativen, Formulierungen und nächste Schritte sind erlaubt.\nFühre keine Board-Mutationen aus und erzeuge keinen Proposal-Run."
+                  "de": "Du arbeitest im Use Case Fit Sprint auf dem Canvas Analytics & AI Use Case. Diese Übung bleibt auf einem Einzelcanvas ohne Cross-Canvas-Handoff.\n\nSchrittkontext: User Needs Analysis. Hauptnutzer, Situation, Objectives & Results, Decisions & Actions sowie Gains/Pains tragfähig machen.\n\nAntworte instanzbezogen, verständlich und hilfreich auf Fragen zu diesem Canvas. Nutze Step „User Needs Analysis“ als Primäranker; knappe Vor- oder Rückgriffe auf andere Schritte sind erlaubt, wenn sie der Orientierung dienen. Wenn conversationContext sichtbar ist, beantworte Rückfragen in Bezug auf den letzten Vorschlag oder die letzte Antwort. Textliche Alternativen, Formulierungen und nächste Schritte sind erlaubt. Wähle executionMode = none als Standard. Wähle proposal_only nur, wenn die Anfrage klar nach einer konkreten Board-Ausarbeitung, konkreten Stickies oder einem konkreten Vorschlag verlangt. Wenn du proposal_only wählst, formuliere Änderungen als actions und bleibe innerhalb dieser Bereiche: 2_user_and_situation, 3_objectives_and_results, 4_decisions_and_actions, 5a_user_gains, 5b_user_pains, sorted_out_right. Erzeuge niemals direct_apply und wende nichts direkt an.",
+                  "en": "You are working inside the Use Case Fit Sprint on the Analytics & AI Use Case canvas. This exercise stays on a single canvas and does not use cross-canvas handoffs.\n\nStep context: User Needs Analysis. Hauptnutzer, Situation, Objectives & Results, Decisions & Actions sowie Gains/Pains tragfähig machen.\n\nAnswer in an instance-specific, helpful and clear way about the current canvas. Use step “User Needs Analysis” as the primary anchor; short backward or forward references to other steps are allowed when they help orientation. If conversationContext is visible, answer follow-up questions in relation to the last proposal or visible response. Textual alternatives, wording options and next steps are allowed. Use executionMode = none as the default. Choose proposal_only only when the request clearly asks for a concrete board elaboration, concrete stickies, or a concrete proposal. If you choose proposal_only, express board changes as actions and stay within these areas: 2_user_and_situation, 3_objectives_and_results, 4_decisions_and_actions, 5a_user_gains, 5b_user_pains, sorted_out_right. Never use direct_apply and never apply changes directly."
                 }
               },
               "run": {
-                "mutationPolicy": "none",
+                "mutationPolicy": "full",
                 "feedbackPolicy": "text",
                 "allowedExecutionModes": [
-                  "none"
+                  "none",
+                  "proposal_only"
                 ],
-                "allowedActions": []
+                "allowedActions": [
+                  "create_sticky",
+                  "move_sticky",
+                  "delete_sticky",
+                  "create_connector",
+                  "set_sticky_color",
+                  "set_check_status"
+                ],
+                "allowedActionAreas": [
+                  "2_user_and_situation",
+                  "3_objectives_and_results",
+                  "4_decisions_and_actions",
+                  "5a_user_gains",
+                  "5b_user_pains",
+                  "sorted_out_right"
+                ]
               },
               "surface": {
                 "channel": "chat_submit",
@@ -1006,6 +1081,14 @@ const RAW_METHOD_CATALOG = deepFreeze(JSON.parse(String.raw`{
                   "create_connector",
                   "set_sticky_color",
                   "set_check_status"
+                ],
+                "allowedActionAreas": [
+                  "2_user_and_situation",
+                  "3_objectives_and_results",
+                  "4_decisions_and_actions",
+                  "5a_user_gains",
+                  "5b_user_pains",
+                  "sorted_out_right"
                 ]
               },
               "surface": {
@@ -1047,6 +1130,14 @@ const RAW_METHOD_CATALOG = deepFreeze(JSON.parse(String.raw`{
                   "create_connector",
                   "set_sticky_color",
                   "set_check_status"
+                ],
+                "allowedActionAreas": [
+                  "2_user_and_situation",
+                  "3_objectives_and_results",
+                  "4_decisions_and_actions",
+                  "5a_user_gains",
+                  "5b_user_pains",
+                  "sorted_out_right"
                 ]
               },
               "surface": {
@@ -1088,6 +1179,14 @@ const RAW_METHOD_CATALOG = deepFreeze(JSON.parse(String.raw`{
                   "create_connector",
                   "set_sticky_color",
                   "set_check_status"
+                ],
+                "allowedActionAreas": [
+                  "2_user_and_situation",
+                  "3_objectives_and_results",
+                  "4_decisions_and_actions",
+                  "5a_user_gains",
+                  "5b_user_pains",
+                  "sorted_out_right"
                 ]
               },
               "surface": {
@@ -1129,6 +1228,14 @@ const RAW_METHOD_CATALOG = deepFreeze(JSON.parse(String.raw`{
                   "create_connector",
                   "set_sticky_color",
                   "set_check_status"
+                ],
+                "allowedActionAreas": [
+                  "2_user_and_situation",
+                  "3_objectives_and_results",
+                  "4_decisions_and_actions",
+                  "5a_user_gains",
+                  "5b_user_pains",
+                  "sorted_out_right"
                 ]
               },
               "surface": {
@@ -1170,6 +1277,14 @@ const RAW_METHOD_CATALOG = deepFreeze(JSON.parse(String.raw`{
                   "create_connector",
                   "set_sticky_color",
                   "set_check_status"
+                ],
+                "allowedActionAreas": [
+                  "2_user_and_situation",
+                  "3_objectives_and_results",
+                  "4_decisions_and_actions",
+                  "5a_user_gains",
+                  "5b_user_pains",
+                  "sorted_out_right"
                 ]
               },
               "surface": {
@@ -1211,6 +1326,14 @@ const RAW_METHOD_CATALOG = deepFreeze(JSON.parse(String.raw`{
                   "create_connector",
                   "set_sticky_color",
                   "set_check_status"
+                ],
+                "allowedActionAreas": [
+                  "2_user_and_situation",
+                  "3_objectives_and_results",
+                  "4_decisions_and_actions",
+                  "5a_user_gains",
+                  "5b_user_pains",
+                  "sorted_out_right"
                 ]
               },
               "surface": {
@@ -1252,6 +1375,14 @@ const RAW_METHOD_CATALOG = deepFreeze(JSON.parse(String.raw`{
                   "create_connector",
                   "set_sticky_color",
                   "set_check_status"
+                ],
+                "allowedActionAreas": [
+                  "2_user_and_situation",
+                  "3_objectives_and_results",
+                  "4_decisions_and_actions",
+                  "5a_user_gains",
+                  "5b_user_pains",
+                  "sorted_out_right"
                 ]
               },
               "surface": {
@@ -1293,6 +1424,14 @@ const RAW_METHOD_CATALOG = deepFreeze(JSON.parse(String.raw`{
                   "create_connector",
                   "set_sticky_color",
                   "set_check_status"
+                ],
+                "allowedActionAreas": [
+                  "2_user_and_situation",
+                  "3_objectives_and_results",
+                  "4_decisions_and_actions",
+                  "5a_user_gains",
+                  "5b_user_pains",
+                  "sorted_out_right"
                 ]
               },
               "surface": {
@@ -1466,8 +1605,8 @@ const RAW_METHOD_CATALOG = deepFreeze(JSON.parse(String.raw`{
               },
               "prompt": {
                 "text": {
-                  "de": "Du arbeitest im Use Case Fit Sprint auf dem Canvas Analytics & AI Use Case. Diese Übung bleibt auf einem Einzelcanvas ohne Cross-Canvas-Handoff.\n\nSchrittkontext: Solution Design. Step 2 ist Divergenz, Auswahl, Konkretisierung und Nutzenableitung – nicht freie Technologiewahl und nicht Vollvernetzung.\n\nErzeuge einen kleinen, anschlussfähigen Vorschlag für genau diesen Schritt. Der Vorschlag bleibt unange­wendet und dient nur als Proposal.\n\nAktuelle Arbeitsanweisung: Leite jetzt die Lösungsperspektive ab: mehrere Solution-Varianten sammeln, eine Hauptvariante wählen, Alternativen rechts parken, daraus Information und Functions ableiten und erst danach Benefits formulieren.\n\nDu arbeitest in Step „Solution Design“.\nZiel ist, aus dem Problemraum eine fokussierte Lösungsperspektive mit Variantenwahl, Information, Functions und Benefits abzuleiten.\nErfinde keine beliebige Technologielösung ohne Bezug zu Step 1.\nLeite die linke Seite aus dem Problemraum ab und halte Varianten bewusst getrennt.\nNutze executionMode = proposal_only.\nErzeuge einen kleinen, anschlussfähigen Vorschlag für genau diesen Schritt und bleibe eng am vorhandenen Boardzustand.\nWenn das Canvas in diesem Schritt noch sehr leer ist, mache nur einen kleinen Start und keinen Komplettneuaufbau.\nEs wird nichts angewendet; das Feedback muss den Mehrwert des Vorschlags erklären.",
-                  "en": "You are working inside the Use Case Fit Sprint on the Analytics & AI Use Case canvas. This exercise stays on a single canvas and does not use cross-canvas handoffs.\n\nStep context: Solution Design. Step 2 ist Divergenz, Auswahl, Konkretisierung und Nutzenableitung – nicht freie Technologiewahl und nicht Vollvernetzung.\n\nCreate a small, connected proposal for this exact step. The result remains unapplied and only exists as a proposal.\n\nCurrent visible instruction: Leite jetzt die Lösungsperspektive ab: mehrere Solution-Varianten sammeln, eine Hauptvariante wählen, Alternativen rechts parken, daraus Information und Functions ableiten und erst danach Benefits formulieren.\n\nDu arbeitest in Step „Solution Design“.\nZiel ist, aus dem Problemraum eine fokussierte Lösungsperspektive mit Variantenwahl, Information, Functions und Benefits abzuleiten.\nErfinde keine beliebige Technologielösung ohne Bezug zu Step 1.\nLeite die linke Seite aus dem Problemraum ab und halte Varianten bewusst getrennt.\nNutze executionMode = proposal_only.\nErzeuge einen kleinen, anschlussfähigen Vorschlag für genau diesen Schritt und bleibe eng am vorhandenen Boardzustand.\nWenn das Canvas in diesem Schritt noch sehr leer ist, mache nur einen kleinen Start und keinen Komplettneuaufbau.\nEs wird nichts angewendet; das Feedback muss den Mehrwert des Vorschlags erklären."
+                  "de": "Du arbeitest im Use Case Fit Sprint auf dem Canvas Analytics & AI Use Case. Diese Übung bleibt auf einem Einzelcanvas ohne Cross-Canvas-Handoff.\n\nSchrittkontext: Solution Design. Varianten ableiten, eine Fokusvariante wählen und Information, Functions und Benefits aus dem Problemraum ableiten.\n\nDies ist der spezialisierte Vorschlagslauf dieses Schritts. Übersetze die Lage direkt in konkrete Board-Actions. Fokussiere deine Actions auf diese Bereiche: 6_solutions, 6a_information, 6b_functions, 7_benefits und sorted_out_right. Bleibe eng am vorhandenen Boardzustand. Wenn der Schritt noch sehr leer ist, erzeuge nur einen kleinen anschlussfähigen Start und keinen Komplettneuaufbau. Nutze executionMode = proposal_only. Es wird nichts direkt angewendet; das Feedback erklärt den Mehrwert des Vorschlags.",
+                  "en": "You are working inside the Use Case Fit Sprint on the Analytics & AI Use Case canvas. This exercise stays on a single canvas and does not use cross-canvas handoffs.\n\nStep context: Solution Design. Varianten ableiten, eine Fokusvariante wählen und Information, Functions und Benefits aus dem Problemraum ableiten.\n\nThis is the specialized proposal run for this step. Translate the situation directly into concrete board actions. Focus your actions on these areas: 6_solutions, 6a_information, 6b_functions, 7_benefits und sorted_out_right. Stay close to the current board state. If the step is still very empty, create only a small connected start and not a full rebuild. Use executionMode = proposal_only. Nothing is applied directly; the feedback must explain the value of the proposal."
                 }
               },
               "run": {
@@ -1483,6 +1622,13 @@ const RAW_METHOD_CATALOG = deepFreeze(JSON.parse(String.raw`{
                   "create_connector",
                   "set_sticky_color",
                   "set_check_status"
+                ],
+                "allowedActionAreas": [
+                  "6_solutions",
+                  "6a_information",
+                  "6b_functions",
+                  "7_benefits",
+                  "sorted_out_right"
                 ]
               },
               "surface": {
@@ -1527,6 +1673,13 @@ const RAW_METHOD_CATALOG = deepFreeze(JSON.parse(String.raw`{
                   "create_connector",
                   "set_sticky_color",
                   "set_check_status"
+                ],
+                "allowedActionAreas": [
+                  "6_solutions",
+                  "6a_information",
+                  "6b_functions",
+                  "7_benefits",
+                  "sorted_out_right"
                 ]
               },
               "surface": {
@@ -1556,17 +1709,32 @@ const RAW_METHOD_CATALOG = deepFreeze(JSON.parse(String.raw`{
               },
               "prompt": {
                 "text": {
-                  "de": "Du arbeitest im Use Case Fit Sprint auf dem Canvas Analytics & AI Use Case. Diese Übung bleibt auf einem Einzelcanvas ohne Cross-Canvas-Handoff.\n\nSchrittkontext: Solution Design. Step 2 ist Divergenz, Auswahl, Konkretisierung und Nutzenableitung – nicht freie Technologiewahl und nicht Vollvernetzung.\n\nAntworte instanzbezogen und hilfreich auf Fragen zum aktuellen Canvas. Nutze den aktuellen Schritt als Primäranker, erlaube knappe Vor- und Rückgriffe, führe aber keine Board-Mutationen aus und erzeuge keinen Proposal-Record.\n\nAktuelle Arbeitsanweisung: Leite jetzt die Lösungsperspektive ab: mehrere Solution-Varianten sammeln, eine Hauptvariante wählen, Alternativen rechts parken, daraus Information und Functions ableiten und erst danach Benefits formulieren.\n\nDu arbeitest in Step „Solution Design“.\nZiel ist, aus dem Problemraum eine fokussierte Lösungsperspektive mit Variantenwahl, Information, Functions und Benefits abzuleiten.\nErfinde keine beliebige Technologielösung ohne Bezug zu Step 1.\nLeite die linke Seite aus dem Problemraum ab und halte Varianten bewusst getrennt.\nAntworte instanzbezogen, verständlich und hilfreich auf Fragen zu diesem Canvas.\nNutze Step „Solution Design“ als Primäranker; knappe Vor- oder Rückgriffe auf andere Schritte sind erlaubt, wenn sie der Orientierung dienen.\nWenn Kontext zu letzter Antwort oder offenem Vorschlag sichtbar ist, beantworte die Rückfrage darauf bezogen.\nTextliche Alternativen, Formulierungen und nächste Schritte sind erlaubt.\nFühre keine Board-Mutationen aus und erzeuge keinen Proposal-Run.",
-                  "en": "You are working inside the Use Case Fit Sprint on the Analytics & AI Use Case canvas. This exercise stays on a single canvas and does not use cross-canvas handoffs.\n\nStep context: Solution Design. Step 2 ist Divergenz, Auswahl, Konkretisierung und Nutzenableitung – nicht freie Technologiewahl und nicht Vollvernetzung.\n\nAnswer helpfully for this specific canvas instance. Use the current step as the primary anchor, allow brief forward/backward references, but do not perform board mutations and do not create a proposal record.\n\nCurrent visible instruction: Leite jetzt die Lösungsperspektive ab: mehrere Solution-Varianten sammeln, eine Hauptvariante wählen, Alternativen rechts parken, daraus Information und Functions ableiten und erst danach Benefits formulieren.\n\nDu arbeitest in Step „Solution Design“.\nZiel ist, aus dem Problemraum eine fokussierte Lösungsperspektive mit Variantenwahl, Information, Functions und Benefits abzuleiten.\nErfinde keine beliebige Technologielösung ohne Bezug zu Step 1.\nLeite die linke Seite aus dem Problemraum ab und halte Varianten bewusst getrennt.\nAntworte instanzbezogen, verständlich und hilfreich auf Fragen zu diesem Canvas.\nNutze Step „Solution Design“ als Primäranker; knappe Vor- oder Rückgriffe auf andere Schritte sind erlaubt, wenn sie der Orientierung dienen.\nWenn Kontext zu letzter Antwort oder offenem Vorschlag sichtbar ist, beantworte die Rückfrage darauf bezogen.\nTextliche Alternativen, Formulierungen und nächste Schritte sind erlaubt.\nFühre keine Board-Mutationen aus und erzeuge keinen Proposal-Run."
+                  "de": "Du arbeitest im Use Case Fit Sprint auf dem Canvas Analytics & AI Use Case. Diese Übung bleibt auf einem Einzelcanvas ohne Cross-Canvas-Handoff.\n\nSchrittkontext: Solution Design. Varianten ableiten, eine Fokusvariante wählen und Information, Functions und Benefits aus dem Problemraum ableiten.\n\nAntworte instanzbezogen, verständlich und hilfreich auf Fragen zu diesem Canvas. Nutze Step „Solution Design“ als Primäranker; knappe Vor- oder Rückgriffe auf andere Schritte sind erlaubt, wenn sie der Orientierung dienen. Wenn conversationContext sichtbar ist, beantworte Rückfragen in Bezug auf den letzten Vorschlag oder die letzte Antwort. Textliche Alternativen, Formulierungen und nächste Schritte sind erlaubt. Wähle executionMode = none als Standard. Wähle proposal_only nur, wenn die Anfrage klar nach einer konkreten Board-Ausarbeitung, konkreten Stickies oder einem konkreten Vorschlag verlangt. Wenn du proposal_only wählst, formuliere Änderungen als actions und bleibe innerhalb dieser Bereiche: 6_solutions, 6a_information, 6b_functions, 7_benefits, sorted_out_right. Erzeuge niemals direct_apply und wende nichts direkt an.",
+                  "en": "You are working inside the Use Case Fit Sprint on the Analytics & AI Use Case canvas. This exercise stays on a single canvas and does not use cross-canvas handoffs.\n\nStep context: Solution Design. Varianten ableiten, eine Fokusvariante wählen und Information, Functions und Benefits aus dem Problemraum ableiten.\n\nAnswer in an instance-specific, helpful and clear way about the current canvas. Use step “Solution Design” as the primary anchor; short backward or forward references to other steps are allowed when they help orientation. If conversationContext is visible, answer follow-up questions in relation to the last proposal or visible response. Textual alternatives, wording options and next steps are allowed. Use executionMode = none as the default. Choose proposal_only only when the request clearly asks for a concrete board elaboration, concrete stickies, or a concrete proposal. If you choose proposal_only, express board changes as actions and stay within these areas: 6_solutions, 6a_information, 6b_functions, 7_benefits, sorted_out_right. Never use direct_apply and never apply changes directly."
                 }
               },
               "run": {
-                "mutationPolicy": "none",
+                "mutationPolicy": "full",
                 "feedbackPolicy": "text",
                 "allowedExecutionModes": [
-                  "none"
+                  "none",
+                  "proposal_only"
                 ],
-                "allowedActions": []
+                "allowedActions": [
+                  "create_sticky",
+                  "move_sticky",
+                  "delete_sticky",
+                  "create_connector",
+                  "set_sticky_color",
+                  "set_check_status"
+                ],
+                "allowedActionAreas": [
+                  "6_solutions",
+                  "6a_information",
+                  "6b_functions",
+                  "7_benefits",
+                  "sorted_out_right"
+                ]
               },
               "surface": {
                 "channel": "chat_submit",
@@ -1607,6 +1775,13 @@ const RAW_METHOD_CATALOG = deepFreeze(JSON.parse(String.raw`{
                   "create_connector",
                   "set_sticky_color",
                   "set_check_status"
+                ],
+                "allowedActionAreas": [
+                  "6_solutions",
+                  "6a_information",
+                  "6b_functions",
+                  "7_benefits",
+                  "sorted_out_right"
                 ]
               },
               "surface": {
@@ -1648,6 +1823,13 @@ const RAW_METHOD_CATALOG = deepFreeze(JSON.parse(String.raw`{
                   "create_connector",
                   "set_sticky_color",
                   "set_check_status"
+                ],
+                "allowedActionAreas": [
+                  "6_solutions",
+                  "6a_information",
+                  "6b_functions",
+                  "7_benefits",
+                  "sorted_out_right"
                 ]
               },
               "surface": {
@@ -1689,6 +1871,13 @@ const RAW_METHOD_CATALOG = deepFreeze(JSON.parse(String.raw`{
                   "create_connector",
                   "set_sticky_color",
                   "set_check_status"
+                ],
+                "allowedActionAreas": [
+                  "6_solutions",
+                  "6a_information",
+                  "6b_functions",
+                  "7_benefits",
+                  "sorted_out_right"
                 ]
               },
               "surface": {
@@ -1730,6 +1919,13 @@ const RAW_METHOD_CATALOG = deepFreeze(JSON.parse(String.raw`{
                   "create_connector",
                   "set_sticky_color",
                   "set_check_status"
+                ],
+                "allowedActionAreas": [
+                  "6_solutions",
+                  "6a_information",
+                  "6b_functions",
+                  "7_benefits",
+                  "sorted_out_right"
                 ]
               },
               "surface": {
@@ -1771,6 +1967,13 @@ const RAW_METHOD_CATALOG = deepFreeze(JSON.parse(String.raw`{
                   "create_connector",
                   "set_sticky_color",
                   "set_check_status"
+                ],
+                "allowedActionAreas": [
+                  "6_solutions",
+                  "6a_information",
+                  "6b_functions",
+                  "7_benefits",
+                  "sorted_out_right"
                 ]
               },
               "surface": {
@@ -1812,6 +2015,13 @@ const RAW_METHOD_CATALOG = deepFreeze(JSON.parse(String.raw`{
                   "create_connector",
                   "set_sticky_color",
                   "set_check_status"
+                ],
+                "allowedActionAreas": [
+                  "6_solutions",
+                  "6a_information",
+                  "6b_functions",
+                  "7_benefits",
+                  "sorted_out_right"
                 ]
               },
               "surface": {
@@ -1853,6 +2063,13 @@ const RAW_METHOD_CATALOG = deepFreeze(JSON.parse(String.raw`{
                   "create_connector",
                   "set_sticky_color",
                   "set_check_status"
+                ],
+                "allowedActionAreas": [
+                  "6_solutions",
+                  "6a_information",
+                  "6b_functions",
+                  "7_benefits",
+                  "sorted_out_right"
                 ]
               },
               "surface": {
@@ -1894,6 +2111,13 @@ const RAW_METHOD_CATALOG = deepFreeze(JSON.parse(String.raw`{
                   "create_connector",
                   "set_sticky_color",
                   "set_check_status"
+                ],
+                "allowedActionAreas": [
+                  "6_solutions",
+                  "6a_information",
+                  "6b_functions",
+                  "7_benefits",
+                  "sorted_out_right"
                 ]
               },
               "surface": {
@@ -2010,6 +2234,11 @@ const RAW_METHOD_CATALOG = deepFreeze(JSON.parse(String.raw`{
                   "create_connector",
                   "set_sticky_color",
                   "set_check_status"
+                ],
+                "allowedActionAreas": [
+                  "7_benefits",
+                  "8_check",
+                  "sorted_out_right"
                 ]
               },
               "surface": {
@@ -2091,6 +2320,11 @@ const RAW_METHOD_CATALOG = deepFreeze(JSON.parse(String.raw`{
                   "create_connector",
                   "set_check_status",
                   "set_sticky_color"
+                ],
+                "allowedActionAreas": [
+                  "7_benefits",
+                  "8_check",
+                  "sorted_out_right"
                 ]
               },
               "surface": {
@@ -2118,8 +2352,8 @@ const RAW_METHOD_CATALOG = deepFreeze(JSON.parse(String.raw`{
               },
               "prompt": {
                 "text": {
-                  "de": "Du arbeitest im Use Case Fit Sprint auf dem Canvas Analytics & AI Use Case. Diese Übung bleibt auf einem Einzelcanvas ohne Cross-Canvas-Handoff.\n\nSchrittkontext: Fit Validation & Minimum Desired Product. Step 3 validiert, markiert, reduziert und verdichtet. Ziel ist ein Minimum Desired Product und nicht die Summe aller bisherigen Ideen.\n\nErzeuge einen kleinen, anschlussfähigen Vorschlag für genau diesen Schritt. Der Vorschlag bleibt unange­wendet und dient nur als Proposal.\n\nAktuelle Arbeitsanweisung: Validiere jetzt den Problem-Solution-Fit: prüfe Benefits gegen die rechte Seite, markiere belastbare Beziehungen mit Checkmarks, dünne unvalidierte Inhalte aus und verdichte den Kern im Feld Check.\n\nDu arbeitest in Step „Fit Validation & Minimum Desired Product“.\nZiel ist, den Fit zu validieren, auf einen tragfähigen Kern zu reduzieren und das Minimum Desired Product sichtbar zu machen.\nStarte keine neue Ideensammlung.\nArbeite mit Validierung, Reduktion, Checkmarks und Verdichtung im Check-Feld.\nNutze executionMode = proposal_only.\nErzeuge einen kleinen, anschlussfähigen Vorschlag für genau diesen Schritt und bleibe eng am vorhandenen Boardzustand.\nWenn das Canvas in diesem Schritt noch sehr leer ist, mache nur einen kleinen Start und keinen Komplettneuaufbau.\nEs wird nichts angewendet; das Feedback muss den Mehrwert des Vorschlags erklären.",
-                  "en": "You are working inside the Use Case Fit Sprint on the Analytics & AI Use Case canvas. This exercise stays on a single canvas and does not use cross-canvas handoffs.\n\nStep context: Fit Validation & Minimum Desired Product. Step 3 validiert, markiert, reduziert und verdichtet. Ziel ist ein Minimum Desired Product und nicht die Summe aller bisherigen Ideen.\n\nCreate a small, connected proposal for this exact step. The result remains unapplied and only exists as a proposal.\n\nCurrent visible instruction: Validiere jetzt den Problem-Solution-Fit: prüfe Benefits gegen die rechte Seite, markiere belastbare Beziehungen mit Checkmarks, dünne unvalidierte Inhalte aus und verdichte den Kern im Feld Check.\n\nDu arbeitest in Step „Fit Validation & Minimum Desired Product“.\nZiel ist, den Fit zu validieren, auf einen tragfähigen Kern zu reduzieren und das Minimum Desired Product sichtbar zu machen.\nStarte keine neue Ideensammlung.\nArbeite mit Validierung, Reduktion, Checkmarks und Verdichtung im Check-Feld.\nNutze executionMode = proposal_only.\nErzeuge einen kleinen, anschlussfähigen Vorschlag für genau diesen Schritt und bleibe eng am vorhandenen Boardzustand.\nWenn das Canvas in diesem Schritt noch sehr leer ist, mache nur einen kleinen Start und keinen Komplettneuaufbau.\nEs wird nichts angewendet; das Feedback muss den Mehrwert des Vorschlags erklären."
+                  "de": "Du arbeitest im Use Case Fit Sprint auf dem Canvas Analytics & AI Use Case. Diese Übung bleibt auf einem Einzelcanvas ohne Cross-Canvas-Handoff.\n\nSchrittkontext: Fit Validation & Minimum Desired Product. Fit validieren, belastbare Beziehungen markieren, auf den tragfähigen Kern reduzieren und im Check-Feld verdichten.\n\nDies ist der spezialisierte Vorschlagslauf dieses Schritts. Übersetze die Lage direkt in konkrete Board-Actions. Fokussiere deine Actions auf diese Bereiche: 7_benefits, 8_check und sorted_out_right. Bleibe eng am vorhandenen Boardzustand. Wenn der Schritt noch sehr leer ist, erzeuge nur einen kleinen anschlussfähigen Start und keinen Komplettneuaufbau. Nutze executionMode = proposal_only. Es wird nichts direkt angewendet; das Feedback erklärt den Mehrwert des Vorschlags.",
+                  "en": "You are working inside the Use Case Fit Sprint on the Analytics & AI Use Case canvas. This exercise stays on a single canvas and does not use cross-canvas handoffs.\n\nStep context: Fit Validation & Minimum Desired Product. Fit validieren, belastbare Beziehungen markieren, auf den tragfähigen Kern reduzieren und im Check-Feld verdichten.\n\nThis is the specialized proposal run for this step. Translate the situation directly into concrete board actions. Focus your actions on these areas: 7_benefits, 8_check und sorted_out_right. Stay close to the current board state. If the step is still very empty, create only a small connected start and not a full rebuild. Use executionMode = proposal_only. Nothing is applied directly; the feedback must explain the value of the proposal."
                 }
               },
               "run": {
@@ -2135,6 +2369,11 @@ const RAW_METHOD_CATALOG = deepFreeze(JSON.parse(String.raw`{
                   "create_connector",
                   "set_sticky_color",
                   "set_check_status"
+                ],
+                "allowedActionAreas": [
+                  "7_benefits",
+                  "8_check",
+                  "sorted_out_right"
                 ]
               },
               "surface": {
@@ -2179,6 +2418,11 @@ const RAW_METHOD_CATALOG = deepFreeze(JSON.parse(String.raw`{
                   "create_connector",
                   "set_sticky_color",
                   "set_check_status"
+                ],
+                "allowedActionAreas": [
+                  "7_benefits",
+                  "8_check",
+                  "sorted_out_right"
                 ]
               },
               "surface": {
@@ -2245,17 +2489,30 @@ const RAW_METHOD_CATALOG = deepFreeze(JSON.parse(String.raw`{
               },
               "prompt": {
                 "text": {
-                  "de": "Du arbeitest im Use Case Fit Sprint auf dem Canvas Analytics & AI Use Case. Diese Übung bleibt auf einem Einzelcanvas ohne Cross-Canvas-Handoff.\n\nSchrittkontext: Fit Validation & Minimum Desired Product. Step 3 validiert, markiert, reduziert und verdichtet. Ziel ist ein Minimum Desired Product und nicht die Summe aller bisherigen Ideen.\n\nAntworte instanzbezogen und hilfreich auf Fragen zum aktuellen Canvas. Nutze den aktuellen Schritt als Primäranker, erlaube knappe Vor- und Rückgriffe, führe aber keine Board-Mutationen aus und erzeuge keinen Proposal-Record.\n\nAktuelle Arbeitsanweisung: Validiere jetzt den Problem-Solution-Fit: prüfe Benefits gegen die rechte Seite, markiere belastbare Beziehungen mit Checkmarks, dünne unvalidierte Inhalte aus und verdichte den Kern im Feld Check.\n\nDu arbeitest in Step „Fit Validation & Minimum Desired Product“.\nZiel ist, den Fit zu validieren, auf einen tragfähigen Kern zu reduzieren und das Minimum Desired Product sichtbar zu machen.\nStarte keine neue Ideensammlung.\nArbeite mit Validierung, Reduktion, Checkmarks und Verdichtung im Check-Feld.\nAntworte instanzbezogen, verständlich und hilfreich auf Fragen zu diesem Canvas.\nNutze Step „Fit Validation & Minimum Desired Product“ als Primäranker; knappe Vor- oder Rückgriffe auf andere Schritte sind erlaubt, wenn sie der Orientierung dienen.\nWenn Kontext zu letzter Antwort oder offenem Vorschlag sichtbar ist, beantworte die Rückfrage darauf bezogen.\nTextliche Alternativen, Formulierungen und nächste Schritte sind erlaubt.\nFühre keine Board-Mutationen aus und erzeuge keinen Proposal-Run.",
-                  "en": "You are working inside the Use Case Fit Sprint on the Analytics & AI Use Case canvas. This exercise stays on a single canvas and does not use cross-canvas handoffs.\n\nStep context: Fit Validation & Minimum Desired Product. Step 3 validiert, markiert, reduziert und verdichtet. Ziel ist ein Minimum Desired Product und nicht die Summe aller bisherigen Ideen.\n\nAnswer helpfully for this specific canvas instance. Use the current step as the primary anchor, allow brief forward/backward references, but do not perform board mutations and do not create a proposal record.\n\nCurrent visible instruction: Validiere jetzt den Problem-Solution-Fit: prüfe Benefits gegen die rechte Seite, markiere belastbare Beziehungen mit Checkmarks, dünne unvalidierte Inhalte aus und verdichte den Kern im Feld Check.\n\nDu arbeitest in Step „Fit Validation & Minimum Desired Product“.\nZiel ist, den Fit zu validieren, auf einen tragfähigen Kern zu reduzieren und das Minimum Desired Product sichtbar zu machen.\nStarte keine neue Ideensammlung.\nArbeite mit Validierung, Reduktion, Checkmarks und Verdichtung im Check-Feld.\nAntworte instanzbezogen, verständlich und hilfreich auf Fragen zu diesem Canvas.\nNutze Step „Fit Validation & Minimum Desired Product“ als Primäranker; knappe Vor- oder Rückgriffe auf andere Schritte sind erlaubt, wenn sie der Orientierung dienen.\nWenn Kontext zu letzter Antwort oder offenem Vorschlag sichtbar ist, beantworte die Rückfrage darauf bezogen.\nTextliche Alternativen, Formulierungen und nächste Schritte sind erlaubt.\nFühre keine Board-Mutationen aus und erzeuge keinen Proposal-Run."
+                  "de": "Du arbeitest im Use Case Fit Sprint auf dem Canvas Analytics & AI Use Case. Diese Übung bleibt auf einem Einzelcanvas ohne Cross-Canvas-Handoff.\n\nSchrittkontext: Fit Validation & Minimum Desired Product. Fit validieren, belastbare Beziehungen markieren, auf den tragfähigen Kern reduzieren und im Check-Feld verdichten.\n\nAntworte instanzbezogen, verständlich und hilfreich auf Fragen zu diesem Canvas. Nutze Step „Fit Validation & Minimum Desired Product“ als Primäranker; knappe Vor- oder Rückgriffe auf andere Schritte sind erlaubt, wenn sie der Orientierung dienen. Wenn conversationContext sichtbar ist, beantworte Rückfragen in Bezug auf den letzten Vorschlag oder die letzte Antwort. Textliche Alternativen, Formulierungen und nächste Schritte sind erlaubt. Wähle executionMode = none als Standard. Wähle proposal_only nur, wenn die Anfrage klar nach einer konkreten Board-Ausarbeitung, konkreten Stickies oder einem konkreten Vorschlag verlangt. Wenn du proposal_only wählst, formuliere Änderungen als actions und bleibe innerhalb dieser Bereiche: 7_benefits, 8_check, sorted_out_right. Erzeuge niemals direct_apply und wende nichts direkt an.",
+                  "en": "You are working inside the Use Case Fit Sprint on the Analytics & AI Use Case canvas. This exercise stays on a single canvas and does not use cross-canvas handoffs.\n\nStep context: Fit Validation & Minimum Desired Product. Fit validieren, belastbare Beziehungen markieren, auf den tragfähigen Kern reduzieren und im Check-Feld verdichten.\n\nAnswer in an instance-specific, helpful and clear way about the current canvas. Use step “Fit Validation & Minimum Desired Product” as the primary anchor; short backward or forward references to other steps are allowed when they help orientation. If conversationContext is visible, answer follow-up questions in relation to the last proposal or visible response. Textual alternatives, wording options and next steps are allowed. Use executionMode = none as the default. Choose proposal_only only when the request clearly asks for a concrete board elaboration, concrete stickies, or a concrete proposal. If you choose proposal_only, express board changes as actions and stay within these areas: 7_benefits, 8_check, sorted_out_right. Never use direct_apply and never apply changes directly."
                 }
               },
               "run": {
-                "mutationPolicy": "none",
+                "mutationPolicy": "full",
                 "feedbackPolicy": "text",
                 "allowedExecutionModes": [
-                  "none"
+                  "none",
+                  "proposal_only"
                 ],
-                "allowedActions": []
+                "allowedActions": [
+                  "create_sticky",
+                  "move_sticky",
+                  "delete_sticky",
+                  "create_connector",
+                  "set_sticky_color",
+                  "set_check_status"
+                ],
+                "allowedActionAreas": [
+                  "7_benefits",
+                  "8_check",
+                  "sorted_out_right"
+                ]
               },
               "surface": {
                 "channel": "chat_submit",
@@ -2296,6 +2553,11 @@ const RAW_METHOD_CATALOG = deepFreeze(JSON.parse(String.raw`{
                   "create_connector",
                   "set_sticky_color",
                   "set_check_status"
+                ],
+                "allowedActionAreas": [
+                  "7_benefits",
+                  "8_check",
+                  "sorted_out_right"
                 ]
               },
               "surface": {
@@ -2337,6 +2599,11 @@ const RAW_METHOD_CATALOG = deepFreeze(JSON.parse(String.raw`{
                   "create_connector",
                   "set_sticky_color",
                   "set_check_status"
+                ],
+                "allowedActionAreas": [
+                  "7_benefits",
+                  "8_check",
+                  "sorted_out_right"
                 ]
               },
               "surface": {
@@ -2378,6 +2645,11 @@ const RAW_METHOD_CATALOG = deepFreeze(JSON.parse(String.raw`{
                   "create_connector",
                   "set_sticky_color",
                   "set_check_status"
+                ],
+                "allowedActionAreas": [
+                  "7_benefits",
+                  "8_check",
+                  "sorted_out_right"
                 ]
               },
               "surface": {
@@ -2419,6 +2691,11 @@ const RAW_METHOD_CATALOG = deepFreeze(JSON.parse(String.raw`{
                   "create_connector",
                   "set_sticky_color",
                   "set_check_status"
+                ],
+                "allowedActionAreas": [
+                  "7_benefits",
+                  "8_check",
+                  "sorted_out_right"
                 ]
               },
               "surface": {
@@ -2460,6 +2737,11 @@ const RAW_METHOD_CATALOG = deepFreeze(JSON.parse(String.raw`{
                   "create_connector",
                   "set_sticky_color",
                   "set_check_status"
+                ],
+                "allowedActionAreas": [
+                  "7_benefits",
+                  "8_check",
+                  "sorted_out_right"
                 ]
               },
               "surface": {
@@ -2501,6 +2783,11 @@ const RAW_METHOD_CATALOG = deepFreeze(JSON.parse(String.raw`{
                   "create_connector",
                   "set_sticky_color",
                   "set_check_status"
+                ],
+                "allowedActionAreas": [
+                  "7_benefits",
+                  "8_check",
+                  "sorted_out_right"
                 ]
               },
               "surface": {

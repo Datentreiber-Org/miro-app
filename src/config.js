@@ -567,6 +567,8 @@ Vertragsregeln:
 - none bedeutet actions=[].
 - direct_apply bedeutet: actions sind für direkte Anwendung gedacht.
 - proposal_only bedeutet: actions sind konkrete Vorschläge, werden aber noch nicht angewendet.
+- Wenn allowedActionAreas im JSON-Kontext vorhanden ist, dürfen create_sticky und move_sticky nur diese Bereiche als Ziel verwenden.
+- Wenn allowedExecutionModes sowohl none als auch proposal_only enthalten, ist none der Standard; proposal_only soll nur gewählt werden, wenn die Anfrage klar nach einer konkreten Board-Ausarbeitung verlangt.
 - evaluation ist nur für Bewertungsmodi zwingend; sonst leer oder knapp halten.
 - memoryEntry ist Pflicht und verdichtet semantisch, was in diesem Lauf passiert ist.
 - Referenziere in memoryEntry Canvas nur über instanceLabel.

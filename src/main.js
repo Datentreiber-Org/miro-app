@@ -11,29 +11,29 @@ import {
   DT_CHECK_TAG_COLOR,
   normalizeStickyColorToken,
   STICKY_LAYOUT
-} from "./config.js?v=20260314-patch12-cleanup8";
+} from "./config.js?v=20260315-patch13-submit-proposals";
 
-import { createLogger, stripHtml, extractUnderlinedText, isFiniteNumber } from "./utils.js?v=20260314-patch12-cleanup8";
-import { normalizeUiLanguage, t, getLocaleForLanguage } from "./i18n/index.js?v=20260314-patch12-cleanup8";
+import { createLogger, stripHtml, extractUnderlinedText, isFiniteNumber } from "./utils.js?v=20260315-patch13-submit-proposals";
+import { normalizeUiLanguage, t, getLocaleForLanguage } from "./i18n/index.js?v=20260315-patch13-submit-proposals";
 
-import * as Board from "./miro/board.js?v=20260314-patch12-cleanup8";
-import * as Catalog from "./domain/catalog.js?v=20260314-patch12-cleanup8";
-import * as OpenAI from "./ai/openai.js?v=20260314-patch12-cleanup8";
-import * as Memory from "./runtime/memory.js?v=20260314-patch12-cleanup8";
-import * as Exercises from "./exercises/registry.js?v=20260314-patch12-cleanup8";
-import * as ExerciseLibrary from "./exercises/library.js?v=20260314-patch12-cleanup8";
-import * as PromptComposer from "./prompt/composer.js?v=20260314-patch12-cleanup8";
-import * as ExerciseEngine from "./runtime/exercise-engine.js?v=20260314-patch12-cleanup8";
-import * as BoardFlow from "./runtime/board-flow.js?v=20260314-patch12-cleanup8";
-import * as PanelBridge from "./runtime/panel-bridge.js?v=20260314-patch12-cleanup8";
-import { getInsertWidthPxForCanvasType, computeTemplateInsertPosition } from "./app/template-insertion.js?v=20260314-patch12-cleanup8";
+import * as Board from "./miro/board.js?v=20260315-patch13-submit-proposals";
+import * as Catalog from "./domain/catalog.js?v=20260315-patch13-submit-proposals";
+import * as OpenAI from "./ai/openai.js?v=20260315-patch13-submit-proposals";
+import * as Memory from "./runtime/memory.js?v=20260315-patch13-submit-proposals";
+import * as Exercises from "./exercises/registry.js?v=20260315-patch13-submit-proposals";
+import * as ExerciseLibrary from "./exercises/library.js?v=20260315-patch13-submit-proposals";
+import * as PromptComposer from "./prompt/composer.js?v=20260315-patch13-submit-proposals";
+import * as ExerciseEngine from "./runtime/exercise-engine.js?v=20260315-patch13-submit-proposals";
+import * as BoardFlow from "./runtime/board-flow.js?v=20260315-patch13-submit-proposals";
+import * as PanelBridge from "./runtime/panel-bridge.js?v=20260315-patch13-submit-proposals";
+import { getInsertWidthPxForCanvasType, computeTemplateInsertPosition } from "./app/template-insertion.js?v=20260315-patch13-submit-proposals";
 import {
   pickFirstNonEmptyString,
   makeDirectedConnectorKey,
   makeUndirectedConnectorKey,
   normalizeAgentAction
-} from "./agent/action-normalization.js?v=20260314-patch12-cleanup8";
-import { createEmptyActionExecutionStats, mergeActionExecutionStats, summarizeAppliedActions } from "./agent/action-stats.js?v=20260314-patch12-cleanup8";
+} from "./agent/action-normalization.js?v=20260315-patch13-submit-proposals";
+import { createEmptyActionExecutionStats, mergeActionExecutionStats, summarizeAppliedActions } from "./agent/action-stats.js?v=20260315-patch13-submit-proposals";
 
 // --------------------------------------------------------------------
 // State (Controller-Level)
@@ -2745,13 +2745,17 @@ async function runStructuredEndpointExecution({
     const pendingProposalContext = singleInstanceId
       ? await buildPendingProposalContextForPrompt(singleInstanceId, { stepId: activeStepId })
       : null;
+    const resolvedAllowedActionAreas = resolveAllowedActionAreasForRun({
+      endpointContext,
+      activeCanvasStates
+    });
     const promptCfg = getPromptConfigForSelectedInstances(resolvedActiveIds);
     const promptText = PromptComposer.composePrompt(promptRuntimeOverride, {
       lang: getCurrentDisplayLanguage(),
       systemPrompt: promptCfg?.system || DT_GLOBAL_SYSTEM_PROMPT,
       templateCatalog: DT_TEMPLATE_CATALOG,
       involvedCanvasTypeIds: getInvolvedCanvasTypeIdsFromInstanceIds(resolvedActiveIds),
-      endpointContext
+      endpointContext: { ...endpointContext, allowedActionAreas: resolvedAllowedActionAreas }
     });
     const userQuestion = pickFirstNonEmptyString(userText, getCurrentUserQuestion());
     if (singleInstanceId && userQuestion) {
@@ -2773,7 +2777,8 @@ async function runStructuredEndpointExecution({
       memoryTimeline,
       pendingProposalContext,
       conversationContext,
-      flowGuidance: flowPromptContext.flowGuidance
+      flowGuidance: flowPromptContext.flowGuidance,
+      allowedActionAreas: resolvedAllowedActionAreas
     };
 
     log("Starte " + resolvedSourceLabel + " via Endpoint '" + endpoint.id + "' für: " + (resolvedActiveLabels.join(", ") || "(keine)") + " ...");
@@ -2874,10 +2879,8 @@ async function runStructuredEndpointExecution({
         return buildRunFailureResult("precondition", msg);
       }
 
-      const executableActions = sanitizeProposalActionsForCurrentStep(agentObj.actions, {
-        stepId: activeStepId,
-        activeCanvasPayload: singleLabel ? activeCanvasStates[singleLabel] : null,
-        userText: pickFirstNonEmptyString(userText, getCurrentUserQuestion()),
+      const executableActions = sanitizeProposalActionsForEndpoint(agentObj.actions, {
+        allowedActionAreas: resolvedAllowedActionAreas,
         logFn: log
       }).filter((action) => action && action.type !== "inform");
 
@@ -5549,90 +5552,57 @@ async function applyResolvedAgentActions(actions, { candidateInstanceIds, anchor
 // --------------------------------------------------------------------
 // Global Agent Modus A
 // --------------------------------------------------------------------
-function promptPayloadHasVisibleContent(promptPayload) {
-  if (!promptPayload || typeof promptPayload !== "object") return false;
-  const templates = Array.isArray(promptPayload.templates) ? promptPayload.templates : [];
-  for (const tpl of templates) {
-    if (Array.isArray(tpl?.header?.stickies) && tpl.header.stickies.length) return true;
-    for (const area of Array.isArray(tpl?.areas) ? tpl.areas : []) {
-      if (Array.isArray(area?.stickies) && area.stickies.length) return true;
+function listAreaNamesFromActiveCanvasStates(activeCanvasStates) {
+  const areaNames = [];
+  const seen = new Set();
+  for (const payload of Object.values((activeCanvasStates && typeof activeCanvasStates === "object") ? activeCanvasStates : {})) {
+    for (const tpl of Array.isArray(payload?.templates) ? payload.templates : []) {
+      for (const area of Array.isArray(tpl?.areas) ? tpl.areas : []) {
+        const name = pickFirstNonEmptyString(area?.name);
+        if (!name || seen.has(name)) continue;
+        seen.add(name);
+        areaNames.push(name);
+      }
     }
   }
-  return false;
+  return areaNames;
 }
 
-function userExplicitlyAskedForExampleStickies(userText) {
-  const value = pickFirstNonEmptyString(userText);
-  if (!value) return false;
-  const norm = value.toLowerCase();
-  return /beispiel|beispiel-sticky|beispielsticky|beispielhafte? sticky|setze .*beispiel|platziere .*beispiel|lege .*beispiel/.test(norm);
+function resolveAllowedActionAreasForRun({ endpointContext = null, activeCanvasStates = null } = {}) {
+  const explicitAreas = normalizeStringArray(endpointContext?.allowedActionAreas);
+  if (explicitAreas.length) return explicitAreas;
+  return listAreaNamesFromActiveCanvasStates(activeCanvasStates);
 }
 
-function sanitizeProposalActionsForCurrentStep(actions, {
-  stepId = null,
-  activeCanvasPayload = null,
-  userText = null,
+function sanitizeProposalActionsForEndpoint(actions, {
+  allowedActionAreas = [],
   logFn = null
 } = {}) {
-  const normalizedStepId = pickFirstNonEmptyString(stepId);
   const normalizedActions = Array.isArray(actions)
     ? actions.map((raw) => normalizeAgentAction(raw)).filter(Boolean)
     : [];
 
-  if (normalizedStepId !== "step0_preparation_and_focus") {
-    return normalizedActions;
-  }
-
-  const boardHasContent = promptPayloadHasVisibleContent(activeCanvasPayload);
-  const explicitExamples = userExplicitlyAskedForExampleStickies(userText);
+  const allowedAreas = new Set(normalizeStringArray(allowedActionAreas));
   const logSafe = typeof logFn === "function" ? logFn : (() => {});
-  const allowedAreas = new Set(["header", "sorted_out_left"]);
   const sanitized = [];
-  let createdHeaderCount = 0;
-  let createdSupportCount = 0;
 
   for (const action of normalizedActions) {
     if (!action || action.type === "inform") continue;
 
-    if (action.type === "create_sticky") {
+    if (allowedAreas.size && action.type === "create_sticky") {
       const area = pickFirstNonEmptyString(action.area, action.targetArea);
-      if (!allowedAreas.has(area)) {
-        logSafe("INFO: Step-0-Proposal verwirft create_sticky außerhalb von Header oder Sorted-out links: " + String(area || "(leer)"));
+      if (!area || !allowedAreas.has(area)) {
+        logSafe("INFO: Proposal verwirft Action außerhalb erlaubter Bereiche: " + String(area || "(leer)"));
         continue;
       }
-      if (!boardHasContent && !explicitExamples) {
-        if (area === "header") {
-          if (createdHeaderCount >= 1) {
-            logSafe("INFO: Step-0-Proposal auf leerem Canvas begrenzt Header-Vorschläge auf eine Sticky.");
-            continue;
-          }
-          createdHeaderCount += 1;
-        } else {
-          if (createdSupportCount >= 2) {
-            logSafe("INFO: Step-0-Proposal auf leerem Canvas begrenzt Scope-/Annahmen-Vorschläge auf zwei Stickies.");
-            continue;
-          }
-          createdSupportCount += 1;
-        }
-      }
-
-      sanitized.push(action);
-      continue;
     }
 
-    if (action.type === "move_sticky") {
+    if (allowedAreas.size && action.type === "move_sticky") {
       const area = pickFirstNonEmptyString(action.targetArea, action.area);
-      if (!allowedAreas.has(area)) {
-        logSafe("INFO: Step-0-Proposal verwirft move_sticky außerhalb von Header oder Sorted-out links: " + String(area || "(leer)"));
+      if (!area || !allowedAreas.has(area)) {
+        logSafe("INFO: Proposal verwirft Action außerhalb erlaubter Bereiche: " + String(area || "(leer)"));
         continue;
       }
-      sanitized.push(action);
-      continue;
-    }
-
-    if (action.type === "set_sticky_color" || action.type === "set_check_status" || action.type === "delete_sticky") {
-      sanitized.push(action);
-      continue;
     }
 
     sanitized.push(action);
