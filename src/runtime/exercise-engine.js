@@ -7,7 +7,7 @@ import {
 import {
   listStepTransitions,
   resolveNamedTransition
-} from "../exercises/registry.js?v=20260313-patch11-chatpatch1";
+} from "../exercises/registry.js?v=20260314-patch11-chatpatch1a";
 
 function asNonEmptyString(value) {
   if (typeof value !== "string") return null;

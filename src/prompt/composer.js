@@ -1,8 +1,8 @@
 import {
   getAllowedCanvasTypesForPack,
   getDefaultCanvasTypeIdForPack
-} from "../exercises/registry.js?v=20260313-patch11-chatpatch1";
-import { getPromptModulesByIds } from "../exercises/library.js?v=20260313-patch11-chatpatch1";
+} from "../exercises/registry.js?v=20260314-patch11-chatpatch1a";
+import { getPromptModulesByIds } from "../exercises/library.js?v=20260314-patch11-chatpatch1a";
 import { normalizeUiLanguage } from "../i18n/index.js?v=20260313-patch11-chatpatch1";
 
 function asNonEmptyString(value) {

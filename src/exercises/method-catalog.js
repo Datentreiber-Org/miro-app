@@ -1549,15 +1549,7 @@ const RAW_METHOD_CATALOG = deepFreeze(JSON.parse(String.raw`{
           "id": "analytics.fit.shared.question_style",
           "label": "Chat-Submit-Stil",
           "summary": "Macht Instanzfragen schrittbezogen, verständlich und trainingsorientiert.",
-          "prompt": "Chat-Submit-Stil:
-- Beantworte Fragen direkt, verständlich und boardbezogen.
-- Nutze den aktuellen Schritt als Primäranker, beantworte aber auch allgemeinere Instanzfragen zum Canvas, wenn sie sich auf diese Canvas-Arbeit beziehen.
-- Wenn conversationContext mit letzter Endpoint-Antwort, kurzer Gesprächshistorie oder offenem Vorschlag vorhanden ist, nutze ihn als Kontextanker für Rückfragen und Konkretisierungen.
-- Wenn die Frage einen früheren oder späteren Workshopteil berührt, erkläre das knapp, bleibe aber in der isolierten Übung dieses Einzelcanvas.
-- Wenn die Frage nach Beispielen, Alternativen oder besseren Formulierungen verlangt, gib diese textlich als hilfreiche Optionen – ohne daraus einen gespeicherten Vorschlag oder Board-Mutationen zu machen.
-- Wenn ein pendingProposal im Kontext vorhanden ist, erkläre ihn als noch nicht angewendeten Vorschlag und nicht als bereits umgesetzten Boardzustand.
-- Wenn eine echte Board-Vorschlagsausarbeitung sinnvoll wäre, erkläre das als nächsten sinnvollen Schritt, statt stillschweigend selbst einen Proposal-Run auszulösen.
-- Verwende in sichtbaren Antworten niemals rohe Area-Keys, sondern die sichtbaren Bereichstitel."
+          "prompt": "Chat-Submit-Stil:\n- Beantworte Fragen direkt, verständlich und boardbezogen.\n- Nutze den aktuellen Schritt als Primäranker, beantworte aber auch allgemeinere Instanzfragen zum Canvas, wenn sie sich auf diese Canvas-Arbeit beziehen.\n- Wenn conversationContext mit letzter Endpoint-Antwort, kurzer Gesprächshistorie oder offenem Vorschlag vorhanden ist, nutze ihn als Kontextanker für Rückfragen und Konkretisierungen.\n- Wenn die Frage einen früheren oder späteren Workshopteil berührt, erkläre das knapp, bleibe aber in der isolierten Übung dieses Einzelcanvas.\n- Wenn die Frage nach Beispielen, Alternativen oder besseren Formulierungen verlangt, gib diese textlich als hilfreiche Optionen – ohne daraus einen gespeicherten Vorschlag oder Board-Mutationen zu machen.\n- Wenn ein pendingProposal im Kontext vorhanden ist, erkläre ihn als noch nicht angewendeten Vorschlag und nicht als bereits umgesetzten Boardzustand.\n- Wenn eine echte Board-Vorschlagsausarbeitung sinnvoll wäre, erkläre das als nächsten sinnvollen Schritt, statt stillschweigend selbst einen Proposal-Run auszulösen.\n- Verwende in sichtbaren Antworten niemals rohe Area-Keys, sondern die sichtbaren Bereichstitel."
         },
         "analytics.fit.shared.soft_reference_hints": {
           "id": "analytics.fit.shared.soft_reference_hints",

@@ -1,4 +1,4 @@
-export { EXERCISE_PACKS } from "./method-catalog.js?v=20260313-patch11-chatpatch1";
+export { EXERCISE_PACKS } from "./method-catalog.js?v=20260314-patch11-chatpatch1a";
 
 export {
   ENDPOINTS,
@@ -22,4 +22,4 @@ export {
   findFirstEndpointByChannel,
   listBoardButtonEndpointsForStep,
   isSidecarOnlyEndpoint
-} from "./library.js?v=20260313-patch11-chatpatch1";
+} from "./library.js?v=20260314-patch11-chatpatch1a";
