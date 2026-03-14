@@ -2,13 +2,13 @@ import {
   DT_SHAPE_META_KEY_FLOW_CONTROL,
   DT_FLOW_CONTROL_LAYOUT,
   DT_FLOW_CONTROL_STATE_STYLES
-} from "../config.js?v=20260310-batch92";
+} from "../config.js?v=20260314-patch12-cleanup6";
 
-import { normalizeUiLanguage, t } from "../i18n/index.js?v=20260310-batch92";
-import { ensureMiroReady, getBoard } from "./sdk.js?v=20260307-batch5";
-import { asTrimmedString } from "./helpers.js?v=20260305-batch05";
-import { getItemById } from "./items.js?v=20260305-batch05";
-import { computeTemplateGeometry } from "./instances.js?v=20260310-batch92";
+import { normalizeUiLanguage, t } from "../i18n/index.js?v=20260314-patch12-cleanup6";
+import { ensureMiroReady, getBoard } from "./sdk.js?v=20260314-patch12-cleanup6";
+import { asTrimmedString } from "./helpers.js?v=20260314-patch12-cleanup6";
+import { getItemById } from "./items.js?v=20260314-patch12-cleanup6";
+import { computeTemplateGeometry } from "./instances.js?v=20260314-patch12-cleanup6";
 
 function normalizeFlowControlMeta(rawMeta) {
   const src = (rawMeta && typeof rawMeta === "object") ? rawMeta : {};

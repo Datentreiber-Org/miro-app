@@ -14,12 +14,12 @@ import {
   DT_STORAGE_KEY_PROPOSAL_INDEX,
   DT_STORAGE_KEY_PROPOSAL_PREFIX,
   DT_MEMORY_RECENT_LOG_LIMIT
-} from "../config.js?v=20260310-batch10-1";
+} from "../config.js?v=20260314-patch12-cleanup6";
 
-import { normalizeBoardFlow } from "../runtime/board-flow.js?v=20260312-patch11";
-import { normalizeUiLanguage } from "../i18n/index.js?v=20260310-batch92";
-import { ensureMiroReady, getBoard } from "./sdk.js?v=20260307-batch75";
-import { compareItemIdsAsc, normalizePositiveInt, asTrimmedString } from "./helpers.js?v=20260305-batch05";
+import { normalizeBoardFlow } from "../runtime/board-flow.js?v=20260314-patch12-cleanup6";
+import { normalizeUiLanguage } from "../i18n/index.js?v=20260314-patch12-cleanup6";
+import { ensureMiroReady, getBoard } from "./sdk.js?v=20260314-patch12-cleanup6";
+import { compareItemIdsAsc, normalizePositiveInt, asTrimmedString } from "./helpers.js?v=20260314-patch12-cleanup6";
 
 // --------------------------------------------------------------------
 // Storage, board config, baseline, memory and exercise runtime

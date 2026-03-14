@@ -2,12 +2,12 @@ import {
   DT_SHAPE_META_KEY_CHAT_INTERFACE,
   DT_CHAT_INTERFACE_LAYOUT,
   DT_CHAT_INTERFACE_STYLES
-} from "../config.js?v=20260313-patch11-chatpatch1";
+} from "../config.js?v=20260314-patch12-cleanup6";
 
-import { normalizeUiLanguage, t, allLocaleVariants } from "../i18n/index.js?v=20260313-patch11-chatpatch1";
-import { ensureMiroReady, getBoard } from "./sdk.js?v=20260308-batch76";
-import { asTrimmedString } from "./helpers.js?v=20260305-batch05";
-import { getItemById, removeItemById } from "./items.js?v=20260305-batch05";
+import { normalizeUiLanguage, t, allLocaleVariants } from "../i18n/index.js?v=20260314-patch12-cleanup6";
+import { ensureMiroReady, getBoard } from "./sdk.js?v=20260314-patch12-cleanup6";
+import { asTrimmedString } from "./helpers.js?v=20260314-patch12-cleanup6";
+import { getItemById, removeItemById } from "./items.js?v=20260314-patch12-cleanup6";
 
 function clamp(value, min, max) {
   const n = Number(value);

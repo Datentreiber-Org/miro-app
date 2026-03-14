@@ -1,4 +1,4 @@
-export { ensureMiroReady, getBoard, registerSelectionUpdateHandler } from "./sdk.js?v=20260308-batch76";
+export { ensureMiroReady, getBoard, registerSelectionUpdateHandler } from "./sdk.js?v=20260314-patch12-cleanup6";
 
 export {
   normalizeBoardConfig,
@@ -30,12 +30,12 @@ export {
   normalizeBoardRunState,
   loadBoardRunState,
   saveBoardRunState
-} from "./storage.js?v=20260313-patch11e";
+} from "./storage.js?v=20260314-patch12-cleanup6";
 
 export {
   buildAgentFeedbackContent,
   buildQuestionAnswerContent
-} from "./feedback.js?v=20260310-batch92";
+} from "./feedback.js?v=20260314-patch12-cleanup6";
 
 export {
   normalizeChatInterfaceShapeIds,
@@ -61,7 +61,7 @@ export {
   syncChatProposeButtonState,
   syncChatApplyButtonState,
   syncChatInterfaceLayoutForInstance
-} from "./chat-interface.js?v=20260313-patch11-chatpatch1";
+} from "./chat-interface.js?v=20260314-patch12-cleanup6";
 
 export {
   getSelection,
@@ -87,7 +87,7 @@ export {
   setStickyNoteTagPresence,
   setStickyNoteFillColor,
   getBoardBaseContext
-} from "./items.js?v=20260312-patch11";
+} from "./items.js?v=20260314-patch12-cleanup6";
 
 export {
   readFlowControlMeta,
@@ -96,7 +96,7 @@ export {
   computeSuggestedFlowControlPosition,
   createFlowControlShape,
   syncFlowControlShapeAppearance
-} from "./flow-controls.js?v=20260310-batch92";
+} from "./flow-controls.js?v=20260314-patch12-cleanup6";
 
 export {
   computeTemplateGeometry,
@@ -105,4 +105,4 @@ export {
   findInstanceByRect,
   registerInstanceFromImage,
   scanTemplateInstances
-} from "./instances.js?v=20260313-patch11-chatpatch1";
+} from "./instances.js?v=20260314-patch12-cleanup6";
