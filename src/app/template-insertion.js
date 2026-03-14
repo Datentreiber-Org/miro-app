@@ -1,7 +1,7 @@
 import {
   DT_SORTED_OUT_REGION_WIDTH_PX,
   DT_SORTED_OUT_BUFFER_WIDTH_PX
-} from "../config.js?v=20260315-patch13-submit-proposals";
+} from "../config.js?v=20260315-patch13-submit-proposals-fix1";
 
 function getCanvasDef(canvasTypeId, { canvasDefs, defaultTemplateId }) {
   return canvasDefs?.[canvasTypeId] || canvasDefs?.[defaultTemplateId] || null;

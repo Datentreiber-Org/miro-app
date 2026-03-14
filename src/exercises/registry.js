@@ -1,4 +1,4 @@
-export { EXERCISE_PACKS } from "./method-catalog.js?v=20260315-patch13-submit-proposals";
+export { EXERCISE_PACKS } from "./method-catalog.js?v=20260315-patch13-submit-proposals-fix1";
 
 export {
   ENDPOINTS,
@@ -22,4 +22,4 @@ export {
   findFirstEndpointByChannel,
   listBoardButtonEndpointsForStep,
   isSidecarOnlyEndpoint
-} from "./library.js?v=20260315-patch13-submit-proposals";
+} from "./library.js?v=20260315-patch13-submit-proposals-fix1";

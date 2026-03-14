@@ -1,8 +1,8 @@
 import {
   getAllowedCanvasTypesForPack,
   getDefaultCanvasTypeIdForPack
-} from "../exercises/registry.js?v=20260315-patch13-submit-proposals";
-import { normalizeUiLanguage } from "../i18n/index.js?v=20260315-patch13-submit-proposals";
+} from "../exercises/registry.js?v=20260315-patch13-submit-proposals-fix1";
+import { normalizeUiLanguage } from "../i18n/index.js?v=20260315-patch13-submit-proposals-fix1";
 
 function asNonEmptyString(value) {
   if (typeof value !== "string") return null;
