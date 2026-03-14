@@ -1,8 +1,7 @@
 import {
   getAllowedCanvasTypesForPack,
   getDefaultCanvasTypeIdForPack
-} from "../exercises/registry.js?v=20260314-patch11-chatpatch1a";
-import { getPromptModulesByIds } from "../exercises/library.js?v=20260314-patch11-chatpatch1a";
+} from "../exercises/registry.js?v=20260314-patch12-pb2";
 import { normalizeUiLanguage } from "../i18n/index.js?v=20260313-patch11-chatpatch1";
 
 function asNonEmptyString(value) {
@@ -135,7 +134,7 @@ function buildBoardMechanicsBlock(runtime, options = {}) {
 
   const lines = [
     "Board- und Action-Grenzen dieses Laufs:",
-    "- Verwende nur Vertragstypen und nur passende Area-Keys aus activeCanvasState/activeCanvasStates.",
+    "- Verwende nur Vertragstypen und nur passende Area-Keys aus activeCanvasStates.",
     "- sorted_out_left und sorted_out_right sind Off-Canvas-Parkbereiche.",
     "- Nutze color und checked nur dann, wenn der aktuelle Endpoint diese Mechaniken wirklich braucht.",
     "- Verwende in sichtbaren Antworten niemals rohe Area-Keys wie 2_user_and_situation oder 6a_information, sondern deren sichtbare Titel.",
@@ -151,38 +150,6 @@ function buildBoardMechanicsBlock(runtime, options = {}) {
   if (mutationPolicy) lines.splice(1, 0, `- mutationPolicy: ${mutationPolicy}.`);
   if (feedbackPolicy) lines.splice(1, 0, `- feedbackPolicy: ${feedbackPolicy}.`);
 
-  return lines.join("\n");
-}
-
-function normalizePendingProposalForPrompt(value) {
-  if (!value || typeof value !== "object") return null;
-  return {
-    status: asNonEmptyString(value.status) || null,
-    stepId: asNonEmptyString(value.stepId) || null,
-    createdAt: asNonEmptyString(value.createdAt) || null,
-    summary: asNonEmptyString(value.summary)
-      || asNonEmptyString(value.feedback?.summary)
-      || asNonEmptyString(value.analysis)
-      || null,
-    actionPreview: Array.isArray(value.actionPreview)
-      ? value.actionPreview.map(asNonEmptyString).filter(Boolean).slice(0, 8)
-      : []
-  };
-}
-
-function buildPendingProposalBlock(pendingProposal = null) {
-  const proposal = normalizePendingProposalForPrompt(pendingProposal);
-  if (!proposal) return null;
-  const lines = [
-    "Hinweis zu einem bereits vorliegenden Vorschlag:",
-    "- Im Payload kann ein pendingProposal enthalten sein. Dieser Vorschlag ist noch NICHT angewendet.",
-    "- Wenn du dich auf pendingProposal beziehst, sprich klar von einem Vorschlag und nicht von bereits vollzogener Arbeit."
-  ];
-  if (proposal.status) lines.push(`- Status: ${proposal.status}`);
-  if (proposal.stepId) lines.push(`- Schrittbezug: ${proposal.stepId}`);
-  if (proposal.createdAt) lines.push(`- Erstellt am: ${proposal.createdAt}`);
-  if (proposal.summary) lines.push(`- Zusammenfassung des offenen Vorschlags: ${proposal.summary}`);
-  if (proposal.actionPreview.length) lines.push(`- Vorschlagsvorschau: ${proposal.actionPreview.join(" | ")}`);
   return lines.join("\n");
 }
 
@@ -207,49 +174,23 @@ function buildControlContextBlock(controlContext) {
   return lines.length ? lines.join("\n") : null;
 }
 
-function resolvePromptModules(promptModules, moduleIds = [], lang = "de") {
-  const explicitModules = Array.isArray(promptModules) ? promptModules : [];
-  if (!moduleIds.length) return explicitModules.filter(Boolean);
-  const byId = new Map(explicitModules.filter(Boolean).map((module) => [module.id, module]));
-  const resolved = getPromptModulesByIds(moduleIds, { lang });
-  for (const module of resolved) byId.set(module.id, module);
-  return Array.from(byId.values());
+function buildEndpointSpecificationBlock({ endpoint }) {
+  const promptText = asNonEmptyString(endpoint?.prompt?.text);
+  if (!promptText) return null;
+  return renderPromptSection("ENDPOINT SPECIFICATION", promptText);
 }
 
-function moduleBlocks(modules) {
-  return (Array.isArray(modules) ? modules : [])
-    .map((module) => renderPromptSection(module.label || module.id, asNonEmptyString(module.text) || asNonEmptyString(module.summary)))
-    .filter(Boolean)
-    .join("\n\n");
+export function buildEndpointSpecificationBlock({ endpoint }) {
+  const label = asNonEmptyString(endpoint?.label);
+  const summary = asNonEmptyString(endpoint?.summary);
+  const taskText = asNonEmptyString(endpoint?.prompt?.text);
+  const body = [label, summary, taskText].filter(Boolean).join("
+
+");
+  return renderPromptSection("ENDPOINT SPECIFICATION", body);
 }
 
-export function buildDidacticEndpointPromptBundle({
-  exercisePack,
-  currentStep,
-  endpoint,
-  promptModules,
-  lang = "de"
-}) {
-  const parts = [];
-  if (exercisePack?.globalPrompt) parts.push(renderPromptSection("METHOD", exercisePack.globalPrompt));
-  if (exercisePack?.didacticGlobalPrompt) parts.push(renderPromptSection("DIDACTIC CONTEXT", exercisePack.didacticGlobalPrompt));
-  if (currentStep?.label || currentStep?.summary) {
-    parts.push(renderPromptSection("CURRENT STEP", [currentStep?.label, currentStep?.summary].filter(Boolean).join("\n\n")));
-  }
-  if (currentStep?.visibleInstruction) parts.push(renderPromptSection("VISIBLE STEP INSTRUCTION", currentStep.visibleInstruction));
-  if (currentStep?.flowInstruction) parts.push(renderPromptSection("FLOW INSTRUCTION", currentStep.flowInstruction));
-  if (currentStep?.stateModelText) parts.push(renderPromptSection("STEP STATE MODEL", currentStep.stateModelText));
-  if (currentStep?.exitCriteriaText) parts.push(renderPromptSection("EXIT CRITERIA", currentStep.exitCriteriaText));
-  if (endpoint?.label || endpoint?.summary) {
-    parts.push(renderPromptSection("CURRENT ENDPOINT", [endpoint?.label, endpoint?.summary].filter(Boolean).join("\n\n")));
-  }
-  if (endpoint?.prompt?.text) parts.push(renderPromptSection("ENDPOINT TASK", endpoint.prompt.text));
-  const modulesText = moduleBlocks(resolvePromptModules(promptModules, endpoint?.prompt?.moduleIds || [], lang));
-  if (modulesText) parts.push(renderPromptSection("ENDPOINT MODULES", modulesText));
-  return parts.filter(Boolean).join("\n\n");
-}
-
-export function composePrompt(runtime, options = {}) {
+function composePrompt(runtime, options = {}) {
   if (!runtime?.endpoint) {
     throw new Error("composePrompt requires a canonical endpoint");
   }
@@ -259,18 +200,11 @@ export function composePrompt(runtime, options = {}) {
     buildLanguagePromptBlock(runtime, options),
     buildCanvasWorldModelBlock(runtime, options),
     buildBoardMechanicsBlock(runtime, options),
-    buildPendingProposalBlock(runtime.pendingProposal),
     buildControlContextBlock(runtime.controlContext),
     buildAdminOverrideBlock(runtime.adminOverride)
   ].filter(Boolean);
 
-  const didacticBlock = buildDidacticEndpointPromptBundle({
-    exercisePack: runtime.exercisePack,
-    currentStep: runtime.currentStep,
-    endpoint: runtime.endpoint,
-    promptModules: runtime.promptModules,
-    lang: options.lang || "de"
-  });
+  const endpointBlock = buildEndpointSpecificationBlock({ endpoint: runtime.endpoint });
 
-  return [...sharedBlocks, didacticBlock].filter(Boolean).join("\n\n");
+  return [...sharedBlocks, endpointBlock].filter(Boolean).join("\n\n");
 }

@@ -11,7 +11,7 @@ import {
   DT_CHECK_TAG_COLOR,
   normalizeStickyColorToken,
   STICKY_LAYOUT
-} from "./config.js?v=20260313-patch11-chatpatch1";
+} from "./config.js?v=20260314-patch12-pb2";
 
 import { createLogger, stripHtml, extractUnderlinedText, isFiniteNumber } from "./utils.js?v=20260301-step11-hotfix2";
 import { normalizeUiLanguage, t, getLocaleForLanguage } from "./i18n/index.js?v=20260313-patch11-chatpatch1";
@@ -20,13 +20,12 @@ import * as Board from "./miro/board.js?v=20260313-patch11-chatpatch1";
 import * as Catalog from "./domain/catalog.js?v=20260311-batch83fix1";
 import * as OpenAI from "./ai/openai.js?v=20260313-patch11v3-final";
 import * as Memory from "./runtime/memory.js?v=20260313-patch11v3-final";
-import * as Exercises from "./exercises/registry.js?v=20260314-patch11-chatpatch1a";
-import * as ExerciseLibrary from "./exercises/library.js?v=20260314-patch11-chatpatch1a";
-import * as PromptComposer from "./prompt/composer.js?v=20260314-patch11-chatpatch1a";
-import * as ExerciseEngine from "./runtime/exercise-engine.js?v=20260314-patch11-chatpatch1a";
+import * as Exercises from "./exercises/registry.js?v=20260314-patch12-pb2";
+import * as ExerciseLibrary from "./exercises/library.js?v=20260314-patch12-pb2";
+import * as PromptComposer from "./prompt/composer.js?v=20260314-patch12-pb2";
+import * as ExerciseEngine from "./runtime/exercise-engine.js?v=20260314-patch12-pb2";
 import * as BoardFlow from "./runtime/board-flow.js?v=20260313-patch11v3-final";
 import * as PanelBridge from "./runtime/panel-bridge.js?v=20260312-patch11";
-import { buildPayloadMappingHint } from "./app/payload-hints.js?v=20260305-batch06";
 import { getInsertWidthPxForCanvasType, computeTemplateInsertPosition } from "./app/template-insertion.js?v=20260308-batch76";
 import {
   pickFirstNonEmptyString,
@@ -86,7 +85,7 @@ const state = {
   lastAutoFlowControlLabel: "",
 
   // UI state
-  chatContextByInstanceId: new Map(),
+  conversationStateByInstanceId: new Map(),
   selectedCanvasTypeId: TEMPLATE_ID,
   panelMode: "admin",
   panelInteractionState: {
@@ -1545,29 +1544,64 @@ function updateFlowControlLabelDirtyState() {
   state.flowControlLabelDirty = manual;
 }
 
-function buildFlowControlCatalogForPack(exercisePack) {
-  if (!exercisePack?.id) return [];
-  const lang = getCurrentDisplayLanguage();
-  return Exercises.listExerciseSteps(exercisePack, { lang }).map((step) => ({
-    step,
-    endpoints: listAuthorableEndpointsForStep(exercisePack, step.id, { lang })
+function listDirectiveCandidateEndpointsForStep(exercisePack, stepId, { lang = getCurrentDisplayLanguage() } = {}) {
+  if (!exercisePack?.id || !stepId) return [];
+  return ExerciseLibrary.listBoardButtonEndpointsForStep(exercisePack, stepId, { lang }).map((endpoint) => ({
+    endpointId: endpoint.id,
+    label: endpoint.label || null,
+    summary: endpoint.summary || null
   }));
 }
 
-function buildBoardFlowStateForPrompt(flow) {
-  if (!flow?.id) return null;
-  const currentStep = BoardFlow.getFlowStep(flow, flow.runtime?.currentStepId);
+function buildAdjacentStepGuidance(exercisePack, activeStepId, { lang = getCurrentDisplayLanguage() } = {}) {
+  const steps = exercisePack?.id ? Exercises.listExerciseSteps(exercisePack, { lang }) : [];
+  const currentIndex = steps.findIndex((step) => step?.id === activeStepId);
+  const simplifyStep = (step) => step ? ({ stepId: step.id, label: step.label || null, summary: step.summary || null }) : null;
   return {
-    flowId: flow.id,
-    anchorInstanceLabel: getInstanceLabelByInternalId(flow.anchorInstanceId) || null,
-    activeStepId: flow.runtime?.currentStepId || null,
-    currentStepLabel: currentStep?.label || null,
-    controls: sortFlowControlsForDisplay(flow, Object.values(flow.controls || {})).map((control) => ({
-      endpointId: control.endpointId || null,
-      label: control.label || null,
-      stepId: control.stepId || null,
-      state: control.state || "disabled"
-    }))
+    previousStep: currentIndex > 0 ? simplifyStep(steps[currentIndex - 1]) : null,
+    currentStep: currentIndex >= 0 ? simplifyStep(steps[currentIndex]) : null,
+    nextStep: currentIndex >= 0 && currentIndex < steps.length - 1 ? simplifyStep(steps[currentIndex + 1]) : null
+  };
+}
+
+function buildFlowGuidanceForPrompt({ exercisePack, flow, lang = getCurrentDisplayLanguage() } = {}) {
+  if (!exercisePack?.id || !flow?.id) return null;
+  const activeStepId = pickFirstNonEmptyString(flow?.runtime?.currentStepId);
+  if (!activeStepId) return null;
+
+  const adjacent = buildAdjacentStepGuidance(exercisePack, activeStepId, { lang });
+  const currentDirectives = listDirectiveCandidateEndpointsForStep(exercisePack, activeStepId, { lang }).map((directive) => {
+    const materializedControls = BoardFlow.findFlowControlsByEndpointId(flow, directive.endpointId);
+    const activeControl = materializedControls[0] || null;
+    return {
+      endpointId: directive.endpointId,
+      label: directive.label,
+      summary: directive.summary,
+      controlState: activeControl?.state || 'disabled'
+    };
+  });
+
+  const nextStepDirectives = adjacent.nextStep?.stepId
+    ? listDirectiveCandidateEndpointsForStep(exercisePack, adjacent.nextStep.stepId, { lang }).map((directive) => ({
+        endpointId: directive.endpointId,
+        label: directive.label
+      }))
+    : [];
+
+  return {
+    currentStep: adjacent.currentStep
+      ? {
+          ...adjacent.currentStep,
+          directives: currentDirectives
+        }
+      : null,
+    previousStep: adjacent.previousStep,
+    nextStep: adjacent.nextStep
+      ? {
+          ...adjacent.nextStep,
+          directives: nextStepDirectives
+        }
+      : null
   };
 }
 
@@ -1591,8 +1625,7 @@ function resolveFlowPromptContext({ promptRuntimeOverride = null, targetInstance
     exercisePackId,
     anchorInstanceId: anchorInstanceId || flow?.anchorInstanceId || null,
     flow,
-    flowControlCatalog: buildFlowControlCatalogForPack(exercisePack),
-    boardFlowState: flow ? buildBoardFlowStateForPrompt(flow) : null
+    flowGuidance: buildFlowGuidanceForPrompt({ exercisePack, flow, lang })
   };
 }
 
@@ -1987,30 +2020,38 @@ async function applyFlowControlDirectivesAfterAgentRun({ flowControlDirectives =
     skippedEndpointIds: []
   };
   if (!directives) return result;
-  const exercisePackId = flowContext.exercisePackId;
-  if (!exercisePackId) {
+  if (!flowContext.exercisePackId) {
     log("WARNUNG: Flow-Control-Directives konnten nicht angewendet werden – kein Exercise Pack aktiv.");
     return result;
   }
+
+  const allowedDirectiveEndpointIds = new Set([
+    ...(Array.isArray(flowContext.flowGuidance?.currentStep?.directives) ? flowContext.flowGuidance.currentStep.directives : []),
+    ...(Array.isArray(flowContext.flowGuidance?.nextStep?.directives) ? flowContext.flowGuidance.nextStep.directives : [])
+  ].map((entry) => pickFirstNonEmptyString(entry?.endpointId)).filter(Boolean));
+
   const validUnlockEndpointIds = [];
   const validCompleteEndpointIds = [];
   for (const endpointId of directives.unlockEndpointIds || []) {
-    const endpoint = ExerciseLibrary.getEndpointById(endpointId);
-    if (!endpoint || endpoint.exercisePackId !== exercisePackId || ExerciseLibrary.isSidecarOnlyEndpoint(endpoint) || endpoint.surface?.group === 'hidden') {
+    if (!allowedDirectiveEndpointIds.has(endpointId)) {
       result.skippedEndpointIds.push(endpointId);
       continue;
     }
     validUnlockEndpointIds.push(endpointId);
   }
   for (const endpointId of directives.completeEndpointIds || []) {
-    const endpoint = ExerciseLibrary.getEndpointById(endpointId);
-    if (!endpoint || endpoint.exercisePackId !== exercisePackId || ExerciseLibrary.isSidecarOnlyEndpoint(endpoint) || endpoint.surface?.group === 'hidden') {
+    if (!allowedDirectiveEndpointIds.has(endpointId)) {
       result.skippedEndpointIds.push(endpointId);
       continue;
     }
     validCompleteEndpointIds.push(endpointId);
   }
-  result.flowControlDirectives = { unlockEndpointIds: validUnlockEndpointIds.slice(), completeEndpointIds: validCompleteEndpointIds.slice() };
+
+  result.flowControlDirectives = {
+    unlockEndpointIds: validUnlockEndpointIds.slice(),
+    completeEndpointIds: validCompleteEndpointIds.slice()
+  };
+
   let flow = flowContext.flow || null;
   const needsControlCreation = validUnlockEndpointIds.some((endpointId) => !flow || !BoardFlow.findFlowControlsByEndpointId(flow, endpointId).length);
   if ((!flow || needsControlCreation) && !flowContext.anchorInstanceId) {
@@ -2019,7 +2060,7 @@ async function applyFlowControlDirectivesAfterAgentRun({ flowControlDirectives =
   }
   const staticLayout = isStaticFlowControlLayoutEnabled();
   if (!flow && flowContext.anchorInstanceId && !staticLayout) {
-    flow = await findOrCreateBoardFlowForPack(exercisePackId, flowContext.anchorInstanceId);
+    flow = await findOrCreateBoardFlowForPack(flowContext.exercisePackId, flowContext.anchorInstanceId);
   }
   if (!flow) {
     if (staticLayout && (validUnlockEndpointIds.length || validCompleteEndpointIds.length)) {
@@ -2262,18 +2303,14 @@ function buildPromptRuntimeFromEndpoint({
   currentStep,
   endpoint,
   controlContext = null,
-  pendingProposal = null,
   adminOverride = null
 }) {
-  const promptModules = ExerciseLibrary.getPromptModulesByIds(endpoint?.prompt?.moduleIds || [], { lang: getCurrentDisplayLanguage() });
   return {
     mode: 'endpoint',
     exercisePack,
     currentStep,
     endpoint,
-    promptModules,
     controlContext,
-    pendingProposal,
     adminOverride
   };
 }
@@ -2328,7 +2365,6 @@ async function runAgentFromFlowControl(flow, control, selectedItem) {
       flowId: healthyFlow.id,
       controlId: healthyControl.id,
       controlLabel: healthyControl.label || null,
-      endpointId: endpoint.id,
       anchorInstanceId: healthyFlow.anchorInstanceId || healthyControl.anchorInstanceId || null,
       scopeType: healthyControl.scope?.mode || healthyControl.scope?.type || null,
       targetInstanceLabels
@@ -2469,8 +2505,7 @@ async function applyStoredProposalMechanically({
         anchorInstanceId: instanceId,
         stepId: activeStepId
       }, log);
-      clearConversationPendingProposal(instanceId, { stepId: activeStepId });
-      await syncChatApplyButtonsForInstanceIds(normalizedTargetIds, { stepId: activeStepId });
+        await syncChatApplyButtonsForInstanceIds(normalizedTargetIds, { stepId: activeStepId });
       const msg = sourceLabel + ": Gespeicherter Vorschlag ist veraltet und wurde nicht angewendet.";
       logRuntimeNotice("stale_state_conflict", msg);
       await notifyRuntime(buildStaleProposalFeedback(sourceLabel, getCurrentDisplayLanguage()).summary, { level: "warning" });
@@ -2512,14 +2547,12 @@ async function applyStoredProposalMechanically({
       anchorInstanceId: instanceId,
       stepId: activeStepId
     }, log);
-    clearConversationPendingProposal(instanceId, { stepId: activeStepId });
 
     const promptRuntimeOverride = buildPromptRuntimeFromEndpoint({
       exercisePack,
       currentStep,
       endpoint,
       controlContext: null,
-      pendingProposal: null,
       adminOverride: pickFirstNonEmptyString(state.exerciseRuntime?.adminOverride) || null
     });
     const flowPromptContext = resolveFlowPromptContext({
@@ -2581,7 +2614,6 @@ async function runStructuredEndpointExecution({
   targetInstanceIds,
   userText = null,
   controlContext = null,
-  pendingProposal = null,
   adminOverride = null,
   sourceLabel = "Endpoint",
   anchorInstanceId = null
@@ -2605,7 +2637,6 @@ async function runStructuredEndpointExecution({
     currentStep,
     endpoint,
     controlContext,
-    pendingProposal,
     adminOverride: pickFirstNonEmptyString(adminOverride, state.exerciseRuntime?.adminOverride) || null
   });
   const resolvedSourceLabel = pickFirstNonEmptyString(sourceLabel, controlContext?.controlLabel, endpoint?.label, "Endpoint");
@@ -2668,7 +2699,6 @@ async function runStructuredEndpointExecution({
     const { liveCatalog } = await refreshBoardState();
     const stateById = await computeInstanceStatesById(liveCatalog);
     const activeCanvasStates = Object.create(null);
-    const activeInstanceChangesSinceLastAgent = Object.create(null);
 
     for (const id of normalizedTargetIds) {
       const st = stateById[id];
@@ -2682,12 +2712,6 @@ async function runStructuredEndpointExecution({
         log
       });
       if (payload) activeCanvasStates[instanceLabel] = payload;
-
-      if (!state.hasGlobalBaseline || !st?.diff) {
-        activeInstanceChangesSinceLastAgent[instanceLabel] = null;
-      } else {
-        activeInstanceChangesSinceLastAgent[instanceLabel] = Catalog.aliasDiffForActiveInstance(st.diff, state.aliasState);
-      }
     }
 
     const resolvedActiveLabels = Object.keys(activeCanvasStates);
@@ -2713,16 +2737,14 @@ async function runStructuredEndpointExecution({
 
     const singleLabel = resolvedActiveLabels.length === 1 ? resolvedActiveLabels[0] : null;
     const singleInstanceId = resolvedActiveIds.length === 1 ? resolvedActiveIds[0] : null;
-    const conversationInstanceId = resolveResponseTargetInstanceId({
-      promptRuntimeOverride,
-      targetInstanceIds: resolvedActiveIds,
-      anchorInstanceId: singleInstanceId
-    });
-    const conversationContext = buildConversationContextPayload(conversationInstanceId);
+    const conversationContext = singleInstanceId ? buildConversationContextForPrompt(singleInstanceId) : null;
     const boardCatalog = buildBoardCatalogForSelectedInstances(resolvedActiveIds);
-    const memoryPayload = buildMemoryInjectionPayload({ proposalMode: endpointContext.allowedExecutionModes.includes("proposal_only") });
+    const memoryState = simplifyMemoryStateForPrompt(state.memoryState);
+    const memoryTimeline = buildMemoryTimelineForPrompt(state.memoryLog);
     const expectedSignatureSnapshot = buildSignatureSnapshot(stateById, resolvedActiveIds);
-    const pendingProposals = await buildPendingProposalPayloadForInstances(resolvedActiveIds, { stepId: activeStepId });
+    const pendingProposalContext = singleInstanceId
+      ? await buildPendingProposalContextForPrompt(singleInstanceId, { stepId: activeStepId })
+      : null;
     const promptCfg = getPromptConfigForSelectedInstances(resolvedActiveIds);
     const promptText = PromptComposer.composePrompt(promptRuntimeOverride, {
       lang: getCurrentDisplayLanguage(),
@@ -2731,26 +2753,27 @@ async function runStructuredEndpointExecution({
       involvedCanvasTypeIds: getInvolvedCanvasTypeIdsFromInstanceIds(resolvedActiveIds),
       endpointContext
     });
+    const userQuestion = pickFirstNonEmptyString(userText, getCurrentUserQuestion());
+    if (singleInstanceId && userQuestion) {
+      recordConversationTurn(singleInstanceId, {
+        role: "user",
+        channel: endpoint.surface?.channel || controlContext?.sourceChannel || "endpoint",
+        textSummary: userQuestion,
+        stepLabel: currentStep?.label,
+        endpointLabel: endpoint?.label
+      });
+    }
     const userPayload = {
-      userQuestion: pickFirstNonEmptyString(userText, getCurrentUserQuestion()),
-      endpointId: endpoint.id,
+      userQuestion,
       activeInstanceLabel: singleLabel,
       selectedInstanceLabels: resolvedActiveLabels,
       boardCatalog,
-      activeCanvasState: singleLabel ? activeCanvasStates[singleLabel] : null,
       activeCanvasStates,
-      activeInstanceChangesSinceLastAgent,
-      memoryState: memoryPayload.memoryState,
-      recentMemoryLogEntries: memoryPayload.recentMemoryLogEntries,
-      pendingProposal: singleLabel ? (pendingProposals[singleLabel] || null) : null,
-      pendingProposals,
+      memoryState,
+      memoryTimeline,
+      pendingProposalContext,
       conversationContext,
-      flowControlCatalog: flowPromptContext.flowControlCatalog,
-      boardFlowState: flowPromptContext.boardFlowState,
-      hint: buildPayloadMappingHint({
-        scopeLabel: "selektierten Instanzen",
-        labelListKey: "selectedInstanceLabels"
-      })
+      flowGuidance: flowPromptContext.flowGuidance
     };
 
     log("Starte " + resolvedSourceLabel + " via Endpoint '" + endpoint.id + "' für: " + (resolvedActiveLabels.join(", ") || "(keine)") + " ...");
@@ -2785,8 +2808,7 @@ async function runStructuredEndpointExecution({
     if (executionMode === "none") {
       await persistMemoryAfterAgentRun(agentObj, {
         runMode: "endpoint",
-        endpointId: endpoint.id,
-        targetInstanceLabels: resolvedActiveLabels,
+          targetInstanceLabels: resolvedActiveLabels,
         userRequest: pickFirstNonEmptyString(userText, getCurrentUserQuestion())
       }, {
         appliedCount: 0,
@@ -2814,8 +2836,8 @@ async function runStructuredEndpointExecution({
         evaluation,
         sourceLabel: resolvedSourceLabel,
         conversationMeta: {
-          stepId: activeStepId,
-          endpointId: endpoint.id,
+          stepLabel: currentStep?.label || null,
+          endpointLabel: endpoint?.label || null,
           channel: endpoint?.surface?.channel || null,
           executionMode
         }
@@ -2900,11 +2922,10 @@ async function runStructuredEndpointExecution({
         evaluation,
         sourceLabel: resolvedSourceLabel,
         conversationMeta: {
-          stepId: activeStepId,
-          endpointId: endpoint.id,
+          stepLabel: currentStep?.label || null,
+          endpointLabel: endpoint?.label || null,
           channel: endpoint?.surface?.channel || null,
           executionMode,
-          pendingProposalSummary: proposalRecord ? simplifyProposalForPrompt(proposalRecord, singleInstanceId) : null
         }
       });
       await persistExerciseRuntimeAfterEndpointRun({
@@ -2963,13 +2984,11 @@ async function runStructuredEndpointExecution({
     if (activeStepId) {
       for (const instanceId of resolvedActiveIds) {
         await clearPendingProposalForInstanceStep(instanceId, activeStepId);
-        clearConversationPendingProposal(instanceId, { stepId: activeStepId });
-      }
+          }
     }
 
     await persistMemoryAfterAgentRun(agentObj, {
       runMode: "endpoint",
-      endpointId: endpoint.id,
       targetInstanceLabels: resolvedActiveLabels,
       userRequest: pickFirstNonEmptyString(userText, getCurrentUserQuestion())
     }, actionResult);
@@ -2993,8 +3012,7 @@ async function runStructuredEndpointExecution({
       sourceLabel: resolvedSourceLabel,
       conversationMeta: {
         stepId: activeStepId,
-        endpointId: endpoint.id,
-        channel: endpoint?.surface?.channel || null,
+          channel: endpoint?.surface?.channel || null,
         executionMode
       }
     });
@@ -3060,7 +3078,6 @@ async function runEndpoint(endpoint, options = {}) {
     targetInstanceIds,
     userText: pickFirstNonEmptyString(options.userText) || await resolveBoardUserSeedText(options.anchorInstanceId || targetInstanceIds[0] || null, getCurrentUserQuestion()),
     controlContext: options.controlContext || null,
-    pendingProposal: options.pendingProposal || null,
     adminOverride: options.adminOverride || null,
     sourceLabel: pickFirstNonEmptyString(options.sourceLabel, options.controlContext?.controlLabel, endpoint.label, "Endpoint"),
     anchorInstanceId: options.anchorInstanceId || null
@@ -3300,118 +3317,77 @@ async function loadMemoryRuntimeState() {
   );
 }
 
-function buildMemoryInjectionPayload({ proposalMode = false } = {}) {
-  const memoryState = Memory.normalizeMemoryState(state.memoryState || Memory.createEmptyMemoryState());
-  if (!proposalMode) {
+function simplifyMemoryStateForPrompt(memoryState) {
+  const normalized = Memory.normalizeMemoryState(memoryState || Memory.createEmptyMemoryState());
+  return {
+    activeDecisions: Array.isArray(normalized.activeDecisions) ? cloneJsonValue(normalized.activeDecisions) : [],
+    openIssues: Array.isArray(normalized.openIssues) ? cloneJsonValue(normalized.openIssues) : [],
+    nextFocus: pickFirstNonEmptyString(normalized.nextFocus) || null,
+    stepStatus: pickFirstNonEmptyString(normalized.stepStatus) || null,
+    lastSummary: pickFirstNonEmptyString(normalized.lastSummary) || null
+  };
+}
+
+function summarizeMemoryLogEntryForPrompt(entry, detailLevel = "summary") {
+  const normalized = Memory.normalizeMemoryLogEntry(entry);
+  if (detailLevel === "detailed") {
     return {
-      memoryState,
-      recentMemoryLogEntries: Memory.getRecentMemoryEntries(state.memoryLog, DT_MEMORY_RECENT_LOG_LIMIT)
+      summary: pickFirstNonEmptyString(normalized.summary) || null,
+      workSteps: Array.isArray(normalized.workSteps) ? cloneJsonValue(normalized.workSteps) : [],
+      nextFocus: pickFirstNonEmptyString(normalized.nextFocus) || null,
+      stepStatus: pickFirstNonEmptyString(normalized.stepStatus) || null,
+      userRequest: pickFirstNonEmptyString(normalized.userRequest) || null,
+      openIssuesAdded: Array.isArray(normalized.openIssuesAdded) ? cloneJsonValue(normalized.openIssuesAdded) : [],
+      openIssuesResolved: Array.isArray(normalized.openIssuesResolved) ? cloneJsonValue(normalized.openIssuesResolved) : [],
+      ts: pickFirstNonEmptyString(normalized.ts) || null
     };
   }
-
   return {
-    memoryState: {
-      ...memoryState,
-      nextFocus: null,
-      lastSummary: null
-    },
-    recentMemoryLogEntries: []
+    summary: pickFirstNonEmptyString(normalized.summary) || null,
+    stepStatus: pickFirstNonEmptyString(normalized.stepStatus) || null,
+    ts: pickFirstNonEmptyString(normalized.ts) || null
   };
 }
 
-function buildProposalId() {
-  return "p-" + Date.now().toString(36) + "-" + Math.random().toString(36).slice(2, 8);
-}
-
-function resolveRuntimeStepId(promptRuntimeOverride = null) {
-  const runtime = (promptRuntimeOverride && typeof promptRuntimeOverride === "object") ? promptRuntimeOverride : null;
-  return pickFirstNonEmptyString(runtime?.currentStep?.id);
-}
-
-function resolveRuntimeStepLabel(promptRuntimeOverride = null) {
-  const runtime = (promptRuntimeOverride && typeof promptRuntimeOverride === "object") ? promptRuntimeOverride : null;
-  return pickFirstNonEmptyString(runtime?.currentStep?.label);
-}
-
-function resolveRuntimeExercisePackId(promptRuntimeOverride = null) {
-  const runtime = (promptRuntimeOverride && typeof promptRuntimeOverride === "object") ? promptRuntimeOverride : null;
-  return pickFirstNonEmptyString(runtime?.exercisePack?.id);
-}
-
-function buildAreaTitleFromAreaKey(areaKey, canvasTypeId = null) {
-  const normalizedAreaKey = pickFirstNonEmptyString(areaKey);
-  if (!normalizedAreaKey) return null;
-  const region = Catalog.areaNameToRegion(normalizedAreaKey, canvasTypeId) || Catalog.areaNameToRegion(normalizedAreaKey, null);
-  return region?.title || normalizedAreaKey;
-}
-
-function truncateProposalText(value, maxLength = 72) {
-  const text = pickFirstNonEmptyString(value);
-  if (!text) return null;
-  return text.length > maxLength ? (text.slice(0, maxLength - 1).trimEnd() + "…") : text;
-}
-
-function summarizeProposalActionsForPrompt(actions, canvasTypeId = null) {
-  const bullets = [];
-  for (const rawAction of Array.isArray(actions) ? actions : []) {
-    const action = normalizeAgentAction(rawAction);
-    if (!action || action.type === "inform") continue;
-
-    if (action.type === "create_sticky") {
-      const areaTitle = buildAreaTitleFromAreaKey(action.area, canvasTypeId) || "dem Canvas";
-      const textPreview = truncateProposalText(action.text, 56);
-      bullets.push(textPreview
-        ? (`würde eine Sticky in ${areaTitle} anlegen: „${textPreview}“`)
-        : (`würde eine Sticky in ${areaTitle} anlegen`));
-      continue;
-    }
-
-    if (action.type === "move_sticky") {
-      const areaTitle = buildAreaTitleFromAreaKey(action.targetArea || action.area, canvasTypeId) || "einen anderen Bereich";
-      bullets.push(`würde eine Sticky nach ${areaTitle} verschieben`);
-      continue;
-    }
-
-    if (action.type === "delete_sticky") {
-      bullets.push("würde eine Sticky entfernen");
-      continue;
-    }
-
-    if (action.type === "create_connector") {
-      bullets.push("würde eine explizite Beziehung als Connector ergänzen");
-      continue;
-    }
-
-    if (action.type === "set_sticky_color") {
-      bullets.push(`würde eine Sticky farblich auf ${action.color || "eine Miro-Farbe"} setzen`);
-      continue;
-    }
-
-    if (action.type === "set_check_status") {
-      bullets.push(action.checked === false
-        ? "würde einen Check-Status entfernen"
-        : "würde einen Check-Status setzen");
-      continue;
-    }
-  }
-  return Array.from(new Set(bullets)).slice(0, 8);
-}
-
-function simplifyProposalForPrompt(proposal, instanceId = null) {
-  if (!proposal || typeof proposal !== "object") return null;
-  const instance = instanceId ? (state.instancesById.get(instanceId) || null) : null;
-  const canvasTypeId = proposal.canvasTypeId || instance?.canvasTypeId || null;
+function buildMemoryTimelineForPrompt(memoryLog) {
+  const entries = Array.isArray(memoryLog) ? memoryLog : [];
+  const recentDetailed = entries.slice(-3).map((entry) => summarizeMemoryLogEntryForPrompt(entry, "detailed"));
+  const olderSummaries = entries.slice(-7, -3).map((entry) => summarizeMemoryLogEntryForPrompt(entry, "summary"));
   return {
-    proposalId: proposal.proposalId || null,
-    status: proposal.status || null,
-    stepId: proposal.stepId || null,
-    createdAt: proposal.createdAt || null,
-    summary: pickFirstNonEmptyString(proposal.feedback?.summary, proposal.memoryEntry?.summary, proposal.analysis),
-    actionPreview: summarizeProposalActionsForPrompt(proposal.actions, canvasTypeId)
+    recentDetailed,
+    olderSummaries
   };
 }
 
-const MAX_CHAT_CONTEXT_TURNS = 6;
+function buildProposalActionPreview(actions, canvasTypeId = null) {
+  return summarizeProposalActionsForPrompt(actions, canvasTypeId).slice(0, 5);
+}
+
+function buildPendingProposalContextForPrompt(instanceId, { stepId = null } = {}) {
+  const normalizedInstanceId = pickFirstNonEmptyString(instanceId);
+  if (!normalizedInstanceId || !state.instancesById.has(normalizedInstanceId)) return null;
+  const instance = state.instancesById.get(normalizedInstanceId) || null;
+  return Board.loadActiveProposal({
+    anchorInstanceId: normalizedInstanceId,
+    stepId: pickFirstNonEmptyString(stepId)
+  }, log).then((proposal) => {
+    if (!proposal || typeof proposal !== "object") return null;
+    const flow = resolveRelevantFlowForInstance(normalizedInstanceId);
+    const { exercisePack } = resolveCurrentPackAndStepFromFlow(flow, { lang: getCurrentDisplayLanguage() });
+    const proposalStep = exercisePack && proposal.stepId
+      ? Exercises.getExerciseStep(exercisePack, proposal.stepId, { lang: getCurrentDisplayLanguage() })
+      : null;
+    return {
+      proposalId: pickFirstNonEmptyString(proposal.proposalId) || null,
+      createdAt: pickFirstNonEmptyString(proposal.createdAt) || null,
+      stepLabel: pickFirstNonEmptyString(proposal.stepLabel, proposalStep?.label) || null,
+      summary: pickFirstNonEmptyString(proposal.feedback?.summary, proposal.memoryEntry?.summary, proposal.analysis) || null,
+      actionPreview: buildProposalActionPreview(proposal.actions, proposal.canvasTypeId || instance?.canvasTypeId || null)
+    };
+  });
+}
+
+const MAX_CONVERSATION_TURNS = 4;
 
 function summarizeFeedbackForConversation(feedback = null) {
   if (!feedback || typeof feedback !== "object") return null;
@@ -3423,115 +3399,63 @@ function summarizeFeedbackForConversation(feedback = null) {
       const normalized = pickFirstNonEmptyString(stripHtml(String(bullet || "")));
       if (!normalized || bullets.includes(normalized)) continue;
       bullets.push(normalized);
-      if (bullets.length >= 6) break;
+      if (bullets.length >= 5) break;
     }
-    if (bullets.length >= 6) break;
+    if (bullets.length >= 5) break;
   }
   if (!title && !summary && !bullets.length) return null;
   return { title, summary, bullets };
 }
 
-function getChatContextRecord(instanceId) {
+function getConversationRecord(instanceId) {
   const normalizedInstanceId = pickFirstNonEmptyString(instanceId);
   if (!normalizedInstanceId) return null;
-  const existing = state.chatContextByInstanceId.get(normalizedInstanceId);
+  const existing = state.conversationStateByInstanceId.get(normalizedInstanceId);
   if (existing && typeof existing === "object") return existing;
   const created = {
-    lastStepId: null,
-    lastEndpointId: null,
+    lastStepLabel: null,
+    lastEndpointLabel: null,
     lastChannel: null,
     lastExecutionMode: null,
-    lastFeedbackSummary: null,
-    pendingProposalSummary: null,
+    lastFeedback: null,
     recentTurns: []
   };
-  state.chatContextByInstanceId.set(normalizedInstanceId, created);
+  state.conversationStateByInstanceId.set(normalizedInstanceId, created);
   return created;
 }
 
-function appendConversationTurn(instanceId, turn = null) {
-  const record = getChatContextRecord(instanceId);
+function recordConversationTurn(instanceId, turn = null) {
+  const record = getConversationRecord(instanceId);
   if (!record || !turn || typeof turn !== "object") return;
   const role = pickFirstNonEmptyString(turn.role);
   const textSummary = pickFirstNonEmptyString(turn.textSummary);
   if (!role || !textSummary) return;
   const nextTurn = {
     role,
-    channel: pickFirstNonEmptyString(turn.channel),
+    channel: pickFirstNonEmptyString(turn.channel) || null,
     textSummary,
-    endpointId: pickFirstNonEmptyString(turn.endpointId),
-    stepId: pickFirstNonEmptyString(turn.stepId),
-    executionMode: pickFirstNonEmptyString(turn.executionMode),
-    ts: new Date().toISOString()
+    ts: new Date().toISOString(),
+    stepLabel: pickFirstNonEmptyString(turn.stepLabel) || null,
+    endpointLabel: pickFirstNonEmptyString(turn.endpointLabel) || null,
+    executionMode: pickFirstNonEmptyString(turn.executionMode) || null
   };
-  record.recentTurns = [...(Array.isArray(record.recentTurns) ? record.recentTurns : []), nextTurn].slice(-MAX_CHAT_CONTEXT_TURNS);
+  record.recentTurns = [...(Array.isArray(record.recentTurns) ? record.recentTurns : []), nextTurn].slice(-MAX_CONVERSATION_TURNS);
 }
 
-function recordConversationUserTurn(instanceId, { text, channel = "chat", stepId = null, endpointId = null } = {}) {
-  const textSummary = pickFirstNonEmptyString(text);
-  if (!textSummary) return;
-  appendConversationTurn(instanceId, {
-    role: "user",
-    channel,
-    textSummary,
-    endpointId,
-    stepId
-  });
-}
-
-function updateConversationContextAfterAssistantResponse(instanceId, {
-  stepId = null,
-  endpointId = null,
-  channel = null,
-  executionMode = null,
-  feedback = null,
-  pendingProposalSummary = undefined
-} = {}) {
-  const record = getChatContextRecord(instanceId);
-  if (!record) return;
-  const feedbackSummary = summarizeFeedbackForConversation(feedback);
-  record.lastStepId = pickFirstNonEmptyString(stepId, record.lastStepId);
-  record.lastEndpointId = pickFirstNonEmptyString(endpointId, record.lastEndpointId);
-  record.lastChannel = pickFirstNonEmptyString(channel, record.lastChannel);
-  record.lastExecutionMode = pickFirstNonEmptyString(executionMode, record.lastExecutionMode);
-  if (feedbackSummary) {
-    record.lastFeedbackSummary = feedbackSummary;
-    appendConversationTurn(instanceId, {
-      role: "assistant",
-      channel: pickFirstNonEmptyString(channel, "chat"),
-      textSummary: pickFirstNonEmptyString(feedbackSummary.summary, feedbackSummary.title, feedbackSummary.bullets?.[0]),
-      endpointId: pickFirstNonEmptyString(endpointId),
-      stepId: pickFirstNonEmptyString(stepId),
-      executionMode: pickFirstNonEmptyString(executionMode)
-    });
-  }
-  if (pendingProposalSummary !== undefined) {
-    record.pendingProposalSummary = pendingProposalSummary || null;
-  }
-}
-
-function clearConversationPendingProposal(instanceId, { stepId = null } = {}) {
-  const record = getChatContextRecord(instanceId);
-  if (!record) return;
-  if (stepId && record.pendingProposalSummary?.stepId && record.pendingProposalSummary.stepId !== stepId) return;
-  record.pendingProposalSummary = null;
-}
-
-function buildConversationContextPayload(instanceId) {
-  const record = getChatContextRecord(instanceId);
+function buildConversationContextForPrompt(instanceId) {
+  const record = getConversationRecord(instanceId);
   if (!record) return null;
-  const recentTurns = Array.isArray(record.recentTurns) ? record.recentTurns.slice(-MAX_CHAT_CONTEXT_TURNS) : [];
-  const hasContent = record.lastEndpointId || record.lastFeedbackSummary || record.pendingProposalSummary || recentTurns.length;
+  const recentTurns = Array.isArray(record.recentTurns) ? cloneJsonValue(record.recentTurns) : [];
+  const hasContent = record.lastEndpointLabel || record.lastFeedback || recentTurns.length;
   if (!hasContent) return null;
   return {
-    lastEndpointContext: {
-      stepId: record.lastStepId || null,
-      endpointId: record.lastEndpointId || null,
+    lastEndpoint: record.lastEndpointLabel ? {
+      stepLabel: record.lastStepLabel || null,
+      endpointLabel: record.lastEndpointLabel || null,
       channel: record.lastChannel || null,
       executionMode: record.lastExecutionMode || null
-    },
-    lastVisibleFeedback: record.lastFeedbackSummary || null,
-    pendingProposal: record.pendingProposalSummary || null,
+    } : null,
+    lastFeedback: cloneJsonValue(record.lastFeedback || null),
     recentTurns
   };
 }
@@ -3649,18 +3573,6 @@ function findProposalEndpointForStep(exercisePack, stepId, { lang = getCurrentDi
     const modes = Array.isArray(endpoint?.run?.allowedExecutionModes) ? endpoint.run.allowedExecutionModes : [];
     return endpoint?.surface?.channel === "board_button" && modes.includes("proposal_only");
   }) || null;
-}
-
-async function buildPendingProposalPayloadForInstances(instanceIds, { stepId = null } = {}) {
-  const payload = Object.create(null);
-  for (const instanceId of normalizeTargetInstanceIds(instanceIds)) {
-    const instance = state.instancesById.get(instanceId);
-    if (!instance?.instanceLabel) continue;
-    const proposal = await loadPendingProposalForInstance(instanceId, { stepId });
-    if (!proposal) continue;
-    payload[instance.instanceLabel] = simplifyProposalForPrompt(proposal, instanceId);
-  }
-  return payload;
 }
 
 function cloneJsonValue(value) {
@@ -3829,7 +3741,7 @@ async function renderAgentResponseToInstanceOutput({
   });
   await Board.writeChatOutputContent(instance.chatInterface, html, log);
   if (conversationMeta) {
-    updateConversationContextAfterAssistantResponse(instanceId, {
+    updateConversationStateAfterAssistantResponse_TEMP(instanceId, {
       ...conversationMeta,
       feedback
     });
@@ -5209,7 +5121,7 @@ async function executeSelectedChatSubmit(chatSelection, items) {
     return;
   }
 
-  recordConversationUserTurn(instanceId, {
+  recordConversationTurn(instanceId, {
     text: userText,
     channel: "chat_submit",
     stepId: currentStep?.id || null
@@ -5270,7 +5182,7 @@ async function executeSelectedChatPropose(chatSelection, items) {
   const rawInputContent = await Board.readChatInputContent(chatSelection.instance.chatInterface, log);
   const userText = normalizeChatQuestionText(rawInputContent) || null;
   if (userText) {
-    recordConversationUserTurn(instanceId, {
+    recordConversationTurn(instanceId, {
       text: userText,
       channel: "chat_propose",
       stepId: currentStep?.id || null

@@ -301,21 +301,6 @@ export const DT_CHAT_INTERFACE_PLACEHOLDERS = Object.freeze({
   apply: "Vorschläge anwenden"
 });
 
-export const DT_QUESTION_SYSTEM_PROMPT = `
-Du bist ein hilfreicher Canvas-Assistent für Miro-Workshops.
-Beantworte allgemeine Fragen zur zugehörigen Canvas-Instanz klar, knapp und verständlich.
-Nutze den Board-Katalog nur als Überblick, aber stütze deine Antwort inhaltlich primär auf activeCanvasState der zugehörigen Instanz.
-Führe keine Board-Aktionen aus.
-Plane keine Mutationen.
-Schalte keine Buttons frei.
-Schreibe kein memoryEntry.
-Antworte ausschließlich mit einem JSON-Objekt dieses Formats:
-{
-  "answer": "..."
-}
-Gib niemals Markdown, keine Code-Fences und keine Vor- oder Nachbemerkungen aus.
-`.trim();
-
 export const DT_RUN_STATUS_LAYOUT = Object.freeze({
   widthPx: 240,
   heightPx: 64,
@@ -498,14 +483,6 @@ export const DT_CANVAS_DEFS = {
   }
 };
 
-function buildExerciseContextBindingBlock() {
-  return `Wenn exerciseContext vorhanden ist, ist er verbindlich:
-- exerciseContext.endpointId und exerciseContext.scopeType beschreiben diesen Lauf.
-- exerciseContext.allowedActions und exerciseContext.allowedExecutionModes sind harte Grenzen.
-- Wähle executionMode immer explizit und nur innerhalb von exerciseContext.allowedExecutionModes.
-- Für Exercise-Läufe ist Feedback Pflicht.
-- flowControlDirectives dürfen nur vorhandene Buttons freischalten oder als erledigt markieren.`.trim();
-}
 
 function buildActionReferenceRulesBlock({ instanceLabelRule = null } = {}) {
   const lines = [
@@ -519,7 +496,7 @@ function buildActionReferenceRulesBlock({ instanceLabelRule = null } = {}) {
     lines.push(`- ${instanceLabelRule}`);
   }
 
-  lines.push('- Für create_sticky und move_sticky gib nur area bzw. targetArea an. Verwende dafür exakt einen vorhandenen Area-Key aus activeCanvasState/activeCanvasStates → templates[].areas[].name; die App übernimmt die Platzierung. sorted_out_left und sorted_out_right sind seitliche Off-Canvas-Parkbereiche.');
+  lines.push('- Für create_sticky und move_sticky gib nur area bzw. targetArea an. Verwende dafür exakt einen vorhandenen Area-Key aus activeCanvasStates → templates[].areas[].name; die App übernimmt die Platzierung. sorted_out_left und sorted_out_right sind seitliche Off-Canvas-Parkbereiche.');
   lines.push('- In memoryEntry referenziere Canvas nur über instanceLabel.');
   return lines.join("\n");
 }
@@ -542,9 +519,7 @@ function buildConnectorRulesBlock({ forbidAltNames = false } = {}) {
 }
 
 function buildCommonAgentContractBlock(modeLabel) {
-  return `${buildExerciseContextBindingBlock()}
-
-Antworte ausschließlich mit einem JSON-Objekt in diesem Format:
+  return `Antworte ausschließlich mit einem JSON-Objekt in diesem Format:
 - Gib niemals Markdown, keine Code-Fences und keine Vor- oder Nachbemerkungen aus.
 - Alle Top-Level-Felder müssen immer vorhanden sein.
 {
@@ -607,10 +582,12 @@ function buildSelectionSystemPrompt() {
   return `Du bist ein Facilitation-Bot für Miro-Workshops.
 Du arbeitest strikt auf Basis des gelieferten JSON-Kontexts.
 Du siehst je nach Lauf:
-- eine oder mehrere aktive Canvas-Instanzen unter activeCanvasState bzw. activeCanvasStates,
-- einen Board-Katalog als Überblick,
-- memoryState und recentMemoryLogEntries,
-- optional exerciseContext sowie optional flowControlCatalog und boardFlowState.
+- boardCatalog als Überblick,
+- activeCanvasStates für die aktuell relevanten Instanzen,
+- memoryState und memoryTimeline,
+- optional pendingProposalContext,
+- optional conversationContext,
+- optional flowGuidance.
 
 Deine Kernaufgabe in instanzbezogenen Läufen:
 1) sinnvolle Board-Aktionen als actions planen,
@@ -627,6 +604,7 @@ ${buildCommonAgentContractBlock("selection / instanzbezogenen Agentenlauf")}`.tr
 }
 
 // --------------------------------------------------------------------
+// Prompt-Katalog// --------------------------------------------------------------------
 // Prompt-Katalog (Modus B, instanzspezifisch)
 // --------------------------------------------------------------------
 export const DT_PROMPT_CATALOG = {
@@ -647,9 +625,10 @@ Du arbeitest strikt auf Basis des gelieferten JSON-Kontexts.
 Du siehst je nach Lauf:
 - boardCatalog als Überblick,
 - activeCanvasStates für die aktuell relevanten Instanzen,
-- optional activeInstanceChangesSinceLastAgent,
-- memoryState und recentMemoryLogEntries,
-- optional exerciseContext sowie optional flowControlCatalog und boardFlowState.
+- memoryState und memoryTimeline,
+- optional pendingProposalContext,
+- optional conversationContext,
+- optional flowGuidance.
 
 Deine Kernaufgabe in globalen Läufen:
 1) die Gesamtsituation über mehrere Instanzen analysieren,
@@ -666,6 +645,7 @@ ${buildConnectorRulesBlock({ forbidAltNames: true })}
 ${buildCommonAgentContractBlock("globalen Agentenlauf")}`;
 
 // --------------------------------------------------------------------
+// Sticky Auto-Layout// --------------------------------------------------------------------
 // Sticky Auto-Layout (Create/Move Sticky) – Region Fill
 // --------------------------------------------------------------------
 export const STICKY_LAYOUT = {
