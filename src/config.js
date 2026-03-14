@@ -217,6 +217,7 @@ export const DT_CHAT_INTERFACE_LAYOUT = Object.freeze({
   inputHeightPerOutputHeight: 0.66,
   submitWidthPerInputWidth: 0.72,
   submitHeightPx: 88,
+  proposeHeightPx: 96,
   applyHeightPx: 108,
   minOutputWidthPx: 420,
   maxOutputWidthPx: 720,
@@ -254,6 +255,24 @@ export const DT_CHAT_INTERFACE_STYLES = Object.freeze({
     textAlignVertical: "middle",
     borderWidth: 2
   }),
+  propose_ready: Object.freeze({
+    fillColor: "#d8b4fe",
+    borderColor: "#7c3aed",
+    textColor: "#111827",
+    fontSize: 22,
+    textAlign: "center",
+    textAlignVertical: "middle",
+    borderWidth: 2
+  }),
+  propose_disabled: Object.freeze({
+    fillColor: "#ede9fe",
+    borderColor: "#c4b5fd",
+    textColor: "#4b5563",
+    fontSize: 22,
+    textAlign: "center",
+    textAlignVertical: "middle",
+    borderWidth: 2
+  }),
   apply_ready: Object.freeze({
     fillColor: "#bfdbfe",
     borderColor: "#2563eb",
@@ -277,7 +296,8 @@ export const DT_CHAT_INTERFACE_STYLES = Object.freeze({
 export const DT_CHAT_INTERFACE_PLACEHOLDERS = Object.freeze({
   input: "Frage hier eingeben …",
   output: "Agentenantwort erscheint hier.",
-  submit: "Submit",
+  submit: "Senden",
+  propose: "Vorschlag ausarbeiten",
   apply: "Vorschläge anwenden"
 });
 

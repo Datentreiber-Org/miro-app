@@ -1,4 +1,4 @@
-import { DT_IMAGE_META_KEY_INSTANCE, DT_CANVAS_DEFS, DT_SORTED_OUT_REGION_WIDTH_PX, DT_SORTED_OUT_BUFFER_WIDTH_PX } from "../config.js?v=20260310-batch92";
+import { DT_IMAGE_META_KEY_INSTANCE, DT_CANVAS_DEFS, DT_SORTED_OUT_REGION_WIDTH_PX, DT_SORTED_OUT_BUFFER_WIDTH_PX } from "../config.js?v=20260313-patch11-chatpatch1";
 import { isFiniteNumber } from "../utils.js?v=20260301-step11-hotfix2";
 import { ensureMiroReady, getBoard } from "./sdk.js?v=20260308-batch76";
 import {
@@ -14,9 +14,11 @@ import {
   hasCompleteChatInterfaceShapeIds,
   createChatInterfaceForInstance,
   removeChatInterfaceShapes,
+  hasProposeChatInterfaceShapeId,
+  ensureChatProposeShapeForInstance,
   hasApplyChatInterfaceShapeId,
   ensureChatApplyShapeForInstance
-} from "./chat-interface.js?v=20260310-batch92";
+} from "./chat-interface.js?v=20260313-patch11-chatpatch1";
 import {
   loadBaselineSignatureForImageId,
   removeBaselineSignatureForImageId
@@ -441,8 +443,14 @@ export async function registerInstanceFromImage(image, {
         if (!hasCompleteChatInterfaceShapeIds(instance.chatInterface)) {
           const shapeIds = await createChatInterfaceForInstance(instance, log, { lang: displayLanguage });
           instance.chatInterface = normalizeCanvasInstanceChatInterface(shapeIds);
-        } else if (!hasApplyChatInterfaceShapeId(instance.chatInterface)) {
-          const shapeIds = await ensureChatApplyShapeForInstance(instance, instance.chatInterface, log, { lang: displayLanguage });
+        } else {
+          let shapeIds = instance.chatInterface;
+          if (!hasProposeChatInterfaceShapeId(shapeIds)) {
+            shapeIds = await ensureChatProposeShapeForInstance(instance, shapeIds, log, { lang: displayLanguage });
+          }
+          if (!hasApplyChatInterfaceShapeId(shapeIds)) {
+            shapeIds = await ensureChatApplyShapeForInstance(instance, shapeIds, log, { lang: displayLanguage });
+          }
           instance.chatInterface = normalizeCanvasInstanceChatInterface(shapeIds);
         }
         await writeCanvasInstanceMeta(image, {

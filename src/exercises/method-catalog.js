@@ -2,10 +2,10 @@ import {
   DT_DEFAULT_APP_ADMIN_POLICY,
   DT_DEFAULT_FEEDBACK_CHANNEL,
   DT_EXECUTION_MODES
-} from "../config.js?v=20260313-patch11v3-final";
+} from "../config.js?v=20260313-patch11-chatpatch1";
 
-import { METHOD_I18N_OVERRIDES } from "../i18n/catalog.js?v=20260313-patch11v3-final";
-import { normalizeUiLanguage, pickLocalized } from "../i18n/index.js?v=20260313-patch11v3-final";
+import { METHOD_I18N_OVERRIDES } from "../i18n/catalog.js?v=20260313-patch11-chatpatch1";
+import { normalizeUiLanguage, pickLocalized } from "../i18n/index.js?v=20260313-patch11-chatpatch1";
 
 function asNonEmptyString(value) {
   if (typeof value !== "string") return null;
@@ -1549,7 +1549,15 @@ const RAW_METHOD_CATALOG = deepFreeze(JSON.parse(String.raw`{
           "id": "analytics.fit.shared.question_style",
           "label": "Chat-Submit-Stil",
           "summary": "Macht Instanzfragen schrittbezogen, verständlich und trainingsorientiert.",
-          "prompt": "Chat-Submit-Stil:\n- Beantworte Fragen direkt, verständlich und boardbezogen.\n- Wenn die Frage allgemein ist (z. B. \"Was mache ich hier?\"), erkläre kurz Zweck des Canvas, den aktuellen Schritt, was in diesem Schritt gute Inhalte sind und was der nächste konkrete Schritt ist.\n- Wenn die Frage einen früheren oder späteren Workshopteil berührt, erkläre das knapp, bleibe aber in der isolierten Übung dieses Einzelcanvas.\n- Wenn die Frage nach Beispielen verlangt, gib kurze, plausible Beispiel-Stickies oder Satzanfänge – keine komplette Wunschlösung, sofern nicht ausdrücklich verlangt.\n- Wenn eine Frage eigentlich einen anderen Schritt betrifft, sage das freundlich und nenne, was im aktuellen Schritt zuerst geklärt werden sollte.\n- Wenn ein pendingProposal im Kontext vorhanden ist, erkläre ihn als noch nicht angewendeten Vorschlag und nicht als bereits umgesetzten Boardzustand.\n- Verwende in sichtbaren Antworten niemals rohe Area-Keys, sondern die sichtbaren Bereichstitel."
+          "prompt": "Chat-Submit-Stil:
+- Beantworte Fragen direkt, verständlich und boardbezogen.
+- Nutze den aktuellen Schritt als Primäranker, beantworte aber auch allgemeinere Instanzfragen zum Canvas, wenn sie sich auf diese Canvas-Arbeit beziehen.
+- Wenn conversationContext mit letzter Endpoint-Antwort, kurzer Gesprächshistorie oder offenem Vorschlag vorhanden ist, nutze ihn als Kontextanker für Rückfragen und Konkretisierungen.
+- Wenn die Frage einen früheren oder späteren Workshopteil berührt, erkläre das knapp, bleibe aber in der isolierten Übung dieses Einzelcanvas.
+- Wenn die Frage nach Beispielen, Alternativen oder besseren Formulierungen verlangt, gib diese textlich als hilfreiche Optionen – ohne daraus einen gespeicherten Vorschlag oder Board-Mutationen zu machen.
+- Wenn ein pendingProposal im Kontext vorhanden ist, erkläre ihn als noch nicht angewendeten Vorschlag und nicht als bereits umgesetzten Boardzustand.
+- Wenn eine echte Board-Vorschlagsausarbeitung sinnvoll wäre, erkläre das als nächsten sinnvollen Schritt, statt stillschweigend selbst einen Proposal-Run auszulösen.
+- Verwende in sichtbaren Antworten niemals rohe Area-Keys, sondern die sichtbaren Bereichstitel."
         },
         "analytics.fit.shared.soft_reference_hints": {
           "id": "analytics.fit.shared.soft_reference_hints",
@@ -2097,8 +2105,8 @@ const RAW_METHOD_CATALOG = deepFreeze(JSON.parse(String.raw`{
               },
               "prompt": {
                 "text": {
-                  "de": "Chat-Submit-Endpoint für den Schritt \"Preparation & Focus\":\n- Beantworte Fragen zum aktuellen Schritt direkt, knapp und boardbezogen.\n- Nutze den aktuellen Canvas-Zustand und die Prompt-Module dieses Schritts als Grundlage.\n- Führe keine Board-Mutationen aus.",
-                  "en": "Chat-submit endpoint for the step \"Preparation & Focus\":\n- Answer questions about the current step directly, concisely, and with reference to the board.\n- Use the current canvas state and the prompt modules of this step as your grounding.\n- Do not perform board mutations."
+                  "de": "Canvas-Assistent für den Schritt \"Preparation & Focus\":\n- Antworte instanzbezogen, verständlich und hilfreich auf Fragen zum aktuellen Canvas und nutze den aktuellen Schritt als Primäranker.\n- Nutze den aktuellen Canvas-Zustand, den Schrittkontext und – falls vorhanden – conversationContext mit letzter Endpoint-Antwort, kurzem Gesprächsverlauf und offenem Vorschlag als Grundlage.\n- Du darfst textlich Satzstarter, Alternativen und konkrete Formulierungsoptionen vorschlagen, aber keine Board-Mutationen ausführen und keinen gespeicherten Proposal-Run erzeugen.",
+                  "en": "Canvas assistant for the step \"Preparation & Focus\":\n- Answer instance-specific questions helpfully and use the current step as your primary anchor.\n- Use the current canvas state, step context, and – if present – conversationContext with the last endpoint answer, short turn history, and pending proposal as grounding.\n- You may suggest wording and alternatives in text, but do not perform board mutations and do not create a stored proposal run."
                 },
                 "moduleIds": [
                   "analytics.fit.shared.method_guardrails",
@@ -2634,8 +2642,8 @@ const RAW_METHOD_CATALOG = deepFreeze(JSON.parse(String.raw`{
               },
               "prompt": {
                 "text": {
-                  "de": "Chat-Submit-Endpoint für den Schritt \"User Needs Analysis\":\n- Beantworte Fragen zum aktuellen Schritt direkt, knapp und boardbezogen.\n- Nutze den aktuellen Canvas-Zustand und die Prompt-Module dieses Schritts als Grundlage.\n- Führe keine Board-Mutationen aus.",
-                  "en": "Chat-submit endpoint for the step \"User Needs Analysis\":\n- Answer questions about the current step directly, concisely, and with reference to the board.\n- Use the current canvas state and the prompt modules of this step as your grounding.\n- Do not perform board mutations."
+                  "de": "Canvas-Assistent für den Schritt \"User Needs Analysis\":\n- Antworte instanzbezogen, verständlich und hilfreich auf Fragen zum aktuellen Canvas und nutze den aktuellen Schritt als Primäranker.\n- Nutze den aktuellen Canvas-Zustand, den Schrittkontext und – falls vorhanden – conversationContext mit letzter Endpoint-Antwort, kurzem Gesprächsverlauf und offenem Vorschlag als Grundlage.\n- Du darfst textlich Satzstarter, Alternativen und konkrete Formulierungsoptionen vorschlagen, aber keine Board-Mutationen ausführen und keinen gespeicherten Proposal-Run erzeugen.",
+                  "en": "Canvas assistant for the step \"User Needs Analysis\":\n- Answer instance-specific questions helpfully and use the current step as your primary anchor.\n- Use the current canvas state, step context, and – if present – conversationContext with the last endpoint answer, short turn history, and pending proposal as grounding.\n- You may suggest wording and alternatives in text, but do not perform board mutations and do not create a stored proposal run."
                 },
                 "moduleIds": [
                   "analytics.fit.shared.method_guardrails",
@@ -3362,8 +3370,8 @@ const RAW_METHOD_CATALOG = deepFreeze(JSON.parse(String.raw`{
               },
               "prompt": {
                 "text": {
-                  "de": "Chat-Submit-Endpoint für den Schritt \"Solution Design\":\n- Beantworte Fragen zum aktuellen Schritt direkt, knapp und boardbezogen.\n- Nutze den aktuellen Canvas-Zustand und die Prompt-Module dieses Schritts als Grundlage.\n- Führe keine Board-Mutationen aus.",
-                  "en": "Chat-submit endpoint for the step \"Solution Design\":\n- Answer questions about the current step directly, concisely, and with reference to the board.\n- Use the current canvas state and the prompt modules of this step as your grounding.\n- Do not perform board mutations."
+                  "de": "Canvas-Assistent für den Schritt \"Solution Design\":\n- Antworte instanzbezogen, verständlich und hilfreich auf Fragen zum aktuellen Canvas und nutze den aktuellen Schritt als Primäranker.\n- Nutze den aktuellen Canvas-Zustand, den Schrittkontext und – falls vorhanden – conversationContext mit letzter Endpoint-Antwort, kurzem Gesprächsverlauf und offenem Vorschlag als Grundlage.\n- Du darfst textlich Satzstarter, Alternativen und konkrete Formulierungsoptionen vorschlagen, aber keine Board-Mutationen ausführen und keinen gespeicherten Proposal-Run erzeugen.",
+                  "en": "Canvas assistant for the step \"Solution Design\":\n- Answer instance-specific questions helpfully and use the current step as your primary anchor.\n- Use the current canvas state, step context, and – if present – conversationContext with the last endpoint answer, short turn history, and pending proposal as grounding.\n- You may suggest wording and alternatives in text, but do not perform board mutations and do not create a stored proposal run."
                 },
                 "moduleIds": [
                   "analytics.fit.shared.method_guardrails",
@@ -4233,8 +4241,8 @@ const RAW_METHOD_CATALOG = deepFreeze(JSON.parse(String.raw`{
               },
               "prompt": {
                 "text": {
-                  "de": "Chat-Submit-Endpoint für den Schritt \"Fit Validation & Minimum Desired Product\":\n- Beantworte Fragen zum aktuellen Schritt direkt, knapp und boardbezogen.\n- Nutze den aktuellen Canvas-Zustand und die Prompt-Module dieses Schritts als Grundlage.\n- Führe keine Board-Mutationen aus.",
-                  "en": "Chat-submit endpoint for the step \"Fit Validation & Minimum Desired Product\":\n- Answer questions about the current step directly, concisely, and with reference to the board.\n- Use the current canvas state and the prompt modules of this step as your grounding.\n- Do not perform board mutations."
+                  "de": "Canvas-Assistent für den Schritt \"Fit Validation & Minimum Desired Product\":\n- Antworte instanzbezogen, verständlich und hilfreich auf Fragen zum aktuellen Canvas und nutze den aktuellen Schritt als Primäranker.\n- Nutze den aktuellen Canvas-Zustand, den Schrittkontext und – falls vorhanden – conversationContext mit letzter Endpoint-Antwort, kurzem Gesprächsverlauf und offenem Vorschlag als Grundlage.\n- Du darfst textlich Satzstarter, Alternativen und konkrete Formulierungsoptionen vorschlagen, aber keine Board-Mutationen ausführen und keinen gespeicherten Proposal-Run erzeugen.",
+                  "en": "Canvas assistant for the step \"Fit Validation & Minimum Desired Product\":\n- Answer instance-specific questions helpfully and use the current step as your primary anchor.\n- Use the current canvas state, step context, and – if present – conversationContext with the last endpoint answer, short turn history, and pending proposal as grounding.\n- You may suggest wording and alternatives in text, but do not perform board mutations and do not create a stored proposal run."
                 },
                 "moduleIds": [
                   "analytics.fit.shared.method_guardrails",

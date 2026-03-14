@@ -158,7 +158,10 @@ const BASE_UI_STRINGS = Object.freeze({
 
   "chat.inputPlaceholder": { de: "Frage hier eingeben …", en: "Enter question here …" },
   "chat.outputPlaceholder": { de: "Agentenantwort erscheint hier.", en: "The agent’s answer appears here." },
-  "chat.submit": { de: "Submit", en: "Submit" },
+  "chat.submit": { de: "Senden", en: "Send" },
+  "chat.propose": { de: "Vorschlag ausarbeiten", en: "Draft proposal" },
+  "chat.propose.disabled": { de: "Für diesen Schritt ist gerade kein Vorschlagsmodus verfügbar", en: "No proposal mode is currently available for this step" },
+  "chat.propose.ready": { de: "Konkreten Vorschlag für den aktuellen Schritt ausarbeiten", en: "Draft a concrete proposal for the current step" },
   "chat.apply": { de: "Vorschläge anwenden", en: "Apply suggestions" },
   "chat.apply.disabled": { de: "Kein Vorschlag gespeichert", en: "No saved proposal yet" },
   "chat.apply.ready": { de: "Gespeicherten Vorschlag jetzt auf das Board anwenden", en: "Apply the saved proposal to the board now" },

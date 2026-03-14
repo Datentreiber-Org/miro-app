@@ -2,9 +2,9 @@ import {
   DT_SHAPE_META_KEY_CHAT_INTERFACE,
   DT_CHAT_INTERFACE_LAYOUT,
   DT_CHAT_INTERFACE_STYLES
-} from "../config.js?v=20260310-batch92";
+} from "../config.js?v=20260313-patch11-chatpatch1";
 
-import { normalizeUiLanguage, t, allLocaleVariants } from "../i18n/index.js?v=20260310-batch92";
+import { normalizeUiLanguage, t, allLocaleVariants } from "../i18n/index.js?v=20260313-patch11-chatpatch1";
 import { ensureMiroReady, getBoard } from "./sdk.js?v=20260308-batch76";
 import { asTrimmedString } from "./helpers.js?v=20260305-batch05";
 import { getItemById, removeItemById } from "./items.js?v=20260305-batch05";
@@ -17,7 +17,7 @@ function clamp(value, min, max) {
 
 function normalizeChatRole(value) {
   const normalized = asTrimmedString(value);
-  return ["input", "output", "submit", "apply"].includes(normalized) ? normalized : null;
+  return ["input", "output", "submit", "propose", "apply"].includes(normalized) ? normalized : null;
 }
 
 function normalizeShapeId(value) {
@@ -58,6 +58,7 @@ export function normalizeChatInterfaceShapeIds(rawShapeIds) {
     inputShapeId: normalizeShapeId(src.inputShapeId),
     outputShapeId: normalizeShapeId(src.outputShapeId),
     submitShapeId: normalizeShapeId(src.submitShapeId),
+    proposeShapeId: normalizeShapeId(src.proposeShapeId),
     applyShapeId: normalizeShapeId(src.applyShapeId)
   };
 }
@@ -65,6 +66,11 @@ export function normalizeChatInterfaceShapeIds(rawShapeIds) {
 export function hasCompleteChatInterfaceShapeIds(shapeIds) {
   const normalized = normalizeChatInterfaceShapeIds(shapeIds);
   return !!(normalized.inputShapeId && normalized.outputShapeId && normalized.submitShapeId);
+}
+
+export function hasProposeChatInterfaceShapeId(shapeIds) {
+  const normalized = normalizeChatInterfaceShapeIds(shapeIds);
+  return !!normalized.proposeShapeId;
 }
 
 export function hasApplyChatInterfaceShapeId(shapeIds) {
@@ -95,6 +101,10 @@ function getShapeStyle(role) {
   };
 }
 
+function getProposeShapeStyle(enabled = false) {
+  return getShapeStyle(enabled ? "propose_ready" : "propose_disabled");
+}
+
 function getApplyShapeStyle(enabled = false) {
   return getShapeStyle(enabled ? "apply_ready" : "apply_disabled");
 }
@@ -111,7 +121,9 @@ function normalizeComparableChatText(rawText) {
 function getPlaceholderKeyForRole(role) {
   return role === "input"
     ? "chat.inputPlaceholder"
-    : (role === "submit" ? "chat.submit" : (role === "apply" ? "chat.apply" : "chat.outputPlaceholder"));
+    : (role === "submit"
+      ? "chat.submit"
+      : (role === "propose" ? "chat.propose" : (role === "apply" ? "chat.apply" : "chat.outputPlaceholder")));
 }
 
 export function getChatPlaceholderText(role, lang = "de") {
@@ -132,10 +144,26 @@ export function isKnownChatPlaceholderContent(rawText, role) {
   return getChatPlaceholderVariants(role).some((value) => normalizeComparableChatText(value) === comparable);
 }
 
+function isKnownProposeStateContent(rawText, enabled) {
+  const comparable = normalizeComparableChatText(rawText);
+  if (!comparable) return false;
+  return ["de", "en"].some((lang) => normalizeComparableChatText(buildChatProposeContent({ enabled, lang })) === comparable);
+}
+
 function isKnownApplyStateContent(rawText, enabled) {
   const comparable = normalizeComparableChatText(rawText);
   if (!comparable) return false;
   return ["de", "en"].some((lang) => normalizeComparableChatText(buildChatApplyContent({ enabled, lang })) === comparable);
+}
+
+export function buildChatProposeContent({ enabled = false, lang = "de" } = {}) {
+  const uiLang = normalizeUiLanguage(lang);
+  const label = getChatPlaceholderText("propose", uiLang);
+  const hint = enabled ? t("chat.propose.ready", uiLang) : t("chat.propose.disabled", uiLang);
+  return [
+    buildShapeParagraph(label, { strong: true }),
+    buildShapeParagraph(hint)
+  ].join("");
 }
 
 export function buildChatApplyContent({ enabled = false, lang = "de" } = {}) {
@@ -152,6 +180,9 @@ function getInitialContent(role, lang = "de") {
   const normalizedRole = normalizeChatRole(role) || "output";
   if (normalizedRole === "submit") {
     return buildShapeParagraph(getChatPlaceholderText(normalizedRole, lang), { strong: true });
+  }
+  if (normalizedRole === "propose") {
+    return buildChatProposeContent({ enabled: false, lang });
   }
   if (normalizedRole === "apply") {
     return buildChatApplyContent({ enabled: false, lang });
@@ -183,6 +214,8 @@ export function computeChatInterfaceLayout(instance) {
     DT_CHAT_INTERFACE_LAYOUT.maxSubmitWidthPx
   );
   const submitHeight = DT_CHAT_INTERFACE_LAYOUT.submitHeightPx;
+  const proposeWidth = submitWidth;
+  const proposeHeight = DT_CHAT_INTERFACE_LAYOUT.proposeHeightPx;
   const applyWidth = submitWidth;
   const applyHeight = DT_CHAT_INTERFACE_LAYOUT.applyHeightPx;
 
@@ -193,14 +226,17 @@ export function computeChatInterfaceLayout(instance) {
   const inputY = canvasTop + inputHeight / 2;
   const submitX = inputX;
   const submitY = canvasTop + inputHeight + DT_CHAT_INTERFACE_LAYOUT.submitGapYPx + submitHeight / 2;
+  const proposeX = inputX;
+  const proposeY = submitY + submitHeight / 2 + DT_CHAT_INTERFACE_LAYOUT.buttonStackGapYPx + proposeHeight / 2;
   const applyX = inputX;
-  const applyY = submitY + submitHeight / 2 + DT_CHAT_INTERFACE_LAYOUT.buttonStackGapYPx + applyHeight / 2;
+  const applyY = proposeY + proposeHeight / 2 + DT_CHAT_INTERFACE_LAYOUT.buttonStackGapYPx + applyHeight / 2;
   const outputX = canvasRight + DT_CHAT_INTERFACE_LAYOUT.outerGapXPx + inputWidth + DT_CHAT_INTERFACE_LAYOUT.columnGapXPx + outputWidth / 2;
   const outputY = canvasTop + outputHeight / 2;
 
   return {
     input: { x: inputX, y: inputY, width: inputWidth, height: inputHeight },
     submit: { x: submitX, y: submitY, width: submitWidth, height: submitHeight },
+    propose: { x: proposeX, y: proposeY, width: proposeWidth, height: proposeHeight },
     output: { x: outputX, y: outputY, width: outputWidth, height: outputHeight },
     apply: { x: applyX, y: applyY, width: applyWidth, height: applyHeight }
   };
@@ -252,7 +288,9 @@ async function createChatShape({ role, x, y, width, height, lang = "de" }, log) 
     y,
     width,
     height,
-    style: role === "apply" ? getApplyShapeStyle(false) : getShapeStyle(role)
+    style: role === "apply"
+      ? getApplyShapeStyle(false)
+      : (role === "propose" ? getProposeShapeStyle(false) : getShapeStyle(role))
   });
 }
 
@@ -267,19 +305,40 @@ export async function createChatInterfaceForInstance(instance, log, { lang = "de
 
   const inputShape = await createChatShape({ role: "input", ...layout.input, lang }, log);
   const submitShape = await createChatShape({ role: "submit", ...layout.submit, lang }, log);
+  const proposeShape = await createChatShape({ role: "propose", ...layout.propose, lang }, log);
   const outputShape = await createChatShape({ role: "output", ...layout.output, lang }, log);
   const applyShape = await createChatShape({ role: "apply", ...layout.apply, lang }, log);
 
   await writeChatInterfaceMeta(inputShape, { instanceId: instance.instanceId, role: "input" }, log);
   await writeChatInterfaceMeta(submitShape, { instanceId: instance.instanceId, role: "submit" }, log);
+  await writeChatInterfaceMeta(proposeShape, { instanceId: instance.instanceId, role: "propose" }, log);
   await writeChatInterfaceMeta(outputShape, { instanceId: instance.instanceId, role: "output" }, log);
   await writeChatInterfaceMeta(applyShape, { instanceId: instance.instanceId, role: "apply" }, log);
 
   return {
     inputShapeId: inputShape?.id ? String(inputShape.id) : null,
     submitShapeId: submitShape?.id ? String(submitShape.id) : null,
+    proposeShapeId: proposeShape?.id ? String(proposeShape.id) : null,
     outputShapeId: outputShape?.id ? String(outputShape.id) : null,
     applyShapeId: applyShape?.id ? String(applyShape.id) : null
+  };
+}
+
+export async function ensureChatProposeShapeForInstance(instance, existingShapeIds, log, { lang = "de" } = {}) {
+  await ensureMiroReady(log);
+  const normalizedShapeIds = normalizeChatInterfaceShapeIds(existingShapeIds);
+  if (normalizedShapeIds.proposeShapeId) {
+    return normalizedShapeIds;
+  }
+  const layout = computeChatInterfaceLayout(instance);
+  if (!layout?.propose) {
+    throw new Error("Propose-Button kann nicht erstellt werden: keine gültige Canvas-Geometrie.");
+  }
+  const proposeShape = await createChatShape({ role: "propose", ...layout.propose, lang }, log);
+  await writeChatInterfaceMeta(proposeShape, { instanceId: instance.instanceId, role: "propose" }, log);
+  return {
+    ...normalizedShapeIds,
+    proposeShapeId: proposeShape?.id ? String(proposeShape.id) : null
   };
 }
 
@@ -304,7 +363,7 @@ export async function ensureChatApplyShapeForInstance(instance, existingShapeIds
 export async function removeChatInterfaceShapes(shapeIds, log) {
   await ensureMiroReady(log);
   const normalized = normalizeChatInterfaceShapeIds(shapeIds);
-  for (const itemId of [normalized.inputShapeId, normalized.submitShapeId, normalized.outputShapeId, normalized.applyShapeId]) {
+  for (const itemId of [normalized.inputShapeId, normalized.submitShapeId, normalized.proposeShapeId, normalized.outputShapeId, normalized.applyShapeId]) {
     if (!itemId) continue;
     try {
       await removeItemById(itemId, log);
@@ -319,7 +378,7 @@ export async function getChatInterfaceItemByRole(shapeIds, role, log) {
     ? normalized.inputShapeId
     : (role === "submit"
       ? normalized.submitShapeId
-      : (role === "apply" ? normalized.applyShapeId : normalized.outputShapeId));
+      : (role === "propose" ? normalized.proposeShapeId : (role === "apply" ? normalized.applyShapeId : normalized.outputShapeId)));
   if (!itemId) return null;
   return await getItemById(itemId, log);
 }
@@ -347,6 +406,18 @@ export async function syncChatPlaceholdersForLanguage(shapeIds, nextLang, log) {
   }
 }
 
+export async function syncChatProposeButtonState(shapeIds, { enabled = false, lang = "de" } = {}, log) {
+  const item = await getChatInterfaceItemByRole(shapeIds, "propose", log);
+  if (!item?.sync) return null;
+  item.content = buildChatProposeContent({ enabled, lang });
+  item.style = {
+    ...(item.style || {}),
+    ...(enabled ? getProposeShapeStyle(true) : getProposeShapeStyle(false))
+  };
+  await item.sync();
+  return item;
+}
+
 export async function syncChatApplyButtonState(shapeIds, { enabled = false, lang = "de" } = {}, log) {
   const item = await getChatInterfaceItemByRole(shapeIds, "apply", log);
   if (!item?.sync) return null;
@@ -368,6 +439,7 @@ export async function syncChatInterfaceLayoutForInstance(instance, shapeIds, log
   const roles = [
     { role: "input", id: normalizedShapeIds.inputShapeId, geom: layout.input },
     { role: "submit", id: normalizedShapeIds.submitShapeId, geom: layout.submit },
+    { role: "propose", id: normalizedShapeIds.proposeShapeId, geom: layout.propose },
     { role: "output", id: normalizedShapeIds.outputShapeId, geom: layout.output },
     { role: "apply", id: normalizedShapeIds.applyShapeId, geom: layout.apply }
   ];
@@ -383,8 +455,11 @@ export async function syncChatInterfaceLayoutForInstance(instance, shapeIds, log
     item.height = entry.geom.height;
 
     const rawContent = typeof item.content === "string" ? item.content : "";
+    const proposeEnabled = entry.role === "propose" ? isKnownProposeStateContent(rawContent, true) : false;
     const applyEnabled = entry.role === "apply" ? isKnownApplyStateContent(rawContent, true) : false;
-    const nextStyle = entry.role === "apply" ? getApplyShapeStyle(applyEnabled) : getShapeStyle(entry.role);
+    const nextStyle = entry.role === "apply"
+      ? getApplyShapeStyle(applyEnabled)
+      : (entry.role === "propose" ? getProposeShapeStyle(proposeEnabled) : getShapeStyle(entry.role));
     item.style = {
       ...(item.style || {}),
       ...nextStyle

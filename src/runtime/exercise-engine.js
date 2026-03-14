@@ -3,11 +3,11 @@ import {
   DT_FEEDBACK_CHANNELS,
   DT_MUTATION_POLICIES,
   DT_EXECUTION_MODES
-} from "../config.js?v=20260313-patch11v3-final";
+} from "../config.js?v=20260313-patch11-chatpatch1";
 import {
   listStepTransitions,
   resolveNamedTransition
-} from "../exercises/registry.js?v=20260313-patch11v3-final";
+} from "../exercises/registry.js?v=20260313-patch11-chatpatch1";
 
 function asNonEmptyString(value) {
   if (typeof value !== "string") return null;

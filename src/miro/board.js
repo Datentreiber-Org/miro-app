@@ -40,9 +40,11 @@ export {
 export {
   normalizeChatInterfaceShapeIds,
   hasCompleteChatInterfaceShapeIds,
+  hasProposeChatInterfaceShapeId,
   hasApplyChatInterfaceShapeId,
   computeChatInterfaceLayout,
   createChatInterfaceForInstance,
+  ensureChatProposeShapeForInstance,
   ensureChatApplyShapeForInstance,
   readChatInterfaceMeta,
   writeChatInterfaceMeta,
@@ -50,14 +52,16 @@ export {
   getChatInterfaceItemByRole,
   readChatInputContent,
   writeChatOutputContent,
+  buildChatProposeContent,
   buildChatApplyContent,
   getChatPlaceholderText,
   getChatPlaceholderVariants,
   isKnownChatPlaceholderContent,
   syncChatPlaceholdersForLanguage,
+  syncChatProposeButtonState,
   syncChatApplyButtonState,
   syncChatInterfaceLayoutForInstance
-} from "./chat-interface.js?v=20260310-batch92";
+} from "./chat-interface.js?v=20260313-patch11-chatpatch1";
 
 export {
   getSelection,
@@ -101,4 +105,4 @@ export {
   findInstanceByRect,
   registerInstanceFromImage,
   scanTemplateInstances
-} from "./instances.js?v=20260310-batch92";
+} from "./instances.js?v=20260313-patch11-chatpatch1";

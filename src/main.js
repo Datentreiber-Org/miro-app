@@ -11,19 +11,19 @@ import {
   DT_CHECK_TAG_COLOR,
   normalizeStickyColorToken,
   STICKY_LAYOUT
-} from "./config.js?v=20260313-patch11v3-final";
+} from "./config.js?v=20260313-patch11-chatpatch1";
 
 import { createLogger, stripHtml, extractUnderlinedText, isFiniteNumber } from "./utils.js?v=20260301-step11-hotfix2";
-import { normalizeUiLanguage, t, getLocaleForLanguage } from "./i18n/index.js?v=20260313-patch11v3-final";
+import { normalizeUiLanguage, t, getLocaleForLanguage } from "./i18n/index.js?v=20260313-patch11-chatpatch1";
 
-import * as Board from "./miro/board.js?v=20260312-patch11";
+import * as Board from "./miro/board.js?v=20260313-patch11-chatpatch1";
 import * as Catalog from "./domain/catalog.js?v=20260311-batch83fix1";
 import * as OpenAI from "./ai/openai.js?v=20260313-patch11v3-final";
 import * as Memory from "./runtime/memory.js?v=20260313-patch11v3-final";
-import * as Exercises from "./exercises/registry.js?v=20260313-patch11v3-final";
-import * as ExerciseLibrary from "./exercises/library.js?v=20260313-patch11v3-final";
-import * as PromptComposer from "./prompt/composer.js?v=20260313-patch11v3-final";
-import * as ExerciseEngine from "./runtime/exercise-engine.js?v=20260313-patch11v3-final";
+import * as Exercises from "./exercises/registry.js?v=20260313-patch11-chatpatch1";
+import * as ExerciseLibrary from "./exercises/library.js?v=20260313-patch11-chatpatch1";
+import * as PromptComposer from "./prompt/composer.js?v=20260313-patch11-chatpatch1";
+import * as ExerciseEngine from "./runtime/exercise-engine.js?v=20260313-patch11-chatpatch1";
 import * as BoardFlow from "./runtime/board-flow.js?v=20260313-patch11v3-final";
 import * as PanelBridge from "./runtime/panel-bridge.js?v=20260312-patch11";
 import { buildPayloadMappingHint } from "./app/payload-hints.js?v=20260305-batch06";
@@ -86,6 +86,7 @@ const state = {
   lastAutoFlowControlLabel: "",
 
   // UI state
+  chatContextByInstanceId: new Map(),
   selectedCanvasTypeId: TEMPLATE_ID,
   panelMode: "admin",
   panelInteractionState: {
@@ -637,6 +638,7 @@ async function syncBoardChromeLanguage(lang = getCurrentDisplayLanguage()) {
     }
   }
 
+  await syncAllChatProposeButtonsForCurrentFlows();
   await syncAllChatApplyButtonsForCurrentFlows();
 
   for (const [flowId, rawFlow] of state.boardFlowsById.entries()) {
@@ -2355,6 +2357,7 @@ async function loadBoardRuntimeState() {
   applyStaticUiLanguage(state.boardConfig.lang);
   renderCanvasTypePicker();
   renderExerciseControls();
+  await syncAllChatProposeButtonsForCurrentFlows();
   await syncAllChatApplyButtonsForCurrentFlows();
   await syncBoardChromeLanguage(state.boardConfig.lang);
 }
@@ -2389,6 +2392,186 @@ function getPromptConfigForSelectedInstances(selectedInstanceIds) {
   const firstId = Array.isArray(selectedInstanceIds) && selectedInstanceIds.length ? selectedInstanceIds[0] : null;
   const firstInst = firstId ? state.instancesById.get(firstId) : null;
   return DT_PROMPT_CATALOG[firstInst?.canvasTypeId] || DT_PROMPT_CATALOG[TEMPLATE_ID];
+}
+
+async function applyStoredProposalMechanically({
+  exercisePack,
+  currentStep,
+  endpoint,
+  targetInstanceIds,
+  userText = null,
+  sourceLabel = "Vorschläge anwenden",
+  anchorInstanceId = null
+} = {}) {
+  await Board.ensureMiroReady(log);
+  await ensureInstancesScanned();
+  await loadMemoryRuntimeState();
+
+  const normalizedTargetIds = Array.from(new Set((targetInstanceIds || []).filter((id) => state.instancesById.has(id))));
+  if (normalizedTargetIds.length !== 1) {
+    const msg = sourceLabel + ": direct_apply benötigt genau eine Ziel-Instanz.";
+    logRuntimeNotice("precondition", msg);
+    await notifyRuntime(msg, { level: "warning" });
+    return buildRunFailureResult("precondition", msg);
+  }
+
+  const instanceId = normalizedTargetIds[0];
+  const activeStepId = pickFirstNonEmptyString(currentStep?.id);
+  const targetInstanceLabels = getInstanceLabelsFromIds(normalizedTargetIds);
+  const runLock = tryAcquireAgentRunLock(sourceLabel);
+  if (!runLock) {
+    return buildRunFailureResult("run_locked", sourceLabel + ": Ein Endpoint-Run läuft bereits.");
+  }
+
+  let boardRunToken = null;
+  let finalBoardRunStatus = "failed";
+  let finalBoardRunMessage = null;
+
+  try {
+    const boardRunStart = await acquireBoardSoftLock({
+      sourceLabel,
+      targetInstanceIds: normalizedTargetIds
+    });
+    if (!boardRunStart.ok) {
+      const msg = formatExistingBoardRunMessage(sourceLabel, boardRunStart.current);
+      logRuntimeNotice("run_locked", msg);
+      await notifyRuntime(msg, { level: "warning" });
+      return buildRunFailureResult("run_locked", msg, { currentRunState: boardRunStart.current || null });
+    }
+
+    boardRunToken = boardRunStart.token;
+    boardRunToken.statusItemIds = await createRunStatusItems(normalizedTargetIds, sourceLabel, boardRunToken.runId);
+    await syncBoardSoftLock(boardRunToken, {
+      targetInstanceIds: normalizedTargetIds,
+      statusItemIds: boardRunToken.statusItemIds
+    });
+
+    const proposal = await Board.loadActiveProposal({
+      anchorInstanceId: instanceId,
+      stepId: activeStepId
+    }, log);
+
+    if (!proposal) {
+      const msg = sourceLabel + ": Kein offener Vorschlag zum Anwenden vorhanden.";
+      logRuntimeNotice("precondition", msg);
+      await syncChatApplyButtonsForInstanceIds(normalizedTargetIds, { stepId: activeStepId });
+      await notifyRuntime(t("chat.apply.noPending", getCurrentDisplayLanguage()), { level: "warning" });
+      finalBoardRunStatus = "aborted";
+      finalBoardRunMessage = msg;
+      return buildRunFailureResult("precondition", msg);
+    }
+
+    const { liveCatalog } = await refreshBoardState();
+    const stateById = await computeInstanceStatesById(liveCatalog);
+    const currentHash = stateById[instanceId]?.signature?.stateHash || null;
+    if (proposal.basedOnStateHash && proposal.basedOnStateHash !== currentHash) {
+      await Board.clearActiveProposal({
+        anchorInstanceId: instanceId,
+        stepId: activeStepId
+      }, log);
+      clearConversationPendingProposal(instanceId, { stepId: activeStepId });
+      await syncChatApplyButtonsForInstanceIds(normalizedTargetIds, { stepId: activeStepId });
+      const msg = sourceLabel + ": Gespeicherter Vorschlag ist veraltet und wurde nicht angewendet.";
+      logRuntimeNotice("stale_state_conflict", msg);
+      await notifyRuntime(buildStaleProposalFeedback(sourceLabel, getCurrentDisplayLanguage()).summary, { level: "warning" });
+      finalBoardRunStatus = "conflicted";
+      finalBoardRunMessage = msg;
+      return buildRunFailureResult("stale_state_conflict", msg);
+    }
+
+    const proposalActions = Array.isArray(proposal.actions) ? proposal.actions : [];
+    const actionResult = proposalActions.length
+      ? await applyResolvedAgentActions(proposalActions, {
+          candidateInstanceIds: normalizedTargetIds,
+          anchorInstanceId: instanceId,
+          sourceLabel
+        })
+      : {
+          appliedCount: 0,
+          skippedCount: 0,
+          infoCount: 0,
+          targetedInstanceCount: 0,
+          ...createEmptyActionExecutionStats()
+        };
+
+    await refreshBoardState();
+
+    if (proposal.memoryEntry) {
+      await persistMemoryAfterAgentRun({
+        analysis: proposal.analysis,
+        memoryEntry: proposal.memoryEntry
+      }, {
+        runMode: "endpoint",
+        endpointId: endpoint?.id || proposal.endpointId || null,
+        targetInstanceLabels,
+        userRequest: pickFirstNonEmptyString(userText, proposal.userRequest, getCurrentUserQuestion())
+      }, actionResult);
+    }
+
+    await Board.clearActiveProposal({
+      anchorInstanceId: instanceId,
+      stepId: activeStepId
+    }, log);
+    clearConversationPendingProposal(instanceId, { stepId: activeStepId });
+
+    const promptRuntimeOverride = buildPromptRuntimeFromEndpoint({
+      exercisePack,
+      currentStep,
+      endpoint,
+      controlContext: null,
+      pendingProposal: null,
+      adminOverride: pickFirstNonEmptyString(state.exerciseRuntime?.adminOverride) || null
+    });
+    const flowPromptContext = resolveFlowPromptContext({
+      promptRuntimeOverride,
+      targetInstanceIds: normalizedTargetIds
+    });
+    const activeAnchorContext = flowPromptContext.exercisePackId && flowPromptContext.anchorInstanceId
+      ? { exercisePackId: flowPromptContext.exercisePackId, anchorInstanceId: flowPromptContext.anchorInstanceId }
+      : (anchorInstanceId ? { exercisePackId: exercisePack?.id || null, anchorInstanceId } : null);
+
+    const storedFlowDirectives = ExerciseEngine.normalizeFlowControlDirectivesBlock(proposal.flowDirectives);
+    const flowDirectiveResult = await applyFlowControlDirectivesAfterAgentRun({
+      flowControlDirectives: storedFlowDirectives,
+      promptRuntimeOverride,
+      targetInstanceIds: normalizedTargetIds,
+      sourceLabel
+    });
+
+    await persistExerciseRuntimeAfterEndpointRun({
+      endpoint,
+      flowControlDirectives: flowDirectiveResult?.flowControlDirectives || storedFlowDirectives || null,
+      activeAnchorContext: flowDirectiveResult?.activeAnchorContext || activeAnchorContext
+    });
+    await syncChatProposeButtonsForInstanceIds(normalizedTargetIds, { stepId: activeStepId });
+    await syncChatApplyButtonsForInstanceIds(normalizedTargetIds, { stepId: activeStepId });
+    await notifyRuntime("Vorschlag angewendet.", { level: "info" });
+
+    finalBoardRunStatus = "completed";
+    finalBoardRunMessage = sourceLabel + ": angewendet.";
+    return buildRunSuccessResult({
+      sourceLabel,
+      targetInstanceLabels,
+      actionResult,
+      proposalApplied: true,
+      executionMode: "direct_apply"
+    });
+  } catch (e) {
+    const msg = "Exception beim " + sourceLabel + "-Apply: " + formatRuntimeErrorMessage(e);
+    logRuntimeNotice("fatal", msg, e?.stack || null);
+    await notifyRuntime(msg, { level: "error" });
+    finalBoardRunStatus = "failed";
+    finalBoardRunMessage = msg;
+    return buildRunFailureResult("fatal", msg, { error: e });
+  } finally {
+    if (boardRunToken) {
+      await finalizeBoardSoftLock(boardRunToken, {
+        status: finalBoardRunStatus,
+        message: finalBoardRunMessage
+      });
+    }
+    releaseAgentRunLock(runLock);
+  }
 }
 
 async function runStructuredEndpointExecution({
@@ -2439,116 +2622,14 @@ async function runStructuredEndpointExecution({
     && endpointContext.allowedExecutionModes[0] === "direct_apply";
 
   if (pureApplyEndpoint) {
-    if (normalizedTargetIds.length !== 1) {
-      const msg = resolvedSourceLabel + ": direct_apply benötigt genau eine Ziel-Instanz.";
-      logRuntimeNotice("precondition", msg);
-      return buildRunFailureResult("precondition", msg);
-    }
-
-    const singleInstanceId = normalizedTargetIds[0];
-    const proposal = await Board.loadActiveProposal({
-      anchorInstanceId: singleInstanceId,
-      stepId: activeStepId
-    }, log);
-
-    if (!proposal) {
-      const feedback = buildNoPendingProposalFeedback(resolvedSourceLabel, getCurrentDisplayLanguage());
-      await renderAgentResponseToInstanceOutput({
-        instanceId: singleInstanceId,
-        feedback,
-        flowControlDirectives: null,
-        evaluation: null,
-        sourceLabel: resolvedSourceLabel
-      });
-      await syncChatApplyButtonsForInstanceIds(normalizedTargetIds, { stepId: activeStepId });
-      const msg = resolvedSourceLabel + ": Kein offener Vorschlag zum Anwenden vorhanden.";
-      return buildRunFailureResult("precondition", msg);
-    }
-
-    const { liveCatalog } = await refreshBoardState();
-    const stateById = await computeInstanceStatesById(liveCatalog);
-    const currentHash = stateById[singleInstanceId]?.signature?.stateHash || null;
-    if (proposal.basedOnStateHash && proposal.basedOnStateHash !== currentHash) {
-      await Board.clearActiveProposal({
-        anchorInstanceId: singleInstanceId,
-        stepId: activeStepId
-      }, log);
-      const feedback = buildStaleProposalFeedback(resolvedSourceLabel, getCurrentDisplayLanguage());
-      await renderAgentResponseToInstanceOutput({
-        instanceId: singleInstanceId,
-        feedback,
-        flowControlDirectives: null,
-        evaluation: null,
-        sourceLabel: resolvedSourceLabel
-      });
-      await syncChatApplyButtonsForInstanceIds(normalizedTargetIds, { stepId: activeStepId });
-      const msg = resolvedSourceLabel + ": Gespeicherter Vorschlag ist veraltet und wurde nicht angewendet.";
-      return buildRunFailureResult("stale_state_conflict", msg);
-    }
-
-    const proposalActions = Array.isArray(proposal.actions) ? proposal.actions : [];
-    const actionResult = proposalActions.length
-      ? await applyResolvedAgentActions(proposalActions, {
-          candidateInstanceIds: normalizedTargetIds,
-          anchorInstanceId: singleInstanceId,
-          sourceLabel: resolvedSourceLabel
-        })
-      : {
-          appliedCount: 0,
-          skippedCount: 0,
-          infoCount: 0,
-          targetedInstanceCount: 0,
-          ...createEmptyActionExecutionStats()
-        };
-
-    await refreshBoardState();
-
-    if (proposal.memoryEntry) {
-      await persistMemoryAfterAgentRun({
-        analysis: proposal.analysis,
-        memoryEntry: proposal.memoryEntry
-      }, {
-        runMode: "endpoint",
-        endpointId: endpoint.id,
-        targetInstanceLabels,
-        userRequest: userText || getCurrentUserQuestion()
-      }, actionResult);
-    }
-
-    await Board.clearActiveProposal({
-      anchorInstanceId: singleInstanceId,
-      stepId: activeStepId
-    }, log);
-
-    const storedFlowDirectives = ExerciseEngine.normalizeFlowControlDirectivesBlock(proposal.flowDirectives);
-    const flowDirectiveResult = await applyFlowControlDirectivesAfterAgentRun({
-      flowControlDirectives: storedFlowDirectives,
-      promptRuntimeOverride,
-      targetInstanceIds: normalizedTargetIds,
-      sourceLabel: resolvedSourceLabel
-    });
-
-    const feedback = buildAppliedProposalFeedback(proposal, actionResult, getCurrentDisplayLanguage());
-    await renderAgentResponseToInstanceOutput({
-      instanceId: singleInstanceId,
-      feedback,
-      flowControlDirectives: null,
-      evaluation: proposal.evaluation || null,
-      sourceLabel: resolvedSourceLabel
-    });
-    await persistExerciseRuntimeAfterEndpointRun({
+    return await applyStoredProposalMechanically({
+      exercisePack,
+      currentStep,
       endpoint,
-      flowControlDirectives: flowDirectiveResult?.flowControlDirectives || null,
-      activeAnchorContext: flowDirectiveResult?.activeAnchorContext || activeAnchorContext
-    });
-    await syncChatApplyButtonsForInstanceIds(normalizedTargetIds, { stepId: activeStepId });
-
-    return buildRunSuccessResult({
+      targetInstanceIds: normalizedTargetIds,
+      userText: pickFirstNonEmptyString(userText, getCurrentUserQuestion()),
       sourceLabel: resolvedSourceLabel,
-      targetInstanceLabels,
-      actionResult,
-      proposalApplied: true,
-      executionMode: "direct_apply"
+      anchorInstanceId: activeAnchorContext?.anchorInstanceId || anchorInstanceId || null
     });
   }
 
@@ -2632,6 +2713,12 @@ async function runStructuredEndpointExecution({
 
     const singleLabel = resolvedActiveLabels.length === 1 ? resolvedActiveLabels[0] : null;
     const singleInstanceId = resolvedActiveIds.length === 1 ? resolvedActiveIds[0] : null;
+    const conversationInstanceId = resolveResponseTargetInstanceId({
+      promptRuntimeOverride,
+      targetInstanceIds: resolvedActiveIds,
+      anchorInstanceId: singleInstanceId
+    });
+    const conversationContext = buildConversationContextPayload(conversationInstanceId);
     const boardCatalog = buildBoardCatalogForSelectedInstances(resolvedActiveIds);
     const memoryPayload = buildMemoryInjectionPayload({ proposalMode: endpointContext.allowedExecutionModes.includes("proposal_only") });
     const expectedSignatureSnapshot = buildSignatureSnapshot(stateById, resolvedActiveIds);
@@ -2657,6 +2744,7 @@ async function runStructuredEndpointExecution({
       recentMemoryLogEntries: memoryPayload.recentMemoryLogEntries,
       pendingProposal: singleLabel ? (pendingProposals[singleLabel] || null) : null,
       pendingProposals,
+      conversationContext,
       flowControlCatalog: flowPromptContext.flowControlCatalog,
       boardFlowState: flowPromptContext.boardFlowState,
       hint: buildPayloadMappingHint({
@@ -2724,13 +2812,20 @@ async function runStructuredEndpointExecution({
         feedback,
         flowControlDirectives: appliedFlowControlDirectives,
         evaluation,
-        sourceLabel: resolvedSourceLabel
+        sourceLabel: resolvedSourceLabel,
+        conversationMeta: {
+          stepId: activeStepId,
+          endpointId: endpoint.id,
+          channel: endpoint?.surface?.channel || null,
+          executionMode
+        }
       });
       await persistExerciseRuntimeAfterEndpointRun({
         endpoint,
         flowControlDirectives: appliedFlowControlDirectives,
         activeAnchorContext: flowDirectiveResult?.activeAnchorContext || activeAnchorContext
       });
+      await syncChatProposeButtonsForInstanceIds(resolvedActiveIds, { stepId: activeStepId });
       await syncChatApplyButtonsForInstanceIds(resolvedActiveIds, { stepId: activeStepId });
       finalBoardRunStatus = "completed";
       finalBoardRunMessage = resolvedSourceLabel + ": abgeschlossen.";
@@ -2781,7 +2876,7 @@ async function runStructuredEndpointExecution({
             executionMode
           },
           feedback,
-          flowControlDirectives,
+          flowDirectives: flowControlDirectives,
           evaluation
         });
         await Board.saveActiveProposal(proposalRecord, log);
@@ -2803,13 +2898,21 @@ async function runStructuredEndpointExecution({
         feedback,
         flowControlDirectives: flowDirectiveResult?.flowControlDirectives || null,
         evaluation,
-        sourceLabel: resolvedSourceLabel
+        sourceLabel: resolvedSourceLabel,
+        conversationMeta: {
+          stepId: activeStepId,
+          endpointId: endpoint.id,
+          channel: endpoint?.surface?.channel || null,
+          executionMode,
+          pendingProposalSummary: proposalRecord ? simplifyProposalForPrompt(proposalRecord, singleInstanceId) : null
+        }
       });
       await persistExerciseRuntimeAfterEndpointRun({
         endpoint,
         flowControlDirectives: flowDirectiveResult?.flowControlDirectives || null,
         activeAnchorContext: flowDirectiveResult?.activeAnchorContext || activeAnchorContext
       });
+      await syncChatProposeButtonsForInstanceIds(resolvedActiveIds, { stepId: activeStepId });
       await syncChatApplyButtonsForInstanceIds(resolvedActiveIds, { stepId: activeStepId });
       finalBoardRunStatus = "completed";
       finalBoardRunMessage = proposalRecord
@@ -2860,6 +2963,7 @@ async function runStructuredEndpointExecution({
     if (activeStepId) {
       for (const instanceId of resolvedActiveIds) {
         await clearPendingProposalForInstanceStep(instanceId, activeStepId);
+        clearConversationPendingProposal(instanceId, { stepId: activeStepId });
       }
     }
 
@@ -2886,13 +2990,20 @@ async function runStructuredEndpointExecution({
       feedback,
       flowControlDirectives: appliedFlowControlDirectives,
       evaluation,
-      sourceLabel: resolvedSourceLabel
+      sourceLabel: resolvedSourceLabel,
+      conversationMeta: {
+        stepId: activeStepId,
+        endpointId: endpoint.id,
+        channel: endpoint?.surface?.channel || null,
+        executionMode
+      }
     });
     await persistExerciseRuntimeAfterEndpointRun({
       endpoint,
       flowControlDirectives: appliedFlowControlDirectives,
       activeAnchorContext: flowDirectiveResult?.activeAnchorContext || activeAnchorContext
     });
+    await syncChatProposeButtonsForInstanceIds(resolvedActiveIds, { stepId: activeStepId });
     await syncChatApplyButtonsForInstanceIds(resolvedActiveIds, { stepId: activeStepId });
 
     finalBoardRunStatus = "completed";
@@ -3300,6 +3411,131 @@ function simplifyProposalForPrompt(proposal, instanceId = null) {
   };
 }
 
+const MAX_CHAT_CONTEXT_TURNS = 6;
+
+function summarizeFeedbackForConversation(feedback = null) {
+  if (!feedback || typeof feedback !== "object") return null;
+  const title = pickFirstNonEmptyString(feedback.title) || null;
+  const summary = pickFirstNonEmptyString(feedback.summary) || null;
+  const bullets = [];
+  for (const section of Array.isArray(feedback.sections) ? feedback.sections : []) {
+    for (const bullet of Array.isArray(section?.bullets) ? section.bullets : []) {
+      const normalized = pickFirstNonEmptyString(stripHtml(String(bullet || "")));
+      if (!normalized || bullets.includes(normalized)) continue;
+      bullets.push(normalized);
+      if (bullets.length >= 6) break;
+    }
+    if (bullets.length >= 6) break;
+  }
+  if (!title && !summary && !bullets.length) return null;
+  return { title, summary, bullets };
+}
+
+function getChatContextRecord(instanceId) {
+  const normalizedInstanceId = pickFirstNonEmptyString(instanceId);
+  if (!normalizedInstanceId) return null;
+  const existing = state.chatContextByInstanceId.get(normalizedInstanceId);
+  if (existing && typeof existing === "object") return existing;
+  const created = {
+    lastStepId: null,
+    lastEndpointId: null,
+    lastChannel: null,
+    lastExecutionMode: null,
+    lastFeedbackSummary: null,
+    pendingProposalSummary: null,
+    recentTurns: []
+  };
+  state.chatContextByInstanceId.set(normalizedInstanceId, created);
+  return created;
+}
+
+function appendConversationTurn(instanceId, turn = null) {
+  const record = getChatContextRecord(instanceId);
+  if (!record || !turn || typeof turn !== "object") return;
+  const role = pickFirstNonEmptyString(turn.role);
+  const textSummary = pickFirstNonEmptyString(turn.textSummary);
+  if (!role || !textSummary) return;
+  const nextTurn = {
+    role,
+    channel: pickFirstNonEmptyString(turn.channel),
+    textSummary,
+    endpointId: pickFirstNonEmptyString(turn.endpointId),
+    stepId: pickFirstNonEmptyString(turn.stepId),
+    executionMode: pickFirstNonEmptyString(turn.executionMode),
+    ts: new Date().toISOString()
+  };
+  record.recentTurns = [...(Array.isArray(record.recentTurns) ? record.recentTurns : []), nextTurn].slice(-MAX_CHAT_CONTEXT_TURNS);
+}
+
+function recordConversationUserTurn(instanceId, { text, channel = "chat", stepId = null, endpointId = null } = {}) {
+  const textSummary = pickFirstNonEmptyString(text);
+  if (!textSummary) return;
+  appendConversationTurn(instanceId, {
+    role: "user",
+    channel,
+    textSummary,
+    endpointId,
+    stepId
+  });
+}
+
+function updateConversationContextAfterAssistantResponse(instanceId, {
+  stepId = null,
+  endpointId = null,
+  channel = null,
+  executionMode = null,
+  feedback = null,
+  pendingProposalSummary = undefined
+} = {}) {
+  const record = getChatContextRecord(instanceId);
+  if (!record) return;
+  const feedbackSummary = summarizeFeedbackForConversation(feedback);
+  record.lastStepId = pickFirstNonEmptyString(stepId, record.lastStepId);
+  record.lastEndpointId = pickFirstNonEmptyString(endpointId, record.lastEndpointId);
+  record.lastChannel = pickFirstNonEmptyString(channel, record.lastChannel);
+  record.lastExecutionMode = pickFirstNonEmptyString(executionMode, record.lastExecutionMode);
+  if (feedbackSummary) {
+    record.lastFeedbackSummary = feedbackSummary;
+    appendConversationTurn(instanceId, {
+      role: "assistant",
+      channel: pickFirstNonEmptyString(channel, "chat"),
+      textSummary: pickFirstNonEmptyString(feedbackSummary.summary, feedbackSummary.title, feedbackSummary.bullets?.[0]),
+      endpointId: pickFirstNonEmptyString(endpointId),
+      stepId: pickFirstNonEmptyString(stepId),
+      executionMode: pickFirstNonEmptyString(executionMode)
+    });
+  }
+  if (pendingProposalSummary !== undefined) {
+    record.pendingProposalSummary = pendingProposalSummary || null;
+  }
+}
+
+function clearConversationPendingProposal(instanceId, { stepId = null } = {}) {
+  const record = getChatContextRecord(instanceId);
+  if (!record) return;
+  if (stepId && record.pendingProposalSummary?.stepId && record.pendingProposalSummary.stepId !== stepId) return;
+  record.pendingProposalSummary = null;
+}
+
+function buildConversationContextPayload(instanceId) {
+  const record = getChatContextRecord(instanceId);
+  if (!record) return null;
+  const recentTurns = Array.isArray(record.recentTurns) ? record.recentTurns.slice(-MAX_CHAT_CONTEXT_TURNS) : [];
+  const hasContent = record.lastEndpointId || record.lastFeedbackSummary || record.pendingProposalSummary || recentTurns.length;
+  if (!hasContent) return null;
+  return {
+    lastEndpointContext: {
+      stepId: record.lastStepId || null,
+      endpointId: record.lastEndpointId || null,
+      channel: record.lastChannel || null,
+      executionMode: record.lastExecutionMode || null
+    },
+    lastVisibleFeedback: record.lastFeedbackSummary || null,
+    pendingProposal: record.pendingProposalSummary || null,
+    recentTurns
+  };
+}
+
 async function loadPendingProposalForInstance(instanceId, { stepId = null } = {}) {
   if (!instanceId || !state.instancesById.has(instanceId)) return null;
   return await Board.loadActiveProposal({
@@ -3351,6 +3587,42 @@ async function syncChatApplyButtonForInstance(instanceId, { stepId = null } = {}
   return enabled;
 }
 
+async function syncChatProposeButtonForInstance(instanceId, { stepId = null } = {}) {
+  const instance = instanceId ? (state.instancesById.get(instanceId) || null) : null;
+  if (!instance || !Board.hasCompleteChatInterfaceShapeIds(instance.chatInterface) || !Board.hasProposeChatInterfaceShapeId(instance.chatInterface)) {
+    return false;
+  }
+
+  const flow = resolveRelevantFlowForInstance(instanceId);
+  const { exercisePack, currentStep } = resolveCurrentPackAndStepFromFlow(flow, { lang: getCurrentDisplayLanguage() });
+  const normalizedStepId = pickFirstNonEmptyString(stepId, currentStep?.id, flow?.runtime?.currentStepId);
+  const proposalEndpoint = exercisePack && normalizedStepId
+    ? findProposalEndpointForStep(exercisePack, normalizedStepId, { lang: getCurrentDisplayLanguage() })
+    : null;
+  const enabled = !!proposalEndpoint;
+  try {
+    await Board.syncChatProposeButtonState(instance.chatInterface, {
+      enabled,
+      lang: getCurrentDisplayLanguage()
+    }, log);
+  } catch (error) {
+    log("WARNUNG: Propose-Button konnte nicht synchronisiert werden: " + formatRuntimeErrorMessage(error));
+  }
+  return enabled;
+}
+
+async function syncChatProposeButtonsForInstanceIds(instanceIds, { stepId = null } = {}) {
+  for (const instanceId of normalizeTargetInstanceIds(instanceIds)) {
+    await syncChatProposeButtonForInstance(instanceId, { stepId });
+  }
+}
+
+async function syncAllChatProposeButtonsForCurrentFlows() {
+  for (const instanceId of Array.from(state.instancesById.keys())) {
+    await syncChatProposeButtonForInstance(instanceId);
+  }
+}
+
 async function syncChatApplyButtonsForInstanceIds(instanceIds, { stepId = null } = {}) {
   for (const instanceId of normalizeTargetInstanceIds(instanceIds)) {
     await syncChatApplyButtonForInstance(instanceId, { stepId });
@@ -3369,6 +3641,14 @@ async function clearPendingProposalForInstanceStep(instanceId, stepId) {
     anchorInstanceId: instanceId,
     stepId
   }, log);
+}
+
+function findProposalEndpointForStep(exercisePack, stepId, { lang = getCurrentDisplayLanguage() } = {}) {
+  if (!exercisePack || !stepId) return null;
+  return ExerciseLibrary.listStepEndpoints(exercisePack, stepId, { lang }).find((endpoint) => {
+    const modes = Array.isArray(endpoint?.run?.allowedExecutionModes) ? endpoint.run.allowedExecutionModes : [];
+    return endpoint?.surface?.channel === "board_button" && modes.includes("proposal_only");
+  }) || null;
 }
 
 async function buildPendingProposalPayloadForInstances(instanceIds, { stepId = null } = {}) {
@@ -3524,7 +3804,8 @@ async function renderAgentResponseToInstanceOutput({
   feedback,
   flowControlDirectives = null,
   evaluation = null,
-  sourceLabel = "Agent"
+  sourceLabel = "Agent",
+  conversationMeta = null
 } = {}) {
   const instance = instanceId ? (state.instancesById.get(instanceId) || null) : null;
   if (!instance) {
@@ -3547,6 +3828,12 @@ async function renderAgentResponseToInstanceOutput({
     lang: getCurrentDisplayLanguage()
   });
   await Board.writeChatOutputContent(instance.chatInterface, html, log);
+  if (conversationMeta) {
+    updateConversationContextAfterAssistantResponse(instanceId, {
+      ...conversationMeta,
+      feedback
+    });
+  }
   return {
     instanceId,
     instanceLabel: instance.instanceLabel || instanceId,
@@ -3894,6 +4181,19 @@ async function onSelectionUpdate(event) {
     return;
   }
 
+  const chatProposeSelection = await resolveSelectedChatPropose(items);
+  if (chatProposeSelection) {
+    const headlessShouldRun = shouldHeadlessHandleFlowControls();
+    const panelShouldRun = shouldPanelHandleFlowControls();
+
+    if (headlessShouldRun || panelShouldRun) {
+      await executeSelectedChatPropose(chatProposeSelection, items);
+    } else {
+      await refreshSelectionStatusFromItems(items);
+    }
+    return;
+  }
+
   const chatApplySelection = await resolveSelectedChatApply(items);
   if (chatApplySelection) {
     const headlessShouldRun = shouldHeadlessHandleFlowControls();
@@ -4044,6 +4344,7 @@ Die Steuerung erfolgt jetzt über das Side Panel.`);
 
     await Board.zoomTo(backgroundShape || image, log);
     await refreshSelectionStatusFromBoard();
+    await syncChatProposeButtonForInstance(instance.instanceId);
     await syncChatApplyButtonForInstance(instance.instanceId);
   } catch (e) {
     log("Fehler beim Einfügen des Canvas: " + e.message);
@@ -4908,8 +5209,14 @@ async function executeSelectedChatSubmit(chatSelection, items) {
     return;
   }
 
+  recordConversationUserTurn(instanceId, {
+    text: userText,
+    channel: "chat_submit",
+    stepId: currentStep?.id || null
+  });
+
   await runEndpoint(endpoint, {
-    sourceLabel: endpoint.label || "Chat Submit",
+    sourceLabel: endpoint.label || "Senden",
     userText,
     selectedInstanceIds: [instanceId],
     anchorInstanceId: instanceId
@@ -4919,6 +5226,67 @@ async function executeSelectedChatSubmit(chatSelection, items) {
   await refreshSelectionStatusFromBoard();
 }
 
+
+async function resolveSelectedChatPropose(items) {
+  const list = Array.isArray(items) ? items : [];
+  if (list.length !== 1) return null;
+
+  const item = list[0];
+  const meta = await Board.readChatInterfaceMeta(item, log);
+  if (!meta || meta.role !== "propose") return null;
+
+  const instance = meta.instanceId ? state.instancesById.get(meta.instanceId) : null;
+  if (!instance) return null;
+  return { item, meta, instance };
+}
+
+async function executeSelectedChatPropose(chatSelection, items) {
+  const instanceId = chatSelection?.instance?.instanceId;
+  if (!instanceId) {
+    await refreshSelectionStatusFromItems(items);
+    return;
+  }
+
+  const flow = resolveRelevantFlowForInstance(instanceId);
+  if (!flow) {
+    await notifyRuntime("Kein eindeutiger Flow für diese Canvas vorhanden.", { level: "warning" });
+    await restoreSelectionAfterBoardButtonRun(instanceId);
+    await refreshSelectionStatusFromBoard();
+    return;
+  }
+
+  const { exercisePack, currentStep } = resolveCurrentPackAndStepFromFlow(flow);
+  const endpoint = exercisePack && currentStep
+    ? findProposalEndpointForStep(exercisePack, currentStep.id, { lang: getCurrentDisplayLanguage() })
+    : null;
+
+  if (!endpoint) {
+    await notifyRuntime("Kein Vorschlags-Endpoint für den aktuellen Schritt vorhanden.", { level: "warning" });
+    await restoreSelectionAfterBoardButtonRun(instanceId);
+    await refreshSelectionStatusFromBoard();
+    return;
+  }
+
+  const rawInputContent = await Board.readChatInputContent(chatSelection.instance.chatInterface, log);
+  const userText = normalizeChatQuestionText(rawInputContent) || null;
+  if (userText) {
+    recordConversationUserTurn(instanceId, {
+      text: userText,
+      channel: "chat_propose",
+      stepId: currentStep?.id || null
+    });
+  }
+
+  await runEndpoint(endpoint, {
+    sourceLabel: endpoint.label || "Vorschlag ausarbeiten",
+    userText,
+    selectedInstanceIds: [instanceId],
+    anchorInstanceId: instanceId
+  });
+
+  await restoreSelectionAfterBoardButtonRun(instanceId);
+  await refreshSelectionStatusFromBoard();
+}
 
 async function resolveSelectedChatApply(items) {
   const list = Array.isArray(items) ? items : [];
@@ -4962,9 +5330,12 @@ async function executeSelectedChatApply(chatSelection, items) {
     return;
   }
 
-  await runEndpoint(endpoint, {
-    sourceLabel: endpoint.label || "Chat Apply",
-    selectedInstanceIds: [instanceId],
+  await applyStoredProposalMechanically({
+    exercisePack,
+    currentStep,
+    endpoint,
+    targetInstanceIds: [instanceId],
+    sourceLabel: endpoint.label || "Vorschläge anwenden",
     anchorInstanceId: instanceId
   });
 
