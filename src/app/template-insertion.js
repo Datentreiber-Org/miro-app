@@ -1,7 +1,7 @@
 import {
   DT_SORTED_OUT_REGION_WIDTH_PX,
   DT_SORTED_OUT_BUFFER_WIDTH_PX
-} from "../config.js?v=20260314-patch12-cleanup7";
+} from "../config.js?v=20260314-patch12-cleanup8";
 
 function getCanvasDef(canvasTypeId, { canvasDefs, defaultTemplateId }) {
   return canvasDefs?.[canvasTypeId] || canvasDefs?.[defaultTemplateId] || null;

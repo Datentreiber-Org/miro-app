@@ -1,8 +1,8 @@
 import {
   getAllowedCanvasTypesForPack,
   getDefaultCanvasTypeIdForPack
-} from "../exercises/registry.js?v=20260314-patch12-cleanup7";
-import { normalizeUiLanguage } from "../i18n/index.js?v=20260314-patch12-cleanup7";
+} from "../exercises/registry.js?v=20260314-patch12-cleanup8";
+import { normalizeUiLanguage } from "../i18n/index.js?v=20260314-patch12-cleanup8";
 
 function asNonEmptyString(value) {
   if (typeof value !== "string") return null;
