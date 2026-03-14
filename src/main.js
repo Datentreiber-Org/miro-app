@@ -5397,6 +5397,15 @@ function validateNormalizedAction(action) {
   return { ok: true, action };
 }
 
+function resolveOwnerInstanceIdForStickyReference(stickyRef) {
+  if (!stickyRef) return null;
+
+  const resolvedStickyId = Catalog.resolveStickyId(stickyRef, state.aliasState);
+  if (!resolvedStickyId) return null;
+
+  return state.stickyOwnerCache?.get(resolvedStickyId) || null;
+}
+
 function resolveActionInstanceId(action, { candidateInstanceIds = null, anchorInstanceId = null, sourceLabel = "Agent" } = {}) {
   const candidateIds = Array.from(new Set((candidateInstanceIds || []).filter((id) => state.instancesById.has(id))));
 
