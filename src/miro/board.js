@@ -1,4 +1,4 @@
-export { ensureMiroReady, getBoard, registerSelectionUpdateHandler } from "./sdk.js?v=20260315-patch13-submit-proposals-fix1";
+export { ensureMiroReady, getBoard, registerSelectionUpdateHandler } from "./sdk.js?v=20260315-patch17-analytics-prompt-refresh2";
 
 export {
   normalizeBoardConfig,
@@ -35,7 +35,7 @@ export {
 export {
   buildAgentFeedbackContent,
   buildQuestionAnswerContent
-} from "./feedback.js?v=20260315-patch13-submit-proposals-fix1";
+} from "./feedback.js?v=20260315-patch17-analytics-prompt-refresh2";
 
 export {
   normalizeChatInterfaceShapeIds,
@@ -88,7 +88,7 @@ export {
   setStickyNoteTagPresence,
   setStickyNoteFillColor,
   getBoardBaseContext
-} from "./items.js?v=20260315-patch13-submit-proposals-fix1";
+} from "./items.js?v=20260315-patch17-analytics-prompt-refresh2";
 
 export {
   readFlowControlMeta,
@@ -97,7 +97,7 @@ export {
   computeSuggestedFlowControlPosition,
   createFlowControlShape,
   syncFlowControlShapeAppearance
-} from "./flow-controls.js?v=20260315-patch13-submit-proposals-fix1";
+} from "./flow-controls.js?v=20260315-patch17-analytics-prompt-refresh2";
 
 export {
   computeTemplateGeometry,

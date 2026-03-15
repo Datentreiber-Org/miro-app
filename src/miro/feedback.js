@@ -1,5 +1,5 @@
-import { asTrimmedString } from "./helpers.js?v=20260315-patch13-submit-proposals-fix1";
-import { normalizeUiLanguage, t } from "../i18n/index.js?v=20260315-patch13-submit-proposals-fix1";
+import { asTrimmedString } from "./helpers.js?v=20260315-patch17-analytics-prompt-refresh2";
+import { normalizeUiLanguage, t } from "../i18n/index.js?v=20260315-patch17-analytics-prompt-refresh2";
 
 function normalizeVisibleText(value) {
   const raw = String(value ?? "");

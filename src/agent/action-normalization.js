@@ -1,4 +1,4 @@
-import { normalizeStickyColorToken } from "../config.js?v=20260315-patch13-submit-proposals-fix1";
+import { normalizeStickyColorToken } from "../config.js?v=20260315-patch17-analytics-prompt-refresh2";
 
 export function pickFirstNonEmptyString(...values) {
   for (const value of values) {

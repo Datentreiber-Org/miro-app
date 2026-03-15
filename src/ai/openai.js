@@ -1,4 +1,4 @@
-import { OPENAI_ENDPOINT } from "../config.js?v=20260315-patch13-submit-proposals-fix1";
+import { OPENAI_ENDPOINT } from "../config.js?v=20260315-patch17-analytics-prompt-refresh2";
 
 function nullableStringSchema(description = "") {
   return {

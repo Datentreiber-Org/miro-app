@@ -17,7 +17,7 @@ import {
   listStepEndpointsForSurface,
   getEndpointById,
   isSidecarOnlyEndpoint,
-} from "./method-catalog.js?v=20260315-patch13-submit-proposals-fix1";
+} from "./method-catalog.js?v=20260315-patch17-analytics-prompt-refresh2";
 
 function asNonEmptyString(value) {
   if (typeof value !== "string") return null;

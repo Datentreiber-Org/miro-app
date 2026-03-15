@@ -1,5 +1,5 @@
-import { isFiniteNumber } from "../utils.js?v=20260315-patch13-submit-proposals-fix1";
-import { ensureMiroReady, getBoard } from "./sdk.js?v=20260315-patch13-submit-proposals-fix1";
+import { isFiniteNumber } from "../utils.js?v=20260315-patch17-analytics-prompt-refresh2";
+import { ensureMiroReady, getBoard } from "./sdk.js?v=20260315-patch17-analytics-prompt-refresh2";
 
 const STICKY_RECT_FALLBACK = Object.freeze({ width: 350, height: 228 });
 

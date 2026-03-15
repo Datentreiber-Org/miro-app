@@ -1,14 +1,14 @@
-import { DT_IMAGE_META_KEY_INSTANCE, DT_CANVAS_DEFS, DT_SORTED_OUT_REGION_WIDTH_PX, DT_SORTED_OUT_BUFFER_WIDTH_PX } from "../config.js?v=20260315-patch13-submit-proposals-fix1";
-import { isFiniteNumber } from "../utils.js?v=20260315-patch13-submit-proposals-fix1";
-import { ensureMiroReady, getBoard } from "./sdk.js?v=20260315-patch13-submit-proposals-fix1";
+import { DT_IMAGE_META_KEY_INSTANCE, DT_CANVAS_DEFS, DT_SORTED_OUT_REGION_WIDTH_PX, DT_SORTED_OUT_BUFFER_WIDTH_PX } from "../config.js?v=20260315-patch17-analytics-prompt-refresh2";
+import { isFiniteNumber } from "../utils.js?v=20260315-patch17-analytics-prompt-refresh2";
+import { ensureMiroReady, getBoard } from "./sdk.js?v=20260315-patch17-analytics-prompt-refresh2";
 import {
   compareItemIdsAsc,
   normalizePositiveInt,
   getCanvasTypeDisplayName,
   formatInstanceLabel,
   buildInternalInstanceIdFromImageId
-} from "./helpers.js?v=20260315-patch13-submit-proposals-fix1";
-import { getItemById, resolveBoardCoords } from "./items.js?v=20260315-patch13-submit-proposals-fix1";
+} from "./helpers.js?v=20260315-patch17-analytics-prompt-refresh2";
+import { getItemById, resolveBoardCoords } from "./items.js?v=20260315-patch17-analytics-prompt-refresh2";
 import {
   normalizeChatInterfaceShapeIds,
   hasAnyChatInterfaceShapeIds,

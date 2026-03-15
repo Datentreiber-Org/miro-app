@@ -3,7 +3,7 @@
 <title>Datentreiber Canvas – Loader</title> 
 <script src="https://miro.com/app/static/sdk/v2/miro.js"></script>
 <script type="module">
-  const APP_ASSET_VERSION = "20260315-patch16-flow-endpoint-overrides-fix1";
+  const APP_ASSET_VERSION = "20260315-patch17-analytics-prompt-refresh2";
 
   function buildPanelUrl() {
     const url = new URL("./app.html", window.location.href);
@@ -21,7 +21,7 @@
 
   // Headless-Runtime parallel booten.
   window.__DT_RUNTIME_CONTEXT = "headless";
-  import("./src/headless/runtime.js?v=20260315-patch16-flow-endpoint-overrides-fix1").catch((error) => {
+  import("./src/headless/runtime.js?v=20260315-patch17-analytics-prompt-refresh2").catch((error) => {
     console.error("[DT][loader] Headless-Boot fehlgeschlagen", error);
   });
 </script>

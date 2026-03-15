@@ -56,49 +56,87 @@ Menschlicher Workflow:
     assetWidthPx: 4550,
     assetHeightPx: 3219,
     insertWidthPx: 4550,
-    promptContext: `
-Canvas-Weltmodell für Analytics & AI Use Case:
+    promptContext: `Canvas-Weltmodell für Analytics & AI Use Case:
 - Dieses Canvas beschreibt einen Use Case in vier logisch aufeinander aufbauenden Ebenen: Fokus, Problemraum, Lösungsraum und Fit.
-- Die rechte Seite beschreibt den Problemraum aus Nutzersicht; die linke Seite leitet daraus die Lösungsperspektive ab; das Feld Check verdichtet den validierten Fit erst am Ende.
-- Sorted-out links/rechts sind Off-Canvas-Parkbereiche für Alternativen, Nebenthemen oder bewusst zurückgestellte Inhalte.
+- Die rechte Seite beschreibt den Problemraum aus Nutzersicht.
+- Die linke Seite beschreibt die Lösungsperspektive.
+- Das Feld Check in der Mitte ist kein neues Ideenfeld, sondern ein spätes Validierungs- und Verdichtungsfeld.
+- Sorted-out links/rechts sind Parkbereiche für Alternativen, Nebenthemen oder bewusst zurückgestellte Inhalte.
 
 Verwende für area bzw. targetArea ausschließlich diese Area-Keys:
 - header = Header: Fokus, Use-Case-Name oder konkreter Arbeitstitel dieses Canvas.
 - 2_user_and_situation = User & Situation: konkrete Nutzerrolle oder Nutzergruppe, Auslöser, Arbeitssituation, Kontext, Job to be done.
-- 3_objectives_and_results = Objectives & Results: angestrebte Ziele oder messbare gewünschte Ergebnisse.
-- 4_decisions_and_actions = Decisions & Actions: reale Entscheidungen oder Handlungen, die der Nutzer treffen oder ausführen muss.
+- 3_objectives_and_results = Objectives & Results: angestrebte Ziele oder gewünschte Ergebnisse.
+- 4_decisions_and_actions = Decisions & Actions: reale Entscheidungen oder Handlungen des Nutzers.
 - 5a_user_gains = User Gains: gewünschte positive Effekte aus Nutzersicht.
 - 5b_user_pains = User Pains: Hindernisse, Unsicherheiten, Friktionen, Risiken oder Aufwände aus Nutzersicht.
-- 6_solutions = Solutions: Lösungsideen oder Interventionen auf Use-Case-Ebene.
-- 6a_information = Information: konkrete Informationen, Signale oder Erkenntnisse, die Entscheidungen oder Handlungen verbessern.
-- 6b_functions = Functions: Funktionen oder Mechanismen, mit denen diese Informationen erzeugt, bereitgestellt oder nutzbar gemacht werden.
-- 7_benefits = Benefits: resultierende Vorteile der Lösung.
-- 8_check = Check: späte Verdichtungen zum Problem-Solution-Fit.
-- sorted_out_left = seitlicher Sorted-out-Bereich links außerhalb des sichtbaren Canvas
-- sorted_out_right = seitlicher Sorted-out-Bereich rechts außerhalb des sichtbaren Canvas
+- 6_solutions = Solutions: Lösungsideen oder Lösungsvarianten auf Use-Case-Ebene.
+- 6a_information = Information: konkrete Informationen, Signale oder Erkenntnisse.
+- 6b_functions = Functions: Funktionen oder Mechanismen, die Informationen nutzbar machen.
+- 7_benefits = Benefits: konkrete Vorteile der Lösung für den Nutzer.
+- 8_check = Check: kurze Validierungs- oder Verdichtungsaussagen zum Problem-Solution-Fit.
+- sorted_out_left = seitlicher Sorted-out-Bereich links außerhalb des sichtbaren Canvas.
+- sorted_out_right = seitlicher Sorted-out-Bereich rechts außerhalb des sichtbaren Canvas.
 
-Canvas-Semantik:
-- header setzt den Fokusanker. Ohne klaren Header fehlt dem gesamten Canvas die gemeinsame Arbeitshypothese.
-- 2_user_and_situation, 3_objectives_and_results, 4_decisions_and_actions, 5a_user_gains und 5b_user_pains bilden gemeinsam den Problemraum.
-- 4_decisions_and_actions ist der methodische Drehpunkt zwischen Problemraum und Lösungsraum.
-- 6_solutions, 6a_information, 6b_functions und 7_benefits bilden gemeinsam den Lösungsraum.
-- 8_check ist kein Sammelbereich für neue Ideen, sondern ein spätes Verdichtungsfeld für belastbare Fit-Aussagen.
-- Objectives & Results beschreibt Outcomes; Decisions & Actions beschreibt Verhalten oder Auswahlhandlungen.
-- User Gains kommen aus Nutzersicht; Benefits kommen aus der Lösungsperspektive.
-- Die Footer-/Legend-Region ist nicht Teil des Agentenkatalogs und kein zu füllender Arbeitsbereich.
+Visuelle Orientierung:
+- header liegt oben.
+- 2_user_and_situation, 3_objectives_and_results, 4_decisions_and_actions, 5a_user_gains und 5b_user_pains liegen auf der rechten Seite.
+- 5a_user_gains liegt eher oben rechts.
+- 5b_user_pains liegt eher unten rechts.
+- 6_solutions, 6a_information, 6b_functions und 7_benefits liegen auf der linken Seite.
+- 6a_information liegt eher oben links.
+- 6b_functions liegt eher unten links.
+- 7_benefits liegt zwischen Lösungsraum und Check.
+- 8_check liegt mittig als Brücke zwischen rechter und linker Seite.
+- Footer/Legende ist kein Arbeitsbereich.
 
-Menschlicher Workflow auf diesem Canvas:
-1) Fokus im Header klären und Scope/Annahmen sichtbar machen.
-2) Rechten Problemraum aufbauen: User & Situation → Objectives & Results → Decisions & Actions → Gains/Pains.
-3) Linken Lösungsraum aus dem Problemraum ableiten: Solutions → Information → Functions → Benefits.
-4) Erst dann belastbare Fit-Aussagen im Feld Check verdichten.
+Farblogik:
+- Grün = Gain oder Benefit.
+- Rot = Pain.
+- Blau = User- oder Lösungselement.
+- Weiß = Question / Assumption / Insight / Decision / Task, wenn das präziser ist als blau.
 
-Typische Arbeitslogik:
+Semantik:
+- header setzt den Fokusanker.
 - Rechte Seite vor linker Seite, Check zuletzt.
-- Nicht jedes Feld muss sofort gefüllt sein; gute Arbeit entsteht in kleinen, anschlussfähigen Schritten.
-- Alternative Nutzer, Varianten oder Nebenthemen werden eher geparkt als gelöscht.
-- Gains/Pains sind standardmäßig keine Benefits und Benefits sind nicht automatisch validierter Fit.
-- Connectoren sind nie Default-Dekoration, sondern nur selektive Sichtbarmachung expliziter Beziehungen.`.trim()
+- Objectives & Results beschreibt Outcomes.
+- Decisions & Actions beschreibt Verhalten oder operative Schritte.
+- Gains/Pains sind aus Nutzersicht.
+- Benefits sind aus Lösungssicht und müssen an den Problemraum anschließen.
+- Sorted-out ist kein normaler Arbeitsbereich, sondern ein bewusster Parkplatz.
+
+Arbeitslogik:
+1) Fokus im Header klären.
+2) Problemraum rechts aufbauen.
+3) Lösungsraum links aus dem Problemraum ableiten.
+4) Fit in der Mitte validieren und verdichten.
+5) Alternativen oder Reste eher parken als löschen.
+
+Sticky-Regeln:
+- Eine Sticky = genau ein Gedanke.
+- Schreibe nur wenige Wörter.
+- Standard: 2 bis 5 Wörter pro Sticky.
+- Keine langen Sätze auf Stickies.
+- Keine Bulletlisten auf Stickies.
+- Begründungen gehören ins Feedback, nicht auf die Sticky.
+- Gute Stilformen sind z. B.:
+  - "Marketing planning"
+  - "ROI unknown"
+  - "Realtime figures"
+  - "Daily updated"
+  - "Easy ad planning"
+
+Connector-Regeln:
+- Connectoren sind nie Dekoration.
+- Nutze sie nur, wenn eine Beziehung explizit sichtbar werden soll.
+- Typische sinnvolle Beziehungen sind:
+  - Objective -> Result
+  - Decision -> Action
+  - Action -> Result
+  - Information/Function -> Benefit
+  - Benefit -> adressierter Gain, Pain, Objective, Result, Decision oder Action
+- Gains und Pains brauchen nicht automatisch Connectoren.
+- Verwende lieber wenige gute Connectoren als viele.`.trim()
   }
 };
 
@@ -539,11 +577,11 @@ function buildCommonAgentContractBlock(modeLabel) {
     "stepStatus": "in_progress"
   },
   "feedback": {
-    "title": "Kurzer Titel ohne Nummerierung",
-    "summary": "Kurzfassung für die sichtbare Antwortbox",
+    "title": "Kurzer Titel",
+    "summary": "1 bis 2 kurze Sätze",
     "sections": [
       {
-        "heading": "Beobachtungen",
+        "heading": "Warum jetzt",
         "bullets": ["Kurzer Punkt 1", "Kurzer Punkt 2"]
       }
     ]
@@ -553,9 +591,9 @@ function buildCommonAgentContractBlock(modeLabel) {
     "completeEndpointIds": []
   },
   "evaluation": {
-    "score": 72,
-    "scale": "0-100",
-    "verdict": "solide, aber noch unvollständig",
+    "score": null,
+    "scale": null,
+    "verdict": "",
     "rubric": []
   }
 }
@@ -563,13 +601,20 @@ function buildCommonAgentContractBlock(modeLabel) {
 Vertragsregeln:
 - analysis erklärt kurz, was du im aktuellen Lauf erkannt oder entschieden hast.
 - feedback ist für Menschen geschrieben: klar, konkret, ohne technische IDs, endpointIds oder Roh-Keys.
+- feedback.title sehr kurz halten, normalerweise maximal 4 Wörter.
+- feedback.summary auf 1 bis 2 kurze Sätze begrenzen.
+- sections nur verwenden, wenn sie wirklich helfen; normalerweise höchstens 1 bis 2 Sektionen.
+- bullets insgesamt knapp halten; normalerweise höchstens 2 kurze Punkte.
+- Feedback soll vor allem erklären, warum der Schritt, Vorschlag oder Review jetzt sinnvoll ist.
+- Wiederhole Sticky-Texte nicht unnötig vollständig im Feedback.
 - executionMode ist Pflicht: none, direct_apply oder proposal_only.
-- none bedeutet actions=[].
+- none bedeutet: actions=[].
 - direct_apply bedeutet: actions sind für direkte Anwendung gedacht.
 - proposal_only bedeutet: actions sind konkrete Vorschläge, werden aber noch nicht angewendet.
 - Wenn allowedActionAreas im JSON-Kontext vorhanden ist, dürfen create_sticky und move_sticky nur diese Bereiche als Ziel verwenden.
 - Wenn allowedExecutionModes sowohl none als auch proposal_only enthalten, ist none der Standard; proposal_only soll nur gewählt werden, wenn die Anfrage klar nach einer konkreten Board-Ausarbeitung verlangt.
-- evaluation ist nur für Bewertungsmodi zwingend; sonst leer oder knapp halten.
+- evaluation bleibt standardmäßig leer oder sehr knapp.
+- Verwende keinen numerischen Score, außer ein Review- oder Grade-Endpunkt verlangt dies ausdrücklich.
 - memoryEntry ist Pflicht und verdichtet semantisch, was in diesem Lauf passiert ist.
 - Referenziere in memoryEntry Canvas nur über instanceLabel.
 - Verwende color nur mit unterstützten Miro-Farbwerten.
@@ -578,6 +623,16 @@ Vertragsregeln:
 
 Zusatz für ${modeLabel}:
 - actions, memoryEntry und feedback bleiben gleichwertige Bestandteile des Outputs.`.trim();
+}
+
+function buildStickyStyleRulesBlock() {
+  return `Wenn du create_sticky oder move_sticky nutzt:
+- Formuliere Sticky-Texte sehr kurz.
+- Bevorzuge 2 bis 5 Wörter.
+- Eine Sticky = ein Gedanke.
+- Keine Sätze.
+- Keine Bulletlisten.
+- Begründungen gehören ins Feedback, nicht auf die Sticky.`;
 }
 
 function buildSelectionSystemPrompt() {
@@ -601,6 +656,8 @@ ${buildActionReferenceRulesBlock({
 })}
 
 ${buildConnectorRulesBlock()}
+
+${buildStickyStyleRulesBlock()}
 
 ${buildCommonAgentContractBlock("selection / instanzbezogenen Agentenlauf")}`.trim();
 }
@@ -643,6 +700,8 @@ ${buildActionReferenceRulesBlock({
 })}
 
 ${buildConnectorRulesBlock({ forbidAltNames: true })}
+
+${buildStickyStyleRulesBlock()}
 
 ${buildCommonAgentContractBlock("globalen Agentenlauf")}`;
 
