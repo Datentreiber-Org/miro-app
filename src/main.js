@@ -1638,7 +1638,7 @@ function renderFlowEndpointOverrideEditor() {
 
   const actionOptions = getFlowEndpointActionOptions(lang);
   const selectedActions = hasEligibleEndpoint
-    ? (override?.allowedActions !== null
+    ? (override?.allowedActions != null
         ? override.allowedActions
         : ExerciseEngine.normalizeStringArray(endpoint.run?.allowedActions))
     : [];
@@ -1646,7 +1646,7 @@ function renderFlowEndpointOverrideEditor() {
 
   const areaOptions = hasEligibleEndpoint ? listAvailableAreaOptionsForFlowEndpoint(endpoint, exercisePack) : [];
   const selectedAreas = hasEligibleEndpoint
-    ? (override?.allowedActionAreas !== null
+    ? (override?.allowedActionAreas != null
         ? override.allowedActionAreas
         : ExerciseEngine.normalizeStringArray(endpoint.run?.allowedActionAreas))
     : [];
