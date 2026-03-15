@@ -30,7 +30,7 @@ export {
   normalizeBoardRunState,
   loadBoardRunState,
   saveBoardRunState
-} from "./storage.js?v=20260315-patch13-submit-proposals-fix1";
+} from "./storage.js?v=20260315-patch14-runtime-cleanup";
 
 export {
   buildAgentFeedbackContent,
@@ -39,6 +39,7 @@ export {
 
 export {
   normalizeChatInterfaceShapeIds,
+  hasAnyChatInterfaceShapeIds,
   hasCompleteChatInterfaceShapeIds,
   hasProposeChatInterfaceShapeId,
   hasApplyChatInterfaceShapeId,
@@ -61,7 +62,7 @@ export {
   syncChatProposeButtonState,
   syncChatApplyButtonState,
   syncChatInterfaceLayoutForInstance
-} from "./chat-interface.js?v=20260315-patch13-submit-proposals-fix1";
+} from "./chat-interface.js?v=20260315-patch14-runtime-cleanup";
 
 export {
   getSelection,
@@ -105,4 +106,4 @@ export {
   findInstanceByRect,
   registerInstanceFromImage,
   scanTemplateInstances
-} from "./instances.js?v=20260315-patch13-submit-proposals-fix1";
+} from "./instances.js?v=20260315-patch14-runtime-cleanup";

@@ -11,6 +11,7 @@ import {
 import { getItemById, resolveBoardCoords } from "./items.js?v=20260315-patch13-submit-proposals-fix1";
 import {
   normalizeChatInterfaceShapeIds,
+  hasAnyChatInterfaceShapeIds,
   hasCompleteChatInterfaceShapeIds,
   createChatInterfaceForInstance,
   removeChatInterfaceShapes,
@@ -18,17 +19,40 @@ import {
   ensureChatProposeShapeForInstance,
   hasApplyChatInterfaceShapeId,
   ensureChatApplyShapeForInstance
-} from "./chat-interface.js?v=20260315-patch13-submit-proposals-fix1";
+} from "./chat-interface.js?v=20260315-patch14-runtime-cleanup";
 import {
   loadBaselineSignatureForImageId,
   removeBaselineSignatureForImageId
-} from "./storage.js?v=20260315-patch13-submit-proposals-fix1";
+} from "./storage.js?v=20260315-patch14-runtime-cleanup";
 
 // --------------------------------------------------------------------
 // Template instance registration, geometry and scan/rebind logic
 // --------------------------------------------------------------------
 function normalizeCanvasInstanceChatInterface(rawShapeIds) {
   return normalizeChatInterfaceShapeIds(rawShapeIds);
+}
+
+async function ensureChatInterfaceShapeIdsForInstance(instance, currentShapeIds, log, { lang = "de" } = {}) {
+  let shapeIds = normalizeCanvasInstanceChatInterface(currentShapeIds);
+
+  if (hasAnyChatInterfaceShapeIds(shapeIds) && !hasCompleteChatInterfaceShapeIds(shapeIds)) {
+    await removeChatInterfaceShapes(shapeIds, log);
+    shapeIds = normalizeCanvasInstanceChatInterface(null);
+  }
+
+  if (!hasCompleteChatInterfaceShapeIds(shapeIds)) {
+    shapeIds = await createChatInterfaceForInstance(instance, log, { lang });
+  }
+
+  if (!hasProposeChatInterfaceShapeId(shapeIds)) {
+    shapeIds = await ensureChatProposeShapeForInstance(instance, shapeIds, log, { lang });
+  }
+
+  if (!hasApplyChatInterfaceShapeId(shapeIds)) {
+    shapeIds = await ensureChatApplyShapeForInstance(instance, shapeIds, log, { lang });
+  }
+
+  return normalizeCanvasInstanceChatInterface(shapeIds);
 }
 
 function normalizeCanvasInstanceMeta(rawMeta, templateCatalog, defaultTemplateId = null) {
@@ -440,19 +464,7 @@ export async function registerInstanceFromImage(image, {
 
     if (createChatInterface) {
       try {
-        if (!hasCompleteChatInterfaceShapeIds(instance.chatInterface)) {
-          const shapeIds = await createChatInterfaceForInstance(instance, log, { lang: displayLanguage });
-          instance.chatInterface = normalizeCanvasInstanceChatInterface(shapeIds);
-        } else {
-          let shapeIds = instance.chatInterface;
-          if (!hasProposeChatInterfaceShapeId(shapeIds)) {
-            shapeIds = await ensureChatProposeShapeForInstance(instance, shapeIds, log, { lang: displayLanguage });
-          }
-          if (!hasApplyChatInterfaceShapeId(shapeIds)) {
-            shapeIds = await ensureChatApplyShapeForInstance(instance, shapeIds, log, { lang: displayLanguage });
-          }
-          instance.chatInterface = normalizeCanvasInstanceChatInterface(shapeIds);
-        }
+        instance.chatInterface = await ensureChatInterfaceShapeIdsForInstance(instance, instance.chatInterface, log, { lang: displayLanguage });
         await writeCanvasInstanceMeta(image, {
           version: 2,
           canvasTypeId: detectedCanvasTypeId,
@@ -511,13 +523,7 @@ export async function registerInstanceFromImage(image, {
 
   if (createChatInterface) {
     try {
-      if (!hasCompleteChatInterfaceShapeIds(instance.chatInterface)) {
-        const shapeIds = await createChatInterfaceForInstance(instance, log, { lang: displayLanguage });
-        instance.chatInterface = normalizeCanvasInstanceChatInterface(shapeIds);
-      } else if (!hasApplyChatInterfaceShapeId(instance.chatInterface)) {
-        const shapeIds = await ensureChatApplyShapeForInstance(instance, instance.chatInterface, log, { lang: displayLanguage });
-        instance.chatInterface = normalizeCanvasInstanceChatInterface(shapeIds);
-      }
+      instance.chatInterface = await ensureChatInterfaceShapeIdsForInstance(instance, instance.chatInterface, log, { lang: displayLanguage });
       await writeCanvasInstanceMeta(image, {
         version: 2,
         canvasTypeId: detectedCanvasTypeId,
@@ -598,7 +604,7 @@ export async function scanTemplateInstances({
     instancesByImageId.delete(imageId);
     if (inst) {
       instancesById.delete(inst.instanceId);
-      if (hasCompleteChatInterfaceShapeIds(inst.chatInterface)) {
+      if (hasAnyChatInterfaceShapeIds(inst.chatInterface)) {
         await removeChatInterfaceShapes(inst.chatInterface, log);
       }
       if (typeof log === "function") {

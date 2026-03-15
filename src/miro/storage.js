@@ -213,7 +213,7 @@ export function normalizeBoardConfig(rawConfig = {}) {
     defaultFeedbackTarget: asTrimmedString(src.defaultFeedbackTarget) || null,
     adminPolicy: asTrimmedString(src.adminPolicy) || null,
     systemTags: normalizeStringArray(src.systemTags),
-    flowControlsStaticLayout: Boolean(src.flowControlsStaticLayout)
+    flowControlsStaticLayout: src.flowControlsStaticLayout === false ? false : true
   };
 }
 
@@ -311,7 +311,9 @@ async function listBoardAnchorItems(log) {
       if (isBoardAnchorMeta(meta)) {
         anchors.push(shape);
       }
-    } catch (_) {}
+    } catch (error) {
+      if (typeof log === "function") log("WARNUNG: Board-Anchor-Metadata konnte für Shape " + (shape?.id || "(unbekannt)") + " nicht gelesen werden: " + (error?.message || String(error)));
+    }
   }
 
   anchors.sort(compareItemIdsAsc);
@@ -346,7 +348,9 @@ async function createBoardAnchorItem(log) {
     if (typeof anchor?.sendToBack === "function") {
       await anchor.sendToBack();
     }
-  } catch (_) {}
+  } catch (error) {
+    if (typeof log === "function") log("WARNUNG: Board-Anchor konnte nicht in den Hintergrund gelegt werden: " + (error?.message || String(error)));
+  }
 
   if (typeof log === "function") {
     log("Board-Anchor erstellt (Item " + anchor.id + ").");
@@ -819,14 +823,18 @@ export async function purgeLegacyProposalStorage(log) {
     try {
       await col.remove(proposalRecordKey(proposalId));
       removedProposalIds.push(proposalId);
-    } catch (_) {}
+    } catch (error) {
+      if (typeof log === "function") log("WARNUNG: Legacy-Proposal '" + proposalId + "' konnte nicht entfernt werden: " + (error?.message || String(error)));
+    }
   }
 
   let removedIndex = false;
   try {
     await col.remove(DT_STORAGE_KEY_PROPOSAL_INDEX);
     removedIndex = true;
-  } catch (_) {}
+  } catch (error) {
+    if (typeof log === "function") log("WARNUNG: Legacy-Proposal-Index konnte nicht entfernt werden: " + (error?.message || String(error)));
+  }
 
   return { removedProposalIds, removedIndex };
 }

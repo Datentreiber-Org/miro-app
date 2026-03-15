@@ -16,7 +16,7 @@ import {
 import { createLogger, stripHtml, extractUnderlinedText, isFiniteNumber } from "./utils.js?v=20260315-patch13-submit-proposals-fix1";
 import { normalizeUiLanguage, t, getLocaleForLanguage } from "./i18n/index.js?v=20260315-patch13-submit-proposals-fix1";
 
-import * as Board from "./miro/board.js?v=20260315-patch13-submit-proposals-fix1";
+import * as Board from "./miro/board.js?v=20260315-patch14-runtime-cleanup";
 import * as Catalog from "./domain/catalog.js?v=20260315-patch13-submit-proposals-fix1";
 import * as OpenAI from "./ai/openai.js?v=20260315-patch13-submit-proposals-fix1";
 import * as Memory from "./runtime/memory.js?v=20260315-patch13-submit-proposals-fix1";
@@ -25,7 +25,7 @@ import * as ExerciseLibrary from "./exercises/library.js?v=20260315-patch13-subm
 import * as PromptComposer from "./prompt/composer.js?v=20260315-patch13-submit-proposals-fix1";
 import * as ExerciseEngine from "./runtime/exercise-engine.js?v=20260315-patch13-submit-proposals-fix1";
 import * as BoardFlow from "./runtime/board-flow.js?v=20260315-patch13-submit-proposals-fix1";
-import * as PanelBridge from "./runtime/panel-bridge.js?v=20260315-patch13-submit-proposals-fix1";
+import * as PanelBridge from "./runtime/panel-bridge.js?v=20260315-patch14-runtime-cleanup";
 import { getInsertWidthPxForCanvasType, computeTemplateInsertPosition } from "./app/template-insertion.js?v=20260315-patch13-submit-proposals-fix1";
 import {
   pickFirstNonEmptyString,
@@ -33,7 +33,7 @@ import {
   makeUndirectedConnectorKey,
   normalizeAgentAction
 } from "./agent/action-normalization.js?v=20260315-patch13-submit-proposals-fix1";
-import { createEmptyActionExecutionStats, mergeActionExecutionStats, summarizeAppliedActions } from "./agent/action-stats.js?v=20260315-patch13-submit-proposals-fix1";
+import { createEmptyActionExecutionStats, mergeActionExecutionStats, summarizeAppliedActions } from "./agent/action-stats.js?v=20260315-patch14-runtime-cleanup";
 
 // --------------------------------------------------------------------
 // State (Controller-Level)
@@ -87,7 +87,6 @@ const state = {
   // UI state
   conversationStateByInstanceId: new Map(),
   selectedCanvasTypeId: TEMPLATE_ID,
-  panelMode: "admin",
   panelInteractionState: {
     flowId: null,
     flowStepId: null,
@@ -112,7 +111,6 @@ const state = {
 // Logger + initial log
 // --------------------------------------------------------------------
 const logEl = document.getElementById("log");
-const panelModeEl = document.getElementById("panel-mode");
 const boardLanguageEl = document.getElementById("board-language");
 const panelModeStatusEl = document.getElementById("panel-mode-status");
 const selectionStatusEl = document.getElementById("selection-status");
@@ -120,8 +118,6 @@ const canvasTypePickerEl = document.getElementById("canvas-type-picker");
 const exerciseContextStatusEl = document.getElementById("exercise-context-status");
 const exerciseStepInstructionEl = document.getElementById("exercise-step-instruction");
 const exerciseRecommendationStatusEl = document.getElementById("exercise-recommendation-status");
-const userActionsPanelEl = document.getElementById("user-actions-panel");
-const adminPanelEl = document.getElementById("admin-panel");
 const apiKeyEl = document.getElementById("api-key");
 const modelEl = document.getElementById("model");
 const adminOverrideTextEl = document.getElementById("admin-override-text");
@@ -199,6 +195,13 @@ function logRuntimeNotice(kind, message, details = null) {
     : (["skipped_action", "run_locked", "model_refusal", "precondition", "stale_state_conflict"].includes(normalizedKind) ? "WARNUNG" : "INFO");
 
   log(severity + " [" + normalizedKind + "] " + message);
+  if (details !== null && details !== undefined) {
+    log(details);
+  }
+}
+
+function logSuppressedRuntimeWarning(context, error, details = null) {
+  log("WARNUNG: " + context + ": " + formatRuntimeErrorMessage(error));
   if (details !== null && details !== undefined) {
     log(details);
   }
@@ -306,7 +309,9 @@ async function resolveCurrentRunActor() {
       if (displayName) return displayName;
       if (userId) return userId;
     }
-  } catch (_) {}
+  } catch (error) {
+    logSuppressedRuntimeWarning("Aktueller Run-Akteur konnte nicht aufgelöst werden", error);
+  }
 
   return IS_HEADLESS ? "headless-runtime" : "panel-runtime";
 }
@@ -321,7 +326,9 @@ async function removeRunStatusItems(itemIds) {
   for (const itemId of normalizedIds) {
     try {
       await Board.removeItemById(itemId, log);
-    } catch (_) {}
+    } catch (error) {
+      logSuppressedRuntimeWarning("Run-Status-Item konnte nicht entfernt werden (" + itemId + ")", error);
+    }
   }
 }
 
@@ -342,7 +349,9 @@ async function createRunStatusItems(instanceIds, sourceLabel, runId) {
     let geom = null;
     try {
       geom = await Board.computeTemplateGeometry(instance, log);
-    } catch (_) {}
+    } catch (error) {
+      logSuppressedRuntimeWarning("Canvas-Geometrie für Run-Status konnte nicht berechnet werden", error);
+    }
     if (!geom) continue;
 
     const shapeX = geom.x;
@@ -540,33 +549,6 @@ async function performPreApplyConflictCheck(expectedSignatureSnapshot, sourceLab
 // --------------------------------------------------------------------
 // UI helpers
 // --------------------------------------------------------------------
-const PANEL_MODE_STORAGE_KEY = "dt-panel-mode-v1";
-
-function normalizePanelMode(_value) {
-  return "admin";
-}
-
-function loadPersistedPanelMode() {
-  return "admin";
-}
-
-function persistPanelMode(_mode) {
-  try {
-    window.localStorage?.setItem(PANEL_MODE_STORAGE_KEY, "admin");
-  } catch (_) {}
-}
-
-function setPanelMode(_mode, { persist = true } = {}) {
-  state.panelMode = "admin";
-  if (persist) persistPanelMode("admin");
-  renderPanelMode();
-}
-
-function setElementHidden(el, hidden) {
-  if (!el) return;
-  el.classList.toggle("hidden", !!hidden);
-}
-
 function getCurrentDisplayLanguage() {
   return normalizeUiLanguage(state.boardConfig?.lang || boardLanguageEl?.value || "de");
 }
@@ -713,17 +695,7 @@ async function applyBoardLanguage(nextLang, { syncBoardChrome = false } = {}) {
   }
 }
 
-function renderPanelMode() {
-  state.panelMode = "admin";
-
-  if (panelModeEl) {
-    panelModeEl.value = "admin";
-    panelModeEl.disabled = true;
-  }
-
-  setElementHidden(adminPanelEl, false);
-  setElementHidden(userActionsPanelEl, true);
-
+function renderPanelStatus() {
   if (panelModeStatusEl) {
     const lang = getCurrentDisplayLanguage();
     panelModeStatusEl.textContent = t("panel.mode.status.adminOnly", lang);
@@ -949,7 +921,9 @@ async function notifyRuntime(message, { level = "info" } = {}) {
     if (typeof notifications.showInfo === "function") {
       await notifications.showInfo(message);
     }
-  } catch (_) {}
+  } catch (error) {
+    logSuppressedRuntimeWarning("Board-Benachrichtigung konnte nicht angezeigt werden", error);
+  }
 }
 
 function normalizeClusterSessionBridgePayload(rawPayload) {
@@ -1381,7 +1355,7 @@ function renderExerciseControls() {
   renderRecommendationStatus();
   renderAdminOverrideEditor();
   renderFlowAuthoringControls();
-  renderPanelMode();
+  renderPanelStatus();
   void refreshExerciseInteractionSurface();
 }
 
@@ -1440,7 +1414,7 @@ function renderFlowExercisePackPicker() {
     option.selected = pack.id === selectedId || (!selectedId && packs[0]?.id === pack.id);
     flowExercisePackEl.appendChild(option);
   }
-  flowExercisePackEl.disabled = state.panelMode !== "admin" || packs.length === 0;
+  flowExercisePackEl.disabled = packs.length === 0;
 }
 
 function renderFlowStepPicker() {
@@ -1467,7 +1441,7 @@ function renderFlowStepPicker() {
     option.selected = step.id === selectedStepId;
     flowStepEl.appendChild(option);
   }
-  flowStepEl.disabled = state.panelMode !== "admin";
+  flowStepEl.disabled = false;
 }
 
 function listAuthorableEndpointsForStep(exercisePack, stepId, { lang = getCurrentDisplayLanguage() } = {}) {
@@ -1499,7 +1473,7 @@ function renderFlowEndpointPicker() {
     option.selected = endpoint.id === selectedEndpointId;
     flowEndpointEl.appendChild(option);
   }
-  flowEndpointEl.disabled = state.panelMode !== "admin";
+  flowEndpointEl.disabled = false;
 }
 
 function buildFlowControlLabelSourceKey() {
@@ -2190,10 +2164,6 @@ async function resolveSelectedFlowControl(items) {
 }
 
 async function activateSelectedFlowControlFromAdmin() {
-  if (state.panelMode !== "admin") {
-    log("Board Flow: Diese Admin-Aktion ist nur im Admin-Modus verfügbar.");
-    return;
-  }
   const selection = await Board.getSelection(log).catch(() => []);
   const controlSelection = await resolveSelectedFlowControl(selection || []);
   if (!controlSelection) {
@@ -2218,10 +2188,6 @@ async function activateSelectedFlowControlFromAdmin() {
 }
 
 async function markSelectedFlowControlDoneFromAdmin() {
-  if (state.panelMode !== "admin") {
-    log("Board Flow: Diese Admin-Aktion ist nur im Admin-Modus verfügbar.");
-    return;
-  }
   const selection = await Board.getSelection(log).catch(() => []);
   const controlSelection = await resolveSelectedFlowControl(selection || []);
   if (!controlSelection) {
@@ -2246,10 +2212,6 @@ async function markSelectedFlowControlDoneFromAdmin() {
 }
 
 async function resetSelectedFlowControlFromAdmin() {
-  if (state.panelMode !== "admin") {
-    log("Board Flow: Diese Admin-Aktion ist nur im Admin-Modus verfügbar.");
-    return;
-  }
   const selection = await Board.getSelection(log).catch(() => []);
   const controlSelection = await resolveSelectedFlowControl(selection || []);
   if (!controlSelection) {
@@ -2398,9 +2360,6 @@ async function loadBoardRuntimeState() {
   await syncBoardChromeLanguage(state.boardConfig.lang);
 }
 
-async function onPanelModeChange() {
-  setPanelMode("admin");
-}
 
 async function saveAdminOverrideFromUi() {
   const text = (adminOverrideTextEl?.value || "").trim() || null;
@@ -2948,10 +2907,12 @@ async function runStructuredEndpointExecution({
         proposalId: proposalRecord?.proposalId || null,
         proposalStored: !!proposalRecord,
         actionResult: {
-          appliedCount: executableActions.length,
+          proposedCount: executableActions.length,
+          queuedCount: executableActions.length,
+          appliedCount: 0,
           skippedCount: 0,
           infoCount: 0,
-          targetedInstanceCount: 1,
+          targetedInstanceCount: executableActions.length ? 1 : 0,
           ...createEmptyActionExecutionStats()
         },
         executionMode
@@ -3168,7 +3129,6 @@ function renderCanvasTypePicker() {
 // Init Panel Buttons
 // --------------------------------------------------------------------
 function initPanelButtons() {
-  state.panelMode = loadPersistedPanelMode();
   applyRuntimeSettingsToUi();
   applyStaticUiLanguage(getCurrentDisplayLanguage());
   installPanelRuntimeBridgeLifecycle();
@@ -3185,7 +3145,6 @@ function initPanelButtons() {
     persistRuntimeSettingsFromUi();
   });
 
-  panelModeEl?.addEventListener("change", onPanelModeChange);
   boardLanguageEl?.addEventListener("change", async () => {
     await applyBoardLanguage(boardLanguageEl?.value || "de", { syncBoardChrome: true });
   });
@@ -3216,7 +3175,6 @@ function initPanelButtons() {
 
   window.dtInsertTemplateImage = insertTemplateImage;
   window.dtClassifyStickies = (opts) => classifyStickies(opts || {});
-  window.dtCallOpenAI = callOpenAIClassic;
   window.dtClusterSelection = clusterSelectionFromPanel;
   window.dtRunEndpointById = runEndpointById;
   window.dtCreateFlowControl = createFlowControlFromAdmin;
@@ -3226,7 +3184,7 @@ function initPanelButtons() {
   window.dtResetSelectedFlowControl = resetSelectedFlowControlFromAdmin;
   window.dtClearMemory = clearMemoryFromAdmin;
 
-  renderPanelMode();
+  renderPanelStatus();
 }
 if (!IS_HEADLESS) initPanelButtons();
 
@@ -3722,32 +3680,6 @@ function buildStoredProposalRecord({
   };
 }
 
-function buildNoPendingProposalFeedback(sourceLabel = "Vorschläge anwenden", lang = null) {
-  const uiLang = normalizeUiLanguage(lang || getCurrentDisplayLanguage());
-  if (uiLang === "en") {
-    return {
-      title: "No pending proposal",
-      summary: "There is currently no saved proposal for this canvas and step.",
-      sections: [
-        {
-          heading: "Next step",
-          bullets: [`Use ${sourceLabel} only after a proposal has been generated for the current step.`]
-        }
-      ]
-    };
-  }
-  return {
-    title: "Kein offener Vorschlag",
-    summary: "Für diese Canvas-Instanz und diesen Schritt liegt aktuell kein gespeicherter Vorschlag vor.",
-    sections: [
-      {
-        heading: "Nächster Schritt",
-        bullets: [`Nutze „${sourceLabel}“ erst dann, wenn zuvor ein Vorschlag für den aktuellen Schritt erzeugt wurde.`]
-      }
-    ]
-  };
-}
-
 function buildStaleProposalFeedback(sourceLabel = "Vorschläge anwenden", lang = null) {
   const uiLang = normalizeUiLanguage(lang || getCurrentDisplayLanguage());
   if (uiLang === "en") {
@@ -3771,30 +3703,6 @@ function buildStaleProposalFeedback(sourceLabel = "Vorschläge anwenden", lang =
         bullets: [`Erzeuge bitte zuerst einen neuen Vorschlag, bevor du „${sourceLabel}“ erneut nutzt.`]
       }
     ]
-  };
-}
-
-function buildAppliedProposalFeedback(proposal, actionResult, lang = null) {
-  const uiLang = normalizeUiLanguage(lang || getCurrentDisplayLanguage());
-  const executed = Number(actionResult?.executedMutationCount || 0);
-  const failed = Number(actionResult?.failedActionCount || 0);
-  const skipped = Number(actionResult?.skippedCount || 0);
-  const summary = uiLang === "en"
-    ? "The saved proposal was applied to the current canvas."
-    : "Der gespeicherte Vorschlag wurde auf die aktuelle Canvas-Instanz angewendet.";
-  const bullets = [];
-  if (executed > 0) bullets.push(uiLang === "en" ? `${executed} mutation(s) executed.` : `${executed} Mutation(en) ausgeführt.`);
-  if (failed > 0) bullets.push(uiLang === "en" ? `${failed} action(s) failed.` : `${failed} Action(s) fehlgeschlagen.`);
-  if (skipped > 0) bullets.push(uiLang === "en" ? `${skipped} action(s) skipped.` : `${skipped} Action(s) übersprungen.`);
-  if (proposal?.feedback?.summary) {
-    bullets.push(uiLang === "en"
-      ? `Original proposal summary: ${proposal.feedback.summary}`
-      : `Zusammenfassung des bestätigten Vorschlags: ${proposal.feedback.summary}`);
-  }
-  return {
-    title: uiLang === "en" ? "Proposal applied" : "Vorschlag angewendet",
-    summary,
-    sections: bullets.length ? [{ heading: uiLang === "en" ? "Result" : "Ergebnis", bullets }] : []
   };
 }
 
@@ -4056,7 +3964,9 @@ async function resolveSelectionToInstanceIds(items) {
       if (!pos) continue;
       const instance = Board.findInstanceByPoint(pos.x, pos.y, geomEntries);
       if (instance?.instanceId) addInstanceId(instance.instanceId);
-    } catch (_) {}
+    } catch (error) {
+      logSuppressedRuntimeWarning("Selektion konnte keiner Canvas-Instanz zugeordnet werden", error);
+    }
   }
 
   return resolved;
@@ -4130,7 +4040,9 @@ async function restoreSelectionAfterBoardButtonRun(instanceId = null) {
     try {
       await Board.deselectItems(null, log);
       await new Promise((resolve) => window.setTimeout(resolve, 0));
-    } catch (_) {}
+    } catch (error) {
+      logSuppressedRuntimeWarning("Fallback-Deselection nach Button-Run fehlgeschlagen", error);
+    }
   } finally {
     state.handlingSelection = false;
   }
@@ -4236,14 +4148,18 @@ async function getViewportSafe() {
     try {
       const viewport = await Board.getViewport(log);
       if (viewport) return viewport;
-    } catch (_) {}
+    } catch (error) {
+      logSuppressedRuntimeWarning("Board-Viewport konnte nicht geladen werden", error);
+    }
   }
 
   const sdkViewport = window.miro?.board?.viewport;
   if (sdkViewport && typeof sdkViewport.get === "function") {
     try {
       return await sdkViewport.get();
-    } catch (_) {}
+    } catch (error) {
+      logSuppressedRuntimeWarning("SDK-Viewport konnte nicht geladen werden", error);
+    }
   }
 
   return null;
@@ -4310,12 +4226,16 @@ async function insertTemplateImage() {
         if (typeof backgroundShape?.sendBehindOf === "function") {
           await backgroundShape.sendBehindOf(image);
         }
-      } catch (_) {}
+      } catch (error) {
+        logSuppressedRuntimeWarning("Gelber Canvas-Hintergrund konnte nicht hinter das Bild gelegt werden", error);
+      }
       try {
         if (typeof backgroundShape?.sendToBack === "function") {
           await backgroundShape.sendToBack();
         }
-      } catch (_) {}
+      } catch (error) {
+        logSuppressedRuntimeWarning("Gelber Canvas-Hintergrund konnte nicht in den Hintergrund gelegt werden", error);
+      }
     } catch (bgError) {
       log("WARNUNG: Gelber Canvas-Hintergrund konnte nicht erzeugt werden: " + bgError.message);
     }
@@ -4391,11 +4311,15 @@ async function clusterSelectionWithIds(stickyIdsOrNull, expectedInstanceIdOrNull
     let boardPos = null;
     try {
       boardRect = await Board.resolveBoardRect(s, parentGeomCache, log);
-    } catch (_) {}
+    } catch (error) {
+      logSuppressedRuntimeWarning("Sticky-Board-Rect konnte nicht aufgelöst werden", error);
+    }
     if (!boardRect) {
       try {
         boardPos = await Board.resolveBoardCoords(s, parentGeomCache, log);
-      } catch (_) {}
+      } catch (error) {
+        logSuppressedRuntimeWarning("Sticky-Board-Koordinaten konnten nicht aufgelöst werden", error);
+      }
     }
 
     const instance = boardRect
@@ -4528,50 +4452,6 @@ async function classifyStickies({ silent = false } = {}) {
     log(out);
   }
   return out;
-}
-
-// --------------------------------------------------------------------
-// Classic OpenAI Call (Side panel)
-// --------------------------------------------------------------------
-async function callOpenAIClassic() {
-  await Board.ensureMiroReady(log);
-
-  const apiKey = getApiKey();
-  const model = getModel();
-  const userText = getPanelUserText();
-
-  if (!apiKey) { log("Bitte OpenAI API Key eingeben."); return; }
-  if (!userText) { log("Bitte eine Frage/Aufgabe eingeben."); return; }
-
-  const classification = await classifyStickies({ silent: true });
-
-  const promptPayload = classification
-    ? Catalog.buildPromptPayloadFromClassification(classification, { useAliases: false, aliasState: state.aliasState, log })
-    : null;
-
-  const classificationPart = promptPayload
-    ? "\n\nAktuelle Sticky-Notiz-Klassifikation (reduziertes JSON):\n" + JSON.stringify(promptPayload, null, 2)
-    : "\n\nHinweis: Keine Klassifikation verfügbar.";
-
-  const fullUserText = userText + classificationPart;
-
-  try {
-    log("Sende OpenAI Anfrage (klassisch) ...");
-    const answer = await OpenAI.callOpenAIResponses({
-      apiKey,
-      model,
-      systemPrompt:
-        "Du bist ein Assistent, der Miro-Boards analysiert. " +
-        "Du bekommst Sticky-Notes als JSON und eine Nutzerfrage und sollst exakte Antworten liefern. " +
-        "Antworte standardmäßig auf Deutsch.",
-      userText: fullUserText
-    });
-
-    log("Antwort von OpenAI (klassisch):");
-    log(answer || "(keine Antwort gefunden)");
-  } catch (e) {
-    log("Exception beim OpenAI Call: " + e.message);
-  }
 }
 
 // --------------------------------------------------------------------
@@ -4849,7 +4729,9 @@ async function applyAgentActionsToInstance(instanceId, actions) {
       let stickyItem = null;
       try {
         stickyItem = await Board.getItemById(stickyId, log);
-      } catch (_) {}
+      } catch (error) {
+        logSuppressedRuntimeWarning("Sticky-Geometrie konnte vor move_sticky nicht geladen werden", error);
+      }
 
       const stickyW = isFiniteNumber(stickyItem?.width) ? stickyItem.width : STICKY_LAYOUT.defaultWidthPx;
       const stickyH = isFiniteNumber(stickyItem?.height) ? stickyItem.height : STICKY_LAYOUT.defaultHeightPx;
@@ -5473,7 +5355,7 @@ async function applyResolvedAgentActions(actions, { candidateInstanceIds, anchor
 
   const grouped = new Map();
   const aggregatedExecutionStats = createEmptyActionExecutionStats();
-  let appliedCount = 0;
+  let queuedCount = 0;
   let skippedCount = 0;
   let infoCount = 0;
 
@@ -5528,7 +5410,7 @@ async function applyResolvedAgentActions(actions, { candidateInstanceIds, anchor
       instanceId: targetInstanceId,
       instanceLabel: getInstanceLabelByInternalId(targetInstanceId) || action.instanceLabel || null
     });
-    appliedCount++;
+    queuedCount++;
   }
 
   for (const [instanceId, instanceActions] of grouped.entries()) {
@@ -5537,13 +5419,18 @@ async function applyResolvedAgentActions(actions, { candidateInstanceIds, anchor
     mergeActionExecutionStats(aggregatedExecutionStats, executionStats);
   }
 
-  const totalSkippedCount = skippedCount + Number(aggregatedExecutionStats.skippedActionCount || 0);
+  const nestedSkippedCount = Number(aggregatedExecutionStats.skippedActionCount || 0);
+  const failedCount = Number(aggregatedExecutionStats.failedActionCount || 0);
+  const totalSkippedCount = skippedCount + nestedSkippedCount;
+  const appliedCount = Math.max(0, queuedCount - failedCount - nestedSkippedCount);
 
   return {
+    queuedCount,
     appliedCount,
     skippedCount: totalSkippedCount,
     infoCount,
     targetedInstanceCount: grouped.size,
+    failedCount,
     ...aggregatedExecutionStats,
     skippedActionCount: totalSkippedCount
   };

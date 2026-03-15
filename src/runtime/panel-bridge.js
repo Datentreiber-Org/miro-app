@@ -28,7 +28,8 @@ function safeParseJson(rawValue) {
   if (typeof rawValue !== "string" || !rawValue.trim()) return null;
   try {
     return JSON.parse(rawValue);
-  } catch (_) {
+  } catch (error) {
+    console.warn("[DT][panel-bridge] Ungültiges JSON im Runtime-Storage", error);
     return null;
   }
 }

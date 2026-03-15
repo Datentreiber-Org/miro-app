@@ -63,6 +63,17 @@ export function normalizeChatInterfaceShapeIds(rawShapeIds) {
   };
 }
 
+export function hasAnyChatInterfaceShapeIds(shapeIds) {
+  const normalized = normalizeChatInterfaceShapeIds(shapeIds);
+  return !!(
+    normalized.inputShapeId ||
+    normalized.outputShapeId ||
+    normalized.submitShapeId ||
+    normalized.proposeShapeId ||
+    normalized.applyShapeId
+  );
+}
+
 export function hasCompleteChatInterfaceShapeIds(shapeIds) {
   const normalized = normalizeChatInterfaceShapeIds(shapeIds);
   return !!(normalized.inputShapeId && normalized.outputShapeId && normalized.submitShapeId);
@@ -303,25 +314,49 @@ export async function createChatInterfaceForInstance(instance, log, { lang = "de
     throw new Error("Chat-Interface kann nicht erstellt werden: keine gültige Canvas-Geometrie.");
   }
 
-  const inputShape = await createChatShape({ role: "input", ...layout.input, lang }, log);
-  const submitShape = await createChatShape({ role: "submit", ...layout.submit, lang }, log);
-  const proposeShape = await createChatShape({ role: "propose", ...layout.propose, lang }, log);
-  const outputShape = await createChatShape({ role: "output", ...layout.output, lang }, log);
-  const applyShape = await createChatShape({ role: "apply", ...layout.apply, lang }, log);
+  let inputShape = null;
+  let submitShape = null;
+  let proposeShape = null;
+  let outputShape = null;
+  let applyShape = null;
 
-  await writeChatInterfaceMeta(inputShape, { instanceId: instance.instanceId, role: "input" }, log);
-  await writeChatInterfaceMeta(submitShape, { instanceId: instance.instanceId, role: "submit" }, log);
-  await writeChatInterfaceMeta(proposeShape, { instanceId: instance.instanceId, role: "propose" }, log);
-  await writeChatInterfaceMeta(outputShape, { instanceId: instance.instanceId, role: "output" }, log);
-  await writeChatInterfaceMeta(applyShape, { instanceId: instance.instanceId, role: "apply" }, log);
+  try {
+    inputShape = await createChatShape({ role: "input", ...layout.input, lang }, log);
+    submitShape = await createChatShape({ role: "submit", ...layout.submit, lang }, log);
+    proposeShape = await createChatShape({ role: "propose", ...layout.propose, lang }, log);
+    outputShape = await createChatShape({ role: "output", ...layout.output, lang }, log);
+    applyShape = await createChatShape({ role: "apply", ...layout.apply, lang }, log);
 
-  return {
-    inputShapeId: inputShape?.id ? String(inputShape.id) : null,
-    submitShapeId: submitShape?.id ? String(submitShape.id) : null,
-    proposeShapeId: proposeShape?.id ? String(proposeShape.id) : null,
-    outputShapeId: outputShape?.id ? String(outputShape.id) : null,
-    applyShapeId: applyShape?.id ? String(applyShape.id) : null
-  };
+    await writeChatInterfaceMeta(inputShape, { instanceId: instance.instanceId, role: "input" }, log);
+    await writeChatInterfaceMeta(submitShape, { instanceId: instance.instanceId, role: "submit" }, log);
+    await writeChatInterfaceMeta(proposeShape, { instanceId: instance.instanceId, role: "propose" }, log);
+    await writeChatInterfaceMeta(outputShape, { instanceId: instance.instanceId, role: "output" }, log);
+    await writeChatInterfaceMeta(applyShape, { instanceId: instance.instanceId, role: "apply" }, log);
+
+    return {
+      inputShapeId: inputShape?.id ? String(inputShape.id) : null,
+      submitShapeId: submitShape?.id ? String(submitShape.id) : null,
+      proposeShapeId: proposeShape?.id ? String(proposeShape.id) : null,
+      outputShapeId: outputShape?.id ? String(outputShape.id) : null,
+      applyShapeId: applyShape?.id ? String(applyShape.id) : null
+    };
+  } catch (error) {
+    const partialShapeIds = {
+      inputShapeId: inputShape?.id ? String(inputShape.id) : null,
+      submitShapeId: submitShape?.id ? String(submitShape.id) : null,
+      proposeShapeId: proposeShape?.id ? String(proposeShape.id) : null,
+      outputShapeId: outputShape?.id ? String(outputShape.id) : null,
+      applyShapeId: applyShape?.id ? String(applyShape.id) : null
+    };
+    try {
+      await removeChatInterfaceShapes(partialShapeIds, log);
+    } catch (cleanupError) {
+      if (typeof log === "function") {
+        log("WARNUNG: Partiell erzeugtes Chat-Interface konnte nach Fehler nicht vollständig bereinigt werden: " + (cleanupError?.message || String(cleanupError)));
+      }
+    }
+    throw error;
+  }
 }
 
 export async function ensureChatProposeShapeForInstance(instance, existingShapeIds, log, { lang = "de" } = {}) {
@@ -367,7 +402,11 @@ export async function removeChatInterfaceShapes(shapeIds, log) {
     if (!itemId) continue;
     try {
       await removeItemById(itemId, log);
-    } catch (_) {}
+    } catch (error) {
+      if (typeof log === "function") {
+        log("WARNUNG: Chat-Interface-Shape " + itemId + " konnte nicht entfernt werden: " + (error?.message || String(error)));
+      }
+    }
   }
 }
 

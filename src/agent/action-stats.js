@@ -35,6 +35,6 @@ export function summarizeAppliedActions(actionResult) {
     infoCount: Number(src.infoCount || 0),
     targetedInstanceCount: Number(src.targetedInstanceCount || 0),
     executedMutationCount: Number(src.executedMutationCount || 0),
-    plannedMutationCount: Number(src.appliedCount || 0)
+    plannedMutationCount: Number((src.plannedMutationCount ?? src.queuedCount ?? src.proposedCount ?? src.appliedCount) || 0)
   };
 }
