@@ -14,9 +14,9 @@ import {
 } from "./config.js?v=20260315-patch13-submit-proposals-fix1";
 
 import { createLogger, stripHtml, extractUnderlinedText, isFiniteNumber } from "./utils.js?v=20260315-patch13-submit-proposals-fix1";
-import { normalizeUiLanguage, t, getLocaleForLanguage } from "./i18n/index.js?v=20260315-patch13-submit-proposals-fix1";
+import { normalizeUiLanguage, t, getLocaleForLanguage } from "./i18n/index.js?v=20260315-patch15-flow-endpoint-overrides";
 
-import * as Board from "./miro/board.js?v=20260315-patch14-runtime-cleanup";
+import * as Board from "./miro/board.js?v=20260315-patch15-flow-endpoint-overrides";
 import * as Catalog from "./domain/catalog.js?v=20260315-patch13-submit-proposals-fix1";
 import * as OpenAI from "./ai/openai.js?v=20260315-patch13-submit-proposals-fix1";
 import * as Memory from "./runtime/memory.js?v=20260315-patch13-submit-proposals-fix1";
@@ -124,6 +124,13 @@ const adminOverrideTextEl = document.getElementById("admin-override-text");
 const flowExercisePackEl = document.getElementById("flow-exercise-pack");
 const flowStepEl = document.getElementById("flow-step");
 const flowEndpointEl = document.getElementById("flow-endpoint");
+const flowEndpointOverrideStatusEl = document.getElementById("flow-endpoint-override-status");
+const flowEndpointOverridePromptEl = document.getElementById("flow-endpoint-override-prompt");
+const flowEndpointOverrideExecutionModeEl = document.getElementById("flow-endpoint-override-execution-mode");
+const flowEndpointOverrideActionsEl = document.getElementById("flow-endpoint-override-actions");
+const flowEndpointOverrideAreasEl = document.getElementById("flow-endpoint-override-areas");
+const btnFlowEndpointOverrideSaveEl = document.getElementById("btn-flow-endpoint-override-save");
+const btnFlowEndpointOverrideResetEl = document.getElementById("btn-flow-endpoint-override-reset");
 const flowScopeTypeEl = document.getElementById("flow-scope-type");
 const flowControlLabelEl = document.getElementById("flow-control-label");
 const flowStaticLayoutToggleEl = document.getElementById("flow-static-layout-toggle");
@@ -156,6 +163,21 @@ const DT_CLUSTER_CUSTOM_ACTION_UI = {
   },
   icon: "chat-two"
 };
+
+const FLOW_ENDPOINT_OVERRIDE_ACTION_TYPES = Object.freeze([
+  "create_sticky",
+  "move_sticky",
+  "delete_sticky",
+  "create_connector",
+  "set_sticky_color",
+  "set_check_status"
+]);
+
+const FLOW_ENDPOINT_OVERRIDE_EXECUTION_MODE_OPTIONS = Object.freeze([
+  "none",
+  "proposal_only",
+  "direct_apply"
+]);
 
 (function initialLog() {
   if (logEl) {
@@ -1400,6 +1422,339 @@ function getSelectedFlowEndpoint(exercisePack = getSelectedFlowExercisePack(), s
   return endpointId ? ExerciseLibrary.getEndpointById(endpointId, { lang }) : null;
 }
 
+function isFlowEndpointOverrideEligible(endpoint) {
+  return !!(
+    endpoint?.id &&
+    endpoint?.surface?.channel === "board_button" &&
+    endpoint?.surface?.group !== "hidden" &&
+    !ExerciseLibrary.isSidecarOnlyEndpoint(endpoint)
+  );
+}
+
+function getFlowEndpointOverride(endpointId) {
+  const normalizedEndpointId = pickFirstNonEmptyString(endpointId);
+  if (!normalizedEndpointId) return null;
+  const override = state.exerciseRuntime?.flowEndpointOverridesById?.[normalizedEndpointId];
+  return override && typeof override === "object" ? override : null;
+}
+
+function getEffectiveFlowEndpointById(endpointId, { lang = getCurrentDisplayLanguage() } = {}) {
+  const rawEndpoint = endpointId ? ExerciseLibrary.getEndpointById(endpointId, { lang }) : null;
+  if (!isFlowEndpointOverrideEligible(rawEndpoint)) return rawEndpoint;
+  const override = getFlowEndpointOverride(rawEndpoint.id);
+  if (!override) return rawEndpoint;
+
+  const nextRun = {
+    ...(rawEndpoint.run || {}),
+    allowedExecutionModes: Array.isArray(rawEndpoint.run?.allowedExecutionModes) ? rawEndpoint.run.allowedExecutionModes.slice() : ["none"],
+    allowedActions: Array.isArray(rawEndpoint.run?.allowedActions) ? rawEndpoint.run.allowedActions.slice() : [],
+    allowedActionAreas: Array.isArray(rawEndpoint.run?.allowedActionAreas) ? rawEndpoint.run.allowedActionAreas.slice() : []
+  };
+
+  if (override.executionMode) {
+    nextRun.allowedExecutionModes = [override.executionMode];
+  }
+  if (override.allowedActions !== null) {
+    nextRun.allowedActions = Array.isArray(override.allowedActions) ? override.allowedActions.slice() : [];
+  }
+  if (override.allowedActionAreas !== null) {
+    nextRun.allowedActionAreas = Array.isArray(override.allowedActionAreas) ? override.allowedActionAreas.slice() : [];
+  }
+
+  return {
+    ...rawEndpoint,
+    prompt: {
+      ...(rawEndpoint.prompt || {}),
+      text: override.promptText || rawEndpoint.prompt?.text || ""
+    },
+    run: nextRun
+  };
+}
+
+
+function normalizeStringSet(values) {
+  return ExerciseEngine.normalizeStringArray(values).slice().sort();
+}
+
+function sameStringSet(a, b) {
+  const left = normalizeStringSet(a);
+  const right = normalizeStringSet(b);
+  if (left.length !== right.length) return false;
+  return left.every((value, index) => value === right[index]);
+}
+
+function normalizeUnrestrictedCheckboxSelection(selectedValues, availableValues) {
+  const normalizedSelected = ExerciseEngine.normalizeStringArray(selectedValues);
+  const normalizedAvailable = ExerciseEngine.normalizeStringArray(availableValues);
+  if (!normalizedSelected.length) return [];
+  if (normalizedAvailable.length && sameStringSet(normalizedSelected, normalizedAvailable)) return [];
+  return normalizedSelected;
+}
+
+function getCheckedValuesFromCheckboxContainer(containerEl) {
+  if (!containerEl) return [];
+  return Array.from(containerEl.querySelectorAll('input[type="checkbox"]'))
+    .filter((input) => input.checked)
+    .map((input) => input.value);
+}
+
+function getFlowEndpointExecutionModeValue(endpoint) {
+  const modes = ExerciseEngine.normalizeAllowedExecutionModes(endpoint?.run?.allowedExecutionModes, ["none"]);
+  return modes[0] || "none";
+}
+
+function listAvailableAreaOptionsForFlowEndpoint(endpoint, exercisePack = null) {
+  const explicitCanvasTypeIds = ExerciseEngine.normalizeStringArray(endpoint?.scope?.allowedCanvasTypeIds);
+  const packCanvasTypeIds = ExerciseEngine.normalizeStringArray(
+    exercisePack?.allowedCanvasTypeIds || Exercises.getAllowedCanvasTypesForPack(exercisePack)
+  );
+  const fallbackCanvasTypeId = normalizeCanvasTypeId(state.selectedCanvasTypeId || TEMPLATE_ID);
+  const canvasTypeIds = explicitCanvasTypeIds.length
+    ? explicitCanvasTypeIds
+    : (packCanvasTypeIds.length ? packCanvasTypeIds : [fallbackCanvasTypeId]);
+
+  const seen = new Set();
+  const options = [];
+
+  for (const canvasTypeId of canvasTypeIds) {
+    const header = Catalog.getHeaderRegionDef(canvasTypeId);
+    if (header?.id && !seen.has(header.id)) {
+      seen.add(header.id);
+      options.push({
+        id: header.id,
+        label: header.title || header.id,
+        meta: header.id
+      });
+    }
+
+    for (const area of Catalog.getBodyRegionDefs(canvasTypeId)) {
+      if (!area?.id || seen.has(area.id)) continue;
+      seen.add(area.id);
+      options.push({
+        id: area.id,
+        label: area.title || area.id,
+        meta: area.id
+      });
+    }
+  }
+
+  return options;
+}
+
+function getFlowEndpointActionOptions(lang = getCurrentDisplayLanguage()) {
+  const normalizeActionLabel = (actionType) => {
+    switch (actionType) {
+      case "create_sticky": return lang === "de" ? "Sticky erstellen" : "Create sticky";
+      case "move_sticky": return lang === "de" ? "Sticky bewegen" : "Move sticky";
+      case "delete_sticky": return lang === "de" ? "Sticky löschen" : "Delete sticky";
+      case "create_connector": return lang === "de" ? "Connector erstellen" : "Create connector";
+      case "set_sticky_color": return lang === "de" ? "Sticky-Farbe setzen" : "Set sticky color";
+      case "set_check_status": return lang === "de" ? "Check-Status setzen" : "Set check status";
+      default: return actionType;
+    }
+  };
+
+  return FLOW_ENDPOINT_OVERRIDE_ACTION_TYPES.map((actionType) => ({
+    id: actionType,
+    label: normalizeActionLabel(actionType),
+    meta: actionType
+  }));
+}
+
+function renderFlowEndpointOverrideCheckboxList(containerEl, options, selectedIds) {
+  if (!containerEl) return;
+  containerEl.textContent = "";
+  const selectedSet = new Set(ExerciseEngine.normalizeStringArray(selectedIds));
+
+  for (const option of Array.isArray(options) ? options : []) {
+    const labelEl = document.createElement("label");
+    labelEl.className = "checkbox-option";
+
+    const inputEl = document.createElement("input");
+    inputEl.type = "checkbox";
+    inputEl.value = option.id;
+    inputEl.checked = selectedSet.has(option.id);
+
+    const textWrapperEl = document.createElement("span");
+    textWrapperEl.textContent = option.label || option.id;
+
+    const metaEl = document.createElement("span");
+    metaEl.className = "checkbox-option-meta";
+    metaEl.textContent = option.meta || option.id;
+
+    const contentEl = document.createElement("span");
+    contentEl.appendChild(textWrapperEl);
+    contentEl.appendChild(metaEl);
+
+    labelEl.appendChild(inputEl);
+    labelEl.appendChild(contentEl);
+    containerEl.appendChild(labelEl);
+  }
+}
+
+function renderFlowEndpointOverrideExecutionModePicker(selectedMode) {
+  if (!flowEndpointOverrideExecutionModeEl) return;
+  const lang = getCurrentDisplayLanguage();
+  const wantedMode = FLOW_ENDPOINT_OVERRIDE_EXECUTION_MODE_OPTIONS.includes(selectedMode) ? selectedMode : "none";
+
+  flowEndpointOverrideExecutionModeEl.textContent = "";
+  for (const mode of FLOW_ENDPOINT_OVERRIDE_EXECUTION_MODE_OPTIONS) {
+    const optionEl = document.createElement("option");
+    optionEl.value = mode;
+    optionEl.textContent = t("flow.endpointOverride.executionMode." + mode, lang);
+    optionEl.selected = mode === wantedMode;
+    flowEndpointOverrideExecutionModeEl.appendChild(optionEl);
+  }
+}
+
+function renderFlowEndpointOverrideEditor() {
+  const lang = getCurrentDisplayLanguage();
+  const exercisePack = getSelectedFlowExercisePack({ lang });
+  const endpoint = getSelectedFlowEndpoint(exercisePack, getSelectedFlowStep(exercisePack, { lang }), { lang });
+  const override = endpoint?.id ? getFlowEndpointOverride(endpoint.id) : null;
+  const hasEligibleEndpoint = isFlowEndpointOverrideEligible(endpoint);
+
+  if (flowEndpointOverrideStatusEl) {
+    flowEndpointOverrideStatusEl.textContent = hasEligibleEndpoint
+      ? t(override ? "flow.endpointOverride.status.override" : "flow.endpointOverride.status.catalog", lang)
+      : t("flow.endpointOverride.status.empty", lang);
+  }
+
+  const promptText = hasEligibleEndpoint
+    ? (override?.promptText || endpoint.prompt?.text || "")
+    : "";
+  if (flowEndpointOverridePromptEl) {
+    flowEndpointOverridePromptEl.value = promptText;
+    flowEndpointOverridePromptEl.disabled = !hasEligibleEndpoint;
+  }
+
+  const effectiveMode = hasEligibleEndpoint
+    ? (override?.executionMode || getFlowEndpointExecutionModeValue(endpoint))
+    : "none";
+  renderFlowEndpointOverrideExecutionModePicker(effectiveMode);
+  if (flowEndpointOverrideExecutionModeEl) {
+    flowEndpointOverrideExecutionModeEl.disabled = !hasEligibleEndpoint;
+  }
+
+  const actionOptions = getFlowEndpointActionOptions(lang);
+  const selectedActions = hasEligibleEndpoint
+    ? (override?.allowedActions !== null
+        ? override.allowedActions
+        : ExerciseEngine.normalizeStringArray(endpoint.run?.allowedActions))
+    : [];
+  renderFlowEndpointOverrideCheckboxList(flowEndpointOverrideActionsEl, actionOptions, selectedActions);
+
+  const areaOptions = hasEligibleEndpoint ? listAvailableAreaOptionsForFlowEndpoint(endpoint, exercisePack) : [];
+  const selectedAreas = hasEligibleEndpoint
+    ? (override?.allowedActionAreas !== null
+        ? override.allowedActionAreas
+        : ExerciseEngine.normalizeStringArray(endpoint.run?.allowedActionAreas))
+    : [];
+  renderFlowEndpointOverrideCheckboxList(flowEndpointOverrideAreasEl, areaOptions, selectedAreas);
+
+  if (flowEndpointOverrideActionsEl) {
+    flowEndpointOverrideActionsEl.querySelectorAll('input[type="checkbox"]').forEach((input) => { input.disabled = !hasEligibleEndpoint; });
+  }
+  if (flowEndpointOverrideAreasEl) {
+    flowEndpointOverrideAreasEl.querySelectorAll('input[type="checkbox"]').forEach((input) => { input.disabled = !hasEligibleEndpoint; });
+  }
+
+  if (btnFlowEndpointOverrideSaveEl) btnFlowEndpointOverrideSaveEl.disabled = !hasEligibleEndpoint;
+  if (btnFlowEndpointOverrideResetEl) btnFlowEndpointOverrideResetEl.disabled = !hasEligibleEndpoint || !override;
+}
+
+async function saveFlowEndpointOverrideFromUi() {
+  const lang = getCurrentDisplayLanguage();
+  const exercisePack = getSelectedFlowExercisePack({ lang });
+  const endpoint = getSelectedFlowEndpoint(exercisePack, getSelectedFlowStep(exercisePack, { lang }), { lang });
+  if (!isFlowEndpointOverrideEligible(endpoint)) {
+    log("Flow-Endpoint-Override: Bitte zuerst einen gültigen Flow-Endpoint auswählen.");
+    return;
+  }
+
+  const promptText = (flowEndpointOverridePromptEl?.value || "").trim();
+  const executionMode = pickFirstNonEmptyString(flowEndpointOverrideExecutionModeEl?.value) || "none";
+  const actionOptions = getFlowEndpointActionOptions(lang);
+  const areaOptions = listAvailableAreaOptionsForFlowEndpoint(endpoint, exercisePack);
+  const normalizedActions = normalizeUnrestrictedCheckboxSelection(
+    getCheckedValuesFromCheckboxContainer(flowEndpointOverrideActionsEl),
+    actionOptions.map((option) => option.id)
+  );
+  const normalizedAreas = normalizeUnrestrictedCheckboxSelection(
+    getCheckedValuesFromCheckboxContainer(flowEndpointOverrideAreasEl),
+    areaOptions.map((option) => option.id)
+  );
+
+  const catalogPromptText = endpoint.prompt?.text || "";
+  const catalogExecutionMode = getFlowEndpointExecutionModeValue(endpoint);
+  const catalogActions = normalizeUnrestrictedCheckboxSelection(
+    ExerciseEngine.normalizeStringArray(endpoint.run?.allowedActions),
+    actionOptions.map((option) => option.id)
+  );
+  const catalogAreas = normalizeUnrestrictedCheckboxSelection(
+    ExerciseEngine.normalizeStringArray(endpoint.run?.allowedActionAreas),
+    areaOptions.map((option) => option.id)
+  );
+
+  const overridePatch = {};
+  if (promptText && promptText !== catalogPromptText) {
+    overridePatch.promptText = promptText;
+  }
+  if (executionMode !== catalogExecutionMode) {
+    overridePatch.executionMode = executionMode;
+  }
+  if (!sameStringSet(normalizedActions, catalogActions)) {
+    overridePatch.allowedActions = normalizedActions;
+  }
+  if (!sameStringSet(normalizedAreas, catalogAreas)) {
+    overridePatch.allowedActionAreas = normalizedAreas;
+  }
+
+  const nextOverrides = {
+    ...(state.exerciseRuntime?.flowEndpointOverridesById || {})
+  };
+
+  if (Object.keys(overridePatch).length) {
+    nextOverrides[endpoint.id] = overridePatch;
+  } else {
+    delete nextOverrides[endpoint.id];
+  }
+
+  await persistExerciseRuntime({ flowEndpointOverridesById: nextOverrides });
+  renderExerciseControls();
+  await syncAllChatProposeButtonsForCurrentFlows();
+  await syncAllChatApplyButtonsForCurrentFlows();
+
+  log("Flow-Endpoint-Override gespeichert: " + (endpoint.label || endpoint.id) + ".");
+}
+
+async function resetFlowEndpointOverrideFromUi() {
+  const lang = getCurrentDisplayLanguage();
+  const exercisePack = getSelectedFlowExercisePack({ lang });
+  const endpoint = getSelectedFlowEndpoint(exercisePack, getSelectedFlowStep(exercisePack, { lang }), { lang });
+  if (!isFlowEndpointOverrideEligible(endpoint)) {
+    log("Flow-Endpoint-Override: Bitte zuerst einen gültigen Flow-Endpoint auswählen.");
+    return;
+  }
+
+  const nextOverrides = {
+    ...(state.exerciseRuntime?.flowEndpointOverridesById || {})
+  };
+  delete nextOverrides[endpoint.id];
+
+  await persistExerciseRuntime({ flowEndpointOverridesById: nextOverrides });
+  renderExerciseControls();
+  await syncAllChatProposeButtonsForCurrentFlows();
+  await syncAllChatApplyButtonsForCurrentFlows();
+
+  log("Flow-Endpoint-Override zurückgesetzt: " + (endpoint.label || endpoint.id) + ".");
+}
+
+async function refreshFlowEndpointOverridesFromStorage() {
+  state.exerciseRuntime = Board.normalizeExerciseRuntime(await Board.loadExerciseRuntime(log));
+  return state.exerciseRuntime?.flowEndpointOverridesById || {};
+}
+
 function renderFlowExercisePackPicker() {
   if (!flowExercisePackEl) return;
   const lang = getCurrentDisplayLanguage();
@@ -1822,6 +2177,7 @@ function renderFlowAuthoringControls({ forceLabelSync = false } = {}) {
   renderFlowExercisePackPicker();
   renderFlowStepPicker();
   renderFlowEndpointPicker();
+  renderFlowEndpointOverrideEditor();
   if (flowStaticLayoutToggleEl) flowStaticLayoutToggleEl.checked = isStaticFlowControlLayoutEnabled();
   syncFlowControlLabelFromEndpoint({ force: forceLabelSync });
   renderFlowAuthoringStatus();
@@ -2279,11 +2635,12 @@ function buildPromptRuntimeFromEndpoint({
 
 async function runAgentFromFlowControl(flow, control, selectedItem) {
   const lang = getCurrentDisplayLanguage();
+  await refreshFlowEndpointOverridesFromStorage();
   const healthyFlow = await ensureBoardFlowHealthy(flow, { persist: true, pruneMissingControls: true });
   state.boardFlowsById.set(healthyFlow.id, healthyFlow);
 
   const healthyControl = healthyFlow.controls?.[control?.id] || BoardFlow.findFlowControlByBoardItemId(healthyFlow, selectedItem?.id) || control;
-  const endpoint = ExerciseLibrary.getEndpointById(healthyControl?.endpointId, { lang });
+  const endpoint = getEffectiveFlowEndpointById(healthyControl?.endpointId, { lang });
   const { exercisePack, currentStep } = resolveCurrentPackAndStepFromFlow(healthyFlow, { lang });
 
   if (!endpoint || !exercisePack || !currentStep) {
@@ -2401,6 +2758,7 @@ async function applyStoredProposalMechanically({
   await Board.ensureMiroReady(log);
   await ensureInstancesScanned();
   await loadMemoryRuntimeState();
+  await refreshFlowEndpointOverridesFromStorage();
 
   const normalizedTargetIds = Array.from(new Set((targetInstanceIds || []).filter((id) => state.instancesById.has(id))));
   if (normalizedTargetIds.length !== 1) {
@@ -2474,8 +2832,16 @@ async function applyStoredProposalMechanically({
     }
 
     const proposalActions = Array.isArray(proposal.actions) ? proposal.actions : [];
-    const actionResult = proposalActions.length
-      ? await applyResolvedAgentActions(proposalActions, {
+    const proposalEndpoint = proposal?.endpointId
+      ? getEffectiveFlowEndpointById(proposal.endpointId, { lang: getCurrentDisplayLanguage() })
+      : null;
+    const sanitizedProposalActions = sanitizeProposalActionsForEndpoint(proposalActions, {
+      allowedActions: proposalEndpoint?.run?.allowedActions || [],
+      allowedActionAreas: proposalEndpoint?.run?.allowedActionAreas || [],
+      logFn: log
+    }).filter((action) => action && action.type !== "inform");
+    const actionResult = sanitizedProposalActions.length
+      ? await applyResolvedAgentActions(sanitizedProposalActions, {
           candidateInstanceIds: normalizedTargetIds,
           anchorInstanceId: instanceId,
           sourceLabel
@@ -2607,9 +2973,7 @@ async function runStructuredEndpointExecution({
   const activeAnchorContext = flowPromptContext.exercisePackId && flowPromptContext.anchorInstanceId
     ? { exercisePackId: flowPromptContext.exercisePackId, anchorInstanceId: flowPromptContext.anchorInstanceId }
     : null;
-  const pureApplyEndpoint = Array.isArray(endpointContext.allowedExecutionModes)
-    && endpointContext.allowedExecutionModes.length === 1
-    && endpointContext.allowedExecutionModes[0] === "direct_apply";
+  const pureApplyEndpoint = endpoint?.surface?.channel === "chat_apply";
 
   if (pureApplyEndpoint) {
     return await applyStoredProposalMechanically({
@@ -2839,6 +3203,7 @@ async function runStructuredEndpointExecution({
       }
 
       const executableActions = sanitizeProposalActionsForEndpoint(agentObj.actions, {
+        allowedActions: endpointContext?.allowedActions || [],
         allowedActionAreas: resolvedAllowedActionAreas,
         logFn: log
       }).filter((action) => action && action.type !== "inform");
@@ -2919,7 +3284,13 @@ async function runStructuredEndpointExecution({
       });
     }
 
-    if (hasMutatingActions(agentObj.actions)) {
+    const executableDirectActions = sanitizeProposalActionsForEndpoint(agentObj.actions, {
+      allowedActions: endpointContext?.allowedActions || [],
+      allowedActionAreas: resolvedAllowedActionAreas,
+      logFn: log
+    }).filter((action) => action && action.type !== "inform");
+
+    if (hasMutatingActions(executableDirectActions)) {
       const conflictCheck = await performPreApplyConflictCheck(expectedSignatureSnapshot, resolvedSourceLabel);
       if (!conflictCheck.ok) {
         logRuntimeNotice("stale_state_conflict", conflictCheck.message, conflictCheck.conflicts);
@@ -2929,8 +3300,8 @@ async function runStructuredEndpointExecution({
       }
     }
 
-    const actionResult = Array.isArray(agentObj.actions) && agentObj.actions.length
-      ? await applyResolvedAgentActions(agentObj.actions, {
+    const actionResult = executableDirectActions.length
+      ? await applyResolvedAgentActions(executableDirectActions, {
           candidateInstanceIds: resolvedActiveIds,
           anchorInstanceId: resolvedActiveIds.length === 1 ? resolvedActiveIds[0] : null,
           sourceLabel: resolvedSourceLabel
@@ -3021,15 +3392,18 @@ async function runEndpoint(endpoint, options = {}) {
   }
 
   const lang = getCurrentDisplayLanguage();
-  const exercisePack = Exercises.getExercisePackById(endpoint.exercisePackId, { lang });
-  const currentStep = Exercises.getExerciseStep(exercisePack, endpoint.stepId, { lang });
+  const effectiveEndpoint = isFlowEndpointOverrideEligible(endpoint)
+    ? getEffectiveFlowEndpointById(endpoint.id, { lang })
+    : endpoint;
+  const exercisePack = Exercises.getExercisePackById(effectiveEndpoint.exercisePackId, { lang });
+  const currentStep = Exercises.getExerciseStep(exercisePack, effectiveEndpoint.stepId, { lang });
   if (!exercisePack || !currentStep) {
     const msg = "Endpoint konnte nicht gestartet werden – Pack oder Schritt fehlen.";
     log(msg);
     return buildRunFailureResult("precondition", msg);
   }
 
-  const targetInstanceIds = resolveTargetInstanceIdsFromScope(endpoint.scope, {
+  const targetInstanceIds = resolveTargetInstanceIdsFromScope(effectiveEndpoint.scope, {
     exercisePack,
     anchorInstanceId: options.anchorInstanceId || null,
     selectedInstanceIds: options.selectedInstanceIds || getSelectedInstanceIds()
@@ -3038,19 +3412,20 @@ async function runEndpoint(endpoint, options = {}) {
   return await runStructuredEndpointExecution({
     exercisePack,
     currentStep,
-    endpoint,
+    endpoint: effectiveEndpoint,
     targetInstanceIds,
     userText: pickFirstNonEmptyString(options.userText) || await resolveBoardUserSeedText(options.anchorInstanceId || targetInstanceIds[0] || null, getCurrentUserQuestion()),
     controlContext: options.controlContext || null,
     adminOverride: options.adminOverride || null,
-    sourceLabel: pickFirstNonEmptyString(options.sourceLabel, options.controlContext?.controlLabel, endpoint.label, "Endpoint"),
+    sourceLabel: pickFirstNonEmptyString(options.sourceLabel, options.controlContext?.controlLabel, effectiveEndpoint.label, "Endpoint"),
     anchorInstanceId: options.anchorInstanceId || null
   });
 }
 
 async function runEndpointById(endpointId, options = {}) {
+  await refreshFlowEndpointOverridesFromStorage();
   const lang = getCurrentDisplayLanguage();
-  const endpoint = ExerciseLibrary.getEndpointById(endpointId, { lang });
+  const endpoint = getEffectiveFlowEndpointById(endpointId, { lang });
   if (!endpoint?.id) {
     log("Endpoint nicht gefunden: " + String(endpointId || "(leer)"));
     return buildRunFailureResult("precondition", "Endpoint nicht gefunden.");
@@ -3152,6 +3527,7 @@ function initPanelButtons() {
   flowStepEl?.addEventListener("change", () => renderFlowAuthoringControls({ forceLabelSync: true }));
   flowEndpointEl?.addEventListener("change", () => {
     syncFlowControlLabelFromEndpoint({ force: true });
+    renderFlowEndpointOverrideEditor();
     renderFlowAuthoringStatus();
   });
   flowScopeTypeEl?.addEventListener("change", renderFlowAuthoringStatus);
@@ -3163,6 +3539,9 @@ function initPanelButtons() {
 
   document.getElementById("btn-save-admin-override")?.addEventListener("click", saveAdminOverrideFromUi);
   document.getElementById("btn-clear-admin-override")?.addEventListener("click", clearAdminOverrideFromUi);
+
+  btnFlowEndpointOverrideSaveEl?.addEventListener("click", saveFlowEndpointOverrideFromUi);
+  btnFlowEndpointOverrideResetEl?.addEventListener("click", resetFlowEndpointOverrideFromUi);
 
   btnFlowCreateControlEl?.addEventListener("click", createFlowControlFromAdmin);
   btnFlowSetCurrentStepEl?.addEventListener("click", setCurrentFlowStepFromAdmin);
@@ -3614,10 +3993,12 @@ async function clearPendingProposalForInstanceStep(instanceId, stepId) {
 
 function findProposalEndpointForStep(exercisePack, stepId, { lang = getCurrentDisplayLanguage() } = {}) {
   if (!exercisePack || !stepId) return null;
-  return ExerciseLibrary.listStepEndpoints(exercisePack, stepId, { lang }).find((endpoint) => {
-    const modes = Array.isArray(endpoint?.run?.allowedExecutionModes) ? endpoint.run.allowedExecutionModes : [];
-    return endpoint?.surface?.channel === "board_button" && modes.includes("proposal_only");
-  }) || null;
+  return listAuthorableEndpointsForStep(exercisePack, stepId, { lang })
+    .map((endpoint) => getEffectiveFlowEndpointById(endpoint.id, { lang }))
+    .find((endpoint) => {
+      const modes = Array.isArray(endpoint?.run?.allowedExecutionModes) ? endpoint.run.allowedExecutionModes : [];
+      return endpoint?.surface?.channel === "board_button" && modes.includes("proposal_only");
+    }) || null;
 }
 
 function cloneJsonValue(value) {
@@ -5462,6 +5843,7 @@ function resolveAllowedActionAreasForRun({ endpointContext = null, activeCanvasS
 }
 
 function sanitizeProposalActionsForEndpoint(actions, {
+  allowedActions = [],
   allowedActionAreas = [],
   logFn = null
 } = {}) {
@@ -5469,12 +5851,23 @@ function sanitizeProposalActionsForEndpoint(actions, {
     ? actions.map((raw) => normalizeAgentAction(raw)).filter(Boolean)
     : [];
 
+  const allowedActionSet = new Set(ExerciseEngine.normalizeStringArray(allowedActions));
   const allowedAreas = new Set(ExerciseEngine.normalizeStringArray(allowedActionAreas));
   const logSafe = typeof logFn === "function" ? logFn : (() => {});
   const sanitized = [];
 
   for (const action of normalizedActions) {
-    if (!action || action.type === "inform") continue;
+    if (!action) continue;
+
+    if (action.type === "inform") {
+      sanitized.push(action);
+      continue;
+    }
+
+    if (allowedActionSet.size && !allowedActionSet.has(action.type)) {
+      logSafe("INFO: Proposal verwirft nicht freigegebenen Action-Typ: " + String(action.type || "(leer)"));
+      continue;
+    }
 
     if (allowedAreas.size && action.type === "create_sticky") {
       const area = pickFirstNonEmptyString(action.area, action.targetArea);

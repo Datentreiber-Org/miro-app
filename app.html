@@ -128,6 +128,35 @@
       color: #4b5563;
       line-height: 1.4;
     }
+    .subsection-title {
+      font-weight: 600;
+      margin-top: 8px;
+      margin-bottom: 6px;
+    }
+    .checkbox-list {
+      display: grid;
+      gap: 4px;
+      margin-top: 4px;
+      margin-bottom: 6px;
+    }
+    .checkbox-option {
+      display: flex;
+      align-items: flex-start;
+      gap: 6px;
+      font-weight: 400;
+      line-height: 1.35;
+    }
+    .checkbox-option input[type="checkbox"] {
+      width: auto;
+      margin: 2px 0 0 0;
+      flex: 0 0 auto;
+    }
+    .checkbox-option-meta {
+      display: block;
+      font-size: 11px;
+      color: #6b7280;
+      line-height: 1.3;
+    }
     #selection-status, #exercise-context-status, #exercise-step-instruction, #panel-mode-status, #exercise-recommendation-status {
       margin-top: 6px;
       margin-bottom: 8px;
@@ -225,6 +254,39 @@
         <select id="flow-endpoint"></select>
       </div>
 
+      <div class="subsection-title" data-i18n="section.flowEndpointOverrides">Flow-Endpoint-Kalibrierung</div>
+      <div id="flow-endpoint-override-status" class="helper-text" data-i18n="flow.endpointOverride.status.empty">Kein Flow-Endpoint ausgewählt.</div>
+      <div class="helper-text" data-i18n="flow.endpointOverride.help">Bearbeitet nur den aktuell gewählten Flow-Endpoint. Das überschreibt den Endpoint zur Laufzeit, ohne bestehende Board-Buttons neu zu erzeugen.</div>
+
+      <div class="row">
+        <label for="flow-endpoint-override-prompt" data-i18n="flow.endpointOverride.prompt.label">Endpoint-Prompt</label>
+        <textarea id="flow-endpoint-override-prompt"></textarea>
+        <div class="helper-text" data-i18n="flow.endpointOverride.prompt.help">Der aktuelle Endpoint-Prompt aus dem Repository wird vorausgefüllt und kann hier direkt überschrieben werden.</div>
+      </div>
+
+      <div class="row">
+        <label for="flow-endpoint-override-execution-mode" data-i18n="flow.endpointOverride.executionMode.label">Ausführungsmodus</label>
+        <select id="flow-endpoint-override-execution-mode"></select>
+        <div class="helper-text" data-i18n="flow.endpointOverride.executionMode.help">Für Flow-Endpunkte wird genau ein Modus gewählt. Chat Submit und Chat Apply bleiben unverändert.</div>
+      </div>
+
+      <div class="row">
+        <label data-i18n="flow.endpointOverride.actions.label">Erlaubte Aktionen</label>
+        <div id="flow-endpoint-override-actions" class="checkbox-list"></div>
+        <div class="helper-text" data-i18n="flow.endpointOverride.actions.help">Wenn keine Aktion angehakt ist, gilt automatisch das Gesamtset aller unterstützten Actions.</div>
+      </div>
+
+      <div class="row">
+        <label data-i18n="flow.endpointOverride.areas.label">Erlaubte Areas</label>
+        <div id="flow-endpoint-override-areas" class="checkbox-list"></div>
+        <div class="helper-text" data-i18n="flow.endpointOverride.areas.help">Wenn keine Area angehakt ist, gelten automatisch alle Areas des relevanten Canvas-Typs.</div>
+      </div>
+
+      <div class="btn-row">
+        <button id="btn-flow-endpoint-override-save" data-i18n="flow.endpointOverride.save">Flow-Endpoint-Override speichern</button>
+        <button id="btn-flow-endpoint-override-reset" data-i18n="flow.endpointOverride.reset">Flow-Endpoint-Override zurücksetzen</button>
+      </div>
+
       <div class="row">
         <label for="flow-scope-type" data-i18n="flow.scope.label">Scope</label>
         <select id="flow-scope-type">
@@ -274,6 +336,6 @@
   <pre id="log"></pre>
 
   </div>
-  <script type="module" src="./src/main.js?v=20260315-patch14-runtime-cleanup"></script>
+  <script type="module" src="./src/main.js?v=20260315-patch15-flow-endpoint-overrides"></script>
 </body>
 </html>

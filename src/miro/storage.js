@@ -13,7 +13,8 @@ import {
   DT_STORAGE_KEY_ACTIVE_PROPOSAL_PREFIX,
   DT_STORAGE_KEY_PROPOSAL_INDEX,
   DT_STORAGE_KEY_PROPOSAL_PREFIX,
-  DT_MEMORY_RECENT_LOG_LIMIT
+  DT_MEMORY_RECENT_LOG_LIMIT,
+  DT_EXECUTION_MODES
 } from "../config.js?v=20260315-patch13-submit-proposals-fix1";
 
 import { normalizeBoardFlow } from "../runtime/board-flow.js?v=20260315-patch13-submit-proposals-fix1";
@@ -44,6 +45,44 @@ function uniqueIds(ids) {
 
 function normalizeStringArray(values) {
   return uniqueIds((Array.isArray(values) ? values : []).map((value) => asTrimmedString(value)).filter(Boolean));
+}
+
+function normalizeOptionalStringArray(values) {
+  return Array.isArray(values) ? normalizeStringArray(values) : null;
+}
+
+function normalizeOptionalExecutionMode(value) {
+  const normalized = asTrimmedString(value);
+  return normalized && DT_EXECUTION_MODES.includes(normalized) ? normalized : null;
+}
+
+function normalizeFlowEndpointRuntimeOverride(rawOverride) {
+  const src = (rawOverride && typeof rawOverride === "object") ? rawOverride : {};
+  return {
+    promptText: asTrimmedString(src.promptText) || null,
+    executionMode: normalizeOptionalExecutionMode(src.executionMode),
+    allowedActions: normalizeOptionalStringArray(src.allowedActions),
+    allowedActionAreas: normalizeOptionalStringArray(src.allowedActionAreas)
+  };
+}
+
+function normalizeFlowEndpointRuntimeOverrideMap(rawMap) {
+  const src = (rawMap && typeof rawMap === "object" && !Array.isArray(rawMap)) ? rawMap : {};
+  const entries = Object.entries(src)
+    .map(([endpointId, rawOverride]) => {
+      const normalizedEndpointId = asTrimmedString(endpointId);
+      if (!normalizedEndpointId) return null;
+      const normalizedOverride = normalizeFlowEndpointRuntimeOverride(rawOverride);
+      const hasMeaningfulValue = !!(
+        normalizedOverride.promptText ||
+        normalizedOverride.executionMode ||
+        normalizedOverride.allowedActions !== null ||
+        normalizedOverride.allowedActionAreas !== null
+      );
+      return hasMeaningfulValue ? [normalizedEndpointId, normalizedOverride] : null;
+    })
+    .filter(Boolean);
+  return Object.freeze(Object.fromEntries(entries));
 }
 
 function boardFlowKey(flowId) {
@@ -221,6 +260,7 @@ export function normalizeExerciseRuntime(rawRuntime = {}) {
   const src = (rawRuntime && typeof rawRuntime === "object") ? rawRuntime : {};
   return {
     adminOverride: asTrimmedString(src.adminOverride) || null,
+    flowEndpointOverridesById: normalizeFlowEndpointRuntimeOverrideMap(src.flowEndpointOverridesById),
     lastEndpointId: asTrimmedString(src.lastEndpointId) || null,
     lastFlowDirectiveUnlockEndpointIds: normalizeStringArray(src.lastFlowDirectiveUnlockEndpointIds),
     lastFlowDirectiveCompleteEndpointIds: normalizeStringArray(src.lastFlowDirectiveCompleteEndpointIds),

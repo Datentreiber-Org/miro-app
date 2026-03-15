@@ -88,6 +88,41 @@ const BASE_UI_STRINGS = Object.freeze({
   "flow.noEndpoints": { de: "Keine Endpoints verfügbar.", en: "No endpoints available." },
   "flow.defaultControlLabel": { de: "Flow Control", en: "Flow control" },
 
+  "section.flowEndpointOverrides": { de: "Flow-Endpoint-Kalibrierung", en: "Flow endpoint calibration" },
+  "flow.endpointOverride.help": {
+    de: "Bearbeitet nur den aktuell gewählten Flow-Endpoint. Das überschreibt den Endpoint zur Laufzeit, ohne bestehende Board-Buttons neu zu erzeugen.",
+    en: "Edits only the currently selected flow endpoint. This overrides the endpoint at runtime without recreating existing board buttons."
+  },
+  "flow.endpointOverride.status.empty": { de: "Kein Flow-Endpoint ausgewählt.", en: "No flow endpoint selected." },
+  "flow.endpointOverride.status.catalog": { de: "Aktuell gelten die Katalog-Defaults für diesen Flow-Endpoint.", en: "Catalog defaults are currently active for this flow endpoint." },
+  "flow.endpointOverride.status.override": { de: "Für diesen Flow-Endpoint ist ein Runtime-Override aktiv.", en: "A runtime override is active for this flow endpoint." },
+  "flow.endpointOverride.prompt.label": { de: "Endpoint-Prompt", en: "Endpoint prompt" },
+  "flow.endpointOverride.prompt.help": {
+    de: "Der aktuelle Endpoint-Prompt aus dem Repository wird vorausgefüllt und kann hier direkt überschrieben werden.",
+    en: "The current endpoint prompt from the repository is prefilled and can be overridden here directly."
+  },
+  "flow.endpointOverride.executionMode.label": { de: "Ausführungsmodus", en: "Execution mode" },
+  "flow.endpointOverride.executionMode.help": {
+    de: "Für Flow-Endpunkte wird genau ein Modus gewählt. Chat Submit und Chat Apply bleiben unverändert.",
+    en: "Exactly one mode is chosen for flow endpoints. Chat submit and chat apply remain unchanged."
+  },
+  "flow.endpointOverride.executionMode.none": { de: "none", en: "none" },
+  "flow.endpointOverride.executionMode.proposal_only": { de: "proposal_only", en: "proposal_only" },
+  "flow.endpointOverride.executionMode.direct_apply": { de: "direct_apply", en: "direct_apply" },
+  "flow.endpointOverride.actions.label": { de: "Erlaubte Aktionen", en: "Allowed actions" },
+  "flow.endpointOverride.actions.help": {
+    de: "Wenn keine Aktion angehakt ist, gilt automatisch das Gesamtset aller unterstützten Actions.",
+    en: "If no action is checked, the full set of supported actions is allowed automatically."
+  },
+  "flow.endpointOverride.areas.label": { de: "Erlaubte Areas", en: "Allowed areas" },
+  "flow.endpointOverride.areas.help": {
+    de: "Wenn keine Area angehakt ist, gelten automatisch alle Areas des relevanten Canvas-Typs.",
+    en: "If no area is checked, all areas of the relevant canvas type apply automatically."
+  },
+  "flow.endpointOverride.save": { de: "Flow-Endpoint-Override speichern", en: "Save flow endpoint override" },
+  "flow.endpointOverride.reset": { de: "Flow-Endpoint-Override zurücksetzen", en: "Reset flow endpoint override" },
+
+
   "button.insertTemplate": { de: "Canvas einfügen", en: "Insert canvas" },
   "button.agentSelection": { de: "Instanz-Agent (Selektion)", en: "Instance agent (selection)" },
   "button.clusterPanel": { de: "Auswahl clustern (Side-Panel)", en: "Cluster selection (side panel)" },
