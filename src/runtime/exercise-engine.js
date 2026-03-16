@@ -3,11 +3,11 @@ import {
   DT_FEEDBACK_CHANNELS,
   DT_MUTATION_POLICIES,
   DT_EXECUTION_MODES
-} from "../config.js?v=20260315-patch17-analytics-prompt-refresh2";
+} from "../config.js?v=20260316-patch18-business-model-case-pack";
 import {
   listStepTransitions,
   resolveNamedTransition
-} from "../exercises/registry.js?v=20260315-patch17-analytics-prompt-refresh2";
+} from "../exercises/registry.js?v=20260316-patch18-business-model-case-pack";
 
 function asNonEmptyString(value) {
   if (typeof value !== "string") return null;

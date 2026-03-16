@@ -2,10 +2,10 @@ import {
   DT_DEFAULT_APP_ADMIN_POLICY,
   DT_DEFAULT_FEEDBACK_CHANNEL,
   DT_EXECUTION_MODES
-} from "../config.js?v=20260315-patch17-analytics-prompt-refresh2";
+} from "../config.js?v=20260316-patch18-business-model-case-pack";
 
-import { METHOD_I18N_OVERRIDES } from "../i18n/catalog.js?v=20260315-patch17-analytics-prompt-refresh2";
-import { normalizeUiLanguage, pickLocalized } from "../i18n/index.js?v=20260315-patch17-analytics-prompt-refresh2";
+import { METHOD_I18N_OVERRIDES } from "../i18n/catalog.js?v=20260316-patch18-business-model-case-pack";
+import { normalizeUiLanguage, pickLocalized } from "../i18n/index.js?v=20260316-patch18-business-model-case-pack";
 
 function asNonEmptyString(value) {
   if (typeof value !== "string") return null;
@@ -2796,6 +2796,1288 @@ const RAW_METHOD_CATALOG = deepFreeze(JSON.parse(String.raw`{
                 "seedByDefault": false
               },
               "order": 9007199254740991
+            }
+          ],
+          "transitions": []
+        }
+      }
+    },
+    "business-model-case-ai-usecase-ideation-v1": {
+      "exercisePackId": "business-model-case-ai-usecase-ideation-v1",
+      "label": {
+        "de": "Business Model Use Case Ideation"
+      },
+      "version": 1,
+      "description": {
+        "de": "Geführte Einzelcanvas-Übung auf dem Business Model / Case Canvas: Fokus klären, Geschäftsmodell strukturieren, Analytics- & AI-Use-Cases surfacen, Miro-AI-Clustering vorbereiten und menschliches Voting qualitativ auswerten."
+      },
+      "boardMode": "exercise",
+      "allowedCanvasTypeIds": [
+        "datentreiber-business-model-case"
+      ],
+      "defaultCanvasTypeId": "datentreiber-business-model-case",
+      "defaultStepId": "step0_focus_and_framing",
+      "defaults": {
+        "feedbackChannel": "text",
+        "userMayChangePack": false,
+        "userMayChangeStep": false,
+        "appAdminPolicy": "ui_toggle"
+      },
+      "steps": {
+        "step0_focus_and_framing": {
+          "id": "step0_focus_and_framing",
+          "label": {
+            "de": "Focus & Framing"
+          },
+          "summary": {
+            "de": "Fokus und Scope klären, genau einen Business Case wählen und Nebenthemen bewusst parken."
+          },
+          "visibleInstruction": {
+            "de": "Lege zuerst den Fokus fest: Benenne genau ein Business Model oder einen Business Case im Header und parke Alternativen bewusst."
+          },
+          "flowInstruction": {
+            "de": "Starte mit Fokus und Scope. Mische nicht mehrere Business Models, sondern wähle genau eines und parke Varianten oder Nebenthemen bewusst."
+          },
+          "endpoints": [
+            {
+              "id": "bmcase.ideation.step0.hint",
+              "familyKey": "selection.hint",
+              "label": {
+                "de": "Hinweis geben"
+              },
+              "summary": {
+                "de": "Gibt einen kurzen Hinweis für den nächsten sinnvollen Mikroschritt in Step 0."
+              },
+              "scope": {
+                "mode": "current",
+                "allowedCanvasTypeIds": [
+                  "datentreiber-business-model-case"
+                ]
+              },
+              "prompt": {
+                "text": {
+                  "de": "Du arbeitest auf dem Canvas Business Model / Case. Diese Übung bleibt auf einem Einzelcanvas ohne Cross-Canvas-Handoff.\n\nSchrittkontext: Focus & Framing.\nZiel:\n- genau ein Business Model oder einen Business Case fokussieren,\n- den Header schärfen,\n- vermischte Perspektiven vermeiden,\n- Nebenthemen bewusst parken.\n\nGib 1 bis 2 kurze nächste Schritte oder Satzstarter.\nArbeite zuerst mit:\n- Header\n- Scope-Fragen\n- Varianten current vs future\n- B2C vs B2B\n- bewusstem Parken in sorted_out_right\n\nSpringe noch nicht in die Modellierung.\nKeine Board-Mutationen.\nKein Score."
+                }
+              },
+              "run": {
+                "mutationPolicy": "none",
+                "feedbackPolicy": "text",
+                "allowedExecutionModes": [
+                  "none"
+                ],
+                "allowedActions": []
+              },
+              "surface": {
+                "channel": "board_button",
+                "group": "secondary",
+                "sidecarOnly": false,
+                "seedByDefault": false
+              },
+              "order": 1
+            },
+            {
+              "id": "bmcase.ideation.step0.coach",
+              "familyKey": "selection.coach",
+              "label": {
+                "de": "Fokus coachen"
+              },
+              "summary": {
+                "de": "Coacht den Einstieg mit Leitfragen zu Scope und Fokus."
+              },
+              "scope": {
+                "mode": "current",
+                "allowedCanvasTypeIds": [
+                  "datentreiber-business-model-case"
+                ]
+              },
+              "prompt": {
+                "text": {
+                  "de": "Du arbeitest auf dem Canvas Business Model / Case. Diese Übung bleibt auf einem Einzelcanvas ohne Cross-Canvas-Handoff.\n\nSchrittkontext: Focus & Framing.\nHilf mit 3 bis 5 Leitfragen und genau einem Mikroschritt.\n\nFokussiere auf:\n- Welches Business Model oder welcher Business Case ist gemeint?\n- Current oder future?\n- B2C oder B2B?\n- Welcher Markt, welches Segment oder welcher Zeithorizont?\n- Was sollte bewusst geparkt werden?\n\nLiefere keine Komplettlösung.\nBleibe im aktuellen Schritt.\nKeine Board-Mutationen.\nKein Score."
+                }
+              },
+              "run": {
+                "mutationPolicy": "none",
+                "feedbackPolicy": "text",
+                "allowedExecutionModes": [
+                  "none"
+                ],
+                "allowedActions": []
+              },
+              "surface": {
+                "channel": "board_button",
+                "group": "secondary",
+                "sidecarOnly": false,
+                "seedByDefault": false
+              },
+              "order": 2
+            },
+            {
+              "id": "bmcase.ideation.step0.check",
+              "familyKey": "selection.check",
+              "label": {
+                "de": "Fokus prüfen"
+              },
+              "summary": {
+                "de": "Prüft, ob Fokus und Scope klar genug für die Modellierung sind."
+              },
+              "scope": {
+                "mode": "current",
+                "allowedCanvasTypeIds": [
+                  "datentreiber-business-model-case"
+                ]
+              },
+              "prompt": {
+                "text": {
+                  "de": "Du arbeitest auf dem Canvas Business Model / Case. Diese Übung bleibt auf einem Einzelcanvas ohne Cross-Canvas-Handoff.\n\nSchrittkontext: Focus & Framing.\n\nPrüfe qualitativ und knapp:\n- Ist genau ein Business Model / Case fokussiert?\n- Ist der Header spezifisch genug?\n- Sind konkurrierende Perspektiven getrennt oder geparkt?\n- Ist der Schritt anschlussfähig für die eigentliche Modellierung?\n\nNutze keine numerische Bewertung.\nGib:\n- 1 Stärke\n- 1 wichtigste Unschärfe\n- 1 nächsten Schritt\n\nKeine Board-Mutationen.\nKein Score."
+                }
+              },
+              "run": {
+                "mutationPolicy": "none",
+                "feedbackPolicy": "text",
+                "allowedExecutionModes": [
+                  "none"
+                ],
+                "allowedActions": []
+              },
+              "surface": {
+                "channel": "board_button",
+                "group": "primary",
+                "sidecarOnly": false,
+                "seedByDefault": false
+              },
+              "order": 3
+            },
+            {
+              "id": "bmcase.ideation.step0.propose",
+              "familyKey": "selection.propose",
+              "label": {
+                "de": "Fokus vorschlagen"
+              },
+              "summary": {
+                "de": "Erzeugt einen kleinen konkreten Vorschlag für Fokus, Scope und Parken."
+              },
+              "scope": {
+                "mode": "current",
+                "allowedCanvasTypeIds": [
+                  "datentreiber-business-model-case"
+                ]
+              },
+              "prompt": {
+                "text": {
+                  "de": "Du arbeitest auf dem Canvas Business Model / Case. Diese Übung bleibt auf einem Einzelcanvas ohne Cross-Canvas-Handoff.\n\nSchrittkontext: Focus & Framing.\nZiel:\n- genau ein Business Model oder einen Business Case fokussieren,\n- den Header schärfen,\n- Alternativen oder Scope-Varianten bewusst parken.\n\nArbeite nur in:\n- header\n- sorted_out_right\n\nArbeite klein und anschlussfähig.\nWenn noch kein klarer Fokus sichtbar ist, formuliere einen kurzen Header-Fokus.\nNutze weiße Stickies für kritische Annahmen oder offene Scope-Fragen.\nNutze sorted_out_right für alternative Perspektiven wie:\n- current vs future\n- B2C vs B2B\n- anderer Markt / anderes Segment\n\nSticky-Regeln:\n- Header sehr kurz.\n- Weiße Scope-/Frage-Stickies kurz und präzise.\n- Eine Sticky = ein Gedanke.\n\nGute Beispiele:\n- \"Current B2C\"\n- \"Future B2B\"\n- \"Germany retail\"\n- \"Assumption: online growth\"\n\nKeine Modellierungsdetails vorwegnehmen.\nNutze executionMode = proposal_only."
+                }
+              },
+              "run": {
+                "mutationPolicy": "minimal",
+                "feedbackPolicy": "text",
+                "allowedExecutionModes": [
+                  "proposal_only"
+                ],
+                "allowedActions": [
+                  "create_sticky",
+                  "move_sticky",
+                  "delete_sticky",
+                  "create_connector",
+                  "set_sticky_color",
+                  "set_check_status"
+                ],
+                "allowedActionAreas": [
+                  "header",
+                  "sorted_out_right"
+                ]
+              },
+              "surface": {
+                "channel": "board_button",
+                "group": "proposal",
+                "sidecarOnly": false,
+                "seedByDefault": false
+              },
+              "order": 4
+            },
+            {
+              "id": "business-model-case-ai-usecase-ideation-v1.step0_focus_and_framing.chat_apply",
+              "familyKey": null,
+              "label": {
+                "de": "Vorschläge anwenden"
+              },
+              "summary": {
+                "de": "Wendet den zuletzt erzeugten Vorschlag dieses Schritts an."
+              },
+              "scope": {
+                "mode": "current",
+                "allowedCanvasTypeIds": [
+                  "datentreiber-business-model-case"
+                ]
+              },
+              "prompt": {
+                "text": {
+                  "de": "Du arbeitest auf dem Canvas Business Model / Case.\n\nSchrittkontext: Focus & Framing. Genau ein Business Model oder ein Business Case wird fokussiert. Header, Scope und offene Fragen werden geklärt; Alternativen werden geparkt.\n\nWende nur den bereits gespeicherten Vorschlag für diesen Schritt an.\nKeine neue inhaltliche Analyse, keine neue Planung, kein neues Feedback."
+                }
+              },
+              "run": {
+                "mutationPolicy": "minimal",
+                "feedbackPolicy": "text",
+                "allowedExecutionModes": [
+                  "direct_apply"
+                ],
+                "allowedActions": [
+                  "create_sticky",
+                  "move_sticky",
+                  "delete_sticky",
+                  "create_connector",
+                  "set_sticky_color",
+                  "set_check_status"
+                ],
+                "allowedActionAreas": []
+              },
+              "surface": {
+                "channel": "chat_apply",
+                "group": "hidden",
+                "sidecarOnly": false,
+                "seedByDefault": false
+              },
+              "order": 5
+            },
+            {
+              "id": "business-model-case-ai-usecase-ideation-v1.step0_focus_and_framing.chat_submit",
+              "familyKey": null,
+              "label": {
+                "de": "Frage stellen"
+              },
+              "summary": {
+                "de": "Beantwortet Fragen zum aktuellen Schritt."
+              },
+              "scope": {
+                "mode": "current",
+                "allowedCanvasTypeIds": [
+                  "datentreiber-business-model-case"
+                ]
+              },
+              "prompt": {
+                "text": {
+                  "de": "Du arbeitest auf dem Canvas Business Model / Case. Diese Übung bleibt auf einem Einzelcanvas ohne Cross-Canvas-Handoff.\n\nSchrittkontext: Focus & Framing. Genau ein Business Model oder ein Business Case wird fokussiert. Header, Scope und offene Fragen werden geklärt; Alternativen werden geparkt.\n\nAntworte instanzbezogen, verständlich und hilfreich auf Fragen zu diesem Canvas und zu genau diesem Schritt.\nDer sichtbare Boardzustand ist die Wahrheit. Rechne damit, dass Menschen zwischen den Schritten manuelle Änderungen vorgenommen haben.\n\nWenn die Frage nach einem kleinen Fokus- oder Scope-Vorschlag fragt, darfst du proposal_only mit Header- oder Sorted-out-Stickies verwenden.\n\nWenn conversationContext sichtbar ist, beantworte Rückfragen in Bezug auf den letzten Vorschlag oder die letzte Antwort.\nWenn keine konkrete Board-Ausarbeitung verlangt wird, bleibe bei executionMode = none.\nNur wenn die Frage ausdrücklich nach einer kleinen konkreten Board-Ausarbeitung in genau diesem Schritt verlangt, darfst du proposal_only wählen.\nHalluziniere keinen Kontext außerhalb des sichtbaren Boards."
+                }
+              },
+              "run": {
+                "mutationPolicy": "minimal",
+                "feedbackPolicy": "text",
+                "allowedExecutionModes": [
+                  "none",
+                  "proposal_only"
+                ],
+                "allowedActions": [
+                  "create_sticky",
+                  "move_sticky",
+                  "delete_sticky",
+                  "create_connector",
+                  "set_sticky_color",
+                  "set_check_status"
+                ],
+                "allowedActionAreas": [
+                  "header",
+                  "sorted_out_right"
+                ]
+              },
+              "surface": {
+                "channel": "chat_submit",
+                "group": "hidden",
+                "sidecarOnly": false,
+                "seedByDefault": false
+              },
+              "order": 6
+            }
+          ],
+          "transitions": []
+        },
+        "step1_business_model_mapping": {
+          "id": "step1_business_model_mapping",
+          "label": {
+            "de": "Business Model Mapping"
+          },
+          "summary": {
+            "de": "Das Geschäftsmodell wird strukturell sichtbar gemacht: zentrale Elemente ergänzen, Farben sinnvoll nutzen, Fehlplatzierungen erkennen."
+          },
+          "visibleInstruction": {
+            "de": "Fülle die Kernfelder des Business Models mit kurzen Business-Elementen und unterscheide bestehende, geplante und fehlende Elemente."
+          },
+          "flowInstruction": {
+            "de": "Baue jetzt das Business Model strukturell auf. Ergänze zentrale Elemente, ordne Fehlplatzierungen und mache sichtbare Beziehungen plausibel."
+          },
+          "endpoints": [
+            {
+              "id": "bmcase.ideation.step1.coach",
+              "familyKey": "selection.coach",
+              "label": {
+                "de": "Modell coachen"
+              },
+              "summary": {
+                "de": "Coacht den strukturierten Aufbau des Business Models mit heuristischen Leitfragen."
+              },
+              "scope": {
+                "mode": "current",
+                "allowedCanvasTypeIds": [
+                  "datentreiber-business-model-case"
+                ]
+              },
+              "prompt": {
+                "text": {
+                  "de": "Du arbeitest auf dem Canvas Business Model / Case. Diese Übung bleibt auf einem Einzelcanvas ohne Cross-Canvas-Handoff.\n\nSchrittkontext: Business Model Mapping.\nDer sichtbare Boardzustand ist die Wahrheit. Rechne damit, dass Menschen zwischen den Schritten Stickies ergänzt, verschoben oder gelöscht haben.\n\nHilf mit 3 bis 5 Leitfragen und genau einem Mikroschritt.\nDenk analytisch und heuristisch:\n- Welche Art von Geschäft, Bereich oder Prozess wird sichtbar?\n- Welche Elemente wirken zentral, welche fehlen noch?\n- Welche Area ist semantisch dominierend, wenn etwas auf mehrere Areas passen könnte?\n- Welche Beziehungen sollten sichtbar werden?\n- Wo ist das Modell noch zu breit, zu dünn oder inkonsistent?\n\nZiel ist Kohärenz, nicht Vollständigkeits-Fiktion.\nKeine Board-Mutationen.\nKein Score."
+                }
+              },
+              "run": {
+                "mutationPolicy": "none",
+                "feedbackPolicy": "text",
+                "allowedExecutionModes": [
+                  "none"
+                ],
+                "allowedActions": []
+              },
+              "surface": {
+                "channel": "board_button",
+                "group": "secondary",
+                "sidecarOnly": false,
+                "seedByDefault": false
+              },
+              "order": 1
+            },
+            {
+              "id": "bmcase.ideation.step1.check",
+              "familyKey": "selection.check",
+              "label": {
+                "de": "Modell prüfen"
+              },
+              "summary": {
+                "de": "Prüft Vollständigkeit, Verortung und Kohärenz des Business Models."
+              },
+              "scope": {
+                "mode": "current",
+                "allowedCanvasTypeIds": [
+                  "datentreiber-business-model-case"
+                ]
+              },
+              "prompt": {
+                "text": {
+                  "de": "Du arbeitest auf dem Canvas Business Model / Case. Diese Übung bleibt auf einem Einzelcanvas ohne Cross-Canvas-Handoff.\n\nSchrittkontext: Business Model Mapping.\nPrüfe qualitativ und knapp:\n- Sind die Kernbereiche ausreichend belegt?\n- Sind Farben sinnvoll genutzt (bestehend / geplant / fehlend)?\n- Sind die Elemente eher knapp und strukturell formuliert?\n- Gibt es offensichtliche Fehlplatzierungen?\n- Fehlen zentrale Elemente, die aus dem sichtbaren Prozess- oder Geschäftskontext plausibel zu erwarten wären?\n- Sind wichtige Beziehungen implizit vorhanden, aber noch unsichtbar?\n\nNutze heuristische Schlüsse nur aus sichtbaren Hinweisen, nicht aus halluziniertem Kontext.\nMove vor delete.\nKeine numerische Bewertung.\nKeine Board-Mutationen."
+                }
+              },
+              "run": {
+                "mutationPolicy": "none",
+                "feedbackPolicy": "text",
+                "allowedExecutionModes": [
+                  "none"
+                ],
+                "allowedActions": []
+              },
+              "surface": {
+                "channel": "board_button",
+                "group": "primary",
+                "sidecarOnly": false,
+                "seedByDefault": false
+              },
+              "order": 2
+            },
+            {
+              "id": "bmcase.ideation.step1.review",
+              "familyKey": "selection.review",
+              "label": {
+                "de": "Mapping reviewen"
+              },
+              "summary": {
+                "de": "Gibt ein kurzes Review zur strukturellen Tragfähigkeit des aktuellen Modells."
+              },
+              "scope": {
+                "mode": "current",
+                "allowedCanvasTypeIds": [
+                  "datentreiber-business-model-case"
+                ]
+              },
+              "prompt": {
+                "text": {
+                  "de": "Du arbeitest auf dem Canvas Business Model / Case. Diese Übung bleibt auf einem Einzelcanvas ohne Cross-Canvas-Handoff.\n\nSchrittkontext: Business Model Mapping.\nLies das aktuelle Modell als sichtbare Struktur des Geschäfts oder Business Case.\n\nBewerte knapp:\n- Was wirkt bereits plausibel?\n- Wo ist die Modelllogik noch inkonsistent?\n- Welche Hauptlücke verhindert die nächste gute Arbeit am meisten?\n- Wo sollten Menschen lieber umsortieren statt neue Stickies schreiben?\n\nKeine numerische Bewertung.\nKein Scoring.\nKeine Board-Mutationen."
+                }
+              },
+              "run": {
+                "mutationPolicy": "none",
+                "feedbackPolicy": "text",
+                "allowedExecutionModes": [
+                  "none"
+                ],
+                "allowedActions": []
+              },
+              "surface": {
+                "channel": "board_button",
+                "group": "secondary",
+                "sidecarOnly": false,
+                "seedByDefault": false
+              },
+              "order": 3
+            },
+            {
+              "id": "bmcase.ideation.step1.propose",
+              "familyKey": "selection.propose",
+              "label": {
+                "de": "Modell ergänzen"
+              },
+              "summary": {
+                "de": "Erzeugt einen kleinen, kohärenten Vorschlag für fehlende oder falsch verortete Business-Model-Elemente."
+              },
+              "scope": {
+                "mode": "current",
+                "allowedCanvasTypeIds": [
+                  "datentreiber-business-model-case"
+                ]
+              },
+              "prompt": {
+                "text": {
+                  "de": "Du arbeitest auf dem Canvas Business Model / Case. Diese Übung bleibt auf einem Einzelcanvas ohne Cross-Canvas-Handoff.\n\nSchrittkontext: Business Model Mapping.\nZiel:\n- zentrale Business-Model-Elemente sichtbar machen,\n- bestehende / geplante / fehlende Elemente unterscheiden,\n- Kohärenz zwischen den Areas herstellen.\n\nArbeite in:\n- 2abc_users_buyers_decision_makers\n- 3a_solutions\n- 3b_benefits\n- 4_channels\n- 5_relationships\n- 6_resources\n- 7_activities\n- 8_partnerships\n- 9_revenues_advantages\n- 10_cost_risks\n- sorted_out_right\n\nArbeite eng am vorhandenen Zustand.\nWenn das Board noch leer ist, beginne nur mit wenigen zentralen Elementen.\nWenn schon Material da ist, ergänze gezielt statt alles neu aufzubauen.\n\nDenk analytisch und heuristisch:\n- Welche Art Geschäft oder Funktionsbereich wird sichtbar?\n- Welche Prozesse oder Wertschöpfungsketten sind implizit erkennbar?\n- Welche Elemente fehlen wahrscheinlich noch, damit das Modell realistisch greifbar wird?\n- Wo ist ein Sticky semantisch eher einer anderen Hauptarea zuzuordnen?\n\nFarblogik:\n- Grün = bestehend\n- Gelb = geplant / in Arbeit\n- Rot = fehlt / Lücke\n- Weiß = kritische Annahme / offene Frage\n\nSticky-Regeln:\n- Business-Elemente sehr kurz.\n- Bevorzugt 1 bis 4 Wörter.\n- Eine Sticky = ein Element.\n\nBeispiele:\n- \"Suppliers\"\n- \"Chocolate Bars\"\n- \"Brand loyalty\"\n- \"Retail sales\"\n- \"Operational Costs\"\n- \"Online sales\"\n\nConnectoren:\n- nur für echte Strukturbeziehungen:\n  - Partnerships -> Resources / Activities\n  - Resources -> Activities\n  - Solutions -> Benefits\n  - Channels / Relationships -> customer side\n\nParke Nebenaspekte in sorted_out_right statt den Canvas zu überladen.\nNutze executionMode = proposal_only."
+                }
+              },
+              "run": {
+                "mutationPolicy": "minimal",
+                "feedbackPolicy": "text",
+                "allowedExecutionModes": [
+                  "proposal_only"
+                ],
+                "allowedActions": [
+                  "create_sticky",
+                  "move_sticky",
+                  "delete_sticky",
+                  "create_connector",
+                  "set_sticky_color",
+                  "set_check_status"
+                ],
+                "allowedActionAreas": [
+                  "2abc_users_buyers_decision_makers",
+                  "3a_solutions",
+                  "3b_benefits",
+                  "4_channels",
+                  "5_relationships",
+                  "6_resources",
+                  "7_activities",
+                  "8_partnerships",
+                  "9_revenues_advantages",
+                  "10_cost_risks",
+                  "sorted_out_right"
+                ]
+              },
+              "surface": {
+                "channel": "board_button",
+                "group": "proposal",
+                "sidecarOnly": false,
+                "seedByDefault": false
+              },
+              "order": 4
+            },
+            {
+              "id": "business-model-case-ai-usecase-ideation-v1.step1_business_model_mapping.chat_apply",
+              "familyKey": null,
+              "label": {
+                "de": "Vorschläge anwenden"
+              },
+              "summary": {
+                "de": "Wendet den zuletzt erzeugten Vorschlag dieses Schritts an."
+              },
+              "scope": {
+                "mode": "current",
+                "allowedCanvasTypeIds": [
+                  "datentreiber-business-model-case"
+                ]
+              },
+              "prompt": {
+                "text": {
+                  "de": "Du arbeitest auf dem Canvas Business Model / Case.\n\nSchrittkontext: Business Model Mapping. Das Geschäftsmodell oder der Business Case wird strukturell sichtbar gemacht. Bestehende, geplante und fehlende Elemente werden unterschieden.\n\nWende nur den bereits gespeicherten Vorschlag für diesen Schritt an.\nKeine neue inhaltliche Analyse, keine neue Planung, kein neues Feedback."
+                }
+              },
+              "run": {
+                "mutationPolicy": "minimal",
+                "feedbackPolicy": "text",
+                "allowedExecutionModes": [
+                  "direct_apply"
+                ],
+                "allowedActions": [
+                  "create_sticky",
+                  "move_sticky",
+                  "delete_sticky",
+                  "create_connector",
+                  "set_sticky_color",
+                  "set_check_status"
+                ],
+                "allowedActionAreas": []
+              },
+              "surface": {
+                "channel": "chat_apply",
+                "group": "hidden",
+                "sidecarOnly": false,
+                "seedByDefault": false
+              },
+              "order": 5
+            },
+            {
+              "id": "business-model-case-ai-usecase-ideation-v1.step1_business_model_mapping.chat_submit",
+              "familyKey": null,
+              "label": {
+                "de": "Frage stellen"
+              },
+              "summary": {
+                "de": "Beantwortet Fragen zum aktuellen Schritt."
+              },
+              "scope": {
+                "mode": "current",
+                "allowedCanvasTypeIds": [
+                  "datentreiber-business-model-case"
+                ]
+              },
+              "prompt": {
+                "text": {
+                  "de": "Du arbeitest auf dem Canvas Business Model / Case. Diese Übung bleibt auf einem Einzelcanvas ohne Cross-Canvas-Handoff.\n\nSchrittkontext: Business Model Mapping. Das Geschäftsmodell oder der Business Case wird strukturell sichtbar gemacht. Bestehende, geplante und fehlende Elemente werden unterschieden.\n\nAntworte instanzbezogen, verständlich und hilfreich auf Fragen zu diesem Canvas und zu genau diesem Schritt.\nDer sichtbare Boardzustand ist die Wahrheit. Rechne damit, dass Menschen zwischen den Schritten manuelle Änderungen vorgenommen haben.\n\nWenn die Frage ausdrücklich nach einer kleinen konkreten Modellergänzung oder Umordnung verlangt, darfst du proposal_only verwenden. Ergänze nur sichtbar anschlussfähige Business-Elemente oder kleine Umordnungen.\n\nWenn conversationContext sichtbar ist, beantworte Rückfragen in Bezug auf den letzten Vorschlag oder die letzte Antwort.\nWenn keine konkrete Board-Ausarbeitung verlangt wird, bleibe bei executionMode = none.\nNur wenn die Frage ausdrücklich nach einer kleinen konkreten Board-Ausarbeitung in genau diesem Schritt verlangt, darfst du proposal_only wählen.\nHalluziniere keinen Kontext außerhalb des sichtbaren Boards."
+                }
+              },
+              "run": {
+                "mutationPolicy": "minimal",
+                "feedbackPolicy": "text",
+                "allowedExecutionModes": [
+                  "none",
+                  "proposal_only"
+                ],
+                "allowedActions": [
+                  "create_sticky",
+                  "move_sticky",
+                  "delete_sticky",
+                  "create_connector",
+                  "set_sticky_color",
+                  "set_check_status"
+                ],
+                "allowedActionAreas": [
+                  "2abc_users_buyers_decision_makers",
+                  "3a_solutions",
+                  "3b_benefits",
+                  "4_channels",
+                  "5_relationships",
+                  "6_resources",
+                  "7_activities",
+                  "8_partnerships",
+                  "9_revenues_advantages",
+                  "10_cost_risks",
+                  "sorted_out_right"
+                ]
+              },
+              "surface": {
+                "channel": "chat_submit",
+                "group": "hidden",
+                "sidecarOnly": false,
+                "seedByDefault": false
+              },
+              "order": 6
+            }
+          ],
+          "transitions": []
+        },
+        "step2_model_completion_and_use_case_ideation": {
+          "id": "step2_model_completion_and_use_case_ideation",
+          "label": {
+            "de": "Model Completion & Use Case Ideation"
+          },
+          "summary": {
+            "de": "Geschäftsmodell weiter schärfen und daraus erste belastbare Analytics- & AI-Use-Case-Ideen ableiten."
+          },
+          "visibleInstruction": {
+            "de": "Schärfe das Business Model weiter und leite daraus erste blaue Use-Case-Ideen mit Problem:, Solution: oder Benefit: ab."
+          },
+          "flowInstruction": {
+            "de": "Verbinde jetzt Modellschärfung und Ideation. Ergänze fehlende Modellteile nur dort, wo sie für tragfähige Use Cases wirklich nötig sind."
+          },
+          "endpoints": [
+            {
+              "id": "bmcase.ideation.step2.coach",
+              "familyKey": "selection.coach",
+              "label": {
+                "de": "Use Cases coachen"
+              },
+              "summary": {
+                "de": "Coacht Modellschärfung und Use-Case-Ideation gleichzeitig."
+              },
+              "scope": {
+                "mode": "current",
+                "allowedCanvasTypeIds": [
+                  "datentreiber-business-model-case"
+                ]
+              },
+              "prompt": {
+                "text": {
+                  "de": "Du arbeitest auf dem Canvas Business Model / Case. Diese Übung bleibt auf einem Einzelcanvas ohne Cross-Canvas-Handoff.\n\nSchrittkontext: Model Completion & Use Case Ideation.\nDer sichtbare Boardzustand ist die Wahrheit. Rechne mit manuellen Änderungen.\n\nHilf mit 3 bis 5 Leitfragen und genau einem Mikroschritt.\nVerbinde Modellschärfung und Ideation:\n- Wo sind die größten Informationslücken?\n- Wo entstehen wiederkehrende Entscheidungen?\n- Wo gibt es messbare Wirkhebel?\n- Wo wären Daten, Analytik oder AI am plausibelsten?\n- Welche kleine Idee wäre wirksam, ohne generisch zu bleiben?\n\nWichtig:\n- Wenn das Modell noch Lücken hat, darf die nächste sinnvolle Arbeit auch darin bestehen, diese Lücken zu schließen.\n- Halluziniere keinen Kontext außerhalb des sichtbaren Boards.\nKeine Board-Mutationen.\nKein Score."
+                }
+              },
+              "run": {
+                "mutationPolicy": "none",
+                "feedbackPolicy": "text",
+                "allowedExecutionModes": [
+                  "none"
+                ],
+                "allowedActions": []
+              },
+              "surface": {
+                "channel": "board_button",
+                "group": "secondary",
+                "sidecarOnly": false,
+                "seedByDefault": false
+              },
+              "order": 1
+            },
+            {
+              "id": "bmcase.ideation.step2.check",
+              "familyKey": "selection.check",
+              "label": {
+                "de": "Use Cases prüfen"
+              },
+              "summary": {
+                "de": "Prüft, ob blaue Use-Case-Ideen fachlich am Business Model verankert sind."
+              },
+              "scope": {
+                "mode": "current",
+                "allowedCanvasTypeIds": [
+                  "datentreiber-business-model-case"
+                ]
+              },
+              "prompt": {
+                "text": {
+                  "de": "Du arbeitest auf dem Canvas Business Model / Case. Diese Übung bleibt auf einem Einzelcanvas ohne Cross-Canvas-Handoff.\n\nSchrittkontext: Model Completion & Use Case Ideation.\nPrüfe qualitativ und knapp:\n- Sind die blauen Ideen wirklich an sichtbare Business-Elemente angedockt?\n- Ist die Mischung aus Problem:, Solution: und Benefit: sinnvoll?\n- Gibt es offensichtliche Dubletten oder generische AI-Ideen ohne Business-Bezug?\n- Ist das Modell noch zu lückenhaft, um gute Use-Case-Ideation zu tragen?\n- Wäre zuerst eine kleine Modellkorrektur sinnvoller als noch mehr blaue Stickies?\n\nKeine numerische Bewertung.\nKeine Board-Mutationen."
+                }
+              },
+              "run": {
+                "mutationPolicy": "none",
+                "feedbackPolicy": "text",
+                "allowedExecutionModes": [
+                  "none"
+                ],
+                "allowedActions": []
+              },
+              "surface": {
+                "channel": "board_button",
+                "group": "primary",
+                "sidecarOnly": false,
+                "seedByDefault": false
+              },
+              "order": 2
+            },
+            {
+              "id": "bmcase.ideation.step2.review",
+              "familyKey": "selection.review",
+              "label": {
+                "de": "Zwischenstand reviewen"
+              },
+              "summary": {
+                "de": "Reviewt, ob Modell und erste Use Cases bereits Substanz haben."
+              },
+              "scope": {
+                "mode": "current",
+                "allowedCanvasTypeIds": [
+                  "datentreiber-business-model-case"
+                ]
+              },
+              "prompt": {
+                "text": {
+                  "de": "Du arbeitest auf dem Canvas Business Model / Case. Diese Übung bleibt auf einem Einzelcanvas ohne Cross-Canvas-Handoff.\n\nSchrittkontext: Model Completion & Use Case Ideation.\nLies den sichtbaren Zwischenstand als Kombination aus Geschäftsmodell und ersten Use-Case-Ideen.\n\nBewerte knapp:\n- Welche Business-Bereiche sind schon gut greifbar?\n- Wo entsteht bereits echte Substanz für Analytics/AI-Ideation?\n- Wo fehlt noch das Fleisch am Knochen?\n- Welche Art von nächstem Schritt ist am sinnvollsten: Modell ergänzen, Use Cases präzisieren oder Dubletten reduzieren?\n\nKeine numerische Bewertung.\nKeine Board-Mutationen."
+                }
+              },
+              "run": {
+                "mutationPolicy": "none",
+                "feedbackPolicy": "text",
+                "allowedExecutionModes": [
+                  "none"
+                ],
+                "allowedActions": []
+              },
+              "surface": {
+                "channel": "board_button",
+                "group": "secondary",
+                "sidecarOnly": false,
+                "seedByDefault": false
+              },
+              "order": 3
+            },
+            {
+              "id": "bmcase.ideation.step2.propose",
+              "familyKey": "selection.propose",
+              "label": {
+                "de": "Use Cases vorschlagen"
+              },
+              "summary": {
+                "de": "Erzeugt gezielte blaue Use-Case-Ideen und ergänzt nötige Modell-Lücken."
+              },
+              "scope": {
+                "mode": "current",
+                "allowedCanvasTypeIds": [
+                  "datentreiber-business-model-case"
+                ]
+              },
+              "prompt": {
+                "text": {
+                  "de": "Du arbeitest auf dem Canvas Business Model / Case. Diese Übung bleibt auf einem Einzelcanvas ohne Cross-Canvas-Handoff.\n\nSchrittkontext: Model Completion & Use Case Ideation.\nZiel:\n- das Modell weiter schärfen,\n- zugleich erste belastbare Analytics- und AI-Use-Case-Ideen surfacen.\n\nArbeite in:\n- 2abc_users_buyers_decision_makers\n- 3a_solutions\n- 3b_benefits\n- 4_channels\n- 5_relationships\n- 6_resources\n- 7_activities\n- 8_partnerships\n- 9_revenues_advantages\n- 10_cost_risks\n- sorted_out_right\n\nDenk analytisch und heuristisch, aber nur aus sichtbaren Hinweisen:\n- Welche Prozesse oder Funktionsbereiche sind implizit erkennbar?\n- Wo fehlen Informationen, um das Modell greifbar zu machen?\n- Wo entstehen Entscheidungen, Fragen oder Optimierungshebel?\n- Wo wären Daten, Analytik oder AI am plausibelsten?\n\nWichtige Regel:\n- Wenn das Modell noch Lücken hat, darfst du zuerst kleine Modell-Lücken schließen, wenn sonst keine gute Use-Case-Idee tragfähig verankert werden kann.\n\nBlaue Use-Case-Ideen:\n- \"Problem:\"\n- \"Solution:\"\n- \"Benefit:\"\n\nNutze blaue Stickies nur, wenn sie klar an ein Business-Element anschließen.\nPositioniere sie nahe am adressierten Element.\nVerwende Connectoren nur, wenn die Beziehung sonst unklar wäre.\n\nBeispiele:\n- \"Problem: Which customer groups buy which products?\"\n- \"Problem: What's the ROI of social media marketing?\"\n- \"Solution: Location-based analysis and promotions\"\n- \"Benefit: More effective ad campaigns\"\n\nWichtig:\n- keine langen Erklärtexte\n- keine allgemeine AI-Schwärmerei\n- lieber wenige gute Ideen als viele generische\n- Dubletten eher parken oder zusammenziehen\n\nNutze executionMode = proposal_only."
+                }
+              },
+              "run": {
+                "mutationPolicy": "minimal",
+                "feedbackPolicy": "text",
+                "allowedExecutionModes": [
+                  "proposal_only"
+                ],
+                "allowedActions": [
+                  "create_sticky",
+                  "move_sticky",
+                  "delete_sticky",
+                  "create_connector",
+                  "set_sticky_color",
+                  "set_check_status"
+                ],
+                "allowedActionAreas": [
+                  "2abc_users_buyers_decision_makers",
+                  "3a_solutions",
+                  "3b_benefits",
+                  "4_channels",
+                  "5_relationships",
+                  "6_resources",
+                  "7_activities",
+                  "8_partnerships",
+                  "9_revenues_advantages",
+                  "10_cost_risks",
+                  "sorted_out_right"
+                ]
+              },
+              "surface": {
+                "channel": "board_button",
+                "group": "proposal",
+                "sidecarOnly": false,
+                "seedByDefault": false
+              },
+              "order": 4
+            },
+            {
+              "id": "business-model-case-ai-usecase-ideation-v1.step2_model_completion_and_use_case_ideation.chat_apply",
+              "familyKey": null,
+              "label": {
+                "de": "Vorschläge anwenden"
+              },
+              "summary": {
+                "de": "Wendet den zuletzt erzeugten Vorschlag dieses Schritts an."
+              },
+              "scope": {
+                "mode": "current",
+                "allowedCanvasTypeIds": [
+                  "datentreiber-business-model-case"
+                ]
+              },
+              "prompt": {
+                "text": {
+                  "de": "Du arbeitest auf dem Canvas Business Model / Case.\n\nSchrittkontext: Model Completion & Use Case Ideation. Das Modell wird weiter geschärft, und daraus werden erste Analytics- und AI-Use-Case-Ideen direkt an Business-Elemente angedockt.\n\nWende nur den bereits gespeicherten Vorschlag für diesen Schritt an.\nKeine neue inhaltliche Analyse, keine neue Planung, kein neues Feedback."
+                }
+              },
+              "run": {
+                "mutationPolicy": "minimal",
+                "feedbackPolicy": "text",
+                "allowedExecutionModes": [
+                  "direct_apply"
+                ],
+                "allowedActions": [
+                  "create_sticky",
+                  "move_sticky",
+                  "delete_sticky",
+                  "create_connector",
+                  "set_sticky_color",
+                  "set_check_status"
+                ],
+                "allowedActionAreas": []
+              },
+              "surface": {
+                "channel": "chat_apply",
+                "group": "hidden",
+                "sidecarOnly": false,
+                "seedByDefault": false
+              },
+              "order": 5
+            },
+            {
+              "id": "business-model-case-ai-usecase-ideation-v1.step2_model_completion_and_use_case_ideation.chat_submit",
+              "familyKey": null,
+              "label": {
+                "de": "Frage stellen"
+              },
+              "summary": {
+                "de": "Beantwortet Fragen zum aktuellen Schritt."
+              },
+              "scope": {
+                "mode": "current",
+                "allowedCanvasTypeIds": [
+                  "datentreiber-business-model-case"
+                ]
+              },
+              "prompt": {
+                "text": {
+                  "de": "Du arbeitest auf dem Canvas Business Model / Case. Diese Übung bleibt auf einem Einzelcanvas ohne Cross-Canvas-Handoff.\n\nSchrittkontext: Model Completion & Use Case Ideation. Das Modell wird weiter geschärft, und daraus werden erste Analytics- und AI-Use-Case-Ideen direkt an Business-Elemente angedockt.\n\nAntworte instanzbezogen, verständlich und hilfreich auf Fragen zu diesem Canvas und zu genau diesem Schritt.\nDer sichtbare Boardzustand ist die Wahrheit. Rechne damit, dass Menschen zwischen den Schritten manuelle Änderungen vorgenommen haben.\n\nWenn die Frage ausdrücklich nach einer kleinen konkreten Use-Case-Ausarbeitung oder Modellergänzung verlangt, darfst du proposal_only verwenden. Blaue Ideen müssen an sichtbare Business-Elemente andocken und dürfen Problem:/Solution:/Benefit:-Präfixe nutzen.\n\nWenn conversationContext sichtbar ist, beantworte Rückfragen in Bezug auf den letzten Vorschlag oder die letzte Antwort.\nWenn keine konkrete Board-Ausarbeitung verlangt wird, bleibe bei executionMode = none.\nNur wenn die Frage ausdrücklich nach einer kleinen konkreten Board-Ausarbeitung in genau diesem Schritt verlangt, darfst du proposal_only wählen.\nHalluziniere keinen Kontext außerhalb des sichtbaren Boards."
+                }
+              },
+              "run": {
+                "mutationPolicy": "minimal",
+                "feedbackPolicy": "text",
+                "allowedExecutionModes": [
+                  "none",
+                  "proposal_only"
+                ],
+                "allowedActions": [
+                  "create_sticky",
+                  "move_sticky",
+                  "delete_sticky",
+                  "create_connector",
+                  "set_sticky_color",
+                  "set_check_status"
+                ],
+                "allowedActionAreas": [
+                  "2abc_users_buyers_decision_makers",
+                  "3a_solutions",
+                  "3b_benefits",
+                  "4_channels",
+                  "5_relationships",
+                  "6_resources",
+                  "7_activities",
+                  "8_partnerships",
+                  "9_revenues_advantages",
+                  "10_cost_risks",
+                  "sorted_out_right"
+                ]
+              },
+              "surface": {
+                "channel": "chat_submit",
+                "group": "hidden",
+                "sidecarOnly": false,
+                "seedByDefault": false
+              },
+              "order": 6
+            }
+          ],
+          "transitions": []
+        },
+        "step3_cluster_readiness_and_miro_ai": {
+          "id": "step3_cluster_readiness_and_miro_ai",
+          "label": {
+            "de": "Cluster Readiness & Miro AI"
+          },
+          "summary": {
+            "de": "Blaue Use-Case-Ideen clusterfähig machen und anschließend mit nativer Miro AI durch Menschen clustern lassen."
+          },
+          "visibleInstruction": {
+            "de": "Bereinige die blauen Use-Case-Ideen für ein gutes Clustering und nutze dann die native Miro AI, um ähnliche Ideen zu gruppieren."
+          },
+          "flowInstruction": {
+            "de": "Mache die blauen Ideen clusterfähig. Das eigentliche Clustering erfolgt anschließend durch Menschen mit nativer Miro AI, nicht durch die App."
+          },
+          "endpoints": [
+            {
+              "id": "bmcase.ideation.step3.cluster_coach",
+              "familyKey": "selection.coach",
+              "label": {
+                "de": "Cluster vorbereiten"
+              },
+              "summary": {
+                "de": "Coacht die Vorbereitung der blauen Use-Case-Ideen für das native Miro-AI-Clustering."
+              },
+              "scope": {
+                "mode": "current",
+                "allowedCanvasTypeIds": [
+                  "datentreiber-business-model-case"
+                ]
+              },
+              "prompt": {
+                "text": {
+                  "de": "Du arbeitest auf dem Canvas Business Model / Case. Diese Übung bleibt auf einem Einzelcanvas ohne Cross-Canvas-Handoff.\n\nSchrittkontext: Cluster Readiness & Miro AI.\nDie Menschen wählen die blauen Use-Case-Ideen aus und nutzen anschließend Miro AI zum Clustern.\nUnsere App clustert hier nicht selbst.\n\nCoache mit 3 bis 5 Leitfragen und genau einem Mikroschritt.\nHilf bei:\n- gleicher Granularität der blauen Notes,\n- klaren Problem:/Solution:/Benefit:-Präfixen,\n- Reduktion offensichtlicher Dubletten,\n- sinnvoller Nähe zum adressierten Business-Element,\n- Vorbereitung einer guten Miro-AI-Clusterung.\n\nKeine Board-Mutationen.\nKein Score."
+                }
+              },
+              "run": {
+                "mutationPolicy": "none",
+                "feedbackPolicy": "text",
+                "allowedExecutionModes": [
+                  "none"
+                ],
+                "allowedActions": []
+              },
+              "surface": {
+                "channel": "board_button",
+                "group": "secondary",
+                "sidecarOnly": false,
+                "seedByDefault": false
+              },
+              "order": 1
+            },
+            {
+              "id": "bmcase.ideation.step3.cluster_check",
+              "familyKey": "selection.check",
+              "label": {
+                "de": "Cluster-Reife prüfen"
+              },
+              "summary": {
+                "de": "Prüft, ob die blauen Notes reif für das Miro-AI-Clustering sind."
+              },
+              "scope": {
+                "mode": "current",
+                "allowedCanvasTypeIds": [
+                  "datentreiber-business-model-case"
+                ]
+              },
+              "prompt": {
+                "text": {
+                  "de": "Du arbeitest auf dem Canvas Business Model / Case. Diese Übung bleibt auf einem Einzelcanvas ohne Cross-Canvas-Handoff.\n\nSchrittkontext: Cluster Readiness & Miro AI.\nPrüfe qualitativ:\n- Sind die blauen Notes ausreichend präzise?\n- Gibt es offensichtliche Dubletten?\n- Sind Problem:, Solution: und Benefit: sinnvoll verwendet?\n- Sind ähnliche Ideen bereits sichtbar gruppiert oder noch wild verstreut?\n- Wäre Miro-AI-Clustering jetzt sinnvoll oder sollte vorher noch bereinigt werden?\n\nKeine Board-Mutationen.\nKeine numerische Bewertung."
+                }
+              },
+              "run": {
+                "mutationPolicy": "none",
+                "feedbackPolicy": "text",
+                "allowedExecutionModes": [
+                  "none"
+                ],
+                "allowedActions": []
+              },
+              "surface": {
+                "channel": "board_button",
+                "group": "primary",
+                "sidecarOnly": false,
+                "seedByDefault": false
+              },
+              "order": 2
+            },
+            {
+              "id": "bmcase.ideation.step3.cluster_review",
+              "familyKey": "selection.review",
+              "label": {
+                "de": "Cluster reviewen"
+              },
+              "summary": {
+                "de": "Reviewt vorhandene Cluster oder Cluster-Vorbereitung qualitativ."
+              },
+              "scope": {
+                "mode": "current",
+                "allowedCanvasTypeIds": [
+                  "datentreiber-business-model-case"
+                ]
+              },
+              "prompt": {
+                "text": {
+                  "de": "Du arbeitest auf dem Canvas Business Model / Case. Diese Übung bleibt auf einem Einzelcanvas ohne Cross-Canvas-Handoff.\n\nSchrittkontext: Cluster Readiness & Miro AI.\nWenn auf dem Board bereits sichtbare Cluster oder gruppierte blaue Notes vorhanden sind, bewerte deren Plausibilität.\nWenn noch keine Cluster sichtbar sind, bewerte nur die Cluster-Reife.\n\nAchte auf:\n- konsistente Clustergrenzen\n- verständliche Domain-Namen\n- Dubletten über Cluster hinweg\n- verbleibende unklare blaue Notes\n- sinnvolle Vorbereitung für den nächsten Schritt Human Voting\n\nKeine Board-Mutationen.\nKein Score."
+                }
+              },
+              "run": {
+                "mutationPolicy": "none",
+                "feedbackPolicy": "text",
+                "allowedExecutionModes": [
+                  "none"
+                ],
+                "allowedActions": []
+              },
+              "surface": {
+                "channel": "board_button",
+                "group": "primary",
+                "sidecarOnly": false,
+                "seedByDefault": false
+              },
+              "order": 3
+            },
+            {
+              "id": "business-model-case-ai-usecase-ideation-v1.step3_cluster_readiness_and_miro_ai.chat_submit",
+              "familyKey": null,
+              "label": {
+                "de": "Frage stellen"
+              },
+              "summary": {
+                "de": "Beantwortet Fragen zum aktuellen Schritt."
+              },
+              "scope": {
+                "mode": "current",
+                "allowedCanvasTypeIds": [
+                  "datentreiber-business-model-case"
+                ]
+              },
+              "prompt": {
+                "text": {
+                  "de": "Du arbeitest auf dem Canvas Business Model / Case. Diese Übung bleibt auf einem Einzelcanvas ohne Cross-Canvas-Handoff.\n\nSchrittkontext: Cluster Readiness & Miro AI. Blaue Use-Case-Ideen werden für das Clustering bereinigt; das eigentliche Clustering erfolgt nativ mit Miro AI durch die Menschen.\n\nAntworte instanzbezogen, verständlich und hilfreich auf Fragen zu diesem Canvas und zu genau diesem Schritt.\nDer sichtbare Boardzustand ist die Wahrheit. Rechne damit, dass Menschen zwischen den Schritten manuelle Änderungen vorgenommen haben.\n\nAntworte erklärend zu Cluster-Reife, Miro-AI-Clusterung und Domain-Bildung. Bleibe bei executionMode = none.\n\nWenn conversationContext sichtbar ist, beantworte Rückfragen in Bezug auf den letzten Vorschlag oder die letzte Antwort.\nWenn keine konkrete Board-Ausarbeitung verlangt wird, bleibe bei executionMode = none.\nNur wenn die Frage ausdrücklich nach einer kleinen konkreten Board-Ausarbeitung in genau diesem Schritt verlangt, darfst du proposal_only wählen.\nHalluziniere keinen Kontext außerhalb des sichtbaren Boards."
+                }
+              },
+              "run": {
+                "mutationPolicy": "none",
+                "feedbackPolicy": "text",
+                "allowedExecutionModes": [
+                  "none"
+                ],
+                "allowedActions": []
+              },
+              "surface": {
+                "channel": "chat_submit",
+                "group": "hidden",
+                "sidecarOnly": false,
+                "seedByDefault": false
+              },
+              "order": 4
+            }
+          ],
+          "transitions": []
+        },
+        "step4_human_voting_and_ai_recommendation": {
+          "id": "step4_human_voting_and_ai_recommendation",
+          "label": {
+            "de": "Human Voting & AI Recommendation"
+          },
+          "summary": {
+            "de": "Menschen voten; die KI liest sichtbare Signale und gibt nur qualitative Empfehlungen oder eine knappe Verdichtung."
+          },
+          "visibleInstruction": {
+            "de": "Lass Menschen über die blauen Use-Case-Ideen oder Cluster abstimmen. Nutze die KI danach nur für qualitative Review- und Empfehlungslogik."
+          },
+          "flowInstruction": {
+            "de": "Das Voting machen Menschen. Die KI darf nur sichtbare Voting-Signale lesen und daraus qualitative Empfehlungen oder kurze Check-Notizen ableiten."
+          },
+          "endpoints": [
+            {
+              "id": "bmcase.ideation.step4.voting_coach",
+              "familyKey": "selection.coach",
+              "label": {
+                "de": "Voting coachen"
+              },
+              "summary": {
+                "de": "Erklärt das menschliche Voting und den Umgang mit sichtbaren Votes."
+              },
+              "scope": {
+                "mode": "current",
+                "allowedCanvasTypeIds": [
+                  "datentreiber-business-model-case"
+                ]
+              },
+              "prompt": {
+                "text": {
+                  "de": "Du arbeitest auf dem Canvas Business Model / Case. Diese Übung bleibt auf einem Einzelcanvas ohne Cross-Canvas-Handoff.\n\nSchrittkontext: Human Voting & AI Recommendation.\nWichtig:\n- Das Voting machen immer Menschen.\n- Die KI stimmt nicht ab.\n- Wenn möglich, sollte eine Miro Voting Session auf den blauen Sticky Notes oder Clustern genutzt werden.\n\nCoache mit 3 bis 5 Leitfragen und genau einem Mikroschritt.\nHilf bei:\n- Was genau sollte abgestimmt werden?\n- Einzelne blaue Ideen oder bereits gebildete Cluster?\n- Sind die Kandidaten vergleichbar genug?\n- Ist das Modell tragfähig genug, um sinnvoll zu voten?\n- Sind sichtbare Voting-Signale später auswertbar?\n\nKeine Board-Mutationen.\nKein Score."
+                }
+              },
+              "run": {
+                "mutationPolicy": "none",
+                "feedbackPolicy": "text",
+                "allowedExecutionModes": [
+                  "none"
+                ],
+                "allowedActions": []
+              },
+              "surface": {
+                "channel": "board_button",
+                "group": "secondary",
+                "sidecarOnly": false,
+                "seedByDefault": false
+              },
+              "order": 1
+            },
+            {
+              "id": "bmcase.ideation.step4.voting_review",
+              "familyKey": "selection.review",
+              "label": {
+                "de": "Voting reviewen"
+              },
+              "summary": {
+                "de": "Reviewt sichtbare Votes oder Voting-Signale qualitativ, ohne Entscheidungen zu erzwingen."
+              },
+              "scope": {
+                "mode": "current",
+                "allowedCanvasTypeIds": [
+                  "datentreiber-business-model-case"
+                ]
+              },
+              "prompt": {
+                "text": {
+                  "de": "Du arbeitest auf dem Canvas Business Model / Case. Diese Übung bleibt auf einem Einzelcanvas ohne Cross-Canvas-Handoff.\n\nSchrittkontext: Human Voting & AI Recommendation.\nPrüfe sichtbare Voting-Signale qualitativ.\nWenn votingContext verfügbar ist, nutze ihn als menschliches Präferenzsignal.\nWenn votingContext nicht verfügbar ist, interpretiere nur sichtbare Punkte, Markierungen oder Anordnungen — und nenne klar, wenn keine belastbaren Voting-Daten vorhanden sind.\n\nAchte auf:\n- Sind die Top-Ideen oder Top-Cluster im sichtbaren Geschäftsmodell plausibel verankert?\n- Wirkt das Voting konsistent oder rein oberflächlich?\n- Gibt es sichtbare Kandidaten mit hoher Aufmerksamkeit, aber schwacher fachlicher Verankerung?\n- Welche Idee oder Domäne wirkt robust, welche eher fragil?\n\nKeine numerische Bewertung.\nKeine Board-Mutationen."
+                }
+              },
+              "run": {
+                "mutationPolicy": "none",
+                "feedbackPolicy": "text",
+                "allowedExecutionModes": [
+                  "none"
+                ],
+                "allowedActions": []
+              },
+              "surface": {
+                "channel": "board_button",
+                "group": "primary",
+                "sidecarOnly": false,
+                "seedByDefault": false
+              },
+              "order": 2
+            },
+            {
+              "id": "bmcase.ideation.step4.grade",
+              "familyKey": "selection.grade",
+              "label": {
+                "de": "Empfehlung graden"
+              },
+              "summary": {
+                "de": "Gibt eine qualitative 5-Sterne-Empfehlung auf Basis von Modellankern und menschlichem Voting."
+              },
+              "scope": {
+                "mode": "current",
+                "allowedCanvasTypeIds": [
+                  "datentreiber-business-model-case"
+                ]
+              },
+              "prompt": {
+                "text": {
+                  "de": "Du arbeitest auf dem Canvas Business Model / Case. Diese Übung bleibt auf einem Einzelcanvas ohne Cross-Canvas-Handoff.\n\nSchrittkontext: Human Voting & AI Recommendation.\nGib eine qualitative Empfehlung, kein automatisches Urteil.\nWenn votingContext verfügbar ist, nutze ihn als menschliches Präferenzsignal.\nWenn votingContext nicht verfügbar ist, bleibe ausdrücklich bei einer qualitativen Empfehlung ohne behauptetes Voting-Ergebnis.\n\nBewerte nur auf Basis sichtbarer Informationen:\n- fachliche Verankerung im Geschäftsmodell\n- Klarheit und Substanz der Idee oder Domäne\n- sichtbare menschliche Präferenzsignale, falls vorhanden\n\nNutze im evaluation.score eine 5-Sterne-Empfehlung als String, zum Beispiel:\n- \"★★★★★\"\n- \"★★★☆☆\"\n- \"★☆☆☆☆\"\n\nDas ist nur eine Empfehlung, keine Entscheidung.\nKeine Board-Mutationen."
+                }
+              },
+              "run": {
+                "mutationPolicy": "none",
+                "feedbackPolicy": "text",
+                "allowedExecutionModes": [
+                  "none"
+                ],
+                "allowedActions": []
+              },
+              "surface": {
+                "channel": "board_button",
+                "group": "primary",
+                "sidecarOnly": false,
+                "seedByDefault": false
+              },
+              "order": 3
+            },
+            {
+              "id": "bmcase.ideation.step4.synthesize",
+              "familyKey": "selection.synthesize",
+              "label": {
+                "de": "Fokus verdichten"
+              },
+              "summary": {
+                "de": "Verdichtet den aktuellen Stand in 1 bis 3 kurze Check-Notizen."
+              },
+              "scope": {
+                "mode": "current",
+                "allowedCanvasTypeIds": [
+                  "datentreiber-business-model-case"
+                ]
+              },
+              "prompt": {
+                "text": {
+                  "de": "Du arbeitest auf dem Canvas Business Model / Case. Diese Übung bleibt auf einem Einzelcanvas ohne Cross-Canvas-Handoff.\n\nSchrittkontext: Human Voting & AI Recommendation.\nVerdichte den aktuellen Stand in 1 bis 3 kurze, hilfreiche Notizen im Feld 11_check.\nDiese Notizen sollen keine Entscheidung erzwingen, sondern den sichtbaren Stand knapp interpretieren.\n\nRegeln:\n- Nur kurze Aussagen.\n- Keine erfundenen Voting-Ergebnisse.\n- Wenn votes sichtbar sind, darfst du sie knapp interpretieren.\n- Wenn keine votes sichtbar sind, benenne die Empfehlung als qualitative Tendenz.\n- Schreibe keine langen Sätze.\n- Verwende bevorzugt weiße Notizen für solche knappen Check-/Decision-/Task-Hinweise.\n\nBeispiele:\n- \"Likely focus: Marketing Analytics\"\n- \"Votes visible, but shallow\"\n- \"Strong model anchor\"\n\nNutze executionMode = proposal_only."
+                }
+              },
+              "run": {
+                "mutationPolicy": "minimal",
+                "feedbackPolicy": "text",
+                "allowedExecutionModes": [
+                  "proposal_only"
+                ],
+                "allowedActions": [
+                  "create_sticky",
+                  "move_sticky",
+                  "delete_sticky",
+                  "create_connector",
+                  "set_sticky_color",
+                  "set_check_status"
+                ],
+                "allowedActionAreas": [
+                  "11_check",
+                  "sorted_out_right"
+                ]
+              },
+              "surface": {
+                "channel": "board_button",
+                "group": "proposal",
+                "sidecarOnly": false,
+                "seedByDefault": false
+              },
+              "order": 4
+            },
+            {
+              "id": "business-model-case-ai-usecase-ideation-v1.step4_human_voting_and_ai_recommendation.chat_apply",
+              "familyKey": null,
+              "label": {
+                "de": "Vorschläge anwenden"
+              },
+              "summary": {
+                "de": "Wendet den zuletzt erzeugten Vorschlag dieses Schritts an."
+              },
+              "scope": {
+                "mode": "current",
+                "allowedCanvasTypeIds": [
+                  "datentreiber-business-model-case"
+                ]
+              },
+              "prompt": {
+                "text": {
+                  "de": "Du arbeitest auf dem Canvas Business Model / Case.\n\nSchrittkontext: Human Voting & AI Recommendation. Menschen stimmen über die Use-Case-Ideen oder Cluster ab; die KI gibt auf Basis sichtbarer Informationen nur qualitative Empfehlungen.\n\nWende nur den bereits gespeicherten Vorschlag für diesen Schritt an.\nKeine neue inhaltliche Analyse, keine neue Planung, kein neues Feedback."
+                }
+              },
+              "run": {
+                "mutationPolicy": "minimal",
+                "feedbackPolicy": "text",
+                "allowedExecutionModes": [
+                  "direct_apply"
+                ],
+                "allowedActions": [
+                  "create_sticky",
+                  "move_sticky",
+                  "delete_sticky",
+                  "create_connector",
+                  "set_sticky_color",
+                  "set_check_status"
+                ],
+                "allowedActionAreas": []
+              },
+              "surface": {
+                "channel": "chat_apply",
+                "group": "hidden",
+                "sidecarOnly": false,
+                "seedByDefault": false
+              },
+              "order": 5
+            },
+            {
+              "id": "business-model-case-ai-usecase-ideation-v1.step4_human_voting_and_ai_recommendation.chat_submit",
+              "familyKey": null,
+              "label": {
+                "de": "Frage stellen"
+              },
+              "summary": {
+                "de": "Beantwortet Fragen zum aktuellen Schritt."
+              },
+              "scope": {
+                "mode": "current",
+                "allowedCanvasTypeIds": [
+                  "datentreiber-business-model-case"
+                ]
+              },
+              "prompt": {
+                "text": {
+                  "de": "Du arbeitest auf dem Canvas Business Model / Case. Diese Übung bleibt auf einem Einzelcanvas ohne Cross-Canvas-Handoff.\n\nSchrittkontext: Human Voting & AI Recommendation. Menschen stimmen über die Use-Case-Ideen oder Cluster ab; die KI gibt auf Basis sichtbarer Informationen nur qualitative Empfehlungen.\n\nAntworte instanzbezogen, verständlich und hilfreich auf Fragen zu diesem Canvas und zu genau diesem Schritt.\nDer sichtbare Boardzustand ist die Wahrheit. Rechne damit, dass Menschen zwischen den Schritten manuelle Änderungen vorgenommen haben.\n\nAntworte zu menschlichem Voting, sichtbaren Votes und qualitativer Empfehlung. Wenn die Frage ausdrücklich nach einer knappen Check-Verdichtung fragt, darfst du proposal_only für kurze Notizen in 11_check verwenden.\n\nWenn conversationContext sichtbar ist, beantworte Rückfragen in Bezug auf den letzten Vorschlag oder die letzte Antwort.\nWenn keine konkrete Board-Ausarbeitung verlangt wird, bleibe bei executionMode = none.\nNur wenn die Frage ausdrücklich nach einer kleinen konkreten Board-Ausarbeitung in genau diesem Schritt verlangt, darfst du proposal_only wählen.\nHalluziniere keinen Kontext außerhalb des sichtbaren Boards."
+                }
+              },
+              "run": {
+                "mutationPolicy": "minimal",
+                "feedbackPolicy": "text",
+                "allowedExecutionModes": [
+                  "none",
+                  "proposal_only"
+                ],
+                "allowedActions": [
+                  "create_sticky",
+                  "move_sticky",
+                  "delete_sticky",
+                  "create_connector",
+                  "set_sticky_color",
+                  "set_check_status"
+                ],
+                "allowedActionAreas": [
+                  "11_check",
+                  "sorted_out_right"
+                ]
+              },
+              "surface": {
+                "channel": "chat_submit",
+                "group": "hidden",
+                "sidecarOnly": false,
+                "seedByDefault": false
+              },
+              "order": 6
             }
           ],
           "transitions": []

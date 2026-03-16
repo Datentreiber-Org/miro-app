@@ -12,6 +12,10 @@ export const ANALYTICS_AI_USE_CASE_TEMPLATE_ID = "datentreiber-analytics-ai-use-
 export const ANALYTICS_AI_USE_CASE_IMAGE_URL =
   "https://www.datentreiber.com/wp-content/uploads/2024/08/Datentreiber_EN_Analytics-AI-Use-Case_v1-1_20240610.png";
 
+export const BUSINESS_MODEL_CASE_TEMPLATE_ID = "datentreiber-business-model-case";
+export const BUSINESS_MODEL_CASE_IMAGE_URL =
+  "https://www.datentreiber.com/wp-content/uploads/2024/12/Datentreiber_EN_Business-Model-Case_v1-1_20240710.png";
+
 // Template-Katalog: Canvas-Typ-Erkennung über PNG-URL
 export const DT_TEMPLATE_CATALOG = {
   [TEMPLATE_ID]: {
@@ -137,6 +141,105 @@ Connector-Regeln:
   - Benefit -> adressierter Gain, Pain, Objective, Result, Decision oder Action
 - Gains und Pains brauchen nicht automatisch Connectoren.
 - Verwende lieber wenige gute Connectoren als viele.`.trim()
+  },
+  [BUSINESS_MODEL_CASE_TEMPLATE_ID]: {
+    canvasTypeId: BUSINESS_MODEL_CASE_TEMPLATE_ID,
+    displayName: "Business Model / Case",
+    agentLabelPrefix: "Business Model / Case",
+    thumbnailUrl: BUSINESS_MODEL_CASE_IMAGE_URL,
+    imageUrl: BUSINESS_MODEL_CASE_IMAGE_URL,
+    assetWidthPx: 4550,
+    assetHeightPx: 3219,
+    insertWidthPx: 4550,
+    promptContext: `Canvas-Weltmodell für Business Model / Case:
+- Dieses Canvas beschreibt ein Geschäftsmodell oder einen Business Case als zusammenhängendes Wertschöpfungssystem.
+- Die rechte Seite beschreibt Markt, Kunden und Zugang.
+- Die linke Seite beschreibt operative und strukturelle Leistungsfähigkeit.
+- Die untere Seite beschreibt wirtschaftliche Tragfähigkeit.
+- Das Feld Check in der Mitte unten ist ein spätes Struktur- und Plausibilitätsfeld, kein Sammelfeld für neue Ideen.
+- Sorted-out links/rechts sind Parkbereiche für Alternativen, Nebenthemen oder bewusst zurückgestellte Inhalte.
+
+Verwende für area bzw. targetArea ausschließlich diese Area-Keys:
+- header = Header: Fokus des Canvas, z. B. aktuelles Geschäftsmodell, Business Case, B2C/B2B, Zielmarkt oder Zeithorizont.
+- 2abc_users_buyers_decision_makers = Users / Buyers / Decision Makers
+- 3a_solutions = Solutions
+- 3b_benefits = Benefits
+- 4_channels = Channels
+- 5_relationships = Relationships
+- 6_resources = Resources
+- 7_activities = Activities
+- 8_partnerships = Partnerships
+- 9_revenues_advantages = Revenues & Advantages
+- 10_cost_risks = Costs & Risks
+- 11_check = Check
+- sorted_out_left = seitlicher Sorted-out-Bereich links außerhalb des sichtbaren Canvas
+- sorted_out_right = seitlicher Sorted-out-Bereich rechts außerhalb des sichtbaren Canvas
+
+Visuelle Orientierung:
+- header liegt oben.
+- 2abc_users_buyers_decision_makers liegt ganz rechts.
+- 3a_solutions und 3b_benefits liegen mittig.
+- 4_channels und 5_relationships liegen rechts der Mitte.
+- 6_resources, 7_activities und 8_partnerships liegen links.
+- 9_revenues_advantages und 10_cost_risks liegen unten.
+- 11_check liegt mittig unten als kleine Brücke zwischen Ertrag und Aufwand.
+- Footer/Legende ist kein Arbeitsbereich.
+
+Farblogik:
+- Grün = bestehendes Element.
+- Gelb = geplantes oder in Arbeit befindliches Element.
+- Rot = fehlendes Element, Problem oder Lücke im Business Model.
+- Blau = Use-Case-Idee, Problem / Frage, Lösung oder Benefit.
+- Weiß = kritische Annahme, offene Frage, Insight, Decision oder Task.
+
+Sticky-Regeln:
+- Business-Model-Elemente sehr kurz halten.
+- Bevorzugt 1 bis 4 Wörter, maximal kurze Nominalphrasen.
+- Eine Sticky = ein Element.
+- Blaue Use-Case-Ideen dürfen etwas länger sein, bleiben aber knapp.
+- Blaue Use-Case-Ideen beginnen möglichst mit:
+  - "Problem:"
+  - "Solution:"
+  - "Benefit:"
+- Keine langen Erklärsätze auf normalen Element-Stickies.
+- Begründungen gehören ins Feedback, nicht auf die Sticky.
+
+Arbeitslogik:
+1) Fokus im Header klären.
+2) Geschäftsmodell in den Kernfeldern sichtbar machen.
+3) Bestehende, geplante und fehlende Elemente farblich unterscheiden.
+4) Dann blaue Use-Case-Ideen an relevante Business-Elemente andocken.
+5) Ähnliche Use-Case-Ideen für ein späteres Clustering vorbereiten.
+6) Priorisierung niemals erfinden, sondern nur sichtbare menschliche Votes oder Markierungen interpretieren.
+
+Connector-Regeln:
+- Connectoren nur für explizite Beziehungen.
+- Typische sinnvolle Beziehungen:
+  - Partnerships -> Resources / Activities
+  - Resources -> Activities
+  - Solutions -> Benefits
+  - Channels / Relationships -> Users / Buyers / Decision Makers
+- Use-Case-Ideen nur dann verbinden, wenn die Beziehung sonst unklar wäre.
+- Clusterbildung geschieht primär über räumliche Gruppierung, nicht über viele Connectoren.
+
+Priorisierung:
+- Stimmen, Punkte oder Prioritäten niemals erfinden.
+- Wenn sichtbare manuelle Votes, Punkte, Markierungen oder explizite Rangfolgen vorhanden sind, darfst du diese interpretieren.
+- Wenn keine Votes sichtbar sind, gib nur qualitative Empfehlungen, aber keinen Gewinner als Fakt aus.
+
+Beispielhafte kurze Business-Elemente:
+- "Suppliers"
+- "Retailers"
+- "Chocolate Bars"
+- "Brand loyalty"
+- "Retail sales"
+- "Operational Costs"
+
+Beispielhafte blaue Use-Case-Ideen:
+- "Problem: Which customer groups buy which products?"
+- "Problem: What's the ROI of social media marketing?"
+- "Solution: Location-based analysis and promotions"
+- "Benefit: More effective ad campaigns"`.trim()
   }
 };
 
@@ -518,6 +621,117 @@ export const DT_CANVAS_DEFS = {
         ]
       }
     ]
+  },
+  [BUSINESS_MODEL_CASE_TEMPLATE_ID]: {
+    originalWidth: 1000,
+    originalHeight: 720,
+    headerPolygons: [
+      {
+        id: "1a_header",
+        title: "Header",
+        polygonNorm: [
+          [0.1600, 0.0194],[0.6850, 0.0194],[0.6850, 0.0958],[0.1600, 0.0958]
+        ]
+      }
+    ],
+    footerPolygons: [
+      {
+        id: "1b_footer",
+        title: "Footer",
+        polygonNorm: [
+          [0.0130, 0.9347],[0.5710, 0.9347],[0.5710, 0.9792],[0.0130, 0.9792]
+        ]
+      }
+    ],
+    regionPolygons: [
+      {
+        id: "2abc_users_buyers_decision_makers",
+        title: "Users / Buyers / Decision Makers",
+        polygonNorm: [
+          [0.9770, 0.1181],[0.9350, 0.1208],[0.8980, 0.1389],[0.8650, 0.1625],
+          [0.8340, 0.2000],[0.8110, 0.2333],[0.7930, 0.2736],[0.7800, 0.3236],
+          [0.7730, 0.3639],[0.7710, 0.4083],[0.7730, 0.4514],[0.7820, 0.4958],
+          [0.7960, 0.5389],[0.8150, 0.5806],[0.8370, 0.6111],[0.8640, 0.6417],
+          [0.8910, 0.6625],[0.9170, 0.6778],[0.9470, 0.6875],[0.9770, 0.6903]
+        ]
+      },
+      {
+        id: "3a_solutions",
+        title: "Solutions",
+        polygonNorm: [
+          [0.4080, 0.1181],[0.5930, 0.1181],[0.5910, 0.4014],[0.4940, 0.4236],[0.4080, 0.4014]
+        ]
+      },
+      {
+        id: "3b_benefits",
+        title: "Benefits",
+        polygonNorm: [
+          [0.4070, 0.6917],[0.5920, 0.6903],[0.5920, 0.4042],[0.4940, 0.4264],[0.4080, 0.4042]
+        ]
+      },
+      {
+        id: "4_channels",
+        title: "Channels",
+        polygonNorm: [
+          [0.6010, 0.1139],[0.6020, 0.4000],[0.7650, 0.3986],[0.7680, 0.3375],
+          [0.7800, 0.2861],[0.7970, 0.2417],[0.8190, 0.2014],[0.8440, 0.1694],
+          [0.8730, 0.1417],[0.8940, 0.1278],[0.9230, 0.1139]
+        ]
+      },
+      {
+        id: "5_relationships",
+        title: "Relationships",
+        polygonNorm: [
+          [0.6000, 0.4083],[0.7650, 0.4083],[0.7670, 0.4514],[0.7740, 0.4931],
+          [0.7850, 0.5319],[0.8000, 0.5681],[0.8180, 0.6014],[0.8470, 0.6375],
+          [0.8720, 0.6611],[0.8940, 0.6764],[0.9220, 0.6889],[0.5990, 0.6889]
+        ]
+      },
+      {
+        id: "6_resources",
+        title: "Resources",
+        polygonNorm: [
+          [0.3980, 0.3958],[0.3980, 0.1139],[0.0270, 0.1139],[0.2390, 0.3958]
+        ]
+      },
+      {
+        id: "7_activities",
+        title: "Activities",
+        polygonNorm: [
+          [0.3970, 0.6875],[0.3980, 0.4111],[0.2380, 0.4083],[0.0270, 0.6903]
+        ]
+      },
+      {
+        id: "8_partnerships",
+        title: "Partnerships",
+        polygonNorm: [
+          [0.0220, 0.6806],[0.0220, 0.1236],[0.2310, 0.4042]
+        ]
+      },
+      {
+        id: "9_revenues_advantages",
+        title: "Revenues & Advantages",
+        polygonNorm: [
+          [0.5030, 0.8403],[0.5040, 0.8875],[0.9780, 0.8889],[0.9790, 0.7000],
+          [0.5030, 0.6986],[0.5030, 0.7500],[0.5330, 0.7500],[0.5330, 0.8403]
+        ]
+      },
+      {
+        id: "10_cost_risks",
+        title: "Costs & Risks",
+        polygonNorm: [
+          [0.0210, 0.7028],[0.0210, 0.8861],[0.4960, 0.8889],[0.4960, 0.8403],
+          [0.4670, 0.8389],[0.4670, 0.7500],[0.4960, 0.7500],[0.4960, 0.7014]
+        ]
+      },
+      {
+        id: "11_check",
+        title: "Check",
+        polygonNorm: [
+          [0.4700, 0.7542],[0.5300, 0.7542],[0.5300, 0.8361],[0.4700, 0.8361]
+        ]
+      }
+    ]
   }
 };
 
@@ -627,11 +841,12 @@ Zusatz für ${modeLabel}:
 
 function buildStickyStyleRulesBlock() {
   return `Wenn du create_sticky oder move_sticky nutzt:
-- Formuliere Sticky-Texte sehr kurz.
+- Formuliere Sticky-Texte standardmäßig sehr kurz.
 - Bevorzuge 2 bis 5 Wörter.
 - Eine Sticky = ein Gedanke.
 - Keine Sätze.
 - Keine Bulletlisten.
+- Canvas-spezifische Regeln dürfen für bestimmte Sticky-Typen bewusst etwas längere Texte erlauben.
 - Begründungen gehören ins Feedback, nicht auf die Sticky.`;
 }
 
@@ -671,6 +886,9 @@ export const DT_PROMPT_CATALOG = {
     system: buildSelectionSystemPrompt()
   },
   [ANALYTICS_AI_USE_CASE_TEMPLATE_ID]: {
+    system: buildSelectionSystemPrompt()
+  },
+  [BUSINESS_MODEL_CASE_TEMPLATE_ID]: {
     system: buildSelectionSystemPrompt()
   }
 };

@@ -1,4 +1,4 @@
-import { UI_STRINGS } from "./catalog.js?v=20260315-patch15-flow-endpoint-overrides";
+import { UI_STRINGS } from "./catalog.js?v=20260316-patch18-business-model-case-pack";
 
 export const SUPPORTED_UI_LANGUAGES = Object.freeze(["de", "en"]);
 export const DEFAULT_UI_LANGUAGE = "de";

@@ -1,5 +1,5 @@
-import { isFiniteNumber } from "../utils.js?v=20260315-patch17-analytics-prompt-refresh2";
-import { ensureMiroReady, getBoard } from "./sdk.js?v=20260315-patch17-analytics-prompt-refresh2";
+import { isFiniteNumber } from "../utils.js?v=20260316-patch18-business-model-case-pack";
+import { ensureMiroReady, getBoard } from "./sdk.js?v=20260316-patch18-business-model-case-pack";
 
 const STICKY_RECT_FALLBACK = Object.freeze({ width: 350, height: 228 });
 

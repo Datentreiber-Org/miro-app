@@ -1,4 +1,9 @@
-export { ensureMiroReady, getBoard, registerSelectionUpdateHandler } from "./sdk.js?v=20260315-patch17-analytics-prompt-refresh2";
+import {
+  ensureMiroReady as ensureMiroReadyInternal,
+  getBoard as getBoardInternal
+} from "./sdk.js?v=20260316-patch18-business-model-case-pack";
+
+export { ensureMiroReady, getBoard, registerSelectionUpdateHandler } from "./sdk.js?v=20260316-patch18-business-model-case-pack";
 
 export {
   normalizeBoardConfig,
@@ -30,12 +35,28 @@ export {
   normalizeBoardRunState,
   loadBoardRunState,
   saveBoardRunState
-} from "./storage.js?v=20260315-patch15-flow-endpoint-overrides";
+} from "./storage.js?v=20260316-patch18-business-model-case-pack";
+
+export async function getVotingResults(log) {
+  await ensureMiroReadyInternal(log);
+  const board = getBoardInternal();
+  if (typeof board?.experimental?.getVotingResults !== "function") return null;
+
+  try {
+    return await board.experimental.getVotingResults();
+  } catch (error) {
+    if (typeof log === "function") {
+      log("Hinweis: Voting-Ergebnisse konnten nicht geladen werden: " + (error?.message || String(error)));
+    }
+    return null;
+  }
+}
+
 
 export {
   buildAgentFeedbackContent,
   buildQuestionAnswerContent
-} from "./feedback.js?v=20260315-patch17-analytics-prompt-refresh2";
+} from "./feedback.js?v=20260316-patch18-business-model-case-pack";
 
 export {
   normalizeChatInterfaceShapeIds,
@@ -62,7 +83,7 @@ export {
   syncChatProposeButtonState,
   syncChatApplyButtonState,
   syncChatInterfaceLayoutForInstance
-} from "./chat-interface.js?v=20260315-patch14-runtime-cleanup";
+} from "./chat-interface.js?v=20260316-patch18-business-model-case-pack";
 
 export {
   getSelection,
@@ -88,7 +109,7 @@ export {
   setStickyNoteTagPresence,
   setStickyNoteFillColor,
   getBoardBaseContext
-} from "./items.js?v=20260315-patch17-analytics-prompt-refresh2";
+} from "./items.js?v=20260316-patch18-business-model-case-pack";
 
 export {
   readFlowControlMeta,
@@ -97,7 +118,7 @@ export {
   computeSuggestedFlowControlPosition,
   createFlowControlShape,
   syncFlowControlShapeAppearance
-} from "./flow-controls.js?v=20260315-patch17-analytics-prompt-refresh2";
+} from "./flow-controls.js?v=20260316-patch18-business-model-case-pack";
 
 export {
   computeTemplateGeometry,
@@ -106,4 +127,4 @@ export {
   findInstanceByRect,
   registerInstanceFromImage,
   scanTemplateInstances
-} from "./instances.js?v=20260315-patch14-runtime-cleanup";
+} from "./instances.js?v=20260316-patch18-business-model-case-pack";

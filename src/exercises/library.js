@@ -17,7 +17,7 @@ import {
   listStepEndpointsForSurface,
   getEndpointById,
   isSidecarOnlyEndpoint,
-} from "./method-catalog.js?v=20260315-patch17-analytics-prompt-refresh2";
+} from "./method-catalog.js?v=20260316-patch18-business-model-case-pack";
 
 function asNonEmptyString(value) {
   if (typeof value !== "string") return null;

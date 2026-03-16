@@ -1,5 +1,5 @@
-import { asTrimmedString } from "./helpers.js?v=20260315-patch17-analytics-prompt-refresh2";
-import { normalizeUiLanguage, t } from "../i18n/index.js?v=20260315-patch17-analytics-prompt-refresh2";
+import { asTrimmedString } from "./helpers.js?v=20260316-patch18-business-model-case-pack";
+import { normalizeUiLanguage, t } from "../i18n/index.js?v=20260316-patch18-business-model-case-pack";
 
 function normalizeVisibleText(value) {
   const raw = String(value ?? "");

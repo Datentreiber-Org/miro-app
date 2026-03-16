@@ -1,5 +1,6 @@
 import {
   TEMPLATE_ID,
+  BUSINESS_MODEL_CASE_TEMPLATE_ID,
   DT_TEMPLATE_CATALOG,
   DT_CANVAS_DEFS,
   DT_PROMPT_CATALOG,
@@ -11,29 +12,29 @@ import {
   DT_CHECK_TAG_COLOR,
   normalizeStickyColorToken,
   STICKY_LAYOUT
-} from "./config.js?v=20260315-patch17-analytics-prompt-refresh2";
+} from "./config.js?v=20260316-patch18-business-model-case-pack";
 
-import { createLogger, stripHtml, extractUnderlinedText, isFiniteNumber } from "./utils.js?v=20260315-patch17-analytics-prompt-refresh2";
-import { normalizeUiLanguage, t, getLocaleForLanguage } from "./i18n/index.js?v=20260315-patch15-flow-endpoint-overrides";
+import { createLogger, stripHtml, extractUnderlinedText, isFiniteNumber } from "./utils.js?v=20260316-patch18-business-model-case-pack";
+import { normalizeUiLanguage, t, getLocaleForLanguage } from "./i18n/index.js?v=20260316-patch18-business-model-case-pack";
 
-import * as Board from "./miro/board.js?v=20260315-patch15-flow-endpoint-overrides";
-import * as Catalog from "./domain/catalog.js?v=20260315-patch17-analytics-prompt-refresh2";
-import * as OpenAI from "./ai/openai.js?v=20260315-patch17-analytics-prompt-refresh2";
-import * as Memory from "./runtime/memory.js?v=20260315-patch17-analytics-prompt-refresh2";
-import * as Exercises from "./exercises/registry.js?v=20260315-patch17-analytics-prompt-refresh2";
-import * as ExerciseLibrary from "./exercises/library.js?v=20260315-patch17-analytics-prompt-refresh2";
-import * as PromptComposer from "./prompt/composer.js?v=20260315-patch17-analytics-prompt-refresh2";
-import * as ExerciseEngine from "./runtime/exercise-engine.js?v=20260315-patch17-analytics-prompt-refresh2";
-import * as BoardFlow from "./runtime/board-flow.js?v=20260315-patch17-analytics-prompt-refresh2";
-import * as PanelBridge from "./runtime/panel-bridge.js?v=20260315-patch14-runtime-cleanup";
-import { getInsertWidthPxForCanvasType, computeTemplateInsertPosition } from "./app/template-insertion.js?v=20260315-patch17-analytics-prompt-refresh2";
+import * as Board from "./miro/board.js?v=20260316-patch18-business-model-case-pack";
+import * as Catalog from "./domain/catalog.js?v=20260316-patch18-business-model-case-pack";
+import * as OpenAI from "./ai/openai.js?v=20260316-patch18-business-model-case-pack";
+import * as Memory from "./runtime/memory.js?v=20260316-patch18-business-model-case-pack";
+import * as Exercises from "./exercises/registry.js?v=20260316-patch18-business-model-case-pack";
+import * as ExerciseLibrary from "./exercises/library.js?v=20260316-patch18-business-model-case-pack";
+import * as PromptComposer from "./prompt/composer.js?v=20260316-patch18-business-model-case-pack";
+import * as ExerciseEngine from "./runtime/exercise-engine.js?v=20260316-patch18-business-model-case-pack";
+import * as BoardFlow from "./runtime/board-flow.js?v=20260316-patch18-business-model-case-pack";
+import * as PanelBridge from "./runtime/panel-bridge.js?v=20260316-patch18-business-model-case-pack";
+import { getInsertWidthPxForCanvasType, computeTemplateInsertPosition } from "./app/template-insertion.js?v=20260316-patch18-business-model-case-pack";
 import {
   pickFirstNonEmptyString,
   makeDirectedConnectorKey,
   makeUndirectedConnectorKey,
   normalizeAgentAction
-} from "./agent/action-normalization.js?v=20260315-patch17-analytics-prompt-refresh2";
-import { createEmptyActionExecutionStats, mergeActionExecutionStats, summarizeAppliedActions } from "./agent/action-stats.js?v=20260315-patch14-runtime-cleanup";
+} from "./agent/action-normalization.js?v=20260316-patch18-business-model-case-pack";
+import { createEmptyActionExecutionStats, mergeActionExecutionStats, summarizeAppliedActions } from "./agent/action-stats.js?v=20260316-patch18-business-model-case-pack";
 
 // --------------------------------------------------------------------
 // State (Controller-Level)
@@ -2746,6 +2747,93 @@ function getPromptConfigForSelectedInstances(selectedInstanceIds) {
   return DT_PROMPT_CATALOG[firstInst?.canvasTypeId] || DT_PROMPT_CATALOG[TEMPLATE_ID];
 }
 
+function isBusinessModelCasePack(exercisePack) {
+  return exercisePack?.id === "business-model-case-ai-usecase-ideation-v1";
+}
+
+function isBusinessModelVotingStep(currentStep) {
+  return currentStep?.id === "step4_human_voting_and_ai_recommendation";
+}
+
+function listStickyAliasIdsFromActiveCanvasStates(activeCanvasStates) {
+  const aliases = new Set();
+  const states = (activeCanvasStates && typeof activeCanvasStates === "object") ? Object.values(activeCanvasStates) : [];
+  for (const stateEntry of states) {
+    for (const template of Array.isArray(stateEntry?.templates) ? stateEntry.templates : []) {
+      for (const sticky of Array.isArray(template?.header?.stickies) ? template.header.stickies : []) {
+        if (sticky?.id) aliases.add(sticky.id);
+      }
+      for (const area of Array.isArray(template?.areas) ? template.areas : []) {
+        for (const sticky of Array.isArray(area?.stickies) ? area.stickies : []) {
+          if (sticky?.id) aliases.add(sticky.id);
+        }
+      }
+    }
+  }
+  return aliases;
+}
+
+function normalizeVotingSessions(rawResults) {
+  if (Array.isArray(rawResults)) return rawResults;
+  if (rawResults && typeof rawResults === "object") {
+    if (Array.isArray(rawResults.sessions)) return rawResults.sessions;
+    if (Array.isArray(rawResults.results)) return [rawResults];
+  }
+  return [];
+}
+
+function normalizeVotingEntries(session) {
+  if (Array.isArray(session?.results)) return session.results;
+  if (Array.isArray(session?.items)) return session.items;
+  if (Array.isArray(session?.votes)) return session.votes;
+  return [];
+}
+
+async function buildVotingContextForPrompt(activeCanvasStates) {
+  const rawResults = await Board.getVotingResults(log);
+  const sessions = normalizeVotingSessions(rawResults);
+  if (!sessions.length) {
+    return { available: false };
+  }
+
+  const allowedAliasIds = listStickyAliasIdsFromActiveCanvasStates(activeCanvasStates);
+  const voteMap = new Map();
+
+  for (const session of sessions) {
+    for (const entry of normalizeVotingEntries(session)) {
+      const rawItemId = pickFirstNonEmptyString(
+        entry?.itemId,
+        entry?.id,
+        entry?.widgetId
+      );
+      if (!rawItemId) continue;
+
+      const aliasId = state.aliasState?.stickyReverse?.[rawItemId] || null;
+      if (!aliasId) continue;
+      if (allowedAliasIds.size && !allowedAliasIds.has(aliasId)) continue;
+
+      const votes = Number(entry?.count ?? entry?.votes ?? entry?.value ?? 0);
+      if (!Number.isFinite(votes) || votes <= 0) continue;
+
+      voteMap.set(aliasId, (voteMap.get(aliasId) || 0) + votes);
+    }
+  }
+
+  const items = Array.from(voteMap.entries())
+    .map(([stickyId, votes]) => ({ stickyId, votes }))
+    .sort((a, b) => b.votes - a.votes || String(a.stickyId).localeCompare(String(b.stickyId)));
+
+  if (!items.length) {
+    return { available: false };
+  }
+
+  return {
+    available: true,
+    source: "miro_voting_session",
+    items
+  };
+}
+
 async function applyStoredProposalMechanically({
   exercisePack,
   currentStep,
@@ -3068,6 +3156,10 @@ async function runStructuredEndpointExecution({
     const pendingProposalContext = singleInstanceId
       ? await buildPendingProposalContextForPrompt(singleInstanceId, { stepId: activeStepId })
       : null;
+    const votingContext =
+      isBusinessModelCasePack(exercisePack) && isBusinessModelVotingStep(currentStep)
+        ? await buildVotingContextForPrompt(activeCanvasStates)
+        : null;
     const resolvedAllowedActionAreas = resolveAllowedActionAreasForRun({
       endpointContext,
       activeCanvasStates
@@ -3101,7 +3193,8 @@ async function runStructuredEndpointExecution({
       pendingProposalContext,
       conversationContext,
       flowGuidance: flowPromptContext.flowGuidance,
-      allowedActionAreas: resolvedAllowedActionAreas
+      allowedActionAreas: resolvedAllowedActionAreas,
+      votingContext
     };
 
     log("Starte " + resolvedSourceLabel + " via Endpoint '" + endpoint.id + "' für: " + (resolvedActiveLabels.join(", ") || "(keine)") + " ...");
