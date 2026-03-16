@@ -15,12 +15,12 @@ import {
   DT_STORAGE_KEY_PROPOSAL_PREFIX,
   DT_MEMORY_RECENT_LOG_LIMIT,
   DT_EXECUTION_MODES
-} from "../config.js?v=20260316-patch19-analytics-ai-maturity-pack";
+} from "../config.js?v=20260316-patch20-data-monetization-pack";
 
-import { normalizeBoardFlow } from "../runtime/board-flow.js?v=20260316-patch19-analytics-ai-maturity-pack";
-import { normalizeUiLanguage } from "../i18n/index.js?v=20260316-patch19-analytics-ai-maturity-pack";
-import { ensureMiroReady, getBoard } from "./sdk.js?v=20260316-patch19-analytics-ai-maturity-pack";
-import { compareItemIdsAsc, normalizePositiveInt, asTrimmedString } from "./helpers.js?v=20260316-patch19-analytics-ai-maturity-pack";
+import { normalizeBoardFlow } from "../runtime/board-flow.js?v=20260316-patch20-data-monetization-pack";
+import { normalizeUiLanguage } from "../i18n/index.js?v=20260316-patch20-data-monetization-pack";
+import { ensureMiroReady, getBoard } from "./sdk.js?v=20260316-patch20-data-monetization-pack";
+import { compareItemIdsAsc, normalizePositiveInt, asTrimmedString } from "./helpers.js?v=20260316-patch20-data-monetization-pack";
 
 // --------------------------------------------------------------------
 // Storage, board config, baseline, memory and exercise runtime

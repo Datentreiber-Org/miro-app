@@ -1,5 +1,5 @@
-import { isFiniteNumber } from "../utils.js?v=20260316-patch19-analytics-ai-maturity-pack";
-import { ensureMiroReady, getBoard } from "./sdk.js?v=20260316-patch19-analytics-ai-maturity-pack";
+import { isFiniteNumber } from "../utils.js?v=20260316-patch20-data-monetization-pack";
+import { ensureMiroReady, getBoard } from "./sdk.js?v=20260316-patch20-data-monetization-pack";
 
 const STICKY_RECT_FALLBACK = Object.freeze({ width: 350, height: 228 });
 

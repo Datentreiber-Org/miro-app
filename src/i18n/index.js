@@ -1,4 +1,4 @@
-import { UI_STRINGS } from "./catalog.js?v=20260316-patch19-analytics-ai-maturity-pack";
+import { UI_STRINGS } from "./catalog.js?v=20260316-patch20-data-monetization-pack";
 
 export const SUPPORTED_UI_LANGUAGES = Object.freeze(["de", "en"]);
 export const DEFAULT_UI_LANGUAGE = "de";

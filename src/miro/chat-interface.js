@@ -2,12 +2,12 @@ import {
   DT_SHAPE_META_KEY_CHAT_INTERFACE,
   DT_CHAT_INTERFACE_LAYOUT,
   DT_CHAT_INTERFACE_STYLES
-} from "../config.js?v=20260316-patch19-analytics-ai-maturity-pack";
+} from "../config.js?v=20260316-patch20-data-monetization-pack";
 
-import { normalizeUiLanguage, t, allLocaleVariants } from "../i18n/index.js?v=20260316-patch19-analytics-ai-maturity-pack";
-import { ensureMiroReady, getBoard } from "./sdk.js?v=20260316-patch19-analytics-ai-maturity-pack";
-import { asTrimmedString } from "./helpers.js?v=20260316-patch19-analytics-ai-maturity-pack";
-import { getItemById, removeItemById } from "./items.js?v=20260316-patch19-analytics-ai-maturity-pack";
+import { normalizeUiLanguage, t, allLocaleVariants } from "../i18n/index.js?v=20260316-patch20-data-monetization-pack";
+import { ensureMiroReady, getBoard } from "./sdk.js?v=20260316-patch20-data-monetization-pack";
+import { asTrimmedString } from "./helpers.js?v=20260316-patch20-data-monetization-pack";
+import { getItemById, removeItemById } from "./items.js?v=20260316-patch20-data-monetization-pack";
 
 function clamp(value, min, max) {
   const n = Number(value);

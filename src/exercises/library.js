@@ -17,7 +17,7 @@ import {
   listStepEndpointsForSurface,
   getEndpointById,
   isSidecarOnlyEndpoint,
-} from "./method-catalog.js?v=20260316-patch19-analytics-ai-maturity-pack";
+} from "./method-catalog.js?v=20260316-patch20-data-monetization-pack";
 
 function asNonEmptyString(value) {
   if (typeof value !== "string") return null;

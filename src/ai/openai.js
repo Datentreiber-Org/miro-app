@@ -1,4 +1,4 @@
-import { OPENAI_ENDPOINT } from "../config.js?v=20260316-patch19-analytics-ai-maturity-pack";
+import { OPENAI_ENDPOINT } from "../config.js?v=20260316-patch20-data-monetization-pack";
 
 function nullableStringSchema(description = "") {
   return {

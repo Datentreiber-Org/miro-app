@@ -9,14 +9,14 @@ import {
   DT_CHECK_TAG_TITLE,
   normalizeStickyColorToken,
   STICKY_LAYOUT
-} from "../config.js?v=20260316-patch19-analytics-ai-maturity-pack";
+} from "../config.js?v=20260316-patch20-data-monetization-pack";
 import {
   stripHtml,
   isFiniteNumber,
   buildInstanceSignatureFromClassification,
   computeInstanceDiffFromSignatures,
   diffHasChanges
-} from "../utils.js?v=20260316-patch19-analytics-ai-maturity-pack";
+} from "../utils.js?v=20260316-patch20-data-monetization-pack";
 import {
   computeTemplateGeometry,
   buildInstanceGeometryIndex,
@@ -24,7 +24,7 @@ import {
   resolveBoardRect,
   findInstanceByPoint,
   findInstanceByRect
-} from "../miro/board.js?v=20260316-patch19-analytics-ai-maturity-pack";
+} from "../miro/board.js?v=20260316-patch20-data-monetization-pack";
 
 // --------------------------------------------------------------------
 // Canvas Definitions / Region Mapping

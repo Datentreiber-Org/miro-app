@@ -1,4 +1,4 @@
-import { normalizeStickyColorToken } from "../config.js?v=20260316-patch19-analytics-ai-maturity-pack";
+import { normalizeStickyColorToken } from "../config.js?v=20260316-patch20-data-monetization-pack";
 
 export function pickFirstNonEmptyString(...values) {
   for (const value of values) {

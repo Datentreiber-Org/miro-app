@@ -2,10 +2,10 @@ import {
   DT_DEFAULT_APP_ADMIN_POLICY,
   DT_DEFAULT_FEEDBACK_CHANNEL,
   DT_EXECUTION_MODES
-} from "../config.js?v=20260316-patch19-analytics-ai-maturity-pack";
+} from "../config.js?v=20260316-patch20-data-monetization-pack";
 
-import { METHOD_I18N_OVERRIDES } from "../i18n/catalog.js?v=20260316-patch19-analytics-ai-maturity-pack";
-import { normalizeUiLanguage, pickLocalized } from "../i18n/index.js?v=20260316-patch19-analytics-ai-maturity-pack";
+import { METHOD_I18N_OVERRIDES } from "../i18n/catalog.js?v=20260316-patch20-data-monetization-pack";
+import { normalizeUiLanguage, pickLocalized } from "../i18n/index.js?v=20260316-patch20-data-monetization-pack";
 
 function asNonEmptyString(value) {
   if (typeof value !== "string") return null;
@@ -5497,6 +5497,1377 @@ const RAW_METHOD_CATALOG = deepFreeze(JSON.parse(String.raw`{
                 "seedByDefault": false
               },
               "order": 6
+            }
+          ],
+          "transitions": []
+        }
+      }
+    },
+    "data-monetization-product-design-v1": {
+      "exercisePackId": "data-monetization-product-design-v1",
+      "label": {
+        "de": "Data Monetization Product Design"
+      },
+      "version": 1,
+      "description": {
+        "de": "Geführte Einzelcanvas-Übung auf dem Data Monetization Canvas: Fokus klären, Data Value und Data Product definieren, Analytics und Data Sets ausarbeiten, TOP-Anforderungen ableiten und das Gesamtdesign qualitativ reviewen."
+      },
+      "boardMode": "exercise",
+      "allowedCanvasTypeIds": [
+        "datentreiber-data-monetization"
+      ],
+      "defaultCanvasTypeId": "datentreiber-data-monetization",
+      "defaultStepId": "step0_focus_and_input_framing",
+      "defaults": {
+        "feedbackChannel": "text",
+        "userMayChangePack": false,
+        "userMayChangeStep": false,
+        "appAdminPolicy": "ui_toggle"
+      },
+      "steps": {
+        "step0_focus_and_input_framing": {
+          "id": "step0_focus_and_input_framing",
+          "label": {
+            "de": "Focus & Input Framing"
+          },
+          "summary": {
+            "de": "Produkt- oder Use-Case-Fokus im Header festlegen, Kontext sammeln und Scope sauber eingrenzen."
+          },
+          "visibleInstruction": {
+            "de": "Lege zuerst den Fokus fest: Benenne das Daten-/AI-Produkt oder den Use Case im Header und parke Nebenthemen bewusst."
+          },
+          "flowInstruction": {
+            "de": "Starte mit Fokus und Scope. Definiere klar, welches Daten-/AI-Produkt oder welcher Use Case gemeint ist, sammle Input-Kontext links und parke Alternativen bewusst."
+          },
+          "endpoints": [
+            {
+              "id": "datamonet.design.step0.hint",
+              "familyKey": "selection.hint",
+              "label": {
+                "de": "Hinweis geben"
+              },
+              "summary": {
+                "de": "Gibt einen kurzen Hinweis für den nächsten sinnvollen Mikroschritt in Step 0."
+              },
+              "scope": {
+                "mode": "current",
+                "allowedCanvasTypeIds": [
+                  "datentreiber-data-monetization"
+                ]
+              },
+              "prompt": {
+                "text": {
+                  "de": "Du arbeitest auf dem Canvas Data Monetization. Diese Übung bleibt in V1 auf einem Einzelcanvas ohne Cross-Canvas-Handoff.\n\nSchrittkontext: Focus & Input Framing.\nZiel:\n- im Header klar festlegen, welches Daten-/AI-Produkt oder welcher Use Case im Fokus steht,\n- importierten Kontext links sammeln,\n- Nebenthemen bewusst parken.\n\nGib 1 bis 2 kurze nächste Schritte oder Satzstarter.\nArbeite zuerst mit:\n- Header\n- Fokusname des Produkts oder Use Cases\n- sorted_out_left als Input-Lane\n- sorted_out_right als Parkplatz\n\nErzeuge noch keinen Datenfluss und keine TOP-Struktur.\nKeine Board-Mutationen.\nKein Score."
+                }
+              },
+              "run": {
+                "mutationPolicy": "none",
+                "feedbackPolicy": "text",
+                "allowedExecutionModes": [
+                  "none"
+                ],
+                "allowedActions": []
+              },
+              "surface": {
+                "channel": "board_button",
+                "group": "secondary",
+                "sidecarOnly": false,
+                "seedByDefault": false
+              },
+              "order": 1
+            },
+            {
+              "id": "datamonet.design.step0.coach",
+              "familyKey": "selection.coach",
+              "label": {
+                "de": "Fokus coachen"
+              },
+              "summary": {
+                "de": "Coacht den Einstieg mit Leitfragen zu Fokus, Scope und Input-Kontext."
+              },
+              "scope": {
+                "mode": "current",
+                "allowedCanvasTypeIds": [
+                  "datentreiber-data-monetization"
+                ]
+              },
+              "prompt": {
+                "text": {
+                  "de": "Du arbeitest auf dem Canvas Data Monetization. Diese Übung bleibt in V1 auf einem Einzelcanvas ohne Cross-Canvas-Handoff.\n\nSchrittkontext: Focus & Input Framing.\nHilf mit 3 bis 5 Leitfragen und genau einem Mikroschritt.\n\nFokussiere auf:\n- Welches Daten-/AI-Produkt ist gemeint?\n- Welcher Use Case steht dahinter?\n- Was ist Input-Kontext und was schon echtes Canvas-Design?\n- Was sollte bewusst geparkt werden?\n\nLiefere keine Komplettlösung.\nKeine Board-Mutationen.\nKein Score."
+                }
+              },
+              "run": {
+                "mutationPolicy": "none",
+                "feedbackPolicy": "text",
+                "allowedExecutionModes": [
+                  "none"
+                ],
+                "allowedActions": []
+              },
+              "surface": {
+                "channel": "board_button",
+                "group": "secondary",
+                "sidecarOnly": false,
+                "seedByDefault": false
+              },
+              "order": 2
+            },
+            {
+              "id": "datamonet.design.step0.check",
+              "familyKey": "selection.check",
+              "label": {
+                "de": "Fokus prüfen"
+              },
+              "summary": {
+                "de": "Prüft, ob Header, Scope und Input-Kontext klar genug für den eigentlichen Designschritt sind."
+              },
+              "scope": {
+                "mode": "current",
+                "allowedCanvasTypeIds": [
+                  "datentreiber-data-monetization"
+                ]
+              },
+              "prompt": {
+                "text": {
+                  "de": "Du arbeitest auf dem Canvas Data Monetization. Diese Übung bleibt in V1 auf einem Einzelcanvas ohne Cross-Canvas-Handoff.\n\nSchrittkontext: Focus & Input Framing.\nPrüfe qualitativ und knapp:\n- Ist der Fokus im Header spezifisch genug?\n- Ist klar, welches Daten-/AI-Produkt oder welcher Use Case gemeint ist?\n- Ist Input-Kontext von eigentlichem Canvas-Design getrennt?\n- Ist der Canvas bereit für die eigentliche Produkt- und Wertdefinition?\n\nNutze keine numerische Bewertung.\nGib:\n- 1 Stärke\n- 1 wichtigste Unschärfe\n- 1 nächsten Schritt\n\nKeine Board-Mutationen.\nKein Score."
+                }
+              },
+              "run": {
+                "mutationPolicy": "none",
+                "feedbackPolicy": "text",
+                "allowedExecutionModes": [
+                  "none"
+                ],
+                "allowedActions": []
+              },
+              "surface": {
+                "channel": "board_button",
+                "group": "primary",
+                "sidecarOnly": false,
+                "seedByDefault": false
+              },
+              "order": 3
+            },
+            {
+              "id": "datamonet.design.step0.propose",
+              "familyKey": "selection.propose",
+              "label": {
+                "de": "Fokus vorschlagen"
+              },
+              "summary": {
+                "de": "Erzeugt einen kleinen konkreten Vorschlag für Fokus, Input-Lane und bewusstes Parken."
+              },
+              "scope": {
+                "mode": "current",
+                "allowedCanvasTypeIds": [
+                  "datentreiber-data-monetization"
+                ]
+              },
+              "prompt": {
+                "text": {
+                  "de": "Du arbeitest auf dem Canvas Data Monetization. Diese Übung bleibt in V1 auf einem Einzelcanvas ohne Cross-Canvas-Handoff.\n\nSchrittkontext: Focus & Input Framing.\nZiel:\n- im Header klar festlegen, welches Daten-/AI-Produkt oder welcher Use Case im Fokus steht,\n- importierten Kontext links sammeln,\n- Nebenthemen bewusst parken.\n\nArbeite nur in:\n- header\n- sorted_out_left\n- sorted_out_right\n\nArbeite klein und anschlussfähig.\nWenn noch kein klarer Fokus sichtbar ist, formuliere einen kurzen Header-Fokus.\nNutze sorted_out_left als Input-Lane für importierte Hinweise oder Zielnotizen.\nNutze sorted_out_right für Varianten, spätere Themen oder offene Scope-Fragen.\n\nSticky-Regeln:\n- Header sehr kurz.\n- Eine Sticky = ein Gedanke.\n- Keine langen Sätze.\n\nGute Beispiele:\n- \"Marketing Mix Modeling\"\n- \"ROI use case\"\n- \"Input: Use Case Canvas\"\n- \"Assumption: ROI focus\"\n\nErzeuge noch keinen Datenfluss und keine TOP-Struktur.\nNutze executionMode = proposal_only."
+                }
+              },
+              "run": {
+                "mutationPolicy": "minimal",
+                "feedbackPolicy": "text",
+                "allowedExecutionModes": [
+                  "proposal_only"
+                ],
+                "allowedActions": [
+                  "create_sticky",
+                  "move_sticky"
+                ],
+                "allowedActionAreas": [
+                  "header",
+                  "sorted_out_left",
+                  "sorted_out_right"
+                ]
+              },
+              "surface": {
+                "channel": "board_button",
+                "group": "proposal",
+                "sidecarOnly": false,
+                "seedByDefault": false
+              },
+              "order": 4
+            },
+            {
+              "id": "data-monetization-product-design-v1.step0_focus_and_input_framing.chat_apply",
+              "familyKey": null,
+              "label": {
+                "de": "Vorschläge anwenden"
+              },
+              "summary": {
+                "de": "Wendet den zuletzt erzeugten Vorschlag dieses Schritts an."
+              },
+              "scope": {
+                "mode": "current",
+                "allowedCanvasTypeIds": [
+                  "datentreiber-data-monetization"
+                ]
+              },
+              "prompt": {
+                "text": {
+                  "de": "Du arbeitest auf dem Canvas Data Monetization.\n\nSchrittkontext: Focus & Input Framing. Der Fokus des Daten-/AI-Produkts wird geklärt, Input-Kontext links gesammelt und Nebenthemen bewusst geparkt.\n\nWende nur den bereits gespeicherten Vorschlag für diesen Schritt an.\nKeine neue inhaltliche Analyse, keine neue Planung, kein neues Feedback."
+                }
+              },
+              "run": {
+                "mutationPolicy": "minimal",
+                "feedbackPolicy": "text",
+                "allowedExecutionModes": [
+                  "direct_apply"
+                ],
+                "allowedActions": [
+                  "create_sticky",
+                  "move_sticky",
+                  "delete_sticky",
+                  "create_connector",
+                  "set_sticky_color",
+                  "set_check_status"
+                ],
+                "allowedActionAreas": []
+              },
+              "surface": {
+                "channel": "chat_apply",
+                "group": "hidden",
+                "sidecarOnly": false,
+                "seedByDefault": false
+              },
+              "order": 5
+            },
+            {
+              "id": "data-monetization-product-design-v1.step0_focus_and_input_framing.chat_submit",
+              "familyKey": null,
+              "label": {
+                "de": "Frage stellen"
+              },
+              "summary": {
+                "de": "Beantwortet Fragen zum aktuellen Schritt."
+              },
+              "scope": {
+                "mode": "current",
+                "allowedCanvasTypeIds": [
+                  "datentreiber-data-monetization"
+                ]
+              },
+              "prompt": {
+                "text": {
+                  "de": "Du arbeitest auf dem Canvas Data Monetization. Diese Übung bleibt in V1 auf einem Einzelcanvas ohne Cross-Canvas-Handoff.\n\nSchrittkontext: Focus & Input Framing. Der Fokus des Daten-/AI-Produkts wird geklärt, Input-Kontext links gesammelt und Nebenthemen bewusst geparkt.\n\nAntworte instanzbezogen, verständlich und hilfreich auf Fragen zu diesem Canvas und genau zu diesem Schritt.\nDer sichtbare Boardzustand ist die Wahrheit. Rechne damit, dass Menschen zwischen den Schritten manuelle Änderungen vorgenommen haben.\n\nWenn conversationContext sichtbar ist, beantworte Rückfragen in Bezug auf den letzten Vorschlag oder die letzte Antwort.\nWenn keine konkrete Board-Ausarbeitung verlangt wird, bleibe bei executionMode = none.\nNur wenn die Frage ausdrücklich nach einer kleinen, konkreten Board-Ausarbeitung in genau diesem Schritt verlangt, darfst du proposal_only wählen.\nHalluziniere keinen Kontext außerhalb des sichtbaren Boards."
+                }
+              },
+              "run": {
+                "mutationPolicy": "minimal",
+                "feedbackPolicy": "text",
+                "allowedExecutionModes": [
+                  "none",
+                  "proposal_only"
+                ],
+                "allowedActions": [
+                  "create_sticky",
+                  "move_sticky",
+                  "delete_sticky",
+                  "create_connector",
+                  "set_sticky_color",
+                  "set_check_status"
+                ],
+                "allowedActionAreas": [
+                  "header",
+                  "sorted_out_left",
+                  "sorted_out_right"
+                ]
+              },
+              "surface": {
+                "channel": "chat_submit",
+                "group": "hidden",
+                "sidecarOnly": false,
+                "seedByDefault": false
+              },
+              "order": 6
+            }
+          ],
+          "transitions": []
+        },
+        "step1_value_and_product_definition": {
+          "id": "step1_value_and_product_definition",
+          "label": {
+            "de": "Value & Product Definition"
+          },
+          "summary": {
+            "de": "Vom Ende her denken: gewünschte Information, Data Product und messbare Value-/Quality-Kriterien rechts definieren."
+          },
+          "visibleInstruction": {
+            "de": "Beginne rechts: Kläre zuerst Data Products und Data Value, bevor du Datenquellen oder Analytics-Schritte entwirfst."
+          },
+          "flowInstruction": {
+            "de": "Starte mit dem Ende auf der rechten Seite. Definiere zuerst Information, Data Product und messbaren Wert, bevor du Pipeline oder Infrastruktur ableitest."
+          },
+          "endpoints": [
+            {
+              "id": "datamonet.design.step1.coach",
+              "familyKey": "selection.coach",
+              "label": {
+                "de": "Wert & Produkt coachen"
+              },
+              "summary": {
+                "de": "Coacht den Schritt mit Leitfragen zu Informationsziel, Produktform und Wertmessung."
+              },
+              "scope": {
+                "mode": "current",
+                "allowedCanvasTypeIds": [
+                  "datentreiber-data-monetization"
+                ]
+              },
+              "prompt": {
+                "text": {
+                  "de": "Du arbeitest auf dem Canvas Data Monetization. Diese Übung bleibt in V1 auf einem Einzelcanvas ohne Cross-Canvas-Handoff.\n\nSchrittkontext: Value & Product Definition.\nHilf beim Denken vom Ende her:\n- Welche Information soll das Produkt liefern?\n- Woran würde man den Wert messen?\n- Welche Business-Metrik zeigt den Nutzen?\n- Welche Qualitäts- oder Modellperformance-Metrik ist wichtig?\n- Ist das Produkt eher Dashboard, Report, Modell, API oder eingebettete Funktion?\n\nLiefere 3 bis 5 Leitfragen und genau einen Mikroschritt.\nKeine Board-Mutationen.\nKein Score."
+                }
+              },
+              "run": {
+                "mutationPolicy": "none",
+                "feedbackPolicy": "text",
+                "allowedExecutionModes": [
+                  "none"
+                ],
+                "allowedActions": []
+              },
+              "surface": {
+                "channel": "board_button",
+                "group": "secondary",
+                "sidecarOnly": false,
+                "seedByDefault": false
+              },
+              "order": 1
+            },
+            {
+              "id": "datamonet.design.step1.check",
+              "familyKey": "selection.check",
+              "label": {
+                "de": "Wert & Produkt prüfen"
+              },
+              "summary": {
+                "de": "Prüft, ob Produktoutput und Value-Kriterien rechts bereits klar genug sind."
+              },
+              "scope": {
+                "mode": "current",
+                "allowedCanvasTypeIds": [
+                  "datentreiber-data-monetization"
+                ]
+              },
+              "prompt": {
+                "text": {
+                  "de": "Du arbeitest auf dem Canvas Data Monetization. Diese Übung bleibt in V1 auf einem Einzelcanvas ohne Cross-Canvas-Handoff.\n\nSchrittkontext: Value & Product Definition.\nPrüfe qualitativ:\n- Ist klar, welches Datenprodukt gemeint ist?\n- Ist der Unterschied zwischen Produktoutput und Data Value sauber?\n- Gibt es messbare Value- oder Quality-Indikatoren?\n- Sind die Notes präzise genug oder zu generisch?\n- Fehlen zentrale Wertkriterien?\n\nNutze keine numerische Bewertung.\nGib:\n- 1 Stärke\n- 1 wichtigste Lücke\n- 1 nächsten Schritt\n\nKeine Board-Mutationen.\nKein Score."
+                }
+              },
+              "run": {
+                "mutationPolicy": "none",
+                "feedbackPolicy": "text",
+                "allowedExecutionModes": [
+                  "none"
+                ],
+                "allowedActions": []
+              },
+              "surface": {
+                "channel": "board_button",
+                "group": "primary",
+                "sidecarOnly": false,
+                "seedByDefault": false
+              },
+              "order": 2
+            },
+            {
+              "id": "datamonet.design.step1.review",
+              "familyKey": "selection.review",
+              "label": {
+                "de": "Zielbild reviewen"
+              },
+              "summary": {
+                "de": "Reviewt das rechte Zielbild etwas tiefer auf Konsistenz, Messbarkeit und Verständlichkeit."
+              },
+              "scope": {
+                "mode": "current",
+                "allowedCanvasTypeIds": [
+                  "datentreiber-data-monetization"
+                ]
+              },
+              "prompt": {
+                "text": {
+                  "de": "Du arbeitest auf dem Canvas Data Monetization. Diese Übung bleibt in V1 auf einem Einzelcanvas ohne Cross-Canvas-Handoff.\n\nSchrittkontext: Value & Product Definition.\nReviewe das Zielbild auf der rechten Seite etwas tiefer.\nAchte besonders auf:\n- Ist die gewünschte Information konkret genug?\n- Ist klar, woran Business Value gemessen wird?\n- Sind Information Quality und Model Performance passend gedacht?\n- Fehlt eine wesentliche Produkt- oder Value-Komponente?\n\nBleibe bei qualitativer Einschätzung.\nKeine Board-Mutationen.\nKein Score."
+                }
+              },
+              "run": {
+                "mutationPolicy": "none",
+                "feedbackPolicy": "text",
+                "allowedExecutionModes": [
+                  "none"
+                ],
+                "allowedActions": []
+              },
+              "surface": {
+                "channel": "board_button",
+                "group": "primary",
+                "sidecarOnly": false,
+                "seedByDefault": false
+              },
+              "order": 3
+            },
+            {
+              "id": "datamonet.design.step1.propose",
+              "familyKey": "selection.propose",
+              "label": {
+                "de": "Wert & Produkt vorschlagen"
+              },
+              "summary": {
+                "de": "Erzeugt einen kleinen konkreten Vorschlag für Data Product und Data Value auf der rechten Canvas-Seite."
+              },
+              "scope": {
+                "mode": "current",
+                "allowedCanvasTypeIds": [
+                  "datentreiber-data-monetization"
+                ]
+              },
+              "prompt": {
+                "text": {
+                  "de": "Du arbeitest auf dem Canvas Data Monetization. Diese Übung bleibt in V1 auf einem Einzelcanvas ohne Cross-Canvas-Handoff.\n\nSchrittkontext: Value & Product Definition.\nArbeite nur in:\n- dataproducts\n- datavalue\n- sorted_out_right\n\nBeginne mit dem Ende:\n- zuerst gewünschte Information oder Output des Datenprodukts,\n- dann Data Value und Information-/Modellqualitätsindikatoren.\n\nErzeuge kurze, präzise Sticky Notes.\nNormale Element-Stickies bleiben knapp.\nBeispiele:\n- \"Total sales\"\n- \"Prediction accuracy\"\n- \"ROI (= ROAS)\"\n- \"Metrics recorded\"\n- \"Metrics predicted\"\n\nWenn mehrere plausible Produktformen denkbar sind, wähle die anschlussfähigste und parke Alternativen statt alles parallel auszuarbeiten.\nErfinde noch keine komplette Analytics-Pipeline.\nNutze executionMode = proposal_only."
+                }
+              },
+              "run": {
+                "mutationPolicy": "minimal",
+                "feedbackPolicy": "text",
+                "allowedExecutionModes": [
+                  "proposal_only"
+                ],
+                "allowedActions": [
+                  "create_sticky",
+                  "move_sticky",
+                  "create_connector"
+                ],
+                "allowedActionAreas": [
+                  "dataproducts",
+                  "datavalue",
+                  "sorted_out_left",
+                  "sorted_out_right"
+                ]
+              },
+              "surface": {
+                "channel": "board_button",
+                "group": "proposal",
+                "sidecarOnly": false,
+                "seedByDefault": false
+              },
+              "order": 4
+            },
+            {
+              "id": "data-monetization-product-design-v1.step1_value_and_product_definition.chat_apply",
+              "familyKey": null,
+              "label": {
+                "de": "Vorschläge anwenden"
+              },
+              "summary": {
+                "de": "Wendet den zuletzt erzeugten Vorschlag dieses Schritts an."
+              },
+              "scope": {
+                "mode": "current",
+                "allowedCanvasTypeIds": [
+                  "datentreiber-data-monetization"
+                ]
+              },
+              "prompt": {
+                "text": {
+                  "de": "Du arbeitest auf dem Canvas Data Monetization.\n\nSchrittkontext: Value & Product Definition. Rechts auf dem Canvas werden Data Product, gewünschte Information und messbarer Data Value definiert.\n\nWende nur den bereits gespeicherten Vorschlag für diesen Schritt an.\nKeine neue inhaltliche Analyse, keine neue Planung, kein neues Feedback."
+                }
+              },
+              "run": {
+                "mutationPolicy": "minimal",
+                "feedbackPolicy": "text",
+                "allowedExecutionModes": [
+                  "direct_apply"
+                ],
+                "allowedActions": [
+                  "create_sticky",
+                  "move_sticky",
+                  "delete_sticky",
+                  "create_connector",
+                  "set_sticky_color",
+                  "set_check_status"
+                ],
+                "allowedActionAreas": []
+              },
+              "surface": {
+                "channel": "chat_apply",
+                "group": "hidden",
+                "sidecarOnly": false,
+                "seedByDefault": false
+              },
+              "order": 5
+            },
+            {
+              "id": "data-monetization-product-design-v1.step1_value_and_product_definition.chat_submit",
+              "familyKey": null,
+              "label": {
+                "de": "Frage stellen"
+              },
+              "summary": {
+                "de": "Beantwortet Fragen zum aktuellen Schritt."
+              },
+              "scope": {
+                "mode": "current",
+                "allowedCanvasTypeIds": [
+                  "datentreiber-data-monetization"
+                ]
+              },
+              "prompt": {
+                "text": {
+                  "de": "Du arbeitest auf dem Canvas Data Monetization. Diese Übung bleibt in V1 auf einem Einzelcanvas ohne Cross-Canvas-Handoff.\n\nSchrittkontext: Value & Product Definition. Rechts auf dem Canvas werden Data Product, gewünschte Information und messbarer Data Value definiert.\n\nAntworte instanzbezogen, verständlich und hilfreich auf Fragen zu diesem Canvas und genau zu diesem Schritt.\nDer sichtbare Boardzustand ist die Wahrheit. Rechne damit, dass Menschen zwischen den Schritten manuelle Änderungen vorgenommen haben.\n\nWenn conversationContext sichtbar ist, beantworte Rückfragen in Bezug auf den letzten Vorschlag oder die letzte Antwort.\nWenn keine konkrete Board-Ausarbeitung verlangt wird, bleibe bei executionMode = none.\nNur wenn die Frage ausdrücklich nach einer kleinen, konkreten Board-Ausarbeitung in genau diesem Schritt verlangt, darfst du proposal_only wählen.\nHalluziniere keinen Kontext außerhalb des sichtbaren Boards."
+                }
+              },
+              "run": {
+                "mutationPolicy": "minimal",
+                "feedbackPolicy": "text",
+                "allowedExecutionModes": [
+                  "none",
+                  "proposal_only"
+                ],
+                "allowedActions": [
+                  "create_sticky",
+                  "move_sticky",
+                  "delete_sticky",
+                  "create_connector",
+                  "set_sticky_color",
+                  "set_check_status"
+                ],
+                "allowedActionAreas": [
+                  "dataproducts",
+                  "datavalue",
+                  "sorted_out_left",
+                  "sorted_out_right"
+                ]
+              },
+              "surface": {
+                "channel": "chat_submit",
+                "group": "hidden",
+                "sidecarOnly": false,
+                "seedByDefault": false
+              },
+              "order": 6
+            }
+          ],
+          "transitions": []
+        },
+        "step2_analytics_and_dataset_design": {
+          "id": "step2_analytics_and_dataset_design",
+          "label": {
+            "de": "Analytics & Dataset Design"
+          },
+          "summary": {
+            "de": "Analytics-Pipeline und Datasets aus Produkt und Wert ableiten und den Datenfluss kohärent aufbauen."
+          },
+          "visibleInstruction": {
+            "de": "Arbeite nun rückwärts vom Zielbild: Leite aus Data Product und Data Value die nötigen Analyse- und Dataset-Schritte ab."
+          },
+          "flowInstruction": {
+            "de": "Denke rückwärts vom rechten Zielbild und baue daraus die Pipeline in der Mitte und die Datasets links auf. Connectoren sind hier echte Arbeitslogik."
+          },
+          "endpoints": [
+            {
+              "id": "datamonet.design.step2.coach",
+              "familyKey": "selection.coach",
+              "label": {
+                "de": "Pipeline coachen"
+              },
+              "summary": {
+                "de": "Hilft heuristisch beim Ableiten von Datasets, Analytics-Schritten und Evaluationslogik."
+              },
+              "scope": {
+                "mode": "current",
+                "allowedCanvasTypeIds": [
+                  "datentreiber-data-monetization"
+                ]
+              },
+              "prompt": {
+                "text": {
+                  "de": "Du arbeitest auf dem Canvas Data Monetization. Diese Übung bleibt in V1 auf einem Einzelcanvas ohne Cross-Canvas-Handoff.\n\nSchrittkontext: Analytics & Dataset Design.\nDenke heuristisch rückwärts:\n- Welche Daten braucht das Produkt?\n- Welche Analyse- oder Modellierungsschritte sind nötig?\n- Welche Vorverarbeitung fehlt?\n- Wie wird aus Daten Information?\n- Wo braucht es Evaluation, Erklärbarkeit oder Qualitätsmessung?\n\nLiefere 3 bis 5 Leitfragen und genau einen Mikroschritt.\nKeine Board-Mutationen.\nKein Score."
+                }
+              },
+              "run": {
+                "mutationPolicy": "none",
+                "feedbackPolicy": "text",
+                "allowedExecutionModes": [
+                  "none"
+                ],
+                "allowedActions": []
+              },
+              "surface": {
+                "channel": "board_button",
+                "group": "secondary",
+                "sidecarOnly": false,
+                "seedByDefault": false
+              },
+              "order": 1
+            },
+            {
+              "id": "datamonet.design.step2.check",
+              "familyKey": "selection.check",
+              "label": {
+                "de": "Pipeline prüfen"
+              },
+              "summary": {
+                "de": "Prüft die Logik von Datasets, Analytics-Schritten und Connectoren qualitativ."
+              },
+              "scope": {
+                "mode": "current",
+                "allowedCanvasTypeIds": [
+                  "datentreiber-data-monetization"
+                ]
+              },
+              "prompt": {
+                "text": {
+                  "de": "Du arbeitest auf dem Canvas Data Monetization. Diese Übung bleibt in V1 auf einem Einzelcanvas ohne Cross-Canvas-Handoff.\n\nSchrittkontext: Analytics & Dataset Design.\nPrüfe qualitativ:\n- Ist der Datenfluss logisch?\n- Sind Datasets und Analytics-Schritte sauber getrennt?\n- Ist die Pipeline anschlussfähig an Produkt und Value?\n- Fehlen Evaluations- oder Erklärbarkeits-Schritte?\n- Sind die Connectoren hilfreich oder verwirrend?\n\nNutze keine numerische Bewertung.\nGib:\n- 1 Stärke\n- 1 wichtigste Lücke\n- 1 nächsten Schritt\n\nKeine Board-Mutationen.\nKein Score."
+                }
+              },
+              "run": {
+                "mutationPolicy": "none",
+                "feedbackPolicy": "text",
+                "allowedExecutionModes": [
+                  "none"
+                ],
+                "allowedActions": []
+              },
+              "surface": {
+                "channel": "board_button",
+                "group": "primary",
+                "sidecarOnly": false,
+                "seedByDefault": false
+              },
+              "order": 2
+            },
+            {
+              "id": "datamonet.design.step2.review",
+              "familyKey": "selection.review",
+              "label": {
+                "de": "Pipeline reviewen"
+              },
+              "summary": {
+                "de": "Reviewt tiefer, ob der obere Datenfluss realistisch, ausreichend und verständlich ist."
+              },
+              "scope": {
+                "mode": "current",
+                "allowedCanvasTypeIds": [
+                  "datentreiber-data-monetization"
+                ]
+              },
+              "prompt": {
+                "text": {
+                  "de": "Du arbeitest auf dem Canvas Data Monetization. Diese Übung bleibt in V1 auf einem Einzelcanvas ohne Cross-Canvas-Handoff.\n\nSchrittkontext: Analytics & Dataset Design.\nReviewe den oberen Datenfluss etwas tiefer.\nAchte auf:\n- Fehlen kritische Dataset-Inputs?\n- Gibt es einen plausiblen Übergang von Daten zu Analytics zu Produkt zu Wert?\n- Ist die Reihenfolge der Analytics-Schritte schlüssig?\n- Wird Evaluation oder Explainability vergessen?\n- Wird zu viel auf einmal modelliert?\n\nKeine Board-Mutationen.\nKein Score."
+                }
+              },
+              "run": {
+                "mutationPolicy": "none",
+                "feedbackPolicy": "text",
+                "allowedExecutionModes": [
+                  "none"
+                ],
+                "allowedActions": []
+              },
+              "surface": {
+                "channel": "board_button",
+                "group": "primary",
+                "sidecarOnly": false,
+                "seedByDefault": false
+              },
+              "order": 3
+            },
+            {
+              "id": "datamonet.design.step2.propose",
+              "familyKey": "selection.propose",
+              "label": {
+                "de": "Pipeline vorschlagen"
+              },
+              "summary": {
+                "de": "Erzeugt einen konkreten Vorschlag für Datasets, Analytics-Schritte und den horizontalen Datenfluss."
+              },
+              "scope": {
+                "mode": "current",
+                "allowedCanvasTypeIds": [
+                  "datentreiber-data-monetization"
+                ]
+              },
+              "prompt": {
+                "text": {
+                  "de": "Du arbeitest auf dem Canvas Data Monetization. Diese Übung bleibt in V1 auf einem Einzelcanvas ohne Cross-Canvas-Handoff.\n\nSchrittkontext: Analytics & Dataset Design.\nArbeite in:\n- datasets\n- dataanalytics\n- dataproducts\n- datavalue\n- sorted_out_right\n\nLeite aus Produkt- und Value-Zielbild die nötige Pipeline ab:\n- Input-Daten\n- Integration / Cleaning / Transformation\n- Modellierung / Analyse\n- Evaluation / Erklärbarkeit\n- Output in Produkt und Value\n\nNutze horizontale Connectoren, um den Daten- und Informationsfluss sichtbar zu machen. Connectoren sind hier fachlich wichtig.\n\nElement-Stickies kurz halten:\n- \"Sales data\"\n- \"Web data\"\n- \"Products\"\n- \"Budget\"\n\nAnalytics-Schritte dürfen etwas länger sein:\n- \"Integrate data into flat table\"\n- \"Split into training & test set\"\n- \"Evaluate MMM with test set\"\n\nWenn mehrere Ansätze möglich sind, bevorzuge den plausibelsten und parke Alternativen.\nNutze executionMode = proposal_only."
+                }
+              },
+              "run": {
+                "mutationPolicy": "minimal",
+                "feedbackPolicy": "text",
+                "allowedExecutionModes": [
+                  "proposal_only"
+                ],
+                "allowedActions": [
+                  "create_sticky",
+                  "move_sticky",
+                  "create_connector"
+                ],
+                "allowedActionAreas": [
+                  "datasets",
+                  "dataanalytics",
+                  "dataproducts",
+                  "datavalue",
+                  "sorted_out_left",
+                  "sorted_out_right"
+                ]
+              },
+              "surface": {
+                "channel": "board_button",
+                "group": "proposal",
+                "sidecarOnly": false,
+                "seedByDefault": false
+              },
+              "order": 4
+            },
+            {
+              "id": "datamonet.design.step2.autocorrect",
+              "familyKey": "selection.autocorrect",
+              "label": {
+                "de": "Pipeline korrigieren"
+              },
+              "summary": {
+                "de": "Korrigiert kleine Pipeline-, Dataset- und Connector-Probleme im aktuellen Zustand."
+              },
+              "scope": {
+                "mode": "current",
+                "allowedCanvasTypeIds": [
+                  "datentreiber-data-monetization"
+                ]
+              },
+              "prompt": {
+                "text": {
+                  "de": "Du arbeitest auf dem Canvas Data Monetization. Diese Übung bleibt in V1 auf einem Einzelcanvas ohne Cross-Canvas-Handoff.\n\nSchrittkontext: Analytics & Dataset Design.\nKorrigiere nur kleine, zustandsnahe Dinge:\n- fehlende Datensätze ergänzen\n- falsche Reihenfolge in der Pipeline schärfen\n- unnötige Dopplungen reduzieren\n- Connectoren sinnvoller setzen\n- eher verschieben als löschen\n\nArbeite in:\n- datasets\n- dataanalytics\n- dataproducts\n- datavalue\n- sorted_out_right\n\nConnectoren sind funktional, nicht dekorativ.\nNutze executionMode = proposal_only."
+                }
+              },
+              "run": {
+                "mutationPolicy": "full",
+                "feedbackPolicy": "text",
+                "allowedExecutionModes": [
+                  "proposal_only"
+                ],
+                "allowedActions": [
+                  "create_sticky",
+                  "move_sticky",
+                  "delete_sticky",
+                  "create_connector"
+                ],
+                "allowedActionAreas": [
+                  "datasets",
+                  "dataanalytics",
+                  "dataproducts",
+                  "datavalue",
+                  "sorted_out_right"
+                ]
+              },
+              "surface": {
+                "channel": "board_button",
+                "group": "primary",
+                "sidecarOnly": false,
+                "seedByDefault": false
+              },
+              "order": 5
+            },
+            {
+              "id": "data-monetization-product-design-v1.step2_analytics_and_dataset_design.chat_apply",
+              "familyKey": null,
+              "label": {
+                "de": "Vorschläge anwenden"
+              },
+              "summary": {
+                "de": "Wendet den zuletzt erzeugten Vorschlag dieses Schritts an."
+              },
+              "scope": {
+                "mode": "current",
+                "allowedCanvasTypeIds": [
+                  "datentreiber-data-monetization"
+                ]
+              },
+              "prompt": {
+                "text": {
+                  "de": "Du arbeitest auf dem Canvas Data Monetization.\n\nSchrittkontext: Analytics & Dataset Design. Aus dem Zielbild werden die Analytics-Pipeline, Datasets und der horizontale Datenfluss abgeleitet.\n\nWende nur den bereits gespeicherten Vorschlag für diesen Schritt an.\nKeine neue inhaltliche Analyse, keine neue Planung, kein neues Feedback."
+                }
+              },
+              "run": {
+                "mutationPolicy": "minimal",
+                "feedbackPolicy": "text",
+                "allowedExecutionModes": [
+                  "direct_apply"
+                ],
+                "allowedActions": [
+                  "create_sticky",
+                  "move_sticky",
+                  "delete_sticky",
+                  "create_connector",
+                  "set_sticky_color",
+                  "set_check_status"
+                ],
+                "allowedActionAreas": []
+              },
+              "surface": {
+                "channel": "chat_apply",
+                "group": "hidden",
+                "sidecarOnly": false,
+                "seedByDefault": false
+              },
+              "order": 6
+            },
+            {
+              "id": "data-monetization-product-design-v1.step2_analytics_and_dataset_design.chat_submit",
+              "familyKey": null,
+              "label": {
+                "de": "Frage stellen"
+              },
+              "summary": {
+                "de": "Beantwortet Fragen zum aktuellen Schritt."
+              },
+              "scope": {
+                "mode": "current",
+                "allowedCanvasTypeIds": [
+                  "datentreiber-data-monetization"
+                ]
+              },
+              "prompt": {
+                "text": {
+                  "de": "Du arbeitest auf dem Canvas Data Monetization. Diese Übung bleibt in V1 auf einem Einzelcanvas ohne Cross-Canvas-Handoff.\n\nSchrittkontext: Analytics & Dataset Design. Aus dem Zielbild werden die Analytics-Pipeline, Datasets und der horizontale Datenfluss abgeleitet.\n\nAntworte instanzbezogen, verständlich und hilfreich auf Fragen zu diesem Canvas und genau zu diesem Schritt.\nDer sichtbare Boardzustand ist die Wahrheit. Rechne damit, dass Menschen zwischen den Schritten manuelle Änderungen vorgenommen haben.\n\nWenn conversationContext sichtbar ist, beantworte Rückfragen in Bezug auf den letzten Vorschlag oder die letzte Antwort.\nWenn keine konkrete Board-Ausarbeitung verlangt wird, bleibe bei executionMode = none.\nNur wenn die Frage ausdrücklich nach einer kleinen, konkreten Board-Ausarbeitung in genau diesem Schritt verlangt, darfst du proposal_only wählen.\nHalluziniere keinen Kontext außerhalb des sichtbaren Boards."
+                }
+              },
+              "run": {
+                "mutationPolicy": "minimal",
+                "feedbackPolicy": "text",
+                "allowedExecutionModes": [
+                  "none",
+                  "proposal_only"
+                ],
+                "allowedActions": [
+                  "create_sticky",
+                  "move_sticky",
+                  "delete_sticky",
+                  "create_connector",
+                  "set_sticky_color",
+                  "set_check_status"
+                ],
+                "allowedActionAreas": [
+                  "datasets",
+                  "dataanalytics",
+                  "dataproducts",
+                  "datavalue",
+                  "sorted_out_left",
+                  "sorted_out_right"
+                ]
+              },
+              "surface": {
+                "channel": "chat_submit",
+                "group": "hidden",
+                "sidecarOnly": false,
+                "seedByDefault": false
+              },
+              "order": 7
+            }
+          ],
+          "transitions": []
+        },
+        "step3_top_requirements_design": {
+          "id": "step3_top_requirements_design",
+          "label": {
+            "de": "TOP Requirements Design"
+          },
+          "summary": {
+            "de": "Technology, Organization und People aus dem Produkt- und Datenfluss ableiten."
+          },
+          "visibleInstruction": {
+            "de": "Leite nun den TOP-Unterbau ab: Welche Technologie, welche Verantwortlichkeiten und welche Rollen braucht das Design?"
+          },
+          "flowInstruction": {
+            "de": "Arbeite vom oberen Design nach unten. Leite Technology, Organization und People aus dem sichtbaren Datenfluss ab und halte Ownership sowie Handoffs plausibel."
+          },
+          "endpoints": [
+            {
+              "id": "datamonet.design.step3.coach",
+              "familyKey": "selection.coach",
+              "label": {
+                "de": "TOP coachen"
+              },
+              "summary": {
+                "de": "Hilft beim Ableiten von Technologie, Ownership und People-Rollen aus dem Datenfluss."
+              },
+              "scope": {
+                "mode": "current",
+                "allowedCanvasTypeIds": [
+                  "datentreiber-data-monetization"
+                ]
+              },
+              "prompt": {
+                "text": {
+                  "de": "Du arbeitest auf dem Canvas Data Monetization. Diese Übung bleibt in V1 auf einem Einzelcanvas ohne Cross-Canvas-Handoff.\n\nSchrittkontext: TOP Requirements Design.\nLeite aus dem oberen Datenfluss die Anforderungen unten ab:\n- Welche Technologie braucht jede Stufe?\n- Wer besitzt oder betreibt sie organisatorisch?\n- Welche Rollen und Skills werden gebraucht?\n- Wo fehlen Zuständigkeiten oder Kapazität?\n\nLiefere 3 bis 5 Leitfragen und genau einen Mikroschritt.\nKeine Board-Mutationen.\nKein Score."
+                }
+              },
+              "run": {
+                "mutationPolicy": "none",
+                "feedbackPolicy": "text",
+                "allowedExecutionModes": [
+                  "none"
+                ],
+                "allowedActions": []
+              },
+              "surface": {
+                "channel": "board_button",
+                "group": "secondary",
+                "sidecarOnly": false,
+                "seedByDefault": false
+              },
+              "order": 1
+            },
+            {
+              "id": "datamonet.design.step3.check",
+              "familyKey": "selection.check",
+              "label": {
+                "de": "TOP prüfen"
+              },
+              "summary": {
+                "de": "Prüft, ob Technology, Organization und People den oberen Datenfluss plausibel tragen."
+              },
+              "scope": {
+                "mode": "current",
+                "allowedCanvasTypeIds": [
+                  "datentreiber-data-monetization"
+                ]
+              },
+              "prompt": {
+                "text": {
+                  "de": "Du arbeitest auf dem Canvas Data Monetization. Diese Übung bleibt in V1 auf einem Einzelcanvas ohne Cross-Canvas-Handoff.\n\nSchrittkontext: TOP Requirements Design.\nPrüfe qualitativ:\n- Ist der TOP-Unterbau vollständig genug?\n- Ist jede zentrale Komponente organisatorisch verankert?\n- Fehlen Schlüsselrollen?\n- Ist die Technologie weder zu klein noch unnötig überdimensioniert?\n- Spiegelt die People-/Org-Struktur den technischen Aufbau plausibel?\n\nNutze keine numerische Bewertung.\nGib:\n- 1 Stärke\n- 1 wichtigste Lücke\n- 1 nächsten Schritt\n\nKeine Board-Mutationen.\nKein Score."
+                }
+              },
+              "run": {
+                "mutationPolicy": "none",
+                "feedbackPolicy": "text",
+                "allowedExecutionModes": [
+                  "none"
+                ],
+                "allowedActions": []
+              },
+              "surface": {
+                "channel": "board_button",
+                "group": "primary",
+                "sidecarOnly": false,
+                "seedByDefault": false
+              },
+              "order": 2
+            },
+            {
+              "id": "datamonet.design.step3.propose",
+              "familyKey": "selection.propose",
+              "label": {
+                "de": "TOP vorschlagen"
+              },
+              "summary": {
+                "de": "Erzeugt einen konkreten Vorschlag für Technology, Organization und People als Unterbau des Datenprodukts."
+              },
+              "scope": {
+                "mode": "current",
+                "allowedCanvasTypeIds": [
+                  "datentreiber-data-monetization"
+                ]
+              },
+              "prompt": {
+                "text": {
+                  "de": "Du arbeitest auf dem Canvas Data Monetization. Diese Übung bleibt in V1 auf einem Einzelcanvas ohne Cross-Canvas-Handoff.\n\nSchrittkontext: TOP Requirements Design.\nArbeite in:\n- technology\n- organization\n- people\n- sorted_out_right\n\nLeite den TOP-Unterbau aus dem bereits sichtbaren Datenfluss ab.\n\nTechnology:\n- Werkzeuge, Plattformen, Speicher, Schnittstellen, Libraries, Präsentationstools\n\nOrganization:\n- zuständige Teams, Departments, Provider, Ownership\n\nPeople:\n- Rollen, Skills, Kapazität, Zusammenarbeit\n\nNutze horizontale Connectoren für Handoff- und Flow-Logik.\nVertikale Conway-Linien sind optional und in V1 eher manuell.\nWenn etwas oben eine klare Voraussetzung unten braucht, darf es durch räumliche Ausrichtung und wenige klare Connectoren sichtbar gemacht werden.\nNutze executionMode = proposal_only."
+                }
+              },
+              "run": {
+                "mutationPolicy": "minimal",
+                "feedbackPolicy": "text",
+                "allowedExecutionModes": [
+                  "proposal_only"
+                ],
+                "allowedActions": [
+                  "create_sticky",
+                  "move_sticky",
+                  "create_connector"
+                ],
+                "allowedActionAreas": [
+                  "technology",
+                  "organization",
+                  "people",
+                  "sorted_out_right"
+                ]
+              },
+              "surface": {
+                "channel": "board_button",
+                "group": "proposal",
+                "sidecarOnly": false,
+                "seedByDefault": false
+              },
+              "order": 3
+            },
+            {
+              "id": "datamonet.design.step3.autocorrect",
+              "familyKey": "selection.autocorrect",
+              "label": {
+                "de": "TOP korrigieren"
+              },
+              "summary": {
+                "de": "Korrigiert kleine Ownership-, Rollen- und Infrastrukturprobleme im TOP-Unterbau."
+              },
+              "scope": {
+                "mode": "current",
+                "allowedCanvasTypeIds": [
+                  "datentreiber-data-monetization"
+                ]
+              },
+              "prompt": {
+                "text": {
+                  "de": "Du arbeitest auf dem Canvas Data Monetization. Diese Übung bleibt in V1 auf einem Einzelcanvas ohne Cross-Canvas-Handoff.\n\nSchrittkontext: TOP Requirements Design.\nKorrigiere:\n- fehlende Ownership\n- unklare Team- oder Rollen-Zuordnung\n- zu große technische Lücken\n- unplausible Technik ohne verantwortliche Organisation oder People\n- eher move vor delete\n\nArbeite in:\n- technology\n- organization\n- people\n- sorted_out_right\n\nNutze executionMode = proposal_only."
+                }
+              },
+              "run": {
+                "mutationPolicy": "full",
+                "feedbackPolicy": "text",
+                "allowedExecutionModes": [
+                  "proposal_only"
+                ],
+                "allowedActions": [
+                  "create_sticky",
+                  "move_sticky",
+                  "delete_sticky",
+                  "create_connector"
+                ],
+                "allowedActionAreas": [
+                  "technology",
+                  "organization",
+                  "people",
+                  "sorted_out_right"
+                ]
+              },
+              "surface": {
+                "channel": "board_button",
+                "group": "primary",
+                "sidecarOnly": false,
+                "seedByDefault": false
+              },
+              "order": 4
+            },
+            {
+              "id": "data-monetization-product-design-v1.step3_top_requirements_design.chat_apply",
+              "familyKey": null,
+              "label": {
+                "de": "Vorschläge anwenden"
+              },
+              "summary": {
+                "de": "Wendet den zuletzt erzeugten Vorschlag dieses Schritts an."
+              },
+              "scope": {
+                "mode": "current",
+                "allowedCanvasTypeIds": [
+                  "datentreiber-data-monetization"
+                ]
+              },
+              "prompt": {
+                "text": {
+                  "de": "Du arbeitest auf dem Canvas Data Monetization.\n\nSchrittkontext: TOP Requirements Design. Aus dem oberen Datenfluss werden Technologie-, Organisations- und People-Anforderungen abgeleitet.\n\nWende nur den bereits gespeicherten Vorschlag für diesen Schritt an.\nKeine neue inhaltliche Analyse, keine neue Planung, kein neues Feedback."
+                }
+              },
+              "run": {
+                "mutationPolicy": "minimal",
+                "feedbackPolicy": "text",
+                "allowedExecutionModes": [
+                  "direct_apply"
+                ],
+                "allowedActions": [
+                  "create_sticky",
+                  "move_sticky",
+                  "delete_sticky",
+                  "create_connector",
+                  "set_sticky_color",
+                  "set_check_status"
+                ],
+                "allowedActionAreas": []
+              },
+              "surface": {
+                "channel": "chat_apply",
+                "group": "hidden",
+                "sidecarOnly": false,
+                "seedByDefault": false
+              },
+              "order": 5
+            },
+            {
+              "id": "data-monetization-product-design-v1.step3_top_requirements_design.chat_submit",
+              "familyKey": null,
+              "label": {
+                "de": "Frage stellen"
+              },
+              "summary": {
+                "de": "Beantwortet Fragen zum aktuellen Schritt."
+              },
+              "scope": {
+                "mode": "current",
+                "allowedCanvasTypeIds": [
+                  "datentreiber-data-monetization"
+                ]
+              },
+              "prompt": {
+                "text": {
+                  "de": "Du arbeitest auf dem Canvas Data Monetization. Diese Übung bleibt in V1 auf einem Einzelcanvas ohne Cross-Canvas-Handoff.\n\nSchrittkontext: TOP Requirements Design. Aus dem oberen Datenfluss werden Technologie-, Organisations- und People-Anforderungen abgeleitet.\n\nAntworte instanzbezogen, verständlich und hilfreich auf Fragen zu diesem Canvas und genau zu diesem Schritt.\nDer sichtbare Boardzustand ist die Wahrheit. Rechne damit, dass Menschen zwischen den Schritten manuelle Änderungen vorgenommen haben.\n\nWenn conversationContext sichtbar ist, beantworte Rückfragen in Bezug auf den letzten Vorschlag oder die letzte Antwort.\nWenn keine konkrete Board-Ausarbeitung verlangt wird, bleibe bei executionMode = none.\nNur wenn die Frage ausdrücklich nach einer kleinen, konkreten Board-Ausarbeitung in genau diesem Schritt verlangt, darfst du proposal_only wählen.\nHalluziniere keinen Kontext außerhalb des sichtbaren Boards."
+                }
+              },
+              "run": {
+                "mutationPolicy": "minimal",
+                "feedbackPolicy": "text",
+                "allowedExecutionModes": [
+                  "none",
+                  "proposal_only"
+                ],
+                "allowedActions": [
+                  "create_sticky",
+                  "move_sticky",
+                  "delete_sticky",
+                  "create_connector",
+                  "set_sticky_color",
+                  "set_check_status"
+                ],
+                "allowedActionAreas": [
+                  "technology",
+                  "organization",
+                  "people",
+                  "sorted_out_right"
+                ]
+              },
+              "surface": {
+                "channel": "chat_submit",
+                "group": "hidden",
+                "sidecarOnly": false,
+                "seedByDefault": false
+              },
+              "order": 6
+            }
+          ],
+          "transitions": []
+        },
+        "step4_end_to_end_review_and_next_steps": {
+          "id": "step4_end_to_end_review_and_next_steps",
+          "label": {
+            "de": "End-to-End Review & Next Steps"
+          },
+          "summary": {
+            "de": "Gesamtdesign qualitativ reviewen und die wichtigsten offenen Annahmen, Entscheidungen und nächsten Schritte verdichten."
+          },
+          "visibleInstruction": {
+            "de": "Prüfe nun das Gesamtbild: Passt der Datenfluss? Passen Produkt, Wert und TOP-Unterbau zusammen?"
+          },
+          "flowInstruction": {
+            "de": "Reviewe das Gesamtbild end-to-end. Suche nach Inkonsistenzen, offenen Entscheidungen und dem wichtigsten nächsten Stabilisierungsschritt."
+          },
+          "endpoints": [
+            {
+              "id": "datamonet.design.step4.review",
+              "familyKey": "selection.review",
+              "label": {
+                "de": "Gesamtdesign reviewen"
+              },
+              "summary": {
+                "de": "Prüft das Gesamtdesign qualitativ auf Konsistenz, Anschlussfähigkeit und Umsetzbarkeit."
+              },
+              "scope": {
+                "mode": "current",
+                "allowedCanvasTypeIds": [
+                  "datentreiber-data-monetization"
+                ]
+              },
+              "prompt": {
+                "text": {
+                  "de": "Du arbeitest auf dem Canvas Data Monetization. Diese Übung bleibt in V1 auf einem Einzelcanvas ohne Cross-Canvas-Handoff.\n\nSchrittkontext: End-to-End Review & Next Steps.\nPrüfe den Gesamtzusammenhang:\n- Passen Data Value, Data Product, Analytics, Data Sets und TOP-Struktur zusammen?\n- Ist der Datenfluss plausibel?\n- Sind die wichtigsten Risiken oder Annahmen sichtbar?\n- Gibt es offensichtliche Lücken vor einer Umsetzung?\n- Ist das Produkt technisch, organisatorisch und personell anschlussfähig?\n\nNutze keine numerische Bewertung.\nGib:\n- 1 bis 2 Stärken\n- 1 bis 2 wichtigste Lücken\n- 1 nächsten Schritt\n\nKeine Board-Mutationen.\nKein Score."
+                }
+              },
+              "run": {
+                "mutationPolicy": "none",
+                "feedbackPolicy": "text",
+                "allowedExecutionModes": [
+                  "none"
+                ],
+                "allowedActions": []
+              },
+              "surface": {
+                "channel": "board_button",
+                "group": "primary",
+                "sidecarOnly": false,
+                "seedByDefault": false
+              },
+              "order": 1
+            },
+            {
+              "id": "datamonet.design.step4.coach",
+              "familyKey": "selection.coach",
+              "label": {
+                "de": "Nächste Schritte coachen"
+              },
+              "summary": {
+                "de": "Coacht die Auswahl der wichtigsten offenen Annahmen, Entscheidungen und nächsten Schritte."
+              },
+              "scope": {
+                "mode": "current",
+                "allowedCanvasTypeIds": [
+                  "datentreiber-data-monetization"
+                ]
+              },
+              "prompt": {
+                "text": {
+                  "de": "Du arbeitest auf dem Canvas Data Monetization. Diese Übung bleibt in V1 auf einem Einzelcanvas ohne Cross-Canvas-Handoff.\n\nSchrittkontext: End-to-End Review & Next Steps.\nFokussiere auf:\n- Was ist die wichtigste offene Annahme?\n- Was ist die wichtigste Designentscheidung?\n- Wo ist die größte Lücke?\n- Welcher nächste Schritt würde das Design am meisten stabilisieren?\n\nLiefere 3 bis 5 Leitfragen und genau einen Mikroschritt.\nKeine Board-Mutationen.\nKein Score."
+                }
+              },
+              "run": {
+                "mutationPolicy": "none",
+                "feedbackPolicy": "text",
+                "allowedExecutionModes": [
+                  "none"
+                ],
+                "allowedActions": []
+              },
+              "surface": {
+                "channel": "board_button",
+                "group": "secondary",
+                "sidecarOnly": false,
+                "seedByDefault": false
+              },
+              "order": 2
+            },
+            {
+              "id": "datamonet.design.step4.synthesize",
+              "familyKey": "selection.synthesize",
+              "label": {
+                "de": "Nächste Schritte verdichten"
+              },
+              "summary": {
+                "de": "Erzeugt 1 bis 3 kurze weiße Notizen für offene Annahmen, Entscheidungen und nächste Schritte."
+              },
+              "scope": {
+                "mode": "current",
+                "allowedCanvasTypeIds": [
+                  "datentreiber-data-monetization"
+                ]
+              },
+              "prompt": {
+                "text": {
+                  "de": "Du arbeitest auf dem Canvas Data Monetization. Diese Übung bleibt in V1 auf einem Einzelcanvas ohne Cross-Canvas-Handoff.\n\nSchrittkontext: End-to-End Review & Next Steps.\nErzeuge höchstens 1 bis 3 weiße Sticky Notes in sorted_out_right:\n- wichtigste offene Annahme\n- wichtigste Entscheidung\n- wichtigster nächster Schritt\n\nRegeln:\n- keine neue Produktidee\n- keine neue Pipeline\n- nur Verdichtung\n- sehr kurze, klare weiße Notizen\n- keine langen Sätze\n\nBeispiele:\n- \"Assumption: data access stable\"\n- \"Decide build vs buy\"\n- \"Next: validate ROI metric\"\n\nNutze executionMode = proposal_only."
+                }
+              },
+              "run": {
+                "mutationPolicy": "minimal",
+                "feedbackPolicy": "text",
+                "allowedExecutionModes": [
+                  "proposal_only"
+                ],
+                "allowedActions": [
+                  "create_sticky",
+                  "move_sticky"
+                ],
+                "allowedActionAreas": [
+                  "sorted_out_right"
+                ]
+              },
+              "surface": {
+                "channel": "board_button",
+                "group": "proposal",
+                "sidecarOnly": false,
+                "seedByDefault": false
+              },
+              "order": 3
+            },
+            {
+              "id": "data-monetization-product-design-v1.step4_end_to_end_review_and_next_steps.chat_apply",
+              "familyKey": null,
+              "label": {
+                "de": "Vorschläge anwenden"
+              },
+              "summary": {
+                "de": "Wendet den zuletzt erzeugten Vorschlag dieses Schritts an."
+              },
+              "scope": {
+                "mode": "current",
+                "allowedCanvasTypeIds": [
+                  "datentreiber-data-monetization"
+                ]
+              },
+              "prompt": {
+                "text": {
+                  "de": "Du arbeitest auf dem Canvas Data Monetization.\n\nSchrittkontext: End-to-End Review & Next Steps. Das Gesamtdesign aus Value, Product, Analytics, Data Sets und TOP-Struktur wird qualitativ geprüft und verdichtet.\n\nWende nur den bereits gespeicherten Vorschlag für diesen Schritt an.\nKeine neue inhaltliche Analyse, keine neue Planung, kein neues Feedback."
+                }
+              },
+              "run": {
+                "mutationPolicy": "minimal",
+                "feedbackPolicy": "text",
+                "allowedExecutionModes": [
+                  "direct_apply"
+                ],
+                "allowedActions": [
+                  "create_sticky",
+                  "move_sticky",
+                  "delete_sticky",
+                  "create_connector",
+                  "set_sticky_color",
+                  "set_check_status"
+                ],
+                "allowedActionAreas": []
+              },
+              "surface": {
+                "channel": "chat_apply",
+                "group": "hidden",
+                "sidecarOnly": false,
+                "seedByDefault": false
+              },
+              "order": 4
+            },
+            {
+              "id": "data-monetization-product-design-v1.step4_end_to_end_review_and_next_steps.chat_submit",
+              "familyKey": null,
+              "label": {
+                "de": "Frage stellen"
+              },
+              "summary": {
+                "de": "Beantwortet Fragen zum aktuellen Schritt."
+              },
+              "scope": {
+                "mode": "current",
+                "allowedCanvasTypeIds": [
+                  "datentreiber-data-monetization"
+                ]
+              },
+              "prompt": {
+                "text": {
+                  "de": "Du arbeitest auf dem Canvas Data Monetization. Diese Übung bleibt in V1 auf einem Einzelcanvas ohne Cross-Canvas-Handoff.\n\nSchrittkontext: End-to-End Review & Next Steps. Das Gesamtdesign aus Value, Product, Analytics, Data Sets und TOP-Struktur wird qualitativ geprüft und verdichtet.\n\nAntworte instanzbezogen, verständlich und hilfreich auf Fragen zu diesem Canvas und genau zu diesem Schritt.\nDer sichtbare Boardzustand ist die Wahrheit. Rechne damit, dass Menschen zwischen den Schritten manuelle Änderungen vorgenommen haben.\n\nWenn conversationContext sichtbar ist, beantworte Rückfragen in Bezug auf den letzten Vorschlag oder die letzte Antwort.\nWenn keine konkrete Board-Ausarbeitung verlangt wird, bleibe bei executionMode = none.\nNur wenn die Frage ausdrücklich nach einer kleinen, konkreten Board-Ausarbeitung in genau diesem Schritt verlangt, darfst du proposal_only wählen.\nHalluziniere keinen Kontext außerhalb des sichtbaren Boards."
+                }
+              },
+              "run": {
+                "mutationPolicy": "minimal",
+                "feedbackPolicy": "text",
+                "allowedExecutionModes": [
+                  "none",
+                  "proposal_only"
+                ],
+                "allowedActions": [
+                  "create_sticky",
+                  "move_sticky",
+                  "delete_sticky",
+                  "create_connector",
+                  "set_sticky_color",
+                  "set_check_status"
+                ],
+                "allowedActionAreas": [
+                  "sorted_out_right"
+                ]
+              },
+              "surface": {
+                "channel": "chat_submit",
+                "group": "hidden",
+                "sidecarOnly": false,
+                "seedByDefault": false
+              },
+              "order": 5
             }
           ],
           "transitions": []

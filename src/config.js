@@ -20,6 +20,10 @@ export const ANALYTICS_AI_MATURITY_TEMPLATE_ID = "datentreiber-analytics-ai-matu
 export const ANALYTICS_AI_MATURITY_IMAGE_URL =
   "https://www.datentreiber.com/wp-content/uploads/2024/12/Datentreiber_EN_Analytics-AI-Maturity_v1-0.png";
 
+export const DATA_MONETIZATION_TEMPLATE_ID = "datentreiber-data-monetization";
+export const DATA_MONETIZATION_IMAGE_URL =
+  "https://www.datentreiber.com/wp-content/uploads/2024/12/Datentreiber_EN_Data-Monetization_v1-1_20240610.png";
+
 // Template-Katalog: Canvas-Typ-Erkennung über PNG-URL
 export const DT_TEMPLATE_CATALOG = {
   [TEMPLATE_ID]: {
@@ -348,6 +352,109 @@ Connector-Regeln:
   - niedrigere Stufe -> höhere Stufe
 - Verwende lieber wenige klare Verbindungen als viele schwache.
 - Clustering ähnlicher blauer Input-Notizen kann optional mit nativer Miro AI vorbereitet werden; unsere App soll das Clustering nicht erfinden oder simulieren.`.trim()
+  },
+  [DATA_MONETIZATION_TEMPLATE_ID]: {
+    canvasTypeId: DATA_MONETIZATION_TEMPLATE_ID,
+    displayName: "Data Monetization",
+    agentLabelPrefix: "Data Monetization",
+    thumbnailUrl: DATA_MONETIZATION_IMAGE_URL,
+    imageUrl: DATA_MONETIZATION_IMAGE_URL,
+    assetWidthPx: 4550,
+    assetHeightPx: 3219,
+    insertWidthPx: 4550,
+    promptContext: `Canvas-Weltmodell für Data Monetization:
+- Dieses Canvas beschreibt, wie Daten über Analytics in Datenprodukte und schließlich in messbaren Wert übersetzt werden.
+- Die rechte Seite definiert das Zielbild: Data Products und Data Value.
+- Die Mitte beschreibt die Analysepipeline.
+- Die linke obere Seite beschreibt die benötigten Data Sets.
+- Die untere Hälfte beschreibt den TOP-Unterbau: Technology, Organization, People.
+- Sorted-out links/rechts sind Parkbereiche für Input, Alternativen oder offene Punkte.
+
+Verwende für area bzw. targetArea ausschließlich diese Area-Keys:
+- header = Header: Fokus des Canvas, also der Name des Daten-/AI-Produkts oder der fokussierten Use-Case-Idee.
+- datasets = Data Sets
+- dataanalytics = Data Analytics
+- dataproducts = Data Products
+- datavalue = Data Value
+- technology = Technology
+- organization = Organization
+- people = People
+- sorted_out_left = seitlicher Sorted-out-Bereich links außerhalb des sichtbaren Canvas; kann als Input-Lane für importierte Kontext-Notizen dienen
+- sorted_out_right = seitlicher Sorted-out-Bereich rechts außerhalb des sichtbaren Canvas
+
+Visuelle Orientierung:
+- header liegt oben.
+- datasets liegt links oben.
+- dataanalytics liegt mittig oben.
+- dataproducts und datavalue liegen rechts oben.
+- technology, organization und people liegen darunter als TOP-Struktur.
+- footer / legend ist kein Arbeitsbereich.
+- Es gibt kein eigenes Check-Feld; Verdichtungen und offene Entscheidungen werden eher in sorted_out_right oder als weiße Notizen nahe am relevanten Bereich festgehalten.
+
+Semantik:
+- Data Sets beschreiben benötigte oder nützliche Eingabedaten.
+- Data Analytics beschreibt die Verarbeitungsschritte, Modelle, Evaluation und Visualisierung.
+- Data Products beschreibt die konkreten Outputs oder Informationsprodukte für Nutzer.
+- Data Value beschreibt Business Value, Information Value, Information Quality und Modell- oder Produktperformance.
+- Technology beschreibt Werkzeuge, Plattformen, Speicher, Schnittstellen und technische Infrastruktur.
+- Organization beschreibt Ownership, Teams, Departments oder externe Provider.
+- People beschreibt Rollen, Skills, Kapazität und Zusammenarbeit.
+- Die wichtigste Denklogik dieses Canvas ist:
+  1) Beginne mit dem Ende auf der rechten Seite.
+  2) Leite daraus die Analysepipeline in der Mitte ab.
+  3) Leite daraus die nötigen Data Sets links ab.
+  4) Leite daraus den TOP-Unterbau unten ab.
+
+Farblogik:
+- Grün = bestehendes Element.
+- Gelb = geplantes oder in Arbeit befindliches Element.
+- Rot = fehlendes Element.
+- Weiß = Question / Assumption / Insight / Decision / Task.
+- Importierte Kontext-Notizen in sorted_out_left dürfen ihre ursprüngliche Farbe behalten; sie sind dann Input-Kontext und noch nicht Teil des eigentlichen Canvas-Modells.
+
+Sticky-Regeln:
+- Normale Element-Stickies kurz halten: bevorzugt 1 bis 4 Wörter.
+- Eine Sticky = ein Element.
+- Beispiele:
+  - "Sales data"
+  - "Data Warehouse"
+  - "Data engineer"
+  - "Total sales"
+- Analytics-Schritt-Stickies dürfen etwas länger sein, wenn sonst der Verarbeitungsschritt unklar würde.
+- Beispiele:
+  - "Integrate data into flat table"
+  - "Split into training & test set"
+  - "Evaluate MMM with test set"
+- Keine langen Erklärtexte auf Stickies.
+- Begründungen gehören ins Feedback, nicht auf die Sticky.
+
+Arbeitslogik:
+1) Fokus im Header klären.
+2) Data Value und Data Products definieren.
+3) Data Analytics rückwärts daraus ableiten.
+4) Data Sets als Inputs ergänzen.
+5) Technology, Organization und People daraus ableiten.
+6) Offene Entscheidungen, Annahmen oder Risiken sichtbar machen, statt sie zu verstecken.
+
+Connector-Regeln:
+- Connectoren sind hier funktional und wichtig.
+- Bevorzugte obere Flusslogik:
+  - datasets -> dataanalytics
+  - dataanalytics -> dataproducts
+  - dataproducts -> datavalue
+- Innerhalb dataanalytics bevorzugt von links nach rechts verbinden.
+- Innerhalb technology, organization und people bevorzugt horizontale Flow- oder Handoff-Beziehungen.
+- Vertikale Conway- oder Ownership-Linien können sinnvoll sein, sind aber optional und in V1 nicht zwingend.
+- Lieber wenige klare Flussbeziehungen als ein unlesbares Netz.
+
+Beispielhafte Elemente:
+- "Sales data"
+- "Web data"
+- "Data Warehouse"
+- "Dashboarding Tool"
+- "Data engineer"
+- "Prediction accuracy"
+- "ROI (= ROAS)"`.trim()
   }
 };
 
@@ -949,6 +1056,79 @@ export const DT_CANVAS_DEFS = {
         ]
       }
     ]
+  },
+  [DATA_MONETIZATION_TEMPLATE_ID]: {
+    originalWidth: 1000,
+    originalHeight: 720,
+    headerPolygons: [
+      {
+        id: "header",
+        title: "Header",
+        polygonNorm: [
+          [0.2020, 0.0181],[0.6810, 0.0181],[0.6810, 0.1000],[0.2020, 0.1000]
+        ]
+      }
+    ],
+    footerPolygons: [
+      {
+        id: "footer",
+        title: "Footer",
+        polygonNorm: [
+          [0.0150, 0.9347],[0.5590, 0.9347],[0.5590, 0.9694],[0.0150, 0.9694]
+        ]
+      }
+    ],
+    regionPolygons: [
+      {
+        id: "datasets",
+        title: "Data Sets",
+        polygonNorm: [
+          [0.0220, 0.1153],[0.3060, 0.1153],[0.3060, 0.4792],[0.0220, 0.4792]
+        ]
+      },
+      {
+        id: "dataanalytics",
+        title: "Data Analytics",
+        polygonNorm: [
+          [0.3130, 0.1153],[0.6780, 0.1153],[0.6780, 0.4806],[0.3130, 0.4806]
+        ]
+      },
+      {
+        id: "dataproducts",
+        title: "Data Products",
+        polygonNorm: [
+          [0.6830, 0.1153],[0.8430, 0.1153],[0.8780, 0.2958],[0.8440, 0.4806],[0.6820, 0.4806]
+        ]
+      },
+      {
+        id: "datavalue",
+        title: "Data Value",
+        polygonNorm: [
+          [0.8440, 0.1153],[0.9680, 0.1153],[0.9680, 0.4806],[0.8450, 0.4806],[0.8790, 0.2972]
+        ]
+      },
+      {
+        id: "technology",
+        title: "Technology",
+        polygonNorm: [
+          [0.0220, 0.4903],[0.9680, 0.4903],[0.9680, 0.6806],[0.0220, 0.6806]
+        ]
+      },
+      {
+        id: "organization",
+        title: "Organization",
+        polygonNorm: [
+          [0.0220, 0.6819],[0.9680, 0.6819],[0.9680, 0.7833],[0.0220, 0.7833]
+        ]
+      },
+      {
+        id: "people",
+        title: "People",
+        polygonNorm: [
+          [0.0220, 0.7833],[0.9680, 0.7833],[0.9680, 0.8806],[0.0220, 0.8806]
+        ]
+      }
+    ]
   }
 };
 
@@ -1109,6 +1289,9 @@ export const DT_PROMPT_CATALOG = {
     system: buildSelectionSystemPrompt()
   },
   [ANALYTICS_AI_MATURITY_TEMPLATE_ID]: {
+    system: buildSelectionSystemPrompt()
+  },
+  [DATA_MONETIZATION_TEMPLATE_ID]: {
     system: buildSelectionSystemPrompt()
   }
 };

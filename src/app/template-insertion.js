@@ -1,7 +1,7 @@
 import {
   DT_SORTED_OUT_REGION_WIDTH_PX,
   DT_SORTED_OUT_BUFFER_WIDTH_PX
-} from "../config.js?v=20260316-patch19-analytics-ai-maturity-pack";
+} from "../config.js?v=20260316-patch20-data-monetization-pack";
 
 function getCanvasDef(canvasTypeId, { canvasDefs, defaultTemplateId }) {
   return canvasDefs?.[canvasTypeId] || canvasDefs?.[defaultTemplateId] || null;

@@ -3,7 +3,7 @@
 <title>Datentreiber Canvas – Loader</title> 
 <script src="https://miro.com/app/static/sdk/v2/miro.js"></script>
 <script type="module">
-  const APP_ASSET_VERSION = "20260316-patch19-analytics-ai-maturity-pack";
+  const APP_ASSET_VERSION = "20260316-patch20-data-monetization-pack";
 
   function buildPanelUrl() {
     const url = new URL("./app.html", window.location.href);
@@ -21,7 +21,7 @@
 
   // Headless-Runtime parallel booten.
   window.__DT_RUNTIME_CONTEXT = "headless";
-  import("./src/headless/runtime.js?v=20260316-patch19-analytics-ai-maturity-pack").catch((error) => {
+  import("./src/headless/runtime.js?v=20260316-patch20-data-monetization-pack").catch((error) => {
     console.error("[DT][loader] Headless-Boot fehlgeschlagen", error);
   });
 </script>
