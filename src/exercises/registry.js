@@ -1,4 +1,4 @@
-export { EXERCISE_PACKS } from "./method-catalog.js?v=20260316-patch18-business-model-case-pack";
+export { EXERCISE_PACKS } from "./method-catalog.js?v=20260316-patch19-analytics-ai-maturity-pack";
 
 export {
   ENDPOINTS,
@@ -22,4 +22,4 @@ export {
   findFirstEndpointByChannel,
   listBoardButtonEndpointsForStep,
   isSidecarOnlyEndpoint
-} from "./library.js?v=20260316-patch18-business-model-case-pack";
+} from "./library.js?v=20260316-patch19-analytics-ai-maturity-pack";

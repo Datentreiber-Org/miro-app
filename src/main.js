@@ -12,29 +12,29 @@ import {
   DT_CHECK_TAG_COLOR,
   normalizeStickyColorToken,
   STICKY_LAYOUT
-} from "./config.js?v=20260316-patch18-business-model-case-pack";
+} from "./config.js?v=20260316-patch19-analytics-ai-maturity-pack";
 
-import { createLogger, stripHtml, extractUnderlinedText, isFiniteNumber } from "./utils.js?v=20260316-patch18-business-model-case-pack";
-import { normalizeUiLanguage, t, getLocaleForLanguage } from "./i18n/index.js?v=20260316-patch18-business-model-case-pack";
+import { createLogger, stripHtml, extractUnderlinedText, isFiniteNumber } from "./utils.js?v=20260316-patch19-analytics-ai-maturity-pack";
+import { normalizeUiLanguage, t, getLocaleForLanguage } from "./i18n/index.js?v=20260316-patch19-analytics-ai-maturity-pack";
 
-import * as Board from "./miro/board.js?v=20260316-patch18-business-model-case-pack";
-import * as Catalog from "./domain/catalog.js?v=20260316-patch18-business-model-case-pack";
-import * as OpenAI from "./ai/openai.js?v=20260316-patch18-business-model-case-pack";
-import * as Memory from "./runtime/memory.js?v=20260316-patch18-business-model-case-pack";
-import * as Exercises from "./exercises/registry.js?v=20260316-patch18-business-model-case-pack";
-import * as ExerciseLibrary from "./exercises/library.js?v=20260316-patch18-business-model-case-pack";
-import * as PromptComposer from "./prompt/composer.js?v=20260316-patch18-business-model-case-pack";
-import * as ExerciseEngine from "./runtime/exercise-engine.js?v=20260316-patch18-business-model-case-pack";
-import * as BoardFlow from "./runtime/board-flow.js?v=20260316-patch18-business-model-case-pack";
-import * as PanelBridge from "./runtime/panel-bridge.js?v=20260316-patch18-business-model-case-pack";
-import { getInsertWidthPxForCanvasType, computeTemplateInsertPosition } from "./app/template-insertion.js?v=20260316-patch18-business-model-case-pack";
+import * as Board from "./miro/board.js?v=20260316-patch19-analytics-ai-maturity-pack";
+import * as Catalog from "./domain/catalog.js?v=20260316-patch19-analytics-ai-maturity-pack";
+import * as OpenAI from "./ai/openai.js?v=20260316-patch19-analytics-ai-maturity-pack";
+import * as Memory from "./runtime/memory.js?v=20260316-patch19-analytics-ai-maturity-pack";
+import * as Exercises from "./exercises/registry.js?v=20260316-patch19-analytics-ai-maturity-pack";
+import * as ExerciseLibrary from "./exercises/library.js?v=20260316-patch19-analytics-ai-maturity-pack";
+import * as PromptComposer from "./prompt/composer.js?v=20260316-patch19-analytics-ai-maturity-pack";
+import * as ExerciseEngine from "./runtime/exercise-engine.js?v=20260316-patch19-analytics-ai-maturity-pack";
+import * as BoardFlow from "./runtime/board-flow.js?v=20260316-patch19-analytics-ai-maturity-pack";
+import * as PanelBridge from "./runtime/panel-bridge.js?v=20260316-patch19-analytics-ai-maturity-pack";
+import { getInsertWidthPxForCanvasType, computeTemplateInsertPosition } from "./app/template-insertion.js?v=20260316-patch19-analytics-ai-maturity-pack";
 import {
   pickFirstNonEmptyString,
   makeDirectedConnectorKey,
   makeUndirectedConnectorKey,
   normalizeAgentAction
-} from "./agent/action-normalization.js?v=20260316-patch18-business-model-case-pack";
-import { createEmptyActionExecutionStats, mergeActionExecutionStats, summarizeAppliedActions } from "./agent/action-stats.js?v=20260316-patch18-business-model-case-pack";
+} from "./agent/action-normalization.js?v=20260316-patch19-analytics-ai-maturity-pack";
+import { createEmptyActionExecutionStats, mergeActionExecutionStats, summarizeAppliedActions } from "./agent/action-stats.js?v=20260316-patch19-analytics-ai-maturity-pack";
 
 // --------------------------------------------------------------------
 // State (Controller-Level)

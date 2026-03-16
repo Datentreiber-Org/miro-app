@@ -17,7 +17,7 @@ import {
   listStepEndpointsForSurface,
   getEndpointById,
   isSidecarOnlyEndpoint,
-} from "./method-catalog.js?v=20260316-patch18-business-model-case-pack";
+} from "./method-catalog.js?v=20260316-patch19-analytics-ai-maturity-pack";
 
 function asNonEmptyString(value) {
   if (typeof value !== "string") return null;

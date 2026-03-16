@@ -2,10 +2,10 @@ import {
   DT_DEFAULT_APP_ADMIN_POLICY,
   DT_DEFAULT_FEEDBACK_CHANNEL,
   DT_EXECUTION_MODES
-} from "../config.js?v=20260316-patch18-business-model-case-pack";
+} from "../config.js?v=20260316-patch19-analytics-ai-maturity-pack";
 
-import { METHOD_I18N_OVERRIDES } from "../i18n/catalog.js?v=20260316-patch18-business-model-case-pack";
-import { normalizeUiLanguage, pickLocalized } from "../i18n/index.js?v=20260316-patch18-business-model-case-pack";
+import { METHOD_I18N_OVERRIDES } from "../i18n/catalog.js?v=20260316-patch19-analytics-ai-maturity-pack";
+import { normalizeUiLanguage, pickLocalized } from "../i18n/index.js?v=20260316-patch19-analytics-ai-maturity-pack";
 
 function asNonEmptyString(value) {
   if (typeof value !== "string") return null;
@@ -4068,6 +4068,1425 @@ const RAW_METHOD_CATALOG = deepFreeze(JSON.parse(String.raw`{
                 ],
                 "allowedActionAreas": [
                   "11_check",
+                  "sorted_out_right"
+                ]
+              },
+              "surface": {
+                "channel": "chat_submit",
+                "group": "hidden",
+                "sidecarOnly": false,
+                "seedByDefault": false
+              },
+              "order": 6
+            }
+          ],
+          "transitions": []
+        }
+      }
+    },
+    "analytics-ai-maturity-assessment-planning-v1": {
+      "exercisePackId": "analytics-ai-maturity-assessment-planning-v1",
+      "label": {
+        "de": "Analytics & AI Maturity Assessment & Planning"
+      },
+      "version": 1,
+      "description": {
+        "de": "Geführte Einzelcanvas-Übung auf dem Analytics & AI Maturity Canvas: Domäne fokussieren, aktuelle Reife verorten, fehlende Anwendungen aus Use-Case-Ideen ableiten, Vorläufer und Capabilities ergänzen und die nächste sinnvolle Anwendung qualitativ empfehlen."
+      },
+      "boardMode": "exercise",
+      "allowedCanvasTypeIds": [
+        "datentreiber-analytics-ai-maturity"
+      ],
+      "defaultCanvasTypeId": "datentreiber-analytics-ai-maturity",
+      "defaultStepId": "step0_focus_and_input_framing",
+      "defaults": {
+        "feedbackChannel": "text",
+        "userMayChangePack": false,
+        "userMayChangeStep": false,
+        "appAdminPolicy": "ui_toggle"
+      },
+      "steps": {
+        "step0_focus_and_input_framing": {
+          "id": "step0_focus_and_input_framing",
+          "label": {
+            "de": "Focus & Input Framing"
+          },
+          "summary": {
+            "de": "Application Domain fokussieren, Input-Kontext sammeln und Scope sauber klären."
+          },
+          "visibleInstruction": {
+            "de": "Benutze den Header für genau eine Application Domain. Sammle importierte blaue Input-Notizen links und parke Nebenthemen bewusst."
+          },
+          "flowInstruction": {
+            "de": "Starte mit Fokus und Input-Framing. Trenne Domain, Input-Kontext und Nebenthemen sauber, bevor du mit Maturity-Mapping beginnst."
+          },
+          "endpoints": [
+            {
+              "id": "maturity.assess.step0.hint",
+              "familyKey": "selection.hint",
+              "label": {
+                "de": "Hinweis geben"
+              },
+              "summary": {
+                "de": "Gibt einen kurzen Hinweis für den nächsten sinnvollen Mikroschritt in Step 0"
+              },
+              "scope": {
+                "mode": "current",
+                "allowedCanvasTypeIds": [
+                  "datentreiber-analytics-ai-maturity"
+                ]
+              },
+              "prompt": {
+                "text": {
+                  "de": "Du arbeitest auf dem Canvas Analytics & AI Maturity. Diese Übung bleibt in V1 auf einem Einzelcanvas ohne Cross-Canvas-Handoff.\n\nSchrittkontext: Focus & Input Framing.\nZiel:\n- genau eine Application Domain im Header festlegen,\n- importierte blaue Input-Notizen links als Kontext sammeln,\n- Scope begrenzen,\n- Nebenthemen bewusst parken.\n\nGib 1 bis 2 kurze nächste Schritte oder Satzstarter.\nArbeite zuerst mit:\n- Header\n- Domänenfokus\n- Input-Lane links\n- bewusstem Parken in sorted_out_right\n\nSpringe noch nicht ins eigentliche Maturity-Mapping.\nKeine Board-Mutationen.\nKein Score."
+                }
+              },
+              "run": {
+                "mutationPolicy": "none",
+                "feedbackPolicy": "text",
+                "allowedExecutionModes": [
+                  "none"
+                ],
+                "allowedActions": []
+              },
+              "surface": {
+                "channel": "board_button",
+                "group": "primary",
+                "sidecarOnly": false,
+                "seedByDefault": false
+              },
+              "order": 1
+            },
+            {
+              "id": "maturity.assess.step0.coach",
+              "familyKey": "selection.coach",
+              "label": {
+                "de": "Fokus coachen"
+              },
+              "summary": {
+                "de": "Coacht Fokus, Input-Lane und Scope mit Leitfragen"
+              },
+              "scope": {
+                "mode": "current",
+                "allowedCanvasTypeIds": [
+                  "datentreiber-analytics-ai-maturity"
+                ]
+              },
+              "prompt": {
+                "text": {
+                  "de": "Du arbeitest auf dem Canvas Analytics & AI Maturity. Diese Übung bleibt in V1 auf einem Einzelcanvas ohne Cross-Canvas-Handoff.\n\nSchrittkontext: Focus & Input Framing.\nHilf mit 3 bis 5 Leitfragen und genau einem Mikroschritt.\n\nFokussiere auf:\n- Welche Application Domain ist gemeint?\n- Welche importierten blauen Notizen sind Input-Kontext und welche nicht?\n- Was gehört noch nicht in dieses Canvas?\n- Welche Nebenthemen sollten bewusst geparkt werden?\n\nLiefere keine Komplettlösung.\nBleibe im aktuellen Schritt.\nKeine Board-Mutationen.\nKein Score."
+                }
+              },
+              "run": {
+                "mutationPolicy": "none",
+                "feedbackPolicy": "text",
+                "allowedExecutionModes": [
+                  "none"
+                ],
+                "allowedActions": []
+              },
+              "surface": {
+                "channel": "board_button",
+                "group": "primary",
+                "sidecarOnly": false,
+                "seedByDefault": false
+              },
+              "order": 2
+            },
+            {
+              "id": "maturity.assess.step0.check",
+              "familyKey": "selection.check",
+              "label": {
+                "de": "Fokus prüfen"
+              },
+              "summary": {
+                "de": "Prüft, ob Fokus und Input-Kontext für das Maturity-Mapping tragfähig sind"
+              },
+              "scope": {
+                "mode": "current",
+                "allowedCanvasTypeIds": [
+                  "datentreiber-analytics-ai-maturity"
+                ]
+              },
+              "prompt": {
+                "text": {
+                  "de": "Du arbeitest auf dem Canvas Analytics & AI Maturity. Diese Übung bleibt in V1 auf einem Einzelcanvas ohne Cross-Canvas-Handoff.\n\nSchrittkontext: Focus & Input Framing.\n\nPrüfe qualitativ und knapp:\n- Ist genau eine Application Domain fokussiert?\n- Ist der Header spezifisch genug?\n- Ist sichtbar, was Input-Kontext ist und was schon echtes Maturity-Mapping wäre?\n- Sind Nebenthemen getrennt oder geparkt?\n- Ist der Canvas bereit für Step 1?\n\nNutze keine numerische Bewertung.\nGib:\n- 1 Stärke\n- 1 wichtigste Unschärfe\n- 1 nächsten Schritt\n\nKeine Board-Mutationen.\nKein Score."
+                }
+              },
+              "run": {
+                "mutationPolicy": "none",
+                "feedbackPolicy": "text",
+                "allowedExecutionModes": [
+                  "none"
+                ],
+                "allowedActions": []
+              },
+              "surface": {
+                "channel": "board_button",
+                "group": "primary",
+                "sidecarOnly": false,
+                "seedByDefault": false
+              },
+              "order": 3
+            },
+            {
+              "id": "maturity.assess.step0.propose",
+              "familyKey": "selection.propose",
+              "label": {
+                "de": "Fokus vorschlagen"
+              },
+              "summary": {
+                "de": "Macht einen kleinen Vorschlag für Header, Input-Lane oder geparkte Scope-Varianten"
+              },
+              "scope": {
+                "mode": "current",
+                "allowedCanvasTypeIds": [
+                  "datentreiber-analytics-ai-maturity"
+                ]
+              },
+              "prompt": {
+                "text": {
+                  "de": "Du arbeitest auf dem Canvas Analytics & AI Maturity. Diese Übung bleibt in V1 auf einem Einzelcanvas ohne Cross-Canvas-Handoff.\n\nSchrittkontext: Focus & Input Framing.\nZiel:\n- genau eine Application Domain im Header benennen,\n- importierte blaue Input-Notizen links als Input-Kontext sichtbar machen,\n- Nebenthemen oder Alternativen bewusst parken.\n\nArbeite nur in:\n- header\n- sorted_out_left\n- sorted_out_right\n\nArbeite klein und anschlussfähig.\nWenn noch kein klarer Fokus sichtbar ist, formuliere einen kurzen Header-Fokus.\nNutze weiße Stickies für kritische Scope-Fragen oder riskante Annahmen.\nNutze sorted_out_left als Input-Lane für importierte blaue Use-Case-Ideen.\nNutze sorted_out_right für alternative Domänen oder spätere Themen.\n\nSticky-Regeln:\n- Header sehr kurz.\n- Weiße Scope-/Frage-Stickies kurz und präzise.\n- Eine Sticky = ein Gedanke.\n\nBeispiele:\n- \"Marketing Analytics & AI\"\n- \"Retail Pricing Domain\"\n- \"Input: copied use cases\"\n- \"Assumption: single domain\"\n\nKeine Maturity-Details vorwegnehmen.\nNutze executionMode = proposal_only."
+                }
+              },
+              "run": {
+                "mutationPolicy": "minimal",
+                "feedbackPolicy": "text",
+                "allowedExecutionModes": [
+                  "proposal_only"
+                ],
+                "allowedActions": [
+                  "create_sticky",
+                  "move_sticky",
+                  "delete_sticky",
+                  "create_connector",
+                  "set_sticky_color",
+                  "set_check_status"
+                ],
+                "allowedActionAreas": [
+                  "header",
+                  "sorted_out_left",
+                  "sorted_out_right"
+                ]
+              },
+              "surface": {
+                "channel": "board_button",
+                "group": "proposal",
+                "sidecarOnly": false,
+                "seedByDefault": false
+              },
+              "order": 4
+            },
+            {
+              "id": "analytics-ai-maturity-assessment-planning-v1.step0_focus_and_input_framing.chat_apply",
+              "familyKey": null,
+              "label": {
+                "de": "Vorschläge anwenden"
+              },
+              "summary": {
+                "de": "Wendet den zuletzt erzeugten Vorschlag dieses Schritts an."
+              },
+              "scope": {
+                "mode": "current",
+                "allowedCanvasTypeIds": [
+                  "datentreiber-analytics-ai-maturity"
+                ]
+              },
+              "prompt": {
+                "text": {
+                  "de": "Du arbeitest auf dem Canvas Analytics & AI Maturity.\n\nSchrittkontext: Focus & Input Framing. Die Application Domain wird im Header festgelegt. Importierte blaue Use-Case-Ideen können links als Input-Kontext gesammelt werden. Scope und Nebenthemen werden sauber getrennt.\n\nWende nur den bereits gespeicherten Vorschlag für diesen Schritt an.\nKeine neue inhaltliche Analyse, keine neue Planung, kein neues Feedback."
+                }
+              },
+              "run": {
+                "mutationPolicy": "minimal",
+                "feedbackPolicy": "text",
+                "allowedExecutionModes": [
+                  "direct_apply"
+                ],
+                "allowedActions": [
+                  "create_sticky",
+                  "move_sticky",
+                  "delete_sticky",
+                  "create_connector",
+                  "set_sticky_color",
+                  "set_check_status"
+                ],
+                "allowedActionAreas": []
+              },
+              "surface": {
+                "channel": "chat_apply",
+                "group": "hidden",
+                "sidecarOnly": false,
+                "seedByDefault": false
+              },
+              "order": 5
+            },
+            {
+              "id": "analytics-ai-maturity-assessment-planning-v1.step0_focus_and_input_framing.chat_submit",
+              "familyKey": null,
+              "label": {
+                "de": "Frage stellen"
+              },
+              "summary": {
+                "de": "Beantwortet Fragen zum aktuellen Schritt."
+              },
+              "scope": {
+                "mode": "current",
+                "allowedCanvasTypeIds": [
+                  "datentreiber-analytics-ai-maturity"
+                ]
+              },
+              "prompt": {
+                "text": {
+                  "de": "Du arbeitest auf dem Canvas Analytics & AI Maturity. Diese Übung bleibt in V1 auf einem Einzelcanvas ohne Cross-Canvas-Handoff.\n\nSchrittkontext: Focus & Input Framing. Die Application Domain wird im Header festgelegt. Importierte blaue Use-Case-Ideen können links als Input-Kontext gesammelt werden. Scope und Nebenthemen werden sauber getrennt.\n\nAntworte instanzbezogen, verständlich und hilfreich auf Fragen zu diesem Canvas und zu genau diesem Schritt.\nDer sichtbare Boardzustand ist die Wahrheit. Rechne damit, dass Menschen zwischen den Schritten manuelle Änderungen vorgenommen haben.\n\nWenn die Frage nach einem kleinen Fokus-, Scope- oder Input-Vorschlag fragt, darfst du proposal_only mit Header- oder Sorted-out-Notizen verwenden.\n\nWenn conversationContext sichtbar ist, beantworte Rückfragen in Bezug auf den letzten Vorschlag oder die letzte Antwort.\nWenn keine konkrete Board-Ausarbeitung verlangt wird, bleibe bei executionMode = none.\nNur wenn die Frage ausdrücklich nach einer kleinen konkreten Board-Ausarbeitung in genau diesem Schritt verlangt, darfst du proposal_only wählen.\nHalluziniere keinen Kontext außerhalb des sichtbaren Boards."
+                }
+              },
+              "run": {
+                "mutationPolicy": "minimal",
+                "feedbackPolicy": "text",
+                "allowedExecutionModes": [
+                  "none",
+                  "proposal_only"
+                ],
+                "allowedActions": [
+                  "create_sticky",
+                  "move_sticky",
+                  "delete_sticky",
+                  "create_connector",
+                  "set_sticky_color",
+                  "set_check_status"
+                ],
+                "allowedActionAreas": [
+                  "header",
+                  "sorted_out_left",
+                  "sorted_out_right"
+                ]
+              },
+              "surface": {
+                "channel": "chat_submit",
+                "group": "hidden",
+                "sidecarOnly": false,
+                "seedByDefault": false
+              },
+              "order": 6
+            }
+          ],
+          "transitions": []
+        },
+        "step1_current_maturity_mapping": {
+          "id": "step1_current_maturity_mapping",
+          "label": {
+            "de": "Current Maturity Mapping"
+          },
+          "summary": {
+            "de": "Bestehende und geplante Anwendungen sowie zentrale Capabilities entlang der Reifestufen verorten."
+          },
+          "visibleInstruction": {
+            "de": "Ordne bestehende und geplante Anwendungen sowie erste zentrale Capabilities den passenden Reifestufen zu."
+          },
+          "flowInstruction": {
+            "de": "Baue jetzt das Maturity-Bild der gewählten Domain auf. Verorte Anwendungen und Capabilities plausibel und korrigiere Fehlplatzierungen."
+          },
+          "endpoints": [
+            {
+              "id": "maturity.assess.step1.coach",
+              "familyKey": "selection.coach",
+              "label": {
+                "de": "Reifegrad coachen"
+              },
+              "summary": {
+                "de": "Coacht die Einordnung von Anwendungen und Capabilities mit heuristischen Leitfragen"
+              },
+              "scope": {
+                "mode": "current",
+                "allowedCanvasTypeIds": [
+                  "datentreiber-analytics-ai-maturity"
+                ]
+              },
+              "prompt": {
+                "text": {
+                  "de": "Du arbeitest auf dem Canvas Analytics & AI Maturity. Diese Übung bleibt in V1 auf einem Einzelcanvas ohne Cross-Canvas-Handoff.\n\nSchrittkontext: Current Maturity Mapping.\nDer sichtbare Boardzustand ist die Wahrheit. Rechne damit, dass Menschen zwischen den Schritten Stickies ergänzt, verschoben oder gelöscht haben.\n\nHilf mit 3 bis 5 Leitfragen und genau einem Mikroschritt.\nDenk analytisch und heuristisch:\n- Welche Elemente sind eher Anwendungen für Business User?\n- Welche Elemente sind eher Capabilities wie Tools, Datenplattformen, Rollen oder Skills?\n- Welche Maturity-Stufe ist semantisch dominierend?\n- Welche vorhandenen Elemente fehlen noch, damit die Domäne realistisch greifbar wird?\n- Wo ist etwas wahrscheinlich im falschen Feld?\n\nZiel ist Kohärenz, nicht Vollständigkeits-Fiktion.\nKeine Board-Mutationen.\nKein Score."
+                }
+              },
+              "run": {
+                "mutationPolicy": "none",
+                "feedbackPolicy": "text",
+                "allowedExecutionModes": [
+                  "none"
+                ],
+                "allowedActions": []
+              },
+              "surface": {
+                "channel": "board_button",
+                "group": "primary",
+                "sidecarOnly": false,
+                "seedByDefault": false
+              },
+              "order": 1
+            },
+            {
+              "id": "maturity.assess.step1.check",
+              "familyKey": "selection.check",
+              "label": {
+                "de": "Reifegrad prüfen"
+              },
+              "summary": {
+                "de": "Prüft Einordnung, Trennung von Anwendungen und Capabilities sowie offensichtliche Lücken"
+              },
+              "scope": {
+                "mode": "current",
+                "allowedCanvasTypeIds": [
+                  "datentreiber-analytics-ai-maturity"
+                ]
+              },
+              "prompt": {
+                "text": {
+                  "de": "Du arbeitest auf dem Canvas Analytics & AI Maturity. Diese Übung bleibt in V1 auf einem Einzelcanvas ohne Cross-Canvas-Handoff.\n\nSchrittkontext: Current Maturity Mapping.\nPrüfe qualitativ und knapp:\n- Sind bestehende und geplante Elemente plausibel über die Reifestufen verteilt?\n- Sind Anwendungen und Capabilities sauber getrennt?\n- Sind Farben sinnvoll genutzt (bestehend / geplant / fehlend)?\n- Gibt es offensichtliche Fehlplatzierungen?\n- Fehlen zentrale vorhandene oder geplante Bausteine, die aus dem sichtbaren Domänenkontext plausibel zu erwarten wären?\n\nNutze heuristische Schlüsse nur aus sichtbaren Hinweisen, nicht aus halluziniertem Kontext.\nMove vor delete.\nKeine numerische Bewertung.\nKeine Board-Mutationen."
+                }
+              },
+              "run": {
+                "mutationPolicy": "none",
+                "feedbackPolicy": "text",
+                "allowedExecutionModes": [
+                  "none"
+                ],
+                "allowedActions": []
+              },
+              "surface": {
+                "channel": "board_button",
+                "group": "primary",
+                "sidecarOnly": false,
+                "seedByDefault": false
+              },
+              "order": 2
+            },
+            {
+              "id": "maturity.assess.step1.review",
+              "familyKey": "selection.review",
+              "label": {
+                "de": "Maturity Review"
+              },
+              "summary": {
+                "de": "Gibt ein kompaktes qualitatives Zwischenreview zum aktuellen Maturity-Bild"
+              },
+              "scope": {
+                "mode": "current",
+                "allowedCanvasTypeIds": [
+                  "datentreiber-analytics-ai-maturity"
+                ]
+              },
+              "prompt": {
+                "text": {
+                  "de": "Du arbeitest auf dem Canvas Analytics & AI Maturity. Diese Übung bleibt in V1 auf einem Einzelcanvas ohne Cross-Canvas-Handoff.\n\nSchrittkontext: Current Maturity Mapping.\nLies das sichtbare Maturity-Bild als Struktur der Domain.\n\nBewerte knapp:\n- Was wirkt bereits plausibel?\n- Wo ist die Reife-Logik noch inkonsistent?\n- Welche Hauptlücke verhindert den nächsten sinnvollen Schritt am meisten?\n- Wo sollten Menschen eher umsortieren statt neue Stickies schreiben?\n\nKeine numerische Bewertung.\nKein Scoring.\nKeine Board-Mutationen."
+                }
+              },
+              "run": {
+                "mutationPolicy": "none",
+                "feedbackPolicy": "text",
+                "allowedExecutionModes": [
+                  "none"
+                ],
+                "allowedActions": []
+              },
+              "surface": {
+                "channel": "board_button",
+                "group": "primary",
+                "sidecarOnly": false,
+                "seedByDefault": false
+              },
+              "order": 3
+            },
+            {
+              "id": "maturity.assess.step1.propose",
+              "familyKey": "selection.propose",
+              "label": {
+                "de": "Maturity abbilden"
+              },
+              "summary": {
+                "de": "Macht einen kleinen Vorschlag zum Mapping bestehender und geplanter Anwendungen/Capabilities"
+              },
+              "scope": {
+                "mode": "current",
+                "allowedCanvasTypeIds": [
+                  "datentreiber-analytics-ai-maturity"
+                ]
+              },
+              "prompt": {
+                "text": {
+                  "de": "Du arbeitest auf dem Canvas Analytics & AI Maturity. Diese Übung bleibt in V1 auf einem Einzelcanvas ohne Cross-Canvas-Handoff.\n\nSchrittkontext: Current Maturity Mapping.\nZiel:\n- bestehende und geplante Anwendungen auf 2a bis 2f verorten,\n- erste zentrale Capabilities auf 3a bis 3f verorten,\n- das Maturity-Bild kohärent machen.\n\nArbeite in:\n- 2a_business_operations\n- 2b_business_reporting\n- 2c_business_discovery\n- 2d_business_forecasting\n- 2e_business_optimization\n- 2f_business_automation\n- 3a_data_management\n- 3b_descriptive_analytics\n- 3c_diagnostic_analytics\n- 3d_predictive_analytics\n- 3e_prescriptive_analytics\n- 3f_autonomous_analytics\n- sorted_out_right\n\nArbeite eng am vorhandenen Zustand.\nWenn das Board noch leer ist, beginne nur mit wenigen zentralen Elementen.\nWenn schon Material da ist, ergänze gezielt statt alles neu aufzubauen.\n\nHeuristik:\n- End-user-facing application -> eher 2x\n- enabling capability / tool / skill / role -> eher 3x\n- Links stehen frühere, stärker operative und datennahe Stufen.\n- Rechts stehen fortgeschrittene und stärker autonome Stufen.\n\nSticky-Regeln:\n- Anwendungen und Capabilities sehr kurz.\n- Bevorzugt 1 bis 4 Wörter.\n- Eine Sticky = ein Element.\n\nBeispiele:\n- \"Social Media Management Suite\"\n- \"Marketing ROI Dashboard\"\n- \"Web Analytics\"\n- \"Data Warehouse\"\n- \"Data Engineer\"\n\nConnectoren:\n- nur für echte Entwicklungs- oder Abhängigkeitsbeziehungen.\n- Keine dekorativen Verbindungen.\n\nParke unsichere Randideen in sorted_out_right statt den Canvas zu überladen.\nNutze executionMode = proposal_only."
+                }
+              },
+              "run": {
+                "mutationPolicy": "minimal",
+                "feedbackPolicy": "text",
+                "allowedExecutionModes": [
+                  "proposal_only"
+                ],
+                "allowedActions": [
+                  "create_sticky",
+                  "move_sticky",
+                  "delete_sticky",
+                  "create_connector",
+                  "set_sticky_color",
+                  "set_check_status"
+                ],
+                "allowedActionAreas": [
+                  "2a_business_operations",
+                  "2b_business_reporting",
+                  "2c_business_discovery",
+                  "2d_business_forecasting",
+                  "2e_business_optimization",
+                  "2f_business_automation",
+                  "3a_data_management",
+                  "3b_descriptive_analytics",
+                  "3c_diagnostic_analytics",
+                  "3d_predictive_analytics",
+                  "3e_prescriptive_analytics",
+                  "3f_autonomous_analytics",
+                  "sorted_out_right"
+                ]
+              },
+              "surface": {
+                "channel": "board_button",
+                "group": "proposal",
+                "sidecarOnly": false,
+                "seedByDefault": false
+              },
+              "order": 4
+            },
+            {
+              "id": "analytics-ai-maturity-assessment-planning-v1.step1_current_maturity_mapping.chat_apply",
+              "familyKey": null,
+              "label": {
+                "de": "Vorschläge anwenden"
+              },
+              "summary": {
+                "de": "Wendet den zuletzt erzeugten Vorschlag dieses Schritts an."
+              },
+              "scope": {
+                "mode": "current",
+                "allowedCanvasTypeIds": [
+                  "datentreiber-analytics-ai-maturity"
+                ]
+              },
+              "prompt": {
+                "text": {
+                  "de": "Du arbeitest auf dem Canvas Analytics & AI Maturity.\n\nSchrittkontext: Current Maturity Mapping. Bestehende und geplante Anwendungen sowie erste Capabilities werden entlang der Reifestufen verortet. Die App hilft bei Einordnung, Fehlplatzierungen und impliziten Lücken.\n\nWende nur den bereits gespeicherten Vorschlag für diesen Schritt an.\nKeine neue inhaltliche Analyse, keine neue Planung, kein neues Feedback."
+                }
+              },
+              "run": {
+                "mutationPolicy": "minimal",
+                "feedbackPolicy": "text",
+                "allowedExecutionModes": [
+                  "direct_apply"
+                ],
+                "allowedActions": [
+                  "create_sticky",
+                  "move_sticky",
+                  "delete_sticky",
+                  "create_connector",
+                  "set_sticky_color",
+                  "set_check_status"
+                ],
+                "allowedActionAreas": []
+              },
+              "surface": {
+                "channel": "chat_apply",
+                "group": "hidden",
+                "sidecarOnly": false,
+                "seedByDefault": false
+              },
+              "order": 5
+            },
+            {
+              "id": "analytics-ai-maturity-assessment-planning-v1.step1_current_maturity_mapping.chat_submit",
+              "familyKey": null,
+              "label": {
+                "de": "Frage stellen"
+              },
+              "summary": {
+                "de": "Beantwortet Fragen zum aktuellen Schritt."
+              },
+              "scope": {
+                "mode": "current",
+                "allowedCanvasTypeIds": [
+                  "datentreiber-analytics-ai-maturity"
+                ]
+              },
+              "prompt": {
+                "text": {
+                  "de": "Du arbeitest auf dem Canvas Analytics & AI Maturity. Diese Übung bleibt in V1 auf einem Einzelcanvas ohne Cross-Canvas-Handoff.\n\nSchrittkontext: Current Maturity Mapping. Bestehende und geplante Anwendungen sowie erste Capabilities werden entlang der Reifestufen verortet. Die App hilft bei Einordnung, Fehlplatzierungen und impliziten Lücken.\n\nAntworte instanzbezogen, verständlich und hilfreich auf Fragen zu diesem Canvas und zu genau diesem Schritt.\nDer sichtbare Boardzustand ist die Wahrheit. Rechne damit, dass Menschen zwischen den Schritten manuelle Änderungen vorgenommen haben.\n\nWenn die Frage ausdrücklich nach einer kleinen Maturity-Ausarbeitung oder Korrektur fragt, darfst du proposal_only für kurze Anwendungen oder Capabilities in den passenden Reifestufen verwenden.\n\nWenn conversationContext sichtbar ist, beantworte Rückfragen in Bezug auf den letzten Vorschlag oder die letzte Antwort.\nWenn keine konkrete Board-Ausarbeitung verlangt wird, bleibe bei executionMode = none.\nNur wenn die Frage ausdrücklich nach einer kleinen konkreten Board-Ausarbeitung in genau diesem Schritt verlangt, darfst du proposal_only wählen.\nHalluziniere keinen Kontext außerhalb des sichtbaren Boards."
+                }
+              },
+              "run": {
+                "mutationPolicy": "minimal",
+                "feedbackPolicy": "text",
+                "allowedExecutionModes": [
+                  "none",
+                  "proposal_only"
+                ],
+                "allowedActions": [
+                  "create_sticky",
+                  "move_sticky",
+                  "delete_sticky",
+                  "create_connector",
+                  "set_sticky_color",
+                  "set_check_status"
+                ],
+                "allowedActionAreas": [
+                  "2a_business_operations",
+                  "2b_business_reporting",
+                  "2c_business_discovery",
+                  "2d_business_forecasting",
+                  "2e_business_optimization",
+                  "2f_business_automation",
+                  "3a_data_management",
+                  "3b_descriptive_analytics",
+                  "3c_diagnostic_analytics",
+                  "3d_predictive_analytics",
+                  "3e_prescriptive_analytics",
+                  "3f_autonomous_analytics",
+                  "sorted_out_right"
+                ]
+              },
+              "surface": {
+                "channel": "chat_submit",
+                "group": "hidden",
+                "sidecarOnly": false,
+                "seedByDefault": false
+              },
+              "order": 6
+            }
+          ],
+          "transitions": []
+        },
+        "step2_missing_applications_and_use_case_mapping": {
+          "id": "step2_missing_applications_and_use_case_mapping",
+          "label": {
+            "de": "Missing Applications & Use Case Mapping"
+          },
+          "summary": {
+            "de": "Fehlende Anwendungen aus importierten Use-Case-Ideen ableiten und plausibel auf Reifestufen verorten."
+          },
+          "visibleInstruction": {
+            "de": "Leite aus sichtbaren Use-Case-Ideen fehlende Anwendungen ab und ordne sie plausiblen Maturity-Stufen zu."
+          },
+          "flowInstruction": {
+            "de": "Verknüpfe importierte Use-Case-Ideen mit fehlenden Anwendungen. Schärfe bei Bedarf das Modell, wenn sonst die Ableitung nicht tragfähig wäre."
+          },
+          "endpoints": [
+            {
+              "id": "maturity.assess.step2.coach",
+              "familyKey": "selection.coach",
+              "label": {
+                "de": "Use Cases coachen"
+              },
+              "summary": {
+                "de": "Coacht die Ableitung fehlender Anwendungen aus sichtbaren Use-Case-Ideen"
+              },
+              "scope": {
+                "mode": "current",
+                "allowedCanvasTypeIds": [
+                  "datentreiber-analytics-ai-maturity"
+                ]
+              },
+              "prompt": {
+                "text": {
+                  "de": "Du arbeitest auf dem Canvas Analytics & AI Maturity. Diese Übung bleibt in V1 auf einem Einzelcanvas ohne Cross-Canvas-Handoff.\n\nSchrittkontext: Missing Applications & Use Case Mapping.\nDer sichtbare Boardzustand ist die Wahrheit. Rechne damit, dass Menschen zwischen den Schritten blaue Use-Case-Ideen importiert, verschoben oder ergänzt haben.\n\nHilf mit 3 bis 5 Leitfragen und genau einem Mikroschritt.\nDenk analytisch und heuristisch:\n- Welche importierte Problem-, Solution- oder Benefit-Notiz ist fachlich am klarsten?\n- Welche fehlende Anwendung würde diese Idee am ehesten adressieren?\n- Auf welcher Maturity-Stufe wäre diese Anwendung plausibel?\n- Fehlt eine naheliegende niedrigere Vorstufe?\n- Muss das Modell noch an einer Stelle geschärft werden, damit die Idee tragfähig verankert ist?\n\nKeine Board-Mutationen.\nKein Score."
+                }
+              },
+              "run": {
+                "mutationPolicy": "none",
+                "feedbackPolicy": "text",
+                "allowedExecutionModes": [
+                  "none"
+                ],
+                "allowedActions": []
+              },
+              "surface": {
+                "channel": "board_button",
+                "group": "primary",
+                "sidecarOnly": false,
+                "seedByDefault": false
+              },
+              "order": 1
+            },
+            {
+              "id": "maturity.assess.step2.check",
+              "familyKey": "selection.check",
+              "label": {
+                "de": "Use-Case-Mapping prüfen"
+              },
+              "summary": {
+                "de": "Prüft, ob rote fehlende Anwendungen plausibel aus sichtbaren Input-Ideen ableitbar sind"
+              },
+              "scope": {
+                "mode": "current",
+                "allowedCanvasTypeIds": [
+                  "datentreiber-analytics-ai-maturity"
+                ]
+              },
+              "prompt": {
+                "text": {
+                  "de": "Du arbeitest auf dem Canvas Analytics & AI Maturity. Diese Übung bleibt in V1 auf einem Einzelcanvas ohne Cross-Canvas-Handoff.\n\nSchrittkontext: Missing Applications & Use Case Mapping.\nPrüfe qualitativ:\n- Sind die roten fehlenden Anwendungen wirklich aus sichtbaren blauen Input-Ideen ableitbar?\n- Ist die Maturity-Stufe plausibel?\n- Gibt es zu große Sprünge ohne erkennbare Vorstufe?\n- Sind rote Anwendungen präzise genug benannt?\n- Wurden blaue Input-Ideen mit zu wenig Modellanker in rote Anwendungen übersetzt?\n\nKeine numerische Bewertung.\nKeine Board-Mutationen."
+                }
+              },
+              "run": {
+                "mutationPolicy": "none",
+                "feedbackPolicy": "text",
+                "allowedExecutionModes": [
+                  "none"
+                ],
+                "allowedActions": []
+              },
+              "surface": {
+                "channel": "board_button",
+                "group": "primary",
+                "sidecarOnly": false,
+                "seedByDefault": false
+              },
+              "order": 2
+            },
+            {
+              "id": "maturity.assess.step2.review",
+              "familyKey": "selection.review",
+              "label": {
+                "de": "Roadmap-Readiness reviewen"
+              },
+              "summary": {
+                "de": "Gibt ein kompaktes Zwischenreview zur Güte der abgeleiteten fehlenden Anwendungen"
+              },
+              "scope": {
+                "mode": "current",
+                "allowedCanvasTypeIds": [
+                  "datentreiber-analytics-ai-maturity"
+                ]
+              },
+              "prompt": {
+                "text": {
+                  "de": "Du arbeitest auf dem Canvas Analytics & AI Maturity. Diese Übung bleibt in V1 auf einem Einzelcanvas ohne Cross-Canvas-Handoff.\n\nSchrittkontext: Missing Applications & Use Case Mapping.\nLies den sichtbaren Stand als Übergang von Use-Case-Input zu Maturity-Roadmap.\n\nBewerte knapp:\n- Welche fehlenden Anwendungen wirken gut verankert?\n- Wo ist der Ableitungsweg noch schwach oder spekulativ?\n- Welche blaue Idee ist fachlich stark, aber noch schlecht in eine Anwendung übersetzt?\n- Wo wäre weniger Breite und mehr Fokussierung sinnvoll?\n\nKeine numerische Bewertung.\nKeine Board-Mutationen."
+                }
+              },
+              "run": {
+                "mutationPolicy": "none",
+                "feedbackPolicy": "text",
+                "allowedExecutionModes": [
+                  "none"
+                ],
+                "allowedActions": []
+              },
+              "surface": {
+                "channel": "board_button",
+                "group": "primary",
+                "sidecarOnly": false,
+                "seedByDefault": false
+              },
+              "order": 3
+            },
+            {
+              "id": "maturity.assess.step2.propose",
+              "familyKey": "selection.propose",
+              "label": {
+                "de": "Fehlende Anwendungen ableiten"
+              },
+              "summary": {
+                "de": "Leitet aus sichtbaren Input-Ideen fehlende Anwendungen ab und verortet sie auf Reifestufen"
+              },
+              "scope": {
+                "mode": "current",
+                "allowedCanvasTypeIds": [
+                  "datentreiber-analytics-ai-maturity"
+                ]
+              },
+              "prompt": {
+                "text": {
+                  "de": "Du arbeitest auf dem Canvas Analytics & AI Maturity. Diese Übung bleibt in V1 auf einem Einzelcanvas ohne Cross-Canvas-Handoff.\n\nSchrittkontext: Missing Applications & Use Case Mapping.\nZiel:\n- aus sichtbaren blauen Use-Case-Ideen fehlende Anwendungen ableiten,\n- diese roten Anwendungen plausiblen Reifestufen zuordnen,\n- das Maturity-Bild dort ergänzen, wo eine sinnvolle Roadmap sichtbar wird.\n\nArbeite in:\n- 2a_business_operations\n- 2b_business_reporting\n- 2c_business_discovery\n- 2d_business_forecasting\n- 2e_business_optimization\n- 2f_business_automation\n- 3a_data_management\n- 3b_descriptive_analytics\n- 3c_diagnostic_analytics\n- 3d_predictive_analytics\n- 3e_prescriptive_analytics\n- 3f_autonomous_analytics\n- sorted_out_left\n- sorted_out_right\n\nNutze blaue Input-Notizen in sorted_out_left oder an sichtbaren Stellen des Canvas als Kontext.\nLeite fehlende Anwendungen nur dann ab, wenn der Business- oder Domain-Kontext sie plausibel trägt.\nWenn nötig, darfst du das Modell an kleinen Stellen weiter schärfen, damit die Ableitung tragfähig wird.\n\nHeuristik:\n- Reporting / KPI / Dashboard -> eher 2b\n- Analyse von Ursachen, Tests, Drivern -> eher 2c\n- Scoring / Forecast / Wahrscheinlichkeit -> eher 2d\n- Optimierung / beste Maßnahme -> eher 2e\n- autonome Entscheidung / Aktion -> eher 2f\n\nBlaue Input-Beispiele:\n- \"Problem: What's the ROI of social media marketing?\"\n- \"Problem: Which customer groups buy which products?\"\n- \"Solution: Demographic analysis of customer buying behavior\"\n- \"Benefit: More effective ad campaigns\"\n\nNutze executionMode = proposal_only."
+                }
+              },
+              "run": {
+                "mutationPolicy": "minimal",
+                "feedbackPolicy": "text",
+                "allowedExecutionModes": [
+                  "proposal_only"
+                ],
+                "allowedActions": [
+                  "create_sticky",
+                  "move_sticky",
+                  "delete_sticky",
+                  "create_connector",
+                  "set_sticky_color",
+                  "set_check_status"
+                ],
+                "allowedActionAreas": [
+                  "2a_business_operations",
+                  "2b_business_reporting",
+                  "2c_business_discovery",
+                  "2d_business_forecasting",
+                  "2e_business_optimization",
+                  "2f_business_automation",
+                  "3a_data_management",
+                  "3b_descriptive_analytics",
+                  "3c_diagnostic_analytics",
+                  "3d_predictive_analytics",
+                  "3e_prescriptive_analytics",
+                  "3f_autonomous_analytics",
+                  "sorted_out_left",
+                  "sorted_out_right"
+                ]
+              },
+              "surface": {
+                "channel": "board_button",
+                "group": "proposal",
+                "sidecarOnly": false,
+                "seedByDefault": false
+              },
+              "order": 4
+            },
+            {
+              "id": "analytics-ai-maturity-assessment-planning-v1.step2_missing_applications_and_use_case_mapping.chat_apply",
+              "familyKey": null,
+              "label": {
+                "de": "Vorschläge anwenden"
+              },
+              "summary": {
+                "de": "Wendet den zuletzt erzeugten Vorschlag dieses Schritts an."
+              },
+              "scope": {
+                "mode": "current",
+                "allowedCanvasTypeIds": [
+                  "datentreiber-analytics-ai-maturity"
+                ]
+              },
+              "prompt": {
+                "text": {
+                  "de": "Du arbeitest auf dem Canvas Analytics & AI Maturity.\n\nSchrittkontext: Missing Applications & Use Case Mapping. Importierte blaue Use-Case-Ideen werden mit fehlenden Anwendungen verknüpft. Das Modell darf weiter geschärft werden, wenn dies die Ableitung roter Anwendungen plausibler macht.\n\nWende nur den bereits gespeicherten Vorschlag für diesen Schritt an.\nKeine neue inhaltliche Analyse, keine neue Planung, kein neues Feedback."
+                }
+              },
+              "run": {
+                "mutationPolicy": "minimal",
+                "feedbackPolicy": "text",
+                "allowedExecutionModes": [
+                  "direct_apply"
+                ],
+                "allowedActions": [
+                  "create_sticky",
+                  "move_sticky",
+                  "delete_sticky",
+                  "create_connector",
+                  "set_sticky_color",
+                  "set_check_status"
+                ],
+                "allowedActionAreas": []
+              },
+              "surface": {
+                "channel": "chat_apply",
+                "group": "hidden",
+                "sidecarOnly": false,
+                "seedByDefault": false
+              },
+              "order": 5
+            },
+            {
+              "id": "analytics-ai-maturity-assessment-planning-v1.step2_missing_applications_and_use_case_mapping.chat_submit",
+              "familyKey": null,
+              "label": {
+                "de": "Frage stellen"
+              },
+              "summary": {
+                "de": "Beantwortet Fragen zum aktuellen Schritt."
+              },
+              "scope": {
+                "mode": "current",
+                "allowedCanvasTypeIds": [
+                  "datentreiber-analytics-ai-maturity"
+                ]
+              },
+              "prompt": {
+                "text": {
+                  "de": "Du arbeitest auf dem Canvas Analytics & AI Maturity. Diese Übung bleibt in V1 auf einem Einzelcanvas ohne Cross-Canvas-Handoff.\n\nSchrittkontext: Missing Applications & Use Case Mapping. Importierte blaue Use-Case-Ideen werden mit fehlenden Anwendungen verknüpft. Das Modell darf weiter geschärft werden, wenn dies die Ableitung roter Anwendungen plausibler macht.\n\nAntworte instanzbezogen, verständlich und hilfreich auf Fragen zu diesem Canvas und zu genau diesem Schritt.\nDer sichtbare Boardzustand ist die Wahrheit. Rechne damit, dass Menschen zwischen den Schritten manuelle Änderungen vorgenommen haben.\n\nWenn die Frage ausdrücklich nach einer kleinen Ableitung fehlender Anwendungen oder Modellergänzung fragt, darfst du proposal_only verwenden.\n\nWenn conversationContext sichtbar ist, beantworte Rückfragen in Bezug auf den letzten Vorschlag oder die letzte Antwort.\nWenn keine konkrete Board-Ausarbeitung verlangt wird, bleibe bei executionMode = none.\nNur wenn die Frage ausdrücklich nach einer kleinen konkreten Board-Ausarbeitung in genau diesem Schritt verlangt, darfst du proposal_only wählen.\nHalluziniere keinen Kontext außerhalb des sichtbaren Boards."
+                }
+              },
+              "run": {
+                "mutationPolicy": "minimal",
+                "feedbackPolicy": "text",
+                "allowedExecutionModes": [
+                  "none",
+                  "proposal_only"
+                ],
+                "allowedActions": [
+                  "create_sticky",
+                  "move_sticky",
+                  "delete_sticky",
+                  "create_connector",
+                  "set_sticky_color",
+                  "set_check_status"
+                ],
+                "allowedActionAreas": [
+                  "2a_business_operations",
+                  "2b_business_reporting",
+                  "2c_business_discovery",
+                  "2d_business_forecasting",
+                  "2e_business_optimization",
+                  "2f_business_automation",
+                  "3a_data_management",
+                  "3b_descriptive_analytics",
+                  "3c_diagnostic_analytics",
+                  "3d_predictive_analytics",
+                  "3e_prescriptive_analytics",
+                  "3f_autonomous_analytics",
+                  "sorted_out_left",
+                  "sorted_out_right"
+                ]
+              },
+              "surface": {
+                "channel": "chat_submit",
+                "group": "hidden",
+                "sidecarOnly": false,
+                "seedByDefault": false
+              },
+              "order": 6
+            }
+          ],
+          "transitions": []
+        },
+        "step3_prerequisites_dependencies_and_capabilities": {
+          "id": "step3_prerequisites_dependencies_and_capabilities",
+          "label": {
+            "de": "Prerequisites, Dependencies & Capabilities"
+          },
+          "summary": {
+            "de": "Vorläufer, Abhängigkeiten und Capability-Lücken ergänzen, damit die Roadmap logisch und bottom-up tragfähig wird."
+          },
+          "visibleInstruction": {
+            "de": "Denke von links nach rechts bei Anwendungen und bottom-up bei Capabilities. Ergänze nur echte prerequisites und sinnvolle Ausbaupfade."
+          },
+          "flowInstruction": {
+            "de": "Mache jetzt die Roadmap logisch: Welche Vorläufer fehlen? Welche Capabilities tragen den nächsten Sprung? Welche Pfeile zeigen echte Abhängigkeiten?"
+          },
+          "endpoints": [
+            {
+              "id": "maturity.assess.step3.coach",
+              "familyKey": "selection.coach",
+              "label": {
+                "de": "Abhängigkeiten coachen"
+              },
+              "summary": {
+                "de": "Coacht die Suche nach Vorläufern, Capabilities und echten Ausbaupfaden"
+              },
+              "scope": {
+                "mode": "current",
+                "allowedCanvasTypeIds": [
+                  "datentreiber-analytics-ai-maturity"
+                ]
+              },
+              "prompt": {
+                "text": {
+                  "de": "Du arbeitest auf dem Canvas Analytics & AI Maturity. Diese Übung bleibt in V1 auf einem Einzelcanvas ohne Cross-Canvas-Handoff.\n\nSchrittkontext: Prerequisites, Dependencies & Capabilities.\nHilf mit 3 bis 5 Leitfragen und genau einem Mikroschritt.\n\nFokussiere auf:\n- Welche fehlende Anwendung setzt eine niedrigere Vorstufe voraus?\n- Welche Capability fehlt, damit dieser Sprung plausibel wird?\n- Welche Verbindung ist wirklich Voraussetzung und welche nur hilfreich?\n- Wo ist etwas eher Anwendung und wo eher Capability?\n- Welche rote Anwendung ist eigentlich nur die nächste Ausbauversion einer bestehenden oder geplanten Anwendung?\n\nKeine Board-Mutationen.\nKein Score."
+                }
+              },
+              "run": {
+                "mutationPolicy": "none",
+                "feedbackPolicy": "text",
+                "allowedExecutionModes": [
+                  "none"
+                ],
+                "allowedActions": []
+              },
+              "surface": {
+                "channel": "board_button",
+                "group": "primary",
+                "sidecarOnly": false,
+                "seedByDefault": false
+              },
+              "order": 1
+            },
+            {
+              "id": "maturity.assess.step3.check",
+              "familyKey": "selection.check",
+              "label": {
+                "de": "Roadmap-Logik prüfen"
+              },
+              "summary": {
+                "de": "Prüft Roadmap-Logik, prerequisite-Ketten und fehlende Capabilities"
+              },
+              "scope": {
+                "mode": "current",
+                "allowedCanvasTypeIds": [
+                  "datentreiber-analytics-ai-maturity"
+                ]
+              },
+              "prompt": {
+                "text": {
+                  "de": "Du arbeitest auf dem Canvas Analytics & AI Maturity. Diese Übung bleibt in V1 auf einem Einzelcanvas ohne Cross-Canvas-Handoff.\n\nSchrittkontext: Prerequisites, Dependencies & Capabilities.\nPrüfe qualitativ:\n- Ist die Roadmap logisch von links nach rechts und bottom-up aufgebaut?\n- Fehlen Vorläufer für rote Anwendungen?\n- Fehlen Capabilities, die den nächsten Sprung tragen müssten?\n- Gibt es Pfeile ohne echte Abhängigkeitslogik?\n- Gibt es zu ambitionierte Sprünge ohne Unterbau?\n\nKeine numerische Bewertung.\nKeine Board-Mutationen."
+                }
+              },
+              "run": {
+                "mutationPolicy": "none",
+                "feedbackPolicy": "text",
+                "allowedExecutionModes": [
+                  "none"
+                ],
+                "allowedActions": []
+              },
+              "surface": {
+                "channel": "board_button",
+                "group": "primary",
+                "sidecarOnly": false,
+                "seedByDefault": false
+              },
+              "order": 2
+            },
+            {
+              "id": "maturity.assess.step3.review",
+              "familyKey": "selection.review",
+              "label": {
+                "de": "Roadmap reviewen"
+              },
+              "summary": {
+                "de": "Gibt ein kompaktes qualitatives Review zur Tragfähigkeit der Roadmap"
+              },
+              "scope": {
+                "mode": "current",
+                "allowedCanvasTypeIds": [
+                  "datentreiber-analytics-ai-maturity"
+                ]
+              },
+              "prompt": {
+                "text": {
+                  "de": "Du arbeitest auf dem Canvas Analytics & AI Maturity. Diese Übung bleibt in V1 auf einem Einzelcanvas ohne Cross-Canvas-Handoff.\n\nSchrittkontext: Prerequisites, Dependencies & Capabilities.\nLies den sichtbaren Stand als Roadmap-Logik.\n\nBewerte knapp:\n- Welche Kette wirkt plausibel und anschlussfähig?\n- Wo fehlt noch der tragende Unterbau?\n- Welche Capability-Lücke ist aktuell die kritischste?\n- Welche rote Anwendung ist derzeit noch zu weit rechts für den sichtbaren Reifegrad?\n\nKeine numerische Bewertung.\nKeine Board-Mutationen."
+                }
+              },
+              "run": {
+                "mutationPolicy": "none",
+                "feedbackPolicy": "text",
+                "allowedExecutionModes": [
+                  "none"
+                ],
+                "allowedActions": []
+              },
+              "surface": {
+                "channel": "board_button",
+                "group": "primary",
+                "sidecarOnly": false,
+                "seedByDefault": false
+              },
+              "order": 3
+            },
+            {
+              "id": "maturity.assess.step3.propose",
+              "familyKey": "selection.propose",
+              "label": {
+                "de": "Prerequisites ergänzen"
+              },
+              "summary": {
+                "de": "Ergänzt Vorläufer, Abhängigkeiten und notwendige Capabilities für eine tragfähige Roadmap"
+              },
+              "scope": {
+                "mode": "current",
+                "allowedCanvasTypeIds": [
+                  "datentreiber-analytics-ai-maturity"
+                ]
+              },
+              "prompt": {
+                "text": {
+                  "de": "Du arbeitest auf dem Canvas Analytics & AI Maturity. Diese Übung bleibt in V1 auf einem Einzelcanvas ohne Cross-Canvas-Handoff.\n\nSchrittkontext: Prerequisites, Dependencies & Capabilities.\nZiel:\n- rote Vorläufer oder prerequisite applications ergänzen,\n- Ausbaupfade mit klaren Pfeilen sichtbar machen,\n- fehlende Capabilities ergänzen,\n- die Roadmap logisch und stufenweise machen.\n\nArbeite in:\n- 2a_business_operations\n- 2b_business_reporting\n- 2c_business_discovery\n- 2d_business_forecasting\n- 2e_business_optimization\n- 2f_business_automation\n- 3a_data_management\n- 3b_descriptive_analytics\n- 3c_diagnostic_analytics\n- 3d_predictive_analytics\n- 3e_prescriptive_analytics\n- 3f_autonomous_analytics\n- sorted_out_left\n- sorted_out_right\n\nDenke von unten nach oben:\n- Data Management -> Descriptive -> Diagnostic -> Predictive -> Prescriptive -> Autonomous\n\nDenke bei Anwendungen von links nach rechts:\n- Operations -> Reporting -> Discovery -> Forecasting -> Optimization -> Automation\n\nConnectoren:\n- nur für echte prerequisite-, dependency- oder progression-Beziehungen.\n- Keine dekorativen Verbindungen.\n\nWenn eine Capability fehlt, ergänze sie lieber als kurze Capability-Notiz im passenden 3x-Feld, statt eine zu große rote Anwendung ohne Unterbau stehen zu lassen.\nNutze executionMode = proposal_only."
+                }
+              },
+              "run": {
+                "mutationPolicy": "minimal",
+                "feedbackPolicy": "text",
+                "allowedExecutionModes": [
+                  "proposal_only"
+                ],
+                "allowedActions": [
+                  "create_sticky",
+                  "move_sticky",
+                  "delete_sticky",
+                  "create_connector",
+                  "set_sticky_color",
+                  "set_check_status"
+                ],
+                "allowedActionAreas": [
+                  "2a_business_operations",
+                  "2b_business_reporting",
+                  "2c_business_discovery",
+                  "2d_business_forecasting",
+                  "2e_business_optimization",
+                  "2f_business_automation",
+                  "3a_data_management",
+                  "3b_descriptive_analytics",
+                  "3c_diagnostic_analytics",
+                  "3d_predictive_analytics",
+                  "3e_prescriptive_analytics",
+                  "3f_autonomous_analytics",
+                  "sorted_out_left",
+                  "sorted_out_right"
+                ]
+              },
+              "surface": {
+                "channel": "board_button",
+                "group": "proposal",
+                "sidecarOnly": false,
+                "seedByDefault": false
+              },
+              "order": 4
+            },
+            {
+              "id": "analytics-ai-maturity-assessment-planning-v1.step3_prerequisites_dependencies_and_capabilities.chat_apply",
+              "familyKey": null,
+              "label": {
+                "de": "Vorschläge anwenden"
+              },
+              "summary": {
+                "de": "Wendet den zuletzt erzeugten Vorschlag dieses Schritts an."
+              },
+              "scope": {
+                "mode": "current",
+                "allowedCanvasTypeIds": [
+                  "datentreiber-analytics-ai-maturity"
+                ]
+              },
+              "prompt": {
+                "text": {
+                  "de": "Du arbeitest auf dem Canvas Analytics & AI Maturity.\n\nSchrittkontext: Prerequisites, Dependencies & Capabilities. Fehlende Anwendungen werden in logische Reihenfolgen gebracht. Vorläufer, Abhängigkeiten und notwendige Capabilities werden ergänzt.\n\nWende nur den bereits gespeicherten Vorschlag für diesen Schritt an.\nKeine neue inhaltliche Analyse, keine neue Planung, kein neues Feedback."
+                }
+              },
+              "run": {
+                "mutationPolicy": "minimal",
+                "feedbackPolicy": "text",
+                "allowedExecutionModes": [
+                  "direct_apply"
+                ],
+                "allowedActions": [
+                  "create_sticky",
+                  "move_sticky",
+                  "delete_sticky",
+                  "create_connector",
+                  "set_sticky_color",
+                  "set_check_status"
+                ],
+                "allowedActionAreas": []
+              },
+              "surface": {
+                "channel": "chat_apply",
+                "group": "hidden",
+                "sidecarOnly": false,
+                "seedByDefault": false
+              },
+              "order": 5
+            },
+            {
+              "id": "analytics-ai-maturity-assessment-planning-v1.step3_prerequisites_dependencies_and_capabilities.chat_submit",
+              "familyKey": null,
+              "label": {
+                "de": "Frage stellen"
+              },
+              "summary": {
+                "de": "Beantwortet Fragen zum aktuellen Schritt."
+              },
+              "scope": {
+                "mode": "current",
+                "allowedCanvasTypeIds": [
+                  "datentreiber-analytics-ai-maturity"
+                ]
+              },
+              "prompt": {
+                "text": {
+                  "de": "Du arbeitest auf dem Canvas Analytics & AI Maturity. Diese Übung bleibt in V1 auf einem Einzelcanvas ohne Cross-Canvas-Handoff.\n\nSchrittkontext: Prerequisites, Dependencies & Capabilities. Fehlende Anwendungen werden in logische Reihenfolgen gebracht. Vorläufer, Abhängigkeiten und notwendige Capabilities werden ergänzt.\n\nAntworte instanzbezogen, verständlich und hilfreich auf Fragen zu diesem Canvas und zu genau diesem Schritt.\nDer sichtbare Boardzustand ist die Wahrheit. Rechne damit, dass Menschen zwischen den Schritten manuelle Änderungen vorgenommen haben.\n\nWenn die Frage ausdrücklich nach einer kleinen Roadmap-Ergänzung oder Capability-Ergänzung fragt, darfst du proposal_only verwenden.\n\nWenn conversationContext sichtbar ist, beantworte Rückfragen in Bezug auf den letzten Vorschlag oder die letzte Antwort.\nWenn keine konkrete Board-Ausarbeitung verlangt wird, bleibe bei executionMode = none.\nNur wenn die Frage ausdrücklich nach einer kleinen konkreten Board-Ausarbeitung in genau diesem Schritt verlangt, darfst du proposal_only wählen.\nHalluziniere keinen Kontext außerhalb des sichtbaren Boards."
+                }
+              },
+              "run": {
+                "mutationPolicy": "minimal",
+                "feedbackPolicy": "text",
+                "allowedExecutionModes": [
+                  "none",
+                  "proposal_only"
+                ],
+                "allowedActions": [
+                  "create_sticky",
+                  "move_sticky",
+                  "delete_sticky",
+                  "create_connector",
+                  "set_sticky_color",
+                  "set_check_status"
+                ],
+                "allowedActionAreas": [
+                  "2a_business_operations",
+                  "2b_business_reporting",
+                  "2c_business_discovery",
+                  "2d_business_forecasting",
+                  "2e_business_optimization",
+                  "2f_business_automation",
+                  "3a_data_management",
+                  "3b_descriptive_analytics",
+                  "3c_diagnostic_analytics",
+                  "3d_predictive_analytics",
+                  "3e_prescriptive_analytics",
+                  "3f_autonomous_analytics",
+                  "sorted_out_left",
+                  "sorted_out_right"
+                ]
+              },
+              "surface": {
+                "channel": "chat_submit",
+                "group": "hidden",
+                "sidecarOnly": false,
+                "seedByDefault": false
+              },
+              "order": 6
+            }
+          ],
+          "transitions": []
+        },
+        "step4_next_best_application_review": {
+          "id": "step4_next_best_application_review",
+          "label": {
+            "de": "Next-Best Application Review"
+          },
+          "summary": {
+            "de": "Den aktuellen Maturity-Stand reviewen und 1 bis 2 plausible nächste Anwendungen qualitativ empfehlen."
+          },
+          "visibleInstruction": {
+            "de": "Prüfe, welche fehlenden Anwendungen am besten vorbereitet sind. Die KI empfiehlt, der Mensch entscheidet."
+          },
+          "flowInstruction": {
+            "de": "Suche den plausibelsten nächsten Ausbauschritt. Nutze den sichtbaren Roadmap-Unterbau, aber ersetze keine menschliche Entscheidung."
+          },
+          "endpoints": [
+            {
+              "id": "maturity.assess.step4.coach",
+              "familyKey": "selection.coach",
+              "label": {
+                "de": "Nächsten Schritt coachen"
+              },
+              "summary": {
+                "de": "Coacht die Suche nach der plausibelsten nächsten Anwendung ohne Entscheidungshoheit zu übernehmen"
+              },
+              "scope": {
+                "mode": "current",
+                "allowedCanvasTypeIds": [
+                  "datentreiber-analytics-ai-maturity"
+                ]
+              },
+              "prompt": {
+                "text": {
+                  "de": "Du arbeitest auf dem Canvas Analytics & AI Maturity. Diese Übung bleibt in V1 auf einem Einzelcanvas ohne Cross-Canvas-Handoff.\n\nSchrittkontext: Next-Best Application Review.\nHilf mit 3 bis 5 Leitfragen und genau einem Mikroschritt.\n\nFokussiere auf:\n- Welche fehlende Anwendung baut am stärksten auf bestehenden oder plausibel geplanten Bausteinen auf?\n- Welche Anwendung hätte innerhalb der sichtbaren Domain den größten plausiblen Hebel?\n- Welche Anwendung wirkt noch zu früh?\n- Welche Capability-Lücke ist vor einer Umsetzung noch kritisch?\n- Wo sollte der Mensch genauer entscheiden statt der KI zu folgen?\n\nKeine Board-Mutationen.\nKein Score."
+                }
+              },
+              "run": {
+                "mutationPolicy": "none",
+                "feedbackPolicy": "text",
+                "allowedExecutionModes": [
+                  "none"
+                ],
+                "allowedActions": []
+              },
+              "surface": {
+                "channel": "board_button",
+                "group": "primary",
+                "sidecarOnly": false,
+                "seedByDefault": false
+              },
+              "order": 1
+            },
+            {
+              "id": "maturity.assess.step4.review",
+              "familyKey": "selection.review",
+              "label": {
+                "de": "Empfehlung reviewen"
+              },
+              "summary": {
+                "de": "Prüft qualitativ, welche fehlenden Anwendungen aktuell am besten vorbereitet sind"
+              },
+              "scope": {
+                "mode": "current",
+                "allowedCanvasTypeIds": [
+                  "datentreiber-analytics-ai-maturity"
+                ]
+              },
+              "prompt": {
+                "text": {
+                  "de": "Du arbeitest auf dem Canvas Analytics & AI Maturity. Diese Übung bleibt in V1 auf einem Einzelcanvas ohne Cross-Canvas-Handoff.\n\nSchrittkontext: Next-Best Application Review.\nPrüfe qualitativ:\n- Welche fehlenden Anwendungen sind am besten vorbereitet?\n- Welche bauen nur auf bestehenden oder plausibel geplanten Bausteinen auf?\n- Wo ist der Hebel sichtbar, ohne dass der Sprung zu groß wird?\n- Welche Kandidaten wirken attraktiv, sind aber noch schwach unterfüttert?\n\nKeine numerische Bewertung.\nKeine Board-Mutationen."
+                }
+              },
+              "run": {
+                "mutationPolicy": "none",
+                "feedbackPolicy": "text",
+                "allowedExecutionModes": [
+                  "none"
+                ],
+                "allowedActions": []
+              },
+              "surface": {
+                "channel": "board_button",
+                "group": "primary",
+                "sidecarOnly": false,
+                "seedByDefault": false
+              },
+              "order": 2
+            },
+            {
+              "id": "maturity.assess.step4.grade",
+              "familyKey": "selection.grade",
+              "label": {
+                "de": "Nächste Anwendung graden"
+              },
+              "summary": {
+                "de": "Gibt eine qualitative 5-Sterne-Empfehlung für plausible nächste Anwendungen"
+              },
+              "scope": {
+                "mode": "current",
+                "allowedCanvasTypeIds": [
+                  "datentreiber-analytics-ai-maturity"
+                ]
+              },
+              "prompt": {
+                "text": {
+                  "de": "Du arbeitest auf dem Canvas Analytics & AI Maturity. Diese Übung bleibt in V1 auf einem Einzelcanvas ohne Cross-Canvas-Handoff.\n\nSchrittkontext: Next-Best Application Review.\nGib eine qualitative Empfehlung, kein automatisches Urteil.\n\nBewerte nur auf Basis sichtbarer Informationen:\n- fachliche Verankerung in der Domain\n- Stärke des vorhandenen Unterbaus\n- Klarheit des Ausbaupfads\n- sichtbare Capability-Lücken\n\nNutze im evaluation.score eine 5-Sterne-Empfehlung als String, zum Beispiel:\n- \"★★★★★\"\n- \"★★★☆☆\"\n- \"★☆☆☆☆\"\n\nDas ist nur eine Empfehlung, keine Entscheidung.\nKeine Board-Mutationen."
+                }
+              },
+              "run": {
+                "mutationPolicy": "none",
+                "feedbackPolicy": "text",
+                "allowedExecutionModes": [
+                  "none"
+                ],
+                "allowedActions": []
+              },
+              "surface": {
+                "channel": "board_button",
+                "group": "primary",
+                "sidecarOnly": false,
+                "seedByDefault": false
+              },
+              "order": 3
+            },
+            {
+              "id": "maturity.assess.step4.synthesize",
+              "familyKey": "selection.synthesize",
+              "label": {
+                "de": "Empfehlung verdichten"
+              },
+              "summary": {
+                "de": "Verdichtet den aktuellen Stand in 1 bis 3 kurze weiße Empfehlungs- oder Annahmen-Notizen"
+              },
+              "scope": {
+                "mode": "current",
+                "allowedCanvasTypeIds": [
+                  "datentreiber-analytics-ai-maturity"
+                ]
+              },
+              "prompt": {
+                "text": {
+                  "de": "Du arbeitest auf dem Canvas Analytics & AI Maturity. Diese Übung bleibt in V1 auf einem Einzelcanvas ohne Cross-Canvas-Handoff.\n\nSchrittkontext: Next-Best Application Review.\nVerdichte den aktuellen Stand in 1 bis 3 kurze, hilfreiche weiße Notizen in sorted_out_right.\nDiese Notizen sollen keine Entscheidung erzwingen, sondern den sichtbaren Stand knapp interpretieren.\n\nRegeln:\n- Nur kurze Aussagen.\n- Keine erfundenen Votes oder Prioritäten.\n- Benenne Empfehlungen ausdrücklich als Tendenz oder Annahme.\n- Schreibe keine langen Sätze.\n- Verwende bevorzugt weiße Notizen für solche knappen Check-/Decision-/Task-Hinweise.\n\nBeispiele:\n- \"Likely next: ROI Dashboard\"\n- \"Need capability first\"\n- \"Forecasting too early\"\n\nNutze executionMode = proposal_only."
+                }
+              },
+              "run": {
+                "mutationPolicy": "minimal",
+                "feedbackPolicy": "text",
+                "allowedExecutionModes": [
+                  "proposal_only"
+                ],
+                "allowedActions": [
+                  "create_sticky",
+                  "move_sticky",
+                  "delete_sticky",
+                  "create_connector",
+                  "set_sticky_color",
+                  "set_check_status"
+                ],
+                "allowedActionAreas": [
+                  "sorted_out_right"
+                ]
+              },
+              "surface": {
+                "channel": "board_button",
+                "group": "proposal",
+                "sidecarOnly": false,
+                "seedByDefault": false
+              },
+              "order": 4
+            },
+            {
+              "id": "analytics-ai-maturity-assessment-planning-v1.step4_next_best_application_review.chat_apply",
+              "familyKey": null,
+              "label": {
+                "de": "Vorschläge anwenden"
+              },
+              "summary": {
+                "de": "Wendet den zuletzt erzeugten Vorschlag dieses Schritts an."
+              },
+              "scope": {
+                "mode": "current",
+                "allowedCanvasTypeIds": [
+                  "datentreiber-analytics-ai-maturity"
+                ]
+              },
+              "prompt": {
+                "text": {
+                  "de": "Du arbeitest auf dem Canvas Analytics & AI Maturity.\n\nSchrittkontext: Next-Best Application Review. Der sichtbare Maturity- und Roadmap-Stand wird qualitativ bewertet, um eine oder zwei plausible nächste Anwendungen vorzubereiten. Die finale Entscheidung bleibt menschlich.\n\nWende nur den bereits gespeicherten Vorschlag für diesen Schritt an.\nKeine neue inhaltliche Analyse, keine neue Planung, kein neues Feedback."
+                }
+              },
+              "run": {
+                "mutationPolicy": "minimal",
+                "feedbackPolicy": "text",
+                "allowedExecutionModes": [
+                  "direct_apply"
+                ],
+                "allowedActions": [
+                  "create_sticky",
+                  "move_sticky",
+                  "delete_sticky",
+                  "create_connector",
+                  "set_sticky_color",
+                  "set_check_status"
+                ],
+                "allowedActionAreas": []
+              },
+              "surface": {
+                "channel": "chat_apply",
+                "group": "hidden",
+                "sidecarOnly": false,
+                "seedByDefault": false
+              },
+              "order": 5
+            },
+            {
+              "id": "analytics-ai-maturity-assessment-planning-v1.step4_next_best_application_review.chat_submit",
+              "familyKey": null,
+              "label": {
+                "de": "Frage stellen"
+              },
+              "summary": {
+                "de": "Beantwortet Fragen zum aktuellen Schritt."
+              },
+              "scope": {
+                "mode": "current",
+                "allowedCanvasTypeIds": [
+                  "datentreiber-analytics-ai-maturity"
+                ]
+              },
+              "prompt": {
+                "text": {
+                  "de": "Du arbeitest auf dem Canvas Analytics & AI Maturity. Diese Übung bleibt in V1 auf einem Einzelcanvas ohne Cross-Canvas-Handoff.\n\nSchrittkontext: Next-Best Application Review. Der sichtbare Maturity- und Roadmap-Stand wird qualitativ bewertet, um eine oder zwei plausible nächste Anwendungen vorzubereiten. Die finale Entscheidung bleibt menschlich.\n\nAntworte instanzbezogen, verständlich und hilfreich auf Fragen zu diesem Canvas und zu genau diesem Schritt.\nDer sichtbare Boardzustand ist die Wahrheit. Rechne damit, dass Menschen zwischen den Schritten manuelle Änderungen vorgenommen haben.\n\nWenn die Frage ausdrücklich nach einer kleinen Check- oder Empfehlungsverdichtung fragt, darfst du proposal_only für kurze weiße Notizen in sorted_out_right verwenden.\n\nWenn conversationContext sichtbar ist, beantworte Rückfragen in Bezug auf den letzten Vorschlag oder die letzte Antwort.\nWenn keine konkrete Board-Ausarbeitung verlangt wird, bleibe bei executionMode = none.\nNur wenn die Frage ausdrücklich nach einer kleinen konkreten Board-Ausarbeitung in genau diesem Schritt verlangt, darfst du proposal_only wählen.\nHalluziniere keinen Kontext außerhalb des sichtbaren Boards."
+                }
+              },
+              "run": {
+                "mutationPolicy": "minimal",
+                "feedbackPolicy": "text",
+                "allowedExecutionModes": [
+                  "none",
+                  "proposal_only"
+                ],
+                "allowedActions": [
+                  "create_sticky",
+                  "move_sticky",
+                  "delete_sticky",
+                  "create_connector",
+                  "set_sticky_color",
+                  "set_check_status"
+                ],
+                "allowedActionAreas": [
                   "sorted_out_right"
                 ]
               },

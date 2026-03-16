@@ -9,14 +9,14 @@ import {
   DT_CHECK_TAG_TITLE,
   normalizeStickyColorToken,
   STICKY_LAYOUT
-} from "../config.js?v=20260316-patch18-business-model-case-pack";
+} from "../config.js?v=20260316-patch19-analytics-ai-maturity-pack";
 import {
   stripHtml,
   isFiniteNumber,
   buildInstanceSignatureFromClassification,
   computeInstanceDiffFromSignatures,
   diffHasChanges
-} from "../utils.js?v=20260316-patch18-business-model-case-pack";
+} from "../utils.js?v=20260316-patch19-analytics-ai-maturity-pack";
 import {
   computeTemplateGeometry,
   buildInstanceGeometryIndex,
@@ -24,7 +24,7 @@ import {
   resolveBoardRect,
   findInstanceByPoint,
   findInstanceByRect
-} from "../miro/board.js?v=20260316-patch18-business-model-case-pack";
+} from "../miro/board.js?v=20260316-patch19-analytics-ai-maturity-pack";
 
 // --------------------------------------------------------------------
 // Canvas Definitions / Region Mapping

@@ -2,13 +2,13 @@ import {
   DT_SHAPE_META_KEY_FLOW_CONTROL,
   DT_FLOW_CONTROL_LAYOUT,
   DT_FLOW_CONTROL_STATE_STYLES
-} from "../config.js?v=20260316-patch18-business-model-case-pack";
+} from "../config.js?v=20260316-patch19-analytics-ai-maturity-pack";
 
-import { normalizeUiLanguage, t } from "../i18n/index.js?v=20260316-patch18-business-model-case-pack";
-import { ensureMiroReady, getBoard } from "./sdk.js?v=20260316-patch18-business-model-case-pack";
-import { asTrimmedString } from "./helpers.js?v=20260316-patch18-business-model-case-pack";
-import { getItemById } from "./items.js?v=20260316-patch18-business-model-case-pack";
-import { computeTemplateGeometry } from "./instances.js?v=20260316-patch18-business-model-case-pack";
+import { normalizeUiLanguage, t } from "../i18n/index.js?v=20260316-patch19-analytics-ai-maturity-pack";
+import { ensureMiroReady, getBoard } from "./sdk.js?v=20260316-patch19-analytics-ai-maturity-pack";
+import { asTrimmedString } from "./helpers.js?v=20260316-patch19-analytics-ai-maturity-pack";
+import { getItemById } from "./items.js?v=20260316-patch19-analytics-ai-maturity-pack";
+import { computeTemplateGeometry } from "./instances.js?v=20260316-patch19-analytics-ai-maturity-pack";
 
 function normalizeFlowControlMeta(rawMeta) {
   const src = (rawMeta && typeof rawMeta === "object") ? rawMeta : {};

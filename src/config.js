@@ -16,6 +16,10 @@ export const BUSINESS_MODEL_CASE_TEMPLATE_ID = "datentreiber-business-model-case
 export const BUSINESS_MODEL_CASE_IMAGE_URL =
   "https://www.datentreiber.com/wp-content/uploads/2024/12/Datentreiber_EN_Business-Model-Case_v1-1_20240710.png";
 
+export const ANALYTICS_AI_MATURITY_TEMPLATE_ID = "datentreiber-analytics-ai-maturity";
+export const ANALYTICS_AI_MATURITY_IMAGE_URL =
+  "https://www.datentreiber.com/wp-content/uploads/2024/12/Datentreiber_EN_Analytics-AI-Maturity_v1-0.png";
+
 // Template-Katalog: Canvas-Typ-Erkennung über PNG-URL
 export const DT_TEMPLATE_CATALOG = {
   [TEMPLATE_ID]: {
@@ -240,6 +244,110 @@ Beispielhafte blaue Use-Case-Ideen:
 - "Problem: What's the ROI of social media marketing?"
 - "Solution: Location-based analysis and promotions"
 - "Benefit: More effective ad campaigns"`.trim()
+  },
+  [ANALYTICS_AI_MATURITY_TEMPLATE_ID]: {
+    canvasTypeId: ANALYTICS_AI_MATURITY_TEMPLATE_ID,
+    displayName: "Analytics & AI Maturity",
+    agentLabelPrefix: "Analytics & AI Maturity",
+    thumbnailUrl: ANALYTICS_AI_MATURITY_IMAGE_URL,
+    imageUrl: ANALYTICS_AI_MATURITY_IMAGE_URL,
+    assetWidthPx: 4550,
+    assetHeightPx: 3219,
+    insertWidthPx: 4550,
+    promptContext: `Canvas-Weltmodell für Analytics & AI Maturity:
+- Dieses Canvas beschreibt die Reife eines Application Domain von operativer IT bis zu fortgeschrittener Analytics & AI.
+- Die obere Hälfte enthält Business Applications für Fachbereiche oder Endnutzer.
+- Die untere Hälfte enthält Capabilities, also Daten-, Tool-, Methoden- und Skill-Bausteine.
+- Links nach rechts steigt die Analytics-&-AI-Reife.
+- Capabilities bauen typischerweise bottom-up; Anwendungen bauen oft left-to-right aufeinander auf.
+- Sorted-out links/rechts sind Parkbereiche für Input, Alternativen oder bewusst zurückgestellte Themen.
+
+Verwende für area bzw. targetArea ausschließlich diese Area-Keys:
+- header = Header: Fokus des Canvas, also konkrete Application Domain.
+- 2a_business_operations = Business Operations
+- 2b_business_reporting = Business Reporting
+- 2c_business_discovery = Business Discovery
+- 2d_business_forecasting = Business Forecasting
+- 2e_business_optimization = Business Optimization
+- 2f_business_automation = Business Automation
+- 3a_data_management = Data Management
+- 3b_descriptive_analytics = Descriptive Analytics
+- 3c_diagnostic_analytics = Diagnostic Analytics
+- 3d_predictive_analytics = Predictive Analytics
+- 3e_prescriptive_analytics = Prescriptive Analytics
+- 3f_autonomous_analytics = Autonomous Analytics
+- sorted_out_left = seitlicher Sorted-out-Bereich links außerhalb des sichtbaren Canvas; in diesem Canvas kann er als Input-Lane für importierte blaue Use-Case-Ideen dienen
+- sorted_out_right = seitlicher Sorted-out-Bereich rechts außerhalb des sichtbaren Canvas
+
+Visuelle Orientierung:
+- header liegt oben.
+- Ein semantisches Reifeband oberhalb der Arbeitsflächen markiert grob IT, BI, Analytical AI, Predictive AI, Generative AI und Agentic AI; es ist ein Referenzband, kein Arbeitsbereich.
+- 2a bis 2f bilden die Business-Applications-Zeile von links nach rechts.
+- 3a bis 3f bilden die Capability-Zeile darunter; Data Management liegt ganz unten als Fundament.
+- Links stehen frühere, stärker operative und datennahe Stufen; rechts stehen fortgeschrittene und stärker autonome Stufen.
+- Footer/Legende ist kein Arbeitsbereich.
+
+Farblogik:
+- Grün = bestehende Anwendung oder bestehende Capability.
+- Gelb = geplante oder in Arbeit befindliche Anwendung oder Capability.
+- Rot = fehlende Anwendung oder fehlende Capability.
+- Blau = Use-Case-Idee als Problem, Frage, Lösung oder Benefit.
+- Weiß = riskieste Annahme, offene Frage, Insight, Decision oder Task.
+
+Semantik:
+- 2x-Felder enthalten Anwendungen für Business User oder operative Fachbereiche.
+- 3x-Felder enthalten Enabler wie Datenplattformen, Tools, Methoden, Rollen oder Skills.
+- Wenn unklar ist, ob etwas eine Anwendung oder Capability ist, gilt:
+  - End-user-facing application -> eher 2x
+  - enabling capability / tool / skill / role -> eher 3x
+- Maturity wird nicht nur technisch, sondern auch durch Nutzungsreife und Abhängigkeiten bestimmt.
+- Höhere Stufen setzen oft niedrigere Stufen voraus, aber nicht jedes Element braucht jede Vorstufe in voller Ausprägung.
+- Human Voting oder manuelle Priorisierung dürfen nur interpretiert werden, wenn sie sichtbar auf dem Board vorhanden sind.
+
+Sticky-Regeln:
+- Anwendungen und Capabilities sehr kurz halten.
+- Bevorzugt 1 bis 4 Wörter.
+- Eine Sticky = ein Element.
+- Blaue Use-Case-Ideen dürfen etwas länger sein, bleiben aber knapp.
+- Blaue Use-Case-Ideen beginnen möglichst mit:
+  - "Problem:"
+  - "Solution:"
+  - "Benefit:"
+- Keine langen Erklärsätze auf normalen Anwendungs- oder Capability-Stickies.
+- Begründungen gehören ins Feedback, nicht auf die Sticky.
+
+Beispielhafte Anwendungen:
+- "Social Media Management Suite"
+- "Marketing ROI Dashboard"
+- "Marketing ROI Analyses"
+- "Sales / Revenue Forecast"
+- "Ad Bidding Optimization"
+
+Beispielhafte Capabilities:
+- "Web Analytics"
+- "Reporting Tool"
+- "Statistical Analysis Software"
+- "Data Warehouse"
+- "Data Engineer"
+
+Arbeitslogik:
+1) Fokus im Header klären.
+2) Bestehende und geplante Anwendungen auf den Reifestufen verorten.
+3) Importierte blaue Use-Case-Ideen als Input-Kontext sichtbar halten.
+4) Fehlende Anwendungen identifizieren.
+5) Vorläufer, Abhängigkeiten und Capabilities ergänzen.
+6) Eine qualitative Next-Best-Application ableiten, ohne menschliche Entscheidung zu ersetzen.
+
+Connector-Regeln:
+- Connectoren sind nie Dekoration.
+- Nutze sie nur für echte Entwicklungs- oder Abhängigkeitsbeziehungen.
+- Typische sinnvolle Beziehungen sind:
+  - vorhandene Anwendung -> nächste Ausbauversion
+  - prerequisite application -> spätere Anwendung
+  - Capability -> unterstützte Anwendung
+  - niedrigere Stufe -> höhere Stufe
+- Verwende lieber wenige klare Verbindungen als viele schwache.
+- Clustering ähnlicher blauer Input-Notizen kann optional mit nativer Miro AI vorbereitet werden; unsere App soll das Clustering nicht erfinden oder simulieren.`.trim()
   }
 };
 
@@ -733,6 +841,115 @@ export const DT_CANVAS_DEFS = {
       }
     ]
   }
+,
+  [ANALYTICS_AI_MATURITY_TEMPLATE_ID]: {
+    originalWidth: 1000,
+    originalHeight: 720,
+    headerPolygons: [
+      {
+        id: "1a_header",
+        title: "Header",
+        polygonNorm: [
+          [0.1550, 0.0181],[0.7030, 0.0181],[0.7030, 0.0944],[0.1550, 0.0944]
+        ]
+      }
+    ],
+    footerPolygons: [
+      {
+        id: "1b_footer",
+        title: "Footer",
+        polygonNorm: [
+          [0.0160, 0.9444],[0.5610, 0.9444],[0.5610, 0.9819],[0.0160, 0.9819]
+        ]
+      }
+    ],
+    regionPolygons: [
+      {
+        id: "2a_business_operations",
+        title: "Business Operations",
+        polygonNorm: [
+          [0.0220, 0.1444],[0.1740, 0.1444],[0.1740, 0.7903],[0.0220, 0.7903]
+        ]
+      },
+      {
+        id: "2b_business_reporting",
+        title: "Business Reporting",
+        polygonNorm: [
+          [0.1800, 0.1444],[0.3350, 0.1444],[0.3350, 0.6972],[0.1800, 0.6972]
+        ]
+      },
+      {
+        id: "2c_business_discovery",
+        title: "Business Discovery",
+        polygonNorm: [
+          [0.3400, 0.1444],[0.4950, 0.1444],[0.4950, 0.5986],[0.3400, 0.5986]
+        ]
+      },
+      {
+        id: "2d_business_forecasting",
+        title: "Business Forecasting",
+        polygonNorm: [
+          [0.5010, 0.1431],[0.6550, 0.1431],[0.6550, 0.5000],[0.5010, 0.5000]
+        ]
+      },
+      {
+        id: "2e_business_optimization",
+        title: "Business Optimization",
+        polygonNorm: [
+          [0.6590, 0.1444],[0.8140, 0.1444],[0.8140, 0.4000],[0.6590, 0.4000]
+        ]
+      },
+      {
+        id: "2f_business_automation",
+        title: "Business Automation",
+        polygonNorm: [
+          [0.8190, 0.1444],[0.9790, 0.1444],[0.9790, 0.3028],[0.8190, 0.3028]
+        ]
+      },
+      {
+        id: "3a_data_management",
+        title: "Data Management",
+        polygonNorm: [
+          [0.0210, 0.8000],[0.9800, 0.8000],[0.9800, 0.8917],[0.0210, 0.8917]
+        ]
+      },
+      {
+        id: "3b_descriptive_analytics",
+        title: "Descriptive Analytics",
+        polygonNorm: [
+          [0.1800, 0.7028],[0.9800, 0.7028],[0.9800, 0.7931],[0.1800, 0.7931]
+        ]
+      },
+      {
+        id: "3c_diagnostic_analytics",
+        title: "Diagnostic Analytics",
+        polygonNorm: [
+          [0.3410, 0.6056],[0.9790, 0.6056],[0.9790, 0.6944],[0.3410, 0.6944]
+        ]
+      },
+      {
+        id: "3d_predictive_analytics",
+        title: "Predictive Analytics",
+        polygonNorm: [
+          [0.5000, 0.5069],[0.9800, 0.5069],[0.9800, 0.5958],[0.5000, 0.5958]
+        ]
+      },
+      {
+        id: "3e_prescriptive_analytics",
+        title: "Prescriptive Analytics",
+        polygonNorm: [
+          [0.6600, 0.4083],[0.9790, 0.4083],[0.9790, 0.4986],[0.6600, 0.4986]
+        ]
+      },
+      {
+        id: "3f_autonomous_analytics",
+        title: "Autonomous Analytics",
+        polygonNorm: [
+          [0.8190, 0.3083],[0.9790, 0.3083],[0.9790, 0.3986],[0.8190, 0.3986]
+        ]
+      }
+    ]
+  }
 };
 
 
@@ -889,6 +1106,9 @@ export const DT_PROMPT_CATALOG = {
     system: buildSelectionSystemPrompt()
   },
   [BUSINESS_MODEL_CASE_TEMPLATE_ID]: {
+    system: buildSelectionSystemPrompt()
+  },
+  [ANALYTICS_AI_MATURITY_TEMPLATE_ID]: {
     system: buildSelectionSystemPrompt()
   }
 };

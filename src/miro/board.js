@@ -1,9 +1,9 @@
 import {
   ensureMiroReady as ensureMiroReadyInternal,
   getBoard as getBoardInternal
-} from "./sdk.js?v=20260316-patch18-business-model-case-pack";
+} from "./sdk.js?v=20260316-patch19-analytics-ai-maturity-pack";
 
-export { ensureMiroReady, getBoard, registerSelectionUpdateHandler } from "./sdk.js?v=20260316-patch18-business-model-case-pack";
+export { ensureMiroReady, getBoard, registerSelectionUpdateHandler } from "./sdk.js?v=20260316-patch19-analytics-ai-maturity-pack";
 
 export {
   normalizeBoardConfig,
@@ -35,7 +35,7 @@ export {
   normalizeBoardRunState,
   loadBoardRunState,
   saveBoardRunState
-} from "./storage.js?v=20260316-patch18-business-model-case-pack";
+} from "./storage.js?v=20260316-patch19-analytics-ai-maturity-pack";
 
 export async function getVotingResults(log) {
   await ensureMiroReadyInternal(log);
@@ -56,7 +56,7 @@ export async function getVotingResults(log) {
 export {
   buildAgentFeedbackContent,
   buildQuestionAnswerContent
-} from "./feedback.js?v=20260316-patch18-business-model-case-pack";
+} from "./feedback.js?v=20260316-patch19-analytics-ai-maturity-pack";
 
 export {
   normalizeChatInterfaceShapeIds,
@@ -83,7 +83,7 @@ export {
   syncChatProposeButtonState,
   syncChatApplyButtonState,
   syncChatInterfaceLayoutForInstance
-} from "./chat-interface.js?v=20260316-patch18-business-model-case-pack";
+} from "./chat-interface.js?v=20260316-patch19-analytics-ai-maturity-pack";
 
 export {
   getSelection,
@@ -109,7 +109,7 @@ export {
   setStickyNoteTagPresence,
   setStickyNoteFillColor,
   getBoardBaseContext
-} from "./items.js?v=20260316-patch18-business-model-case-pack";
+} from "./items.js?v=20260316-patch19-analytics-ai-maturity-pack";
 
 export {
   readFlowControlMeta,
@@ -118,7 +118,7 @@ export {
   computeSuggestedFlowControlPosition,
   createFlowControlShape,
   syncFlowControlShapeAppearance
-} from "./flow-controls.js?v=20260316-patch18-business-model-case-pack";
+} from "./flow-controls.js?v=20260316-patch19-analytics-ai-maturity-pack";
 
 export {
   computeTemplateGeometry,
@@ -127,4 +127,4 @@ export {
   findInstanceByRect,
   registerInstanceFromImage,
   scanTemplateInstances
-} from "./instances.js?v=20260316-patch18-business-model-case-pack";
+} from "./instances.js?v=20260316-patch19-analytics-ai-maturity-pack";

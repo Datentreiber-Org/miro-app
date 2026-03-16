@@ -15,12 +15,12 @@ import {
   DT_STORAGE_KEY_PROPOSAL_PREFIX,
   DT_MEMORY_RECENT_LOG_LIMIT,
   DT_EXECUTION_MODES
-} from "../config.js?v=20260316-patch18-business-model-case-pack";
+} from "../config.js?v=20260316-patch19-analytics-ai-maturity-pack";
 
-import { normalizeBoardFlow } from "../runtime/board-flow.js?v=20260316-patch18-business-model-case-pack";
-import { normalizeUiLanguage } from "../i18n/index.js?v=20260316-patch18-business-model-case-pack";
-import { ensureMiroReady, getBoard } from "./sdk.js?v=20260316-patch18-business-model-case-pack";
-import { compareItemIdsAsc, normalizePositiveInt, asTrimmedString } from "./helpers.js?v=20260316-patch18-business-model-case-pack";
+import { normalizeBoardFlow } from "../runtime/board-flow.js?v=20260316-patch19-analytics-ai-maturity-pack";
+import { normalizeUiLanguage } from "../i18n/index.js?v=20260316-patch19-analytics-ai-maturity-pack";
+import { ensureMiroReady, getBoard } from "./sdk.js?v=20260316-patch19-analytics-ai-maturity-pack";
+import { compareItemIdsAsc, normalizePositiveInt, asTrimmedString } from "./helpers.js?v=20260316-patch19-analytics-ai-maturity-pack";
 
 // --------------------------------------------------------------------
 // Storage, board config, baseline, memory and exercise runtime

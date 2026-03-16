@@ -1,14 +1,14 @@
-import { DT_IMAGE_META_KEY_INSTANCE, DT_CANVAS_DEFS, DT_SORTED_OUT_REGION_WIDTH_PX, DT_SORTED_OUT_BUFFER_WIDTH_PX } from "../config.js?v=20260316-patch18-business-model-case-pack";
-import { isFiniteNumber } from "../utils.js?v=20260316-patch18-business-model-case-pack";
-import { ensureMiroReady, getBoard } from "./sdk.js?v=20260316-patch18-business-model-case-pack";
+import { DT_IMAGE_META_KEY_INSTANCE, DT_CANVAS_DEFS, DT_SORTED_OUT_REGION_WIDTH_PX, DT_SORTED_OUT_BUFFER_WIDTH_PX } from "../config.js?v=20260316-patch19-analytics-ai-maturity-pack";
+import { isFiniteNumber } from "../utils.js?v=20260316-patch19-analytics-ai-maturity-pack";
+import { ensureMiroReady, getBoard } from "./sdk.js?v=20260316-patch19-analytics-ai-maturity-pack";
 import {
   compareItemIdsAsc,
   normalizePositiveInt,
   getCanvasTypeDisplayName,
   formatInstanceLabel,
   buildInternalInstanceIdFromImageId
-} from "./helpers.js?v=20260316-patch18-business-model-case-pack";
-import { getItemById, resolveBoardCoords } from "./items.js?v=20260316-patch18-business-model-case-pack";
+} from "./helpers.js?v=20260316-patch19-analytics-ai-maturity-pack";
+import { getItemById, resolveBoardCoords } from "./items.js?v=20260316-patch19-analytics-ai-maturity-pack";
 import {
   normalizeChatInterfaceShapeIds,
   hasAnyChatInterfaceShapeIds,
@@ -19,11 +19,11 @@ import {
   ensureChatProposeShapeForInstance,
   hasApplyChatInterfaceShapeId,
   ensureChatApplyShapeForInstance
-} from "./chat-interface.js?v=20260316-patch18-business-model-case-pack";
+} from "./chat-interface.js?v=20260316-patch19-analytics-ai-maturity-pack";
 import {
   loadBaselineSignatureForImageId,
   removeBaselineSignatureForImageId
-} from "./storage.js?v=20260316-patch18-business-model-case-pack";
+} from "./storage.js?v=20260316-patch19-analytics-ai-maturity-pack";
 
 // --------------------------------------------------------------------
 // Template instance registration, geometry and scan/rebind logic

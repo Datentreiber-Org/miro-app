@@ -1,8 +1,8 @@
 import {
   getAllowedCanvasTypesForPack,
   getDefaultCanvasTypeIdForPack
-} from "../exercises/registry.js?v=20260316-patch18-business-model-case-pack";
-import { normalizeUiLanguage } from "../i18n/index.js?v=20260316-patch18-business-model-case-pack";
+} from "../exercises/registry.js?v=20260316-patch19-analytics-ai-maturity-pack";
+import { normalizeUiLanguage } from "../i18n/index.js?v=20260316-patch19-analytics-ai-maturity-pack";
 
 function asNonEmptyString(value) {
   if (typeof value !== "string") return null;
