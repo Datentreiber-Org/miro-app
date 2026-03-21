@@ -62,7 +62,8 @@ function normalizeFlowEndpointRuntimeOverride(rawOverride) {
     promptText: asTrimmedString(src.promptText) || null,
     executionMode: normalizeOptionalExecutionMode(src.executionMode),
     allowedActions: normalizeOptionalStringArray(src.allowedActions),
-    allowedActionAreas: normalizeOptionalStringArray(src.allowedActionAreas)
+    allowedActionAreas: normalizeOptionalStringArray(src.allowedActionAreas),
+    sourceFrameNames: normalizeOptionalStringArray(src.sourceFrameNames)
   };
 }
 
@@ -77,7 +78,8 @@ function normalizeFlowEndpointRuntimeOverrideMap(rawMap) {
         normalizedOverride.promptText ||
         normalizedOverride.executionMode ||
         normalizedOverride.allowedActions !== null ||
-        normalizedOverride.allowedActionAreas !== null
+        normalizedOverride.allowedActionAreas !== null ||
+        normalizedOverride.sourceFrameNames !== null
       );
       return hasMeaningfulValue ? [normalizedEndpointId, normalizedOverride] : null;
     })

@@ -18,6 +18,7 @@ import { createLogger, stripHtml, extractUnderlinedText, isFiniteNumber } from "
 import { normalizeUiLanguage, t, getLocaleForLanguage } from "./i18n/index.js?v=20260316-patch20-data-monetization-pack";
 
 import * as Board from "./miro/board.js?v=20260316-patch20-data-monetization-pack";
+import * as FrameSources from "./miro/frame-sources.js?v=20260316-patch20-data-monetization-pack";
 import * as Catalog from "./domain/catalog.js?v=20260316-patch20-data-monetization-pack";
 import * as OpenAI from "./ai/openai.js?v=20260316-patch20-data-monetization-pack";
 import * as Memory from "./runtime/memory.js?v=20260316-patch20-data-monetization-pack";
@@ -127,6 +128,7 @@ const flowStepEl = document.getElementById("flow-step");
 const flowEndpointEl = document.getElementById("flow-endpoint");
 const flowEndpointOverrideStatusEl = document.getElementById("flow-endpoint-override-status");
 const flowEndpointOverridePromptEl = document.getElementById("flow-endpoint-override-prompt");
+const flowEndpointOverrideSourceFramesEl = document.getElementById("flow-endpoint-override-source-frames");
 const flowEndpointOverrideExecutionModeEl = document.getElementById("flow-endpoint-override-execution-mode");
 const flowEndpointOverrideActionsEl = document.getElementById("flow-endpoint-override-actions");
 const flowEndpointOverrideAreasEl = document.getElementById("flow-endpoint-override-areas");
@@ -1462,7 +1464,7 @@ function getEffectiveFlowEndpointById(endpointId, { lang = getCurrentDisplayLang
     nextRun.allowedActionAreas = Array.isArray(override.allowedActionAreas) ? override.allowedActionAreas.slice() : [];
   }
 
-  return {
+  const nextEndpoint = {
     ...rawEndpoint,
     prompt: {
       ...(rawEndpoint.prompt || {}),
@@ -1470,6 +1472,17 @@ function getEffectiveFlowEndpointById(endpointId, { lang = getCurrentDisplayLang
     },
     run: nextRun
   };
+
+  const nextSourceFrameNames = Array.isArray(override.sourceFrameNames)
+    ? FrameSources.normalizeSourceFrameNames(override.sourceFrameNames)
+    : FrameSources.normalizeSourceFrameNames(rawEndpoint.sourceFrameNames);
+  if (nextSourceFrameNames.length) {
+    nextEndpoint.sourceFrameNames = nextSourceFrameNames;
+  } else if (Object.prototype.hasOwnProperty.call(nextEndpoint, "sourceFrameNames")) {
+    delete nextEndpoint.sourceFrameNames;
+  }
+
+  return nextEndpoint;
 }
 
 
@@ -1482,6 +1495,17 @@ function sameStringSet(a, b) {
   const right = normalizeStringSet(b);
   if (left.length !== right.length) return false;
   return left.every((value, index) => value === right[index]);
+}
+
+function sameOrderedSourceFrameList(a, b) {
+  const left = FrameSources.normalizeSourceFrameNames(a);
+  const right = FrameSources.normalizeSourceFrameNames(b);
+  if (left.length !== right.length) return false;
+  return left.every((value, index) => value === right[index]);
+}
+
+function formatSourceFrameNamesForTextarea(values) {
+  return FrameSources.formatSourceFrameNamesInput(values);
 }
 
 function normalizeUnrestrictedCheckboxSelection(selectedValues, availableValues) {
@@ -1629,6 +1653,14 @@ function renderFlowEndpointOverrideEditor() {
     flowEndpointOverridePromptEl.disabled = !hasEligibleEndpoint;
   }
 
+  const sourceFrameNames = hasEligibleEndpoint
+    ? FrameSources.normalizeSourceFrameNames(override?.sourceFrameNames || endpoint.sourceFrameNames || [])
+    : [];
+  if (flowEndpointOverrideSourceFramesEl) {
+    flowEndpointOverrideSourceFramesEl.value = formatSourceFrameNamesForTextarea(sourceFrameNames);
+    flowEndpointOverrideSourceFramesEl.disabled = !hasEligibleEndpoint;
+  }
+
   const effectiveMode = hasEligibleEndpoint
     ? (override?.executionMode || getFlowEndpointExecutionModeValue(endpoint))
     : "none";
@@ -1685,6 +1717,7 @@ async function saveFlowEndpointOverrideFromUi() {
     getCheckedValuesFromCheckboxContainer(flowEndpointOverrideAreasEl),
     areaOptions.map((option) => option.id)
   );
+  const sourceFrameNames = FrameSources.parseSourceFrameNamesInput(flowEndpointOverrideSourceFramesEl?.value || "");
 
   const catalogPromptText = endpoint.prompt?.text || "";
   const catalogExecutionMode = getFlowEndpointExecutionModeValue(endpoint);
@@ -1696,6 +1729,7 @@ async function saveFlowEndpointOverrideFromUi() {
     ExerciseEngine.normalizeStringArray(endpoint.run?.allowedActionAreas),
     areaOptions.map((option) => option.id)
   );
+  const catalogSourceFrameNames = FrameSources.normalizeSourceFrameNames(endpoint.sourceFrameNames || []);
 
   const overridePatch = {};
   if (promptText && promptText !== catalogPromptText) {
@@ -1709,6 +1743,9 @@ async function saveFlowEndpointOverrideFromUi() {
   }
   if (!sameStringSet(normalizedAreas, catalogAreas)) {
     overridePatch.allowedActionAreas = normalizedAreas;
+  }
+  if (!sameOrderedSourceFrameList(sourceFrameNames, catalogSourceFrameNames)) {
+    overridePatch.sourceFrameNames = sourceFrameNames;
   }
 
   const nextOverrides = {
@@ -2834,6 +2871,476 @@ async function buildVotingContextForPrompt(activeCanvasStates) {
   };
 }
 
+function createEmptyEndpointActionResult(extra = {}) {
+  return {
+    appliedCount: 0,
+    skippedCount: 0,
+    infoCount: 0,
+    targetedInstanceCount: 0,
+    ...createEmptyActionExecutionStats(),
+    ...extra
+  };
+}
+
+function buildEndpointExecutionContext({
+  exercisePack,
+  currentStep,
+  endpoint,
+  targetInstanceIds,
+  controlContext = null,
+  adminOverride = null,
+  sourceLabel = "Endpoint"
+} = {}) {
+  const normalizedTargetIds = normalizeTargetInstanceIds(targetInstanceIds);
+  const targetInstanceLabels = getInstanceLabelsFromIds(normalizedTargetIds);
+  const endpointContext = ExerciseEngine.resolveEndpointContext({
+    exercisePack,
+    currentStep,
+    endpoint,
+    targetInstanceIds: normalizedTargetIds,
+    targetInstanceLabels,
+    boardConfig: state.boardConfig
+  });
+  const promptRuntimeOverride = buildPromptRuntimeFromEndpoint({
+    exercisePack,
+    currentStep,
+    endpoint,
+    controlContext,
+    adminOverride: pickFirstNonEmptyString(adminOverride, state.exerciseRuntime?.adminOverride) || null
+  });
+  const resolvedSourceLabel = pickFirstNonEmptyString(sourceLabel, controlContext?.controlLabel, endpoint?.label, "Endpoint");
+  const activeStepId = pickFirstNonEmptyString(currentStep?.id);
+  const sourceFrameNames = FrameSources.normalizeSourceFrameNames(endpoint?.sourceFrameNames || []);
+  const flowPromptContext = resolveFlowPromptContext({
+    promptRuntimeOverride,
+    targetInstanceIds: normalizedTargetIds
+  });
+  const activeAnchorContext = flowPromptContext.exercisePackId && flowPromptContext.anchorInstanceId
+    ? { exercisePackId: flowPromptContext.exercisePackId, anchorInstanceId: flowPromptContext.anchorInstanceId }
+    : null;
+
+  return {
+    normalizedTargetIds,
+    targetInstanceLabels,
+    endpointContext,
+    promptRuntimeOverride,
+    resolvedSourceLabel,
+    activeStepId,
+    sourceFrameNames,
+    flowPromptContext,
+    activeAnchorContext
+  };
+}
+
+function buildActiveCanvasStatesFromStateById(normalizedTargetIds, stateById) {
+  const activeCanvasStates = Object.create(null);
+
+  for (const instanceId of normalizeTargetInstanceIds(normalizedTargetIds)) {
+    const instanceState = stateById?.[instanceId] || null;
+    const instance = state.instancesById.get(instanceId) || null;
+    const instanceLabel = instance?.instanceLabel || null;
+    if (!instanceState?.classification || !instanceLabel) continue;
+
+    const payload = Catalog.buildPromptPayloadFromClassification(instanceState.classification, {
+      useAliases: true,
+      aliasState: state.aliasState,
+      log
+    });
+    if (payload) activeCanvasStates[instanceLabel] = payload;
+  }
+
+  const resolvedActiveLabels = Object.keys(activeCanvasStates);
+  const resolvedActiveIds = resolvedActiveLabels
+    .map((label) => getInternalInstanceIdByLabel(label))
+    .filter((instanceId) => state.instancesById.has(instanceId));
+
+  return {
+    activeCanvasStates,
+    resolvedActiveLabels,
+    resolvedActiveIds
+  };
+}
+
+async function buildStructuredEndpointPromptArtifacts({
+  exercisePack,
+  currentStep,
+  endpointContext,
+  promptRuntimeOverride,
+  flowPromptContext,
+  stateById,
+  activeCanvasStates,
+  resolvedActiveIds,
+  resolvedActiveLabels,
+  activeStepId,
+  sourceFrameNames = [],
+  userText = null
+} = {}) {
+  const singleLabel = resolvedActiveLabels.length === 1 ? resolvedActiveLabels[0] : null;
+  const singleInstanceId = resolvedActiveIds.length === 1 ? resolvedActiveIds[0] : null;
+  const conversationContext = singleInstanceId ? buildConversationContextForPrompt(singleInstanceId) : null;
+  const boardCatalog = buildBoardCatalogForSelectedInstances(resolvedActiveIds);
+  let sourceFrames = null;
+  if (Array.isArray(sourceFrameNames) && sourceFrameNames.length) {
+    try {
+      sourceFrames = await FrameSources.resolvePromptSourceFramesByName(sourceFrameNames, { log });
+    } catch (error) {
+      sourceFrames = FrameSources.createEmptySourceFramesPayload({ configuredFrameNames: sourceFrameNames });
+      log("Hinweis: Zusätzliche Source-Frames konnten nicht vollständig aufgelöst werden: " + (error?.message || String(error)));
+    }
+  }
+  const memoryState = simplifyMemoryStateForPrompt(state.memoryState);
+  const memoryTimeline = buildMemoryTimelineForPrompt(state.memoryLog);
+  const expectedSignatureSnapshot = buildSignatureSnapshot(stateById, resolvedActiveIds);
+  const pendingProposalContext = singleInstanceId
+    ? await buildPendingProposalContextForPrompt(singleInstanceId, { stepId: activeStepId })
+    : null;
+  const votingContext =
+    isBusinessModelCasePack(exercisePack) && isBusinessModelVotingStep(currentStep)
+      ? await buildVotingContextForPrompt(activeCanvasStates)
+      : null;
+  const resolvedAllowedActionAreas = resolveAllowedActionAreasForRun({
+    endpointContext,
+    activeCanvasStates
+  });
+  const promptCfg = getPromptConfigForSelectedInstances(resolvedActiveIds);
+  const promptText = PromptComposer.composePrompt(promptRuntimeOverride, {
+    lang: getCurrentDisplayLanguage(),
+    systemPrompt: promptCfg?.system || DT_GLOBAL_SYSTEM_PROMPT,
+    templateCatalog: DT_TEMPLATE_CATALOG,
+    involvedCanvasTypeIds: getInvolvedCanvasTypeIdsFromInstanceIds(resolvedActiveIds),
+    endpointContext: { ...endpointContext, allowedActionAreas: resolvedAllowedActionAreas },
+    sourceFrames: sourceFrames?.enabled ? sourceFrames : null
+  });
+  const userQuestion = pickFirstNonEmptyString(userText, getCurrentUserQuestion());
+
+  const userPayload = {
+    userQuestion,
+    activeInstanceLabel: singleLabel,
+    selectedInstanceLabels: resolvedActiveLabels,
+    boardCatalog,
+    activeCanvasStates,
+    memoryState,
+    memoryTimeline,
+    pendingProposalContext,
+    conversationContext,
+    flowGuidance: flowPromptContext.flowGuidance,
+    allowedActionAreas: resolvedAllowedActionAreas,
+    votingContext
+  };
+  if (sourceFrames?.enabled) {
+    userPayload.sourceFrames = sourceFrames;
+  }
+
+  return {
+    singleLabel,
+    singleInstanceId,
+    expectedSignatureSnapshot,
+    resolvedAllowedActionAreas,
+    promptText,
+    userQuestion,
+    userPayload
+  };
+}
+
+async function syncEndpointChatButtons(instanceIds, { stepId = null } = {}) {
+  await syncChatProposeButtonsForInstanceIds(instanceIds, { stepId });
+  await syncChatApplyButtonsForInstanceIds(instanceIds, { stepId });
+}
+
+async function applyEndpointRunArtifactsAndSyncUi({
+  endpoint,
+  flowControlDirectives = null,
+  promptRuntimeOverride = null,
+  targetInstanceIds = [],
+  sourceLabel = "Endpoint",
+  activeAnchorContext = null,
+  activeStepId = null,
+  renderResponse = null,
+  fallbackToOriginalFlowDirectives = true
+} = {}) {
+  const flowDirectiveResult = await applyFlowControlDirectivesAfterAgentRun({
+    flowControlDirectives,
+    promptRuntimeOverride,
+    targetInstanceIds,
+    sourceLabel
+  });
+  const appliedFlowControlDirectives = flowDirectiveResult?.flowControlDirectives || (fallbackToOriginalFlowDirectives ? flowControlDirectives : null);
+
+  if (renderResponse) {
+    await renderAgentResponseToInstanceOutput({
+      ...renderResponse,
+      flowControlDirectives: appliedFlowControlDirectives,
+      sourceLabel
+    });
+  }
+
+  await persistExerciseRuntimeAfterEndpointRun({
+    endpoint,
+    flowControlDirectives: appliedFlowControlDirectives,
+    activeAnchorContext: flowDirectiveResult?.activeAnchorContext || activeAnchorContext
+  });
+  await syncEndpointChatButtons(targetInstanceIds, { stepId: activeStepId });
+
+  return {
+    flowDirectiveResult,
+    appliedFlowControlDirectives
+  };
+}
+
+function getStoredProposalExecutableActions(proposal, { logFn = null, lang = getCurrentDisplayLanguage() } = {}) {
+  const proposalActions = Array.isArray(proposal?.actions) ? proposal.actions : [];
+  const proposalEndpoint = proposal?.endpointId
+    ? getEffectiveFlowEndpointById(proposal.endpointId, { lang })
+    : null;
+
+  return sanitizeProposalActionsForEndpoint(proposalActions, {
+    allowedActions: proposalEndpoint?.run?.allowedActions || [],
+    allowedActionAreas: proposalEndpoint?.run?.allowedActionAreas || [],
+    logFn
+  }).filter((action) => action && action.type !== "inform");
+}
+
+async function handleStructuredEndpointNoneMode({
+  agentObj,
+  currentStep,
+  endpoint,
+  promptRuntimeOverride,
+  activeAnchorContext,
+  flowControlDirectives,
+  feedback,
+  evaluation,
+  executionMode,
+  resolvedSourceLabel,
+  resolvedActiveIds,
+  resolvedActiveLabels,
+  activeStepId,
+  userText = null
+} = {}) {
+  const actionResult = createEmptyEndpointActionResult();
+  const responseTargetInstanceId = resolveResponseTargetInstanceId({
+    promptRuntimeOverride,
+    targetInstanceIds: resolvedActiveIds,
+    anchorInstanceId: resolvedActiveIds.length === 1 ? resolvedActiveIds[0] : null
+  });
+
+  await persistMemoryAfterAgentRun(agentObj, {
+    runMode: "endpoint",
+    targetInstanceLabels: resolvedActiveLabels,
+    userRequest: pickFirstNonEmptyString(userText, getCurrentUserQuestion())
+  }, actionResult);
+
+  await applyEndpointRunArtifactsAndSyncUi({
+    endpoint,
+    flowControlDirectives,
+    promptRuntimeOverride,
+    targetInstanceIds: resolvedActiveIds,
+    sourceLabel: resolvedSourceLabel,
+    activeAnchorContext,
+    activeStepId,
+    renderResponse: {
+      instanceId: responseTargetInstanceId,
+      feedback,
+      evaluation,
+      conversationMeta: {
+        stepLabel: currentStep?.label || null,
+        endpointLabel: endpoint?.label || null,
+        channel: endpoint?.surface?.channel || null,
+        executionMode
+      }
+    }
+  });
+
+  return buildRunSuccessResult({
+    sourceLabel: resolvedSourceLabel,
+    targetInstanceLabels: resolvedActiveLabels,
+    actionResult,
+    executionMode
+  });
+}
+
+async function handleStructuredEndpointProposalMode({
+  agentObj,
+  currentStep,
+  endpoint,
+  endpointContext,
+  promptRuntimeOverride,
+  activeAnchorContext,
+  flowControlDirectives,
+  feedback,
+  evaluation,
+  executionMode,
+  resolvedSourceLabel,
+  resolvedActiveIds,
+  resolvedActiveLabels,
+  resolvedAllowedActionAreas,
+  activeStepId,
+  singleInstanceId,
+  stateById,
+  userText = null
+} = {}) {
+  if (resolvedActiveIds.length !== 1 || !singleInstanceId) {
+    const msg = resolvedSourceLabel + ": executionMode=proposal_only benötigt genau eine Ziel-Instanz.";
+    logRuntimeNotice("precondition", msg);
+    return buildRunFailureResult("precondition", msg);
+  }
+
+  const executableActions = sanitizeProposalActionsForEndpoint(agentObj.actions, {
+    allowedActions: endpointContext?.allowedActions || [],
+    allowedActionAreas: resolvedAllowedActionAreas,
+    logFn: log
+  }).filter((action) => action && action.type !== "inform");
+
+  let proposalRecord = null;
+  if (executableActions.length) {
+    proposalRecord = buildStoredProposalRecord({
+      instanceId: singleInstanceId,
+      stepId: activeStepId,
+      stepLabel: currentStep?.label || null,
+      exercisePackId: promptRuntimeOverride?.exercisePack?.id || null,
+      endpointId: promptRuntimeOverride?.endpoint?.id || null,
+      promptRuntimeOverride,
+      userRequest: pickFirstNonEmptyString(userText, getCurrentUserQuestion()),
+      basedOnStateHash: stateById[singleInstanceId]?.signature?.stateHash || null,
+      agentObj: {
+        ...agentObj,
+        actions: executableActions,
+        executionMode
+      },
+      feedback,
+      flowDirectives: flowControlDirectives,
+      evaluation
+    });
+    await Board.saveActiveProposal(proposalRecord, log);
+  } else {
+    await Board.clearActiveProposal({
+      anchorInstanceId: singleInstanceId,
+      stepId: activeStepId
+    }, log);
+  }
+
+  await applyEndpointRunArtifactsAndSyncUi({
+    endpoint,
+    flowControlDirectives,
+    promptRuntimeOverride,
+    targetInstanceIds: resolvedActiveIds,
+    sourceLabel: resolvedSourceLabel,
+    activeAnchorContext,
+    activeStepId,
+    fallbackToOriginalFlowDirectives: false,
+    renderResponse: {
+      instanceId: singleInstanceId,
+      feedback,
+      evaluation,
+      conversationMeta: {
+        stepLabel: currentStep?.label || null,
+        endpointLabel: endpoint?.label || null,
+        channel: endpoint?.surface?.channel || null,
+        executionMode
+      }
+    }
+  });
+
+  return buildRunSuccessResult({
+    sourceLabel: resolvedSourceLabel,
+    targetInstanceLabels: resolvedActiveLabels,
+    proposalId: proposalRecord?.proposalId || null,
+    proposalStored: !!proposalRecord,
+    actionResult: createEmptyEndpointActionResult({
+      proposedCount: executableActions.length,
+      queuedCount: executableActions.length,
+      targetedInstanceCount: executableActions.length ? 1 : 0
+    }),
+    executionMode
+  });
+}
+
+async function handleStructuredEndpointDirectApplyMode({
+  agentObj,
+  currentStep,
+  endpoint,
+  endpointContext,
+  promptRuntimeOverride,
+  activeAnchorContext,
+  flowControlDirectives,
+  feedback,
+  evaluation,
+  executionMode,
+  resolvedSourceLabel,
+  resolvedActiveIds,
+  resolvedActiveLabels,
+  resolvedAllowedActionAreas,
+  activeStepId,
+  expectedSignatureSnapshot,
+  userText = null
+} = {}) {
+  const executableDirectActions = sanitizeProposalActionsForEndpoint(agentObj.actions, {
+    allowedActions: endpointContext?.allowedActions || [],
+    allowedActionAreas: resolvedAllowedActionAreas,
+    logFn: log
+  }).filter((action) => action && action.type !== "inform");
+
+  if (hasMutatingActions(executableDirectActions)) {
+    const conflictCheck = await performPreApplyConflictCheck(expectedSignatureSnapshot, resolvedSourceLabel);
+    if (!conflictCheck.ok) {
+      logRuntimeNotice("stale_state_conflict", conflictCheck.message, conflictCheck.conflicts);
+      return buildRunFailureResult("stale_state_conflict", conflictCheck.message, { conflicts: conflictCheck.conflicts });
+    }
+  }
+
+  const actionResult = executableDirectActions.length
+    ? await applyResolvedAgentActions(executableDirectActions, {
+        candidateInstanceIds: resolvedActiveIds,
+        anchorInstanceId: resolvedActiveIds.length === 1 ? resolvedActiveIds[0] : null,
+        sourceLabel: resolvedSourceLabel
+      })
+    : createEmptyEndpointActionResult();
+
+  await refreshBoardState();
+
+  if (activeStepId) {
+    for (const instanceId of resolvedActiveIds) {
+      await clearPendingProposalForInstanceStep(instanceId, activeStepId);
+    }
+  }
+
+  await persistMemoryAfterAgentRun(agentObj, {
+    runMode: "endpoint",
+    targetInstanceLabels: resolvedActiveLabels,
+    userRequest: pickFirstNonEmptyString(userText, getCurrentUserQuestion())
+  }, actionResult);
+
+  await applyEndpointRunArtifactsAndSyncUi({
+    endpoint,
+    flowControlDirectives,
+    promptRuntimeOverride,
+    targetInstanceIds: resolvedActiveIds,
+    sourceLabel: resolvedSourceLabel,
+    activeAnchorContext,
+    activeStepId,
+    renderResponse: {
+      instanceId: resolveResponseTargetInstanceId({
+        promptRuntimeOverride,
+        targetInstanceIds: resolvedActiveIds,
+        anchorInstanceId: resolvedActiveIds.length === 1 ? resolvedActiveIds[0] : null
+      }),
+      feedback,
+      evaluation,
+      conversationMeta: {
+        stepId: activeStepId,
+        channel: endpoint?.surface?.channel || null,
+        executionMode
+      }
+    }
+  });
+
+  return buildRunSuccessResult({
+    sourceLabel: resolvedSourceLabel,
+    targetInstanceLabels: resolvedActiveLabels,
+    actionResult,
+    executionMode
+  });
+}
+
 async function applyStoredProposalMechanically({
   exercisePack,
   currentStep,
@@ -2848,20 +3355,32 @@ async function applyStoredProposalMechanically({
   await loadMemoryRuntimeState();
   await refreshFlowEndpointOverridesFromStorage();
 
-  const normalizedTargetIds = Array.from(new Set((targetInstanceIds || []).filter((id) => state.instancesById.has(id))));
+  const {
+    normalizedTargetIds,
+    targetInstanceLabels,
+    promptRuntimeOverride,
+    resolvedSourceLabel,
+    activeStepId,
+    activeAnchorContext
+  } = buildEndpointExecutionContext({
+    exercisePack,
+    currentStep,
+    endpoint,
+    targetInstanceIds,
+    sourceLabel
+  });
+
   if (normalizedTargetIds.length !== 1) {
-    const msg = sourceLabel + ": direct_apply benötigt genau eine Ziel-Instanz.";
+    const msg = resolvedSourceLabel + ": direct_apply benötigt genau eine Ziel-Instanz.";
     logRuntimeNotice("precondition", msg);
     await notifyRuntime(msg, { level: "warning" });
     return buildRunFailureResult("precondition", msg);
   }
 
   const instanceId = normalizedTargetIds[0];
-  const activeStepId = pickFirstNonEmptyString(currentStep?.id);
-  const targetInstanceLabels = getInstanceLabelsFromIds(normalizedTargetIds);
-  const runLock = tryAcquireAgentRunLock(sourceLabel);
+  const runLock = tryAcquireAgentRunLock(resolvedSourceLabel);
   if (!runLock) {
-    return buildRunFailureResult("run_locked", sourceLabel + ": Ein Endpoint-Run läuft bereits.");
+    return buildRunFailureResult("run_locked", resolvedSourceLabel + ": Ein Endpoint-Run läuft bereits.");
   }
 
   let boardRunToken = null;
@@ -2870,30 +3389,26 @@ async function applyStoredProposalMechanically({
 
   try {
     const boardRunStart = await acquireBoardSoftLock({
-      sourceLabel,
+      sourceLabel: resolvedSourceLabel,
       targetInstanceIds: normalizedTargetIds
     });
     if (!boardRunStart.ok) {
-      const msg = formatExistingBoardRunMessage(sourceLabel, boardRunStart.current);
+      const msg = formatExistingBoardRunMessage(resolvedSourceLabel, boardRunStart.current);
       logRuntimeNotice("run_locked", msg);
       await notifyRuntime(msg, { level: "warning" });
       return buildRunFailureResult("run_locked", msg, { currentRunState: boardRunStart.current || null });
     }
 
     boardRunToken = boardRunStart.token;
-    boardRunToken.statusItemIds = await createRunStatusItems(normalizedTargetIds, sourceLabel, boardRunToken.runId);
+    boardRunToken.statusItemIds = await createRunStatusItems(normalizedTargetIds, resolvedSourceLabel, boardRunToken.runId);
     await syncBoardSoftLock(boardRunToken, {
       targetInstanceIds: normalizedTargetIds,
       statusItemIds: boardRunToken.statusItemIds
     });
 
-    const proposal = await Board.loadActiveProposal({
-      anchorInstanceId: instanceId,
-      stepId: activeStepId
-    }, log);
-
+    const proposal = await loadPendingProposalForInstance(instanceId, { stepId: activeStepId });
     if (!proposal) {
-      const msg = sourceLabel + ": Kein offener Vorschlag zum Anwenden vorhanden.";
+      const msg = resolvedSourceLabel + ": Kein offener Vorschlag zum Anwenden vorhanden.";
       logRuntimeNotice("precondition", msg);
       await syncChatApplyButtonsForInstanceIds(normalizedTargetIds, { stepId: activeStepId });
       await notifyRuntime(t("chat.apply.noPending", getCurrentDisplayLanguage()), { level: "warning" });
@@ -2910,37 +3425,23 @@ async function applyStoredProposalMechanically({
         anchorInstanceId: instanceId,
         stepId: activeStepId
       }, log);
-        await syncChatApplyButtonsForInstanceIds(normalizedTargetIds, { stepId: activeStepId });
-      const msg = sourceLabel + ": Gespeicherter Vorschlag ist veraltet und wurde nicht angewendet.";
+      await syncChatApplyButtonsForInstanceIds(normalizedTargetIds, { stepId: activeStepId });
+      const msg = resolvedSourceLabel + ": Gespeicherter Vorschlag ist veraltet und wurde nicht angewendet.";
       logRuntimeNotice("stale_state_conflict", msg);
-      await notifyRuntime(buildStaleProposalFeedback(sourceLabel, getCurrentDisplayLanguage()).summary, { level: "warning" });
+      await notifyRuntime(buildStaleProposalFeedback(resolvedSourceLabel, getCurrentDisplayLanguage()).summary, { level: "warning" });
       finalBoardRunStatus = "conflicted";
       finalBoardRunMessage = msg;
       return buildRunFailureResult("stale_state_conflict", msg);
     }
 
-    const proposalActions = Array.isArray(proposal.actions) ? proposal.actions : [];
-    const proposalEndpoint = proposal?.endpointId
-      ? getEffectiveFlowEndpointById(proposal.endpointId, { lang: getCurrentDisplayLanguage() })
-      : null;
-    const sanitizedProposalActions = sanitizeProposalActionsForEndpoint(proposalActions, {
-      allowedActions: proposalEndpoint?.run?.allowedActions || [],
-      allowedActionAreas: proposalEndpoint?.run?.allowedActionAreas || [],
-      logFn: log
-    }).filter((action) => action && action.type !== "inform");
+    const sanitizedProposalActions = getStoredProposalExecutableActions(proposal, { logFn: log });
     const actionResult = sanitizedProposalActions.length
       ? await applyResolvedAgentActions(sanitizedProposalActions, {
           candidateInstanceIds: normalizedTargetIds,
           anchorInstanceId: instanceId,
-          sourceLabel
+          sourceLabel: resolvedSourceLabel
         })
-      : {
-          appliedCount: 0,
-          skippedCount: 0,
-          infoCount: 0,
-          targetedInstanceCount: 0,
-          ...createEmptyActionExecutionStats()
-        };
+      : createEmptyEndpointActionResult();
 
     await refreshBoardState();
 
@@ -2961,49 +3462,33 @@ async function applyStoredProposalMechanically({
       stepId: activeStepId
     }, log);
 
-    const promptRuntimeOverride = buildPromptRuntimeFromEndpoint({
-      exercisePack,
-      currentStep,
-      endpoint,
-      controlContext: null,
-      adminOverride: pickFirstNonEmptyString(state.exerciseRuntime?.adminOverride) || null
-    });
-    const flowPromptContext = resolveFlowPromptContext({
-      promptRuntimeOverride,
-      targetInstanceIds: normalizedTargetIds
-    });
-    const activeAnchorContext = flowPromptContext.exercisePackId && flowPromptContext.anchorInstanceId
-      ? { exercisePackId: flowPromptContext.exercisePackId, anchorInstanceId: flowPromptContext.anchorInstanceId }
-      : (anchorInstanceId ? { exercisePackId: exercisePack?.id || null, anchorInstanceId } : null);
-
+    const fallbackAnchorContext = activeAnchorContext || (anchorInstanceId
+      ? { exercisePackId: exercisePack?.id || null, anchorInstanceId }
+      : null);
     const storedFlowDirectives = ExerciseEngine.normalizeFlowControlDirectivesBlock(proposal.flowDirectives);
-    const flowDirectiveResult = await applyFlowControlDirectivesAfterAgentRun({
+
+    await applyEndpointRunArtifactsAndSyncUi({
+      endpoint,
       flowControlDirectives: storedFlowDirectives,
       promptRuntimeOverride,
       targetInstanceIds: normalizedTargetIds,
-      sourceLabel
+      sourceLabel: resolvedSourceLabel,
+      activeAnchorContext: fallbackAnchorContext,
+      activeStepId
     });
-
-    await persistExerciseRuntimeAfterEndpointRun({
-      endpoint,
-      flowControlDirectives: flowDirectiveResult?.flowControlDirectives || storedFlowDirectives || null,
-      activeAnchorContext: flowDirectiveResult?.activeAnchorContext || activeAnchorContext
-    });
-    await syncChatProposeButtonsForInstanceIds(normalizedTargetIds, { stepId: activeStepId });
-    await syncChatApplyButtonsForInstanceIds(normalizedTargetIds, { stepId: activeStepId });
     await notifyRuntime("Vorschlag angewendet.", { level: "info" });
 
     finalBoardRunStatus = "completed";
-    finalBoardRunMessage = sourceLabel + ": angewendet.";
+    finalBoardRunMessage = resolvedSourceLabel + ": angewendet.";
     return buildRunSuccessResult({
-      sourceLabel,
+      sourceLabel: resolvedSourceLabel,
       targetInstanceLabels,
       actionResult,
       proposalApplied: true,
       executionMode: "direct_apply"
     });
   } catch (e) {
-    const msg = "Exception beim " + sourceLabel + "-Apply: " + formatRuntimeErrorMessage(e);
+    const msg = "Exception beim " + resolvedSourceLabel + "-Apply: " + formatRuntimeErrorMessage(e);
     logRuntimeNotice("fatal", msg, e?.stack || null);
     await notifyRuntime(msg, { level: "error" });
     finalBoardRunStatus = "failed";
@@ -3035,32 +3520,25 @@ async function runStructuredEndpointExecution({
   await ensureInstancesScanned();
   await loadMemoryRuntimeState();
 
-  const normalizedTargetIds = Array.from(new Set((targetInstanceIds || []).filter((id) => state.instancesById.has(id))));
-  const targetInstanceLabels = getInstanceLabelsFromIds(normalizedTargetIds);
-  const endpointContext = ExerciseEngine.resolveEndpointContext({
-    exercisePack,
-    currentStep,
-    endpoint,
-    targetInstanceIds: normalizedTargetIds,
+  const {
+    normalizedTargetIds,
     targetInstanceLabels,
-    boardConfig: state.boardConfig
-  });
-  const promptRuntimeOverride = buildPromptRuntimeFromEndpoint({
+    endpointContext,
+    promptRuntimeOverride,
+    resolvedSourceLabel,
+    activeStepId,
+    sourceFrameNames,
+    flowPromptContext,
+    activeAnchorContext
+  } = buildEndpointExecutionContext({
     exercisePack,
     currentStep,
     endpoint,
+    targetInstanceIds,
     controlContext,
-    adminOverride: pickFirstNonEmptyString(adminOverride, state.exerciseRuntime?.adminOverride) || null
+    adminOverride,
+    sourceLabel
   });
-  const resolvedSourceLabel = pickFirstNonEmptyString(sourceLabel, controlContext?.controlLabel, endpoint?.label, "Endpoint");
-  const activeStepId = pickFirstNonEmptyString(currentStep?.id);
-  const flowPromptContext = resolveFlowPromptContext({
-    promptRuntimeOverride,
-    targetInstanceIds: normalizedTargetIds
-  });
-  const activeAnchorContext = flowPromptContext.exercisePackId && flowPromptContext.anchorInstanceId
-    ? { exercisePackId: flowPromptContext.exercisePackId, anchorInstanceId: flowPromptContext.anchorInstanceId }
-    : null;
   const pureApplyEndpoint = endpoint?.surface?.channel === "chat_apply";
 
   if (pureApplyEndpoint) {
@@ -3109,23 +3587,12 @@ async function runStructuredEndpointExecution({
 
     const { liveCatalog } = await refreshBoardState();
     const stateById = await computeInstanceStatesById(liveCatalog);
-    const activeCanvasStates = Object.create(null);
+    const {
+      activeCanvasStates,
+      resolvedActiveLabels,
+      resolvedActiveIds
+    } = buildActiveCanvasStatesFromStateById(normalizedTargetIds, stateById);
 
-    for (const id of normalizedTargetIds) {
-      const st = stateById[id];
-      const instance = state.instancesById.get(id) || null;
-      const instanceLabel = instance?.instanceLabel || null;
-      if (!st?.classification || !instanceLabel) continue;
-
-      const payload = Catalog.buildPromptPayloadFromClassification(st.classification, {
-        useAliases: true,
-        aliasState: state.aliasState,
-        log
-      });
-      if (payload) activeCanvasStates[instanceLabel] = payload;
-    }
-
-    const resolvedActiveLabels = Object.keys(activeCanvasStates);
     if (!resolvedActiveLabels.length) {
       const msg = resolvedSourceLabel + ": Konnte für die Ziel-Canvas keine Zustandsdaten aufbauen.";
       logRuntimeNotice("precondition", msg);
@@ -3133,10 +3600,6 @@ async function runStructuredEndpointExecution({
       finalBoardRunMessage = msg;
       return buildRunFailureResult("precondition", msg);
     }
-
-    const resolvedActiveIds = resolvedActiveLabels
-      .map((label) => getInternalInstanceIdByLabel(label))
-      .filter((id) => state.instancesById.has(id));
 
     boardRunToken.targetInstanceIds = resolvedActiveIds.slice();
     boardRunToken.statusItemIds = await createRunStatusItems(resolvedActiveIds, resolvedSourceLabel, boardRunToken.runId);
@@ -3146,33 +3609,29 @@ async function runStructuredEndpointExecution({
     });
     await notifyRuntime("AI arbeitet: " + resolvedSourceLabel, { level: "info" });
 
-    const singleLabel = resolvedActiveLabels.length === 1 ? resolvedActiveLabels[0] : null;
-    const singleInstanceId = resolvedActiveIds.length === 1 ? resolvedActiveIds[0] : null;
-    const conversationContext = singleInstanceId ? buildConversationContextForPrompt(singleInstanceId) : null;
-    const boardCatalog = buildBoardCatalogForSelectedInstances(resolvedActiveIds);
-    const memoryState = simplifyMemoryStateForPrompt(state.memoryState);
-    const memoryTimeline = buildMemoryTimelineForPrompt(state.memoryLog);
-    const expectedSignatureSnapshot = buildSignatureSnapshot(stateById, resolvedActiveIds);
-    const pendingProposalContext = singleInstanceId
-      ? await buildPendingProposalContextForPrompt(singleInstanceId, { stepId: activeStepId })
-      : null;
-    const votingContext =
-      isBusinessModelCasePack(exercisePack) && isBusinessModelVotingStep(currentStep)
-        ? await buildVotingContextForPrompt(activeCanvasStates)
-        : null;
-    const resolvedAllowedActionAreas = resolveAllowedActionAreasForRun({
+    const {
+      singleLabel,
+      singleInstanceId,
+      expectedSignatureSnapshot,
+      resolvedAllowedActionAreas,
+      promptText,
+      userQuestion,
+      userPayload
+    } = await buildStructuredEndpointPromptArtifacts({
+      exercisePack,
+      currentStep,
       endpointContext,
-      activeCanvasStates
+      promptRuntimeOverride,
+      flowPromptContext,
+      stateById,
+      activeCanvasStates,
+      resolvedActiveIds,
+      resolvedActiveLabels,
+      activeStepId,
+      sourceFrameNames,
+      userText
     });
-    const promptCfg = getPromptConfigForSelectedInstances(resolvedActiveIds);
-    const promptText = PromptComposer.composePrompt(promptRuntimeOverride, {
-      lang: getCurrentDisplayLanguage(),
-      systemPrompt: promptCfg?.system || DT_GLOBAL_SYSTEM_PROMPT,
-      templateCatalog: DT_TEMPLATE_CATALOG,
-      involvedCanvasTypeIds: getInvolvedCanvasTypeIdsFromInstanceIds(resolvedActiveIds),
-      endpointContext: { ...endpointContext, allowedActionAreas: resolvedAllowedActionAreas }
-    });
-    const userQuestion = pickFirstNonEmptyString(userText, getCurrentUserQuestion());
+
     if (singleInstanceId && userQuestion) {
       recordConversationTurn(singleInstanceId, {
         role: "user",
@@ -3182,20 +3641,6 @@ async function runStructuredEndpointExecution({
         endpointLabel: endpoint?.label
       });
     }
-    const userPayload = {
-      userQuestion,
-      activeInstanceLabel: singleLabel,
-      selectedInstanceLabels: resolvedActiveLabels,
-      boardCatalog,
-      activeCanvasStates,
-      memoryState,
-      memoryTimeline,
-      pendingProposalContext,
-      conversationContext,
-      flowGuidance: flowPromptContext.flowGuidance,
-      allowedActionAreas: resolvedAllowedActionAreas,
-      votingContext
-    };
 
     log("Starte " + resolvedSourceLabel + " via Endpoint '" + endpoint.id + "' für: " + (resolvedActiveLabels.join(", ") || "(keine)") + " ...");
     const structuredResult = await OpenAI.callOpenAIEndpointStructured({
@@ -3227,239 +3672,88 @@ async function runStructuredEndpointExecution({
     log(resolvedSourceLabel + ": executionMode=" + executionMode + ".");
 
     if (executionMode === "none") {
-      await persistMemoryAfterAgentRun(agentObj, {
-        runMode: "endpoint",
-          targetInstanceLabels: resolvedActiveLabels,
-        userRequest: pickFirstNonEmptyString(userText, getCurrentUserQuestion())
-      }, {
-        appliedCount: 0,
-        skippedCount: 0,
-        infoCount: 0,
-        targetedInstanceCount: 0,
-        ...createEmptyActionExecutionStats()
-      });
-
-      const flowDirectiveResult = await applyFlowControlDirectivesAfterAgentRun({
-        flowControlDirectives,
-        promptRuntimeOverride,
-        targetInstanceIds: resolvedActiveIds,
-        sourceLabel: resolvedSourceLabel
-      });
-      const appliedFlowControlDirectives = flowDirectiveResult?.flowControlDirectives || flowControlDirectives;
-      await renderAgentResponseToInstanceOutput({
-        instanceId: resolveResponseTargetInstanceId({
-          promptRuntimeOverride,
-          targetInstanceIds: resolvedActiveIds,
-          anchorInstanceId: resolvedActiveIds.length === 1 ? resolvedActiveIds[0] : null
-        }),
-        feedback,
-        flowControlDirectives: appliedFlowControlDirectives,
-        evaluation,
-        sourceLabel: resolvedSourceLabel,
-        conversationMeta: {
-          stepLabel: currentStep?.label || null,
-          endpointLabel: endpoint?.label || null,
-          channel: endpoint?.surface?.channel || null,
-          executionMode
-        }
-      });
-      await persistExerciseRuntimeAfterEndpointRun({
+      const runResult = await handleStructuredEndpointNoneMode({
+        agentObj,
+        currentStep,
         endpoint,
-        flowControlDirectives: appliedFlowControlDirectives,
-        activeAnchorContext: flowDirectiveResult?.activeAnchorContext || activeAnchorContext
+        promptRuntimeOverride,
+        activeAnchorContext,
+        flowControlDirectives,
+        feedback,
+        evaluation,
+        executionMode,
+        resolvedSourceLabel,
+        resolvedActiveIds,
+        resolvedActiveLabels,
+        activeStepId,
+        userText
       });
-      await syncChatProposeButtonsForInstanceIds(resolvedActiveIds, { stepId: activeStepId });
-      await syncChatApplyButtonsForInstanceIds(resolvedActiveIds, { stepId: activeStepId });
       finalBoardRunStatus = "completed";
       finalBoardRunMessage = resolvedSourceLabel + ": abgeschlossen.";
-      return buildRunSuccessResult({
-        sourceLabel: resolvedSourceLabel,
-        targetInstanceLabels: resolvedActiveLabels,
-        actionResult: {
-          appliedCount: 0,
-          skippedCount: 0,
-          infoCount: 0,
-          targetedInstanceCount: 0,
-          ...createEmptyActionExecutionStats()
-        },
-        executionMode
-      });
+      return runResult;
     }
 
     if (executionMode === "proposal_only") {
-      if (resolvedActiveIds.length !== 1 || !singleInstanceId) {
-        const msg = resolvedSourceLabel + ": executionMode=proposal_only benötigt genau eine Ziel-Instanz.";
-        logRuntimeNotice("precondition", msg);
-        finalBoardRunStatus = "aborted";
-        finalBoardRunMessage = msg;
-        return buildRunFailureResult("precondition", msg);
-      }
-
-      const executableActions = sanitizeProposalActionsForEndpoint(agentObj.actions, {
-        allowedActions: endpointContext?.allowedActions || [],
-        allowedActionAreas: resolvedAllowedActionAreas,
-        logFn: log
-      }).filter((action) => action && action.type !== "inform");
-
-      let proposalRecord = null;
-      if (executableActions.length) {
-        proposalRecord = buildStoredProposalRecord({
-          instanceId: singleInstanceId,
-          stepId: activeStepId,
-          stepLabel: currentStep?.label || null,
-          exercisePackId: promptRuntimeOverride?.exercisePack?.id || null,
-          endpointId: promptRuntimeOverride?.endpoint?.id || null,
-          promptRuntimeOverride,
-          userRequest: pickFirstNonEmptyString(userText, getCurrentUserQuestion()),
-          basedOnStateHash: stateById[singleInstanceId]?.signature?.stateHash || null,
-          agentObj: {
-            ...agentObj,
-            actions: executableActions,
-            executionMode
-          },
-          feedback,
-          flowDirectives: flowControlDirectives,
-          evaluation
-        });
-        await Board.saveActiveProposal(proposalRecord, log);
-      } else {
-        await Board.clearActiveProposal({
-          anchorInstanceId: singleInstanceId,
-          stepId: activeStepId
-        }, log);
-      }
-
-      const flowDirectiveResult = await applyFlowControlDirectivesAfterAgentRun({
-        flowControlDirectives,
-        promptRuntimeOverride,
-        targetInstanceIds: resolvedActiveIds,
-        sourceLabel: resolvedSourceLabel
-      });
-      await renderAgentResponseToInstanceOutput({
-        instanceId: singleInstanceId,
-        feedback,
-        flowControlDirectives: flowDirectiveResult?.flowControlDirectives || null,
-        evaluation,
-        sourceLabel: resolvedSourceLabel,
-        conversationMeta: {
-          stepLabel: currentStep?.label || null,
-          endpointLabel: endpoint?.label || null,
-          channel: endpoint?.surface?.channel || null,
-          executionMode,
-        }
-      });
-      await persistExerciseRuntimeAfterEndpointRun({
+      const runResult = await handleStructuredEndpointProposalMode({
+        agentObj,
+        currentStep,
         endpoint,
-        flowControlDirectives: flowDirectiveResult?.flowControlDirectives || null,
-        activeAnchorContext: flowDirectiveResult?.activeAnchorContext || activeAnchorContext
+        endpointContext,
+        promptRuntimeOverride,
+        activeAnchorContext,
+        flowControlDirectives,
+        feedback,
+        evaluation,
+        executionMode,
+        resolvedSourceLabel,
+        resolvedActiveIds,
+        resolvedActiveLabels,
+        resolvedAllowedActionAreas,
+        activeStepId,
+        singleInstanceId,
+        stateById,
+        userText
       });
-      await syncChatProposeButtonsForInstanceIds(resolvedActiveIds, { stepId: activeStepId });
-      await syncChatApplyButtonsForInstanceIds(resolvedActiveIds, { stepId: activeStepId });
+      if (!runResult?.ok) {
+        finalBoardRunStatus = runResult?.errorType === "precondition" ? "aborted" : "failed";
+        finalBoardRunMessage = runResult?.message || null;
+        return runResult;
+      }
       finalBoardRunStatus = "completed";
-      finalBoardRunMessage = proposalRecord
+      finalBoardRunMessage = runResult.proposalStored
         ? (resolvedSourceLabel + ": Vorschlag gespeichert.")
         : (resolvedSourceLabel + ": Kein ausführbarer Vorschlag gespeichert.");
-      return buildRunSuccessResult({
-        sourceLabel: resolvedSourceLabel,
-        targetInstanceLabels: resolvedActiveLabels,
-        proposalId: proposalRecord?.proposalId || null,
-        proposalStored: !!proposalRecord,
-        actionResult: {
-          proposedCount: executableActions.length,
-          queuedCount: executableActions.length,
-          appliedCount: 0,
-          skippedCount: 0,
-          infoCount: 0,
-          targetedInstanceCount: executableActions.length ? 1 : 0,
-          ...createEmptyActionExecutionStats()
-        },
-        executionMode
-      });
+      return runResult;
     }
 
-    const executableDirectActions = sanitizeProposalActionsForEndpoint(agentObj.actions, {
-      allowedActions: endpointContext?.allowedActions || [],
-      allowedActionAreas: resolvedAllowedActionAreas,
-      logFn: log
-    }).filter((action) => action && action.type !== "inform");
-
-    if (hasMutatingActions(executableDirectActions)) {
-      const conflictCheck = await performPreApplyConflictCheck(expectedSignatureSnapshot, resolvedSourceLabel);
-      if (!conflictCheck.ok) {
-        logRuntimeNotice("stale_state_conflict", conflictCheck.message, conflictCheck.conflicts);
-        finalBoardRunStatus = "conflicted";
-        finalBoardRunMessage = conflictCheck.message;
-        return buildRunFailureResult("stale_state_conflict", conflictCheck.message, { conflicts: conflictCheck.conflicts });
-      }
-    }
-
-    const actionResult = executableDirectActions.length
-      ? await applyResolvedAgentActions(executableDirectActions, {
-          candidateInstanceIds: resolvedActiveIds,
-          anchorInstanceId: resolvedActiveIds.length === 1 ? resolvedActiveIds[0] : null,
-          sourceLabel: resolvedSourceLabel
-        })
-      : {
-          appliedCount: 0,
-          skippedCount: 0,
-          infoCount: 0,
-          targetedInstanceCount: 0,
-          ...createEmptyActionExecutionStats()
-        };
-
-    await refreshBoardState();
-
-    if (activeStepId) {
-      for (const instanceId of resolvedActiveIds) {
-        await clearPendingProposalForInstanceStep(instanceId, activeStepId);
-          }
-    }
-
-    await persistMemoryAfterAgentRun(agentObj, {
-      runMode: "endpoint",
-      targetInstanceLabels: resolvedActiveLabels,
-      userRequest: pickFirstNonEmptyString(userText, getCurrentUserQuestion())
-    }, actionResult);
-
-    const flowDirectiveResult = await applyFlowControlDirectivesAfterAgentRun({
-      flowControlDirectives,
-      promptRuntimeOverride,
-      targetInstanceIds: resolvedActiveIds,
-      sourceLabel: resolvedSourceLabel
-    });
-    const appliedFlowControlDirectives = flowDirectiveResult?.flowControlDirectives || flowControlDirectives;
-    await renderAgentResponseToInstanceOutput({
-      instanceId: resolveResponseTargetInstanceId({
-        promptRuntimeOverride,
-        targetInstanceIds: resolvedActiveIds,
-        anchorInstanceId: resolvedActiveIds.length === 1 ? resolvedActiveIds[0] : null
-      }),
-      feedback,
-      flowControlDirectives: appliedFlowControlDirectives,
-      evaluation,
-      sourceLabel: resolvedSourceLabel,
-      conversationMeta: {
-        stepId: activeStepId,
-          channel: endpoint?.surface?.channel || null,
-        executionMode
-      }
-    });
-    await persistExerciseRuntimeAfterEndpointRun({
+    const runResult = await handleStructuredEndpointDirectApplyMode({
+      agentObj,
+      currentStep,
       endpoint,
-      flowControlDirectives: appliedFlowControlDirectives,
-      activeAnchorContext: flowDirectiveResult?.activeAnchorContext || activeAnchorContext
+      endpointContext,
+      promptRuntimeOverride,
+      activeAnchorContext,
+      flowControlDirectives,
+      feedback,
+      evaluation,
+      executionMode,
+      resolvedSourceLabel,
+      resolvedActiveIds,
+      resolvedActiveLabels,
+      resolvedAllowedActionAreas,
+      activeStepId,
+      expectedSignatureSnapshot,
+      userText
     });
-    await syncChatProposeButtonsForInstanceIds(resolvedActiveIds, { stepId: activeStepId });
-    await syncChatApplyButtonsForInstanceIds(resolvedActiveIds, { stepId: activeStepId });
+    if (!runResult?.ok) {
+      finalBoardRunStatus = runResult?.errorType === "stale_state_conflict" ? "conflicted" : "aborted";
+      finalBoardRunMessage = runResult?.message || null;
+      return runResult;
+    }
 
     finalBoardRunStatus = "completed";
     finalBoardRunMessage = resolvedSourceLabel + ": abgeschlossen.";
-    return buildRunSuccessResult({
-      sourceLabel: resolvedSourceLabel,
-      targetInstanceLabels: resolvedActiveLabels,
-      actionResult,
-      executionMode
-    });
+    return runResult;
   } catch (e) {
     const msg = "Exception beim " + resolvedSourceLabel + "-Run: " + formatRuntimeErrorMessage(e);
     logRuntimeNotice("fatal", msg, e?.stack || null);
@@ -3476,6 +3770,7 @@ async function runStructuredEndpointExecution({
     releaseAgentRunLock(runLock);
   }
 }
+
 
 async function runEndpoint(endpoint, options = {}) {
   if (!endpoint?.id) {

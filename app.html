@@ -265,6 +265,12 @@
       </div>
 
       <div class="row">
+        <label for="flow-endpoint-override-source-frames" data-i18n="flow.endpointOverride.sourceFrames.label">Zusätzliche Source-Frames</label>
+        <textarea id="flow-endpoint-override-source-frames" data-i18n-placeholder="flow.endpointOverride.sourceFrames.placeholder" placeholder="Frame-Namen, getrennt durch Zeilenumbrüche oder Kommas"></textarea>
+        <div class="helper-text" data-i18n="flow.endpointOverride.sourceFrames.help">Optional: Namen bereits vorhandener Frames. Deren verwertbare Inhalte werden für diesen Flow-Endpoint zusätzlich als read-only sourceFrames in den Agenten-Payload injiziert. Gilt auch für „Generate proposals“, wenn derselbe Proposal-Endpoint genutzt wird.</div>
+      </div>
+
+      <div class="row">
         <label for="flow-endpoint-override-execution-mode" data-i18n="flow.endpointOverride.executionMode.label">Ausführungsmodus</label>
         <select id="flow-endpoint-override-execution-mode"></select>
         <div class="helper-text" data-i18n="flow.endpointOverride.executionMode.help">Für Flow-Endpunkte wird genau ein Modus gewählt. Chat Submit und Chat Apply bleiben unverändert.</div>

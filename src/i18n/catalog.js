@@ -101,6 +101,15 @@ const BASE_UI_STRINGS = Object.freeze({
     de: "Der aktuelle Endpoint-Prompt aus dem Repository wird vorausgefüllt und kann hier direkt überschrieben werden.",
     en: "The current endpoint prompt from the repository is prefilled and can be overridden here directly."
   },
+  "flow.endpointOverride.sourceFrames.label": { de: "Zusätzliche Source-Frames", en: "Additional source frames" },
+  "flow.endpointOverride.sourceFrames.placeholder": {
+    de: "Frame-Namen, getrennt durch Zeilenumbrüche oder Kommas",
+    en: "Frame names, separated by line breaks or commas"
+  },
+  "flow.endpointOverride.sourceFrames.help": {
+    de: "Optional: Namen bereits vorhandener Frames. Deren verwertbare Inhalte werden für diesen Flow-Endpoint zusätzlich als read-only sourceFrames in den Agenten-Payload injiziert. Gilt auch für „Generate proposals“, wenn derselbe Proposal-Endpoint genutzt wird.",
+    en: "Optional: names of existing frames. Their usable contents are injected as additional read-only sourceFrames into the agent payload for this flow endpoint. This also applies to 'Generate proposals' when it uses the same proposal endpoint."
+  },
   "flow.endpointOverride.executionMode.label": { de: "Ausführungsmodus", en: "Execution mode" },
   "flow.endpointOverride.executionMode.help": {
     de: "Für Flow-Endpunkte wird genau ein Modus gewählt. Chat Submit und Chat Apply bleiben unverändert.",

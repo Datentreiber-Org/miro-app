@@ -157,6 +157,40 @@ function buildBoardMechanicsBlock(runtime, options = {}) {
   return lines.join("\n");
 }
 
+function buildSourceFramesBlock(runtime, options = {}) {
+  const sourceFrames = (options.sourceFrames && typeof options.sourceFrames === "object")
+    ? options.sourceFrames
+    : null;
+  const configuredFrameNames = normalizeUniqueStrings(
+    sourceFrames?.configuredFrameNames || runtime?.endpoint?.sourceFrameNames || []
+  );
+  if (!configuredFrameNames.length) return null;
+
+  const matchedFrameNames = normalizeUniqueStrings(sourceFrames?.matchedFrameNames || []);
+  const unresolvedFrameNames = normalizeUniqueStrings(sourceFrames?.unresolvedFrameNames || []);
+  const frameCount = Array.isArray(sourceFrames?.frames) ? sourceFrames.frames.length : 0;
+
+  const lines = [
+    "Zusätzliche read-only Quellen können im User-Payload unter sourceFrames enthalten sein.",
+    "- sourceFrames sind zusätzlicher Kontext und kein Teil von activeCanvasStates oder boardCatalog.",
+    "- Verwende sourceFrames nur als Evidenz, Input-Material oder Referenz.",
+    "- Erzeuge niemals Actions, die sourceFrames-Items direkt adressieren, verschieben oder verändern.",
+    `- Konfigurierte Frame-Namen: ${configuredFrameNames.join(", ")}.`
+  ];
+
+  if (frameCount > 0) {
+    lines.push(`- Im aktuellen Lauf aufgelöste Frames: ${frameCount}.`);
+  }
+  if (matchedFrameNames.length) {
+    lines.push(`- Aufgelöste Frame-Namen: ${matchedFrameNames.join(", ")}.`);
+  }
+  if (unresolvedFrameNames.length) {
+    lines.push(`- Nicht gefundene konfigurierte Frame-Namen: ${unresolvedFrameNames.join(", ")}.`);
+  }
+
+  return renderPromptSection("ADDITIONAL SOURCE FRAMES", lines.join("\n"));
+}
+
 function buildAdminOverrideBlock(adminOverrideText) {
   const normalized = asNonEmptyString(adminOverrideText);
   if (!normalized) return null;
@@ -196,6 +230,7 @@ export function composePrompt(runtime, options = {}) {
     buildLanguagePromptBlock(runtime, options),
     buildCanvasWorldModelBlock(runtime, options),
     buildBoardMechanicsBlock(runtime, options),
+    buildSourceFramesBlock(runtime, options),
     buildControlContextBlock(runtime.controlContext),
     buildAdminOverrideBlock(runtime.adminOverride)
   ].filter(Boolean);
